@@ -1,0 +1,26 @@
+tests/fm-watch-triage.test.sh
+  s_eaa1cd6835e027::t_a7f96d00e55929 144-146,194-195
+docs/architecture.md
+  s_eaa1cd6835e027::t_481e98abea3ce4 251
+tests/fm-pr-merge.test.sh
+  s_eaa1cd6835e027::t_481e98abea3ce4 19,25,98-99
+  s_eaa1cd6835e027::t_a7f96d00e55929 363-402,742-743
+bin/fm-pr-merge.sh
+  s_eaa1cd6835e027::t_481e98abea3ce4 125-126,224-227,230-267,270-279,455-456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "17236b69cfe303048a0beb8404d65f929d0d3c71",
+  "prompts": {},
+  "sessions": {
+    "s_eaa1cd6835e027": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0029a-9613-7853-b340-8157cd3ad345",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
