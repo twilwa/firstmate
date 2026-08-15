@@ -1,0 +1,63 @@
+tests/fm-control-relaunch.test.sh
+  s_5e9446acf4115e::t_16e7927f357592 20-22
+  s_5e9446acf4115e::t_cc1f8083561270 1373-1388,1433
+  s_5e9446acf4115e::t_fe065bdddb22b9 117-133,162,1362,1425,1427
+  s_5e9446acf4115e::t_9d76ec7e0e34a9 135,161,1351,1371,1389-1424,1426,1428-1432,1435
+  s_b93b52e221599b::t_2725edc37b6bc1 1434
+  s_b93b52e221599b::t_e55eeaf7dea8fb 134,136-143,1347-1350,1352-1361,1363-1370
+  s_92b72f7fee59ce::t_6828bd68787214 1372
+bin/backends/tmux.sh
+  s_5e9446acf4115e::t_e71c440469fee6 101-132
+  s_5e9446acf4115e::t_79e3b364b96e02 96-100
+docs/agent-control.md
+  s_5e9446acf4115e::t_1ebe3bef6caa35 84
+  s_5e9446acf4115e::t_d1720750874918 86
+  s_5e9446acf4115e::t_1b3253e79cb121 35
+  s_5e9446acf4115e::t_16e7927f357592 71-78,108-109
+bin/fm-spawn.sh
+  s_5e9446acf4115e::t_2a52e96f3fae5f 19,21-24,34-38
+  s_5e9446acf4115e::t_3a7ae4f899cec2 731-734
+  s_5e9446acf4115e::t_16e7927f357592 359-364,993,995
+  s_5e9446acf4115e::t_52ac35f30f42d0 290,315,371-374,1027-1037,1722-1726,1728-1730,1736,1892,1906-1916,1972,2026,2068,2079,2092,2104
+  s_5e9446acf4115e::t_cc1f8083561270 1021-1023,1025
+  s_5e9446acf4115e::t_b9539218a90c3f 1059-1062,1727,1731-1735
+  s_92b72f7fee59ce::t_881a52706e5036 1026
+tests/fm-backend-tmux-smoke.test.sh
+  s_5e9446acf4115e::t_f240359417fcc4 172-188
+bin/fm-control.sh
+  s_5e9446acf4115e::t_3d6f6ea800e877 157-158,577-580,603-607,783,788-796,829-834,842,854-859,865-866,868-872
+  s_5e9446acf4115e::t_2a52e96f3fae5f 35-36
+  s_5e9446acf4115e::t_16e7927f357592 47-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "245640f5ad45f1d70170ed6f7dfa95b878ab246c",
+  "prompts": {},
+  "sessions": {
+    "s_5e9446acf4115e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a002a4-2b2b-7b21-bf14-77a1ee6ec7d3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_92b72f7fee59ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d2f2-75a2-b6a7-09b2cc066278",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_b93b52e221599b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0029a-8b0f-7690-a64b-66e6f0a37fc5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
