@@ -1,0 +1,45 @@
+bin/fm-pr-merge.sh
+  s_eaa1cd6835e027::t_0a2dca026b0783 2-3,12-14,44-86,125-128,168-174,214-236,305-326,328-329,337-354,356,359-371,373-379,381-389,391,394,396-419
+  s_eaa1cd6835e027::t_8d42e9e513dbd2 129-167,175-213,237-304,327,330-336,355,357-358,372,380,390,392-393,395
+  s_e3f3e39dba9889::t_4052433c5f6a76 420
+tests/fm-pr-merge.test.sh
+  s_eaa1cd6835e027::t_ec9e115bb9ed3e 19-22
+  s_eaa1cd6835e027::t_0a2dca026b0783 2-3
+  s_eaa1cd6835e027::t_0b6d57b1eaa471 181-184,237-240
+  s_eaa1cd6835e027::t_51b58951bc34e7 55,58,85,109-119,122,125,128,214,216-219,251,253-254,271,273-274,291,293-294,318,320-321,343,345-347
+  s_eaa1cd6835e027::t_4e655194256c8e 89,96-101,105,135-137,209-212,220-236,241-243,549
+  s_eaa1cd6835e027::t_618c149296b771 93,95,102-104,106-108,120-121,123-124,126-127,129-134,151,213,215,244-250,252,255-270,272,275-290,292,295-317,319,322-342,344,348-385,550-555
+  s_42c7d58cea0ff7::t_bd87fa1d3ea0d3 86-88,90-92,94,386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "9a6c48207d0eb3db2c0a55ddd13dd57754841b66",
+  "prompts": {},
+  "sessions": {
+    "s_42c7d58cea0ff7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-cdf3-7191-9dd4-b02d8700f86e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_e3f3e39dba9889": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffe3b-d895-7c03-8bcd-216fdc06109f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    },
+    "s_eaa1cd6835e027": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0029a-9613-7853-b340-8157cd3ad345",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
