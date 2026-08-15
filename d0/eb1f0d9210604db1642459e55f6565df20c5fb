@@ -1,0 +1,44 @@
+tests/fm-pr-check-security.test.sh
+  s_c0516db01a4b6b::t_8ace99998ae8c0 88-90,94
+AGENTS.md
+  s_c0516db01a4b6b::t_0e53eaf88d69cb 327
+bin/fm-pr-merge.sh
+  s_c0516db01a4b6b::t_2ae82abb69e8fd 274-275,285-292,294,297,299-300,302,304,306-308,310,314
+  s_c0516db01a4b6b::t_ef4dd5abbfaa4b 2-3
+  s_c0516db01a4b6b::t_312fb41ed7f4b1 350,357,368-371,399,407,413-430,432,437-439
+  s_c0516db01a4b6b::t_cbd7b3324dbe48 125-171,173-180,182,184-185,188-190,192-194,199-221,225-241,246-249
+tests/fm-pr-merge.test.sh
+  s_c0516db01a4b6b::t_42dbe8ee55262a 491,493
+  s_c0516db01a4b6b::t_c80eedc72287c4 700-701,704,706-708
+  s_c0516db01a4b6b::t_a5d3c967dd1d26 232,234,251
+  s_c0516db01a4b6b::t_0220c0975a0a41 289,291
+  s_c0516db01a4b6b::t_2fed5894107779 466
+  s_c0516db01a4b6b::t_2b8c0c4b66dc93 97-99,124-134
+  s_c0516db01a4b6b::t_3f4d56e3141200 304-305,309,316-342,347-458
+  s_c0516db01a4b6b::t_a42cf654e3cd1d 19,21-24
+  s_c0516db01a4b6b::t_2a2fafb54acfbb 269,271
+  s_c0516db01a4b6b::t_ec4272fe0347a1 201-202
+docs/architecture.md
+  s_c0516db01a4b6b::t_369af771488ea7 251-254
+docs/scripts.md
+  s_c0516db01a4b6b::t_fac03908771594 108
+bin/fm-classify-lib.sh
+  s_c0516db01a4b6b::t_01b3a99f9bf187 46-49
+  s_c0516db01a4b6b::t_61532a905e62bd 103-108,115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "d0eb1f0d9210604db1642459e55f6565df20c5fb",
+  "prompts": {},
+  "sessions": {
+    "s_c0516db01a4b6b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824ab526-3b7b-4ef0-a5c6-8cfc0877086b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
