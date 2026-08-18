@@ -1,0 +1,19 @@
+docs/architecture.md
+  s_60b6aae8685441::t_53a2ebae93715e 45,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "ff7ec90d794056f27a1dadebdfdeeb7dbf7f4073",
+  "prompts": {},
+  "sessions": {
+    "s_60b6aae8685441": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01725-9af7-7df0-bc8d-945d90b58179",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
