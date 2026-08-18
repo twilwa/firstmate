@@ -1,0 +1,5 @@
+Scenario: live run head is absent from the crew worktree object store
+state: unknown · source: run-step · run unattributable: run head ffffffffffffffffffffffffffffffffffffffff is not present in the worktree object store; ancestry cannot be computed
+
+Scenario: terminal failed run head is attributable to the crew worktree
+state: failed · source: run-step · run failed
