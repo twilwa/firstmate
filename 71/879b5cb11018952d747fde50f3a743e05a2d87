@@ -1,0 +1,24 @@
+bin/fm-nm-run-lib.sh
+  s_56b8ba7e247f26::t_c717f617913111 58-60,67-78,80-95
+tests/fm-crew-state.test.sh
+  s_56b8ba7e247f26::t_f0cfc061badac0 1409-1438,1532
+  s_56b8ba7e247f26::t_703245613ff047 684-685,1372-1408,1531
+bin/fm-crew-state.sh
+  s_56b8ba7e247f26::t_c717f617913111 38-39,389,405-415,425-428,431-438,441-456,472-481,490-502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "71879b5cb11018952d747fde50f3a743e05a2d87",
+  "prompts": {},
+  "sessions": {
+    "s_56b8ba7e247f26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-79e5-7ef1-ac27-eaf17c4a1421",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
