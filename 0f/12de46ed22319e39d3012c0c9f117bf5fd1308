@@ -1,0 +1,23 @@
+tests/fm-secondmate-liveness.test.sh
+  s_87836932da9643::t_91a5c587e29189 23-25
+  s_87836932da9643::t_039d06f966111d 266-268,282,294,430-446,571
+bin/fm-bootstrap.sh
+  s_87836932da9643::t_fc6451948f3ff7 707-711
+  s_87836932da9643::t_91a5c587e29189 578-583
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "0f12de46ed22319e39d3012c0c9f117bf5fd1308",
+  "prompts": {},
+  "sessions": {
+    "s_87836932da9643": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01700-6162-7841-8efa-166a631c6d94",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}

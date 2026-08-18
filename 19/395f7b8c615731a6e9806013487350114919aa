@@ -1,0 +1,49 @@
+bin/fm-spawn.sh
+  s_c48efabb4f7902::t_e8f82a5effce35 1724-1728
+bin/backends/tmux.sh
+  s_c48efabb4f7902::t_188dd24cb67a85 417-421
+  s_c48efabb4f7902::t_06dd96edbb1f14 386-416,422-447
+tests/fm-control-relaunch.test.sh
+  s_c48efabb4f7902::t_55ce8b4e3e1334 1551-1553
+  s_c48efabb4f7902::t_54e34bb5bd5b8e 104-107,110
+  s_c48efabb4f7902::t_2ed14ddb881464 20-24
+  s_c48efabb4f7902::t_47db4538618064 1431-1527
+  s_c48efabb4f7902::t_f3bac49e79e547 123-134,136
+  s_c48efabb4f7902::t_a51e69bfb894be 181
+docs/agent-control.md
+  s_c48efabb4f7902::t_4e9e4fb399ad82 73,78,83-102
+  s_c48efabb4f7902::t_69517e53ccac99 35
+  s_c48efabb4f7902::t_c89334222da160 130-131
+  s_c48efabb4f7902::t_304a88da5314af 103
+bin/fm-backend.sh
+  s_c48efabb4f7902::t_21994342015bc8 898-946
+tests/fm-backend-tmux-smoke.test.sh
+  s_c48efabb4f7902::t_8f8ba2a54d0bff 172-186,190-196,198-208
+  s_c48efabb4f7902::t_9bc9a776c24e30 187-189
+  s_c48efabb4f7902::t_9f4d5cecd44ea2 197
+bin/fm-control.sh
+  s_c48efabb4f7902::t_c6eaa53256753f 242
+  s_c48efabb4f7902::t_0ddb005b47f9fb 9
+  s_c48efabb4f7902::t_cffe78acb508b4 97-99
+  s_c48efabb4f7902::t_a9b1684b868e4a 256-257
+  s_c48efabb4f7902::t_a323e0b4bdc903 796-836,846-849
+  s_c48efabb4f7902::t_4c15ae867a6b31 850
+  s_c48efabb4f7902::t_1dea21fc509b42 50-62
+  s_c48efabb4f7902::t_550463e1fbc9a6 212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "19395f7b8c615731a6e9806013487350114919aa",
+  "prompts": {},
+  "sessions": {
+    "s_c48efabb4f7902": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6293464b-13e2-405d-8f97-10a56b857787",
+        "model": "claude-opus-5"
+      },
+      "human_author": "twilwa <spywarezzz@proton.me>"
+    }
+  }
+}
