@@ -54,7 +54,7 @@
   },
   "permissions": {
     "allow": [
-      "bin/fm-*"
+      "Bash(bin/fm-*)"
     ]
   }
 }
