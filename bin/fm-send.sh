@@ -468,6 +468,7 @@ fi
 # message exactly as before, so ordinary sends are byte-identical.
 RESOLVE_KEYS=
 RESOLVE_DEFER_UNTIL=
+RESOLVE_DEFER_UNTIL_SET=0
 FIRE_AND_FORGET_ID=
 fm_send_add_resolve_key() { # <key>
   local k=$1
@@ -504,18 +505,20 @@ while :; do
       echo "error: --defer-until requires a YYYY-MM-DD date" >&2
       exit 1
     }
-    [ -z "$RESOLVE_DEFER_UNTIL" ] || {
+    [ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || {
       echo "error: duplicate --defer-until" >&2
       exit 1
     }
+    RESOLVE_DEFER_UNTIL_SET=1
     RESOLVE_DEFER_UNTIL=$2
     shift 2
     ;;
   --defer-until=*)
-    [ -z "$RESOLVE_DEFER_UNTIL" ] || {
+    [ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || {
       echo "error: duplicate --defer-until" >&2
       exit 1
     }
+    RESOLVE_DEFER_UNTIL_SET=1
     RESOLVE_DEFER_UNTIL=${1#--defer-until=}
     shift
     ;;
@@ -542,6 +545,13 @@ while :; do
   *) break ;;
   esac
 done
+
+if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+  fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
+    echo "error: --defer-until requires a YYYY-MM-DD date: $RESOLVE_DEFER_UNTIL" >&2
+    exit 1
+  }
+fi
 
 if [ "$TARGET_BACKEND" != remote ]; then
   fm_backend_validate "$TARGET_BACKEND" || exit 1
@@ -670,11 +680,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
     echo "error: --resolve-key '$k': no open decision or blocker with that key in $RESOLVE_STATUS_FILE, and no captain-held task '$k' or '$RESOLVE_TASK_ID-decision-$k' still open (already closed or mistyped). Re-check the OPEN DECISIONS listing, then resend without that key or with the right one; nothing was sent." >&2
     exit 1
   done
-  if [ -n "$RESOLVE_DEFER_UNTIL" ]; then
-    fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
-      echo "error: --defer-until requires a YYYY-MM-DD date: $RESOLVE_DEFER_UNTIL" >&2
-      exit 1
-    }
+  if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
     [ -z "$RESOLVE_STATUS_KEYS" ] || {
       echo "error: --defer-until can defer only captain-held task keys; status-log key(s) '$RESOLVE_STATUS_KEYS' have not been transferred to that lifecycle owner. Nothing was sent." >&2
       exit 1
@@ -720,7 +726,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
   done
 fi
 
-[ -z "$RESOLVE_DEFER_UNTIL" ] || [ -n "$RESOLVE_KEYS" ] || {
+[ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || [ -n "$RESOLVE_KEYS" ] || {
   echo "error: --defer-until requires at least one --resolve-key" >&2
   exit 1
 }
@@ -775,7 +781,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
   [ -n "$RESOLVE_HOLD_KEYS" ] || return 0
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_HOLD_KEYS; do
-    if [ -n "$RESOLVE_DEFER_UNTIL" ]; then
+    if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
       lines="${lines}${k}"$'\t'"${note}"$'\t'$'\tdefer\t'"${RESOLVE_DEFER_UNTIL}"$'\n'
     else
       lines="${lines}${k}"$'\t'"${note}"$'\t'$'\n'
@@ -783,7 +789,11 @@ fm_send_feed_resolved_holds() { # <answer-text>
   done
   if ! printf '%s' "$lines" | "$SCRIPT_DIR/fm-captain-hold.sh" answers \
     --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
-    echo "error: the answer was delivered to $T, but this captain-held task could not be closed: ${RESOLVE_HOLD_KEYS}. Close it with fm-captain-hold.sh answer - do not resend the answer." >&2
+    if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+      echo "error: the answer was delivered to $T, but this captain-held task could not be deferred: ${RESOLVE_HOLD_KEYS}. Finish each still-open task with fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until $RESOLVE_DEFER_UNTIL - do not resend the answer." >&2
+    else
+      echo "error: the answer was delivered to $T, but this captain-held task could not be closed: ${RESOLVE_HOLD_KEYS}. Close it with fm-captain-hold.sh answer - do not resend the answer." >&2
+    fi
     return 1
   fi
 }

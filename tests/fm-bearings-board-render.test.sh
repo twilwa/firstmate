@@ -331,6 +331,32 @@ test_a_deferring_option_shows_the_date_it_commits_the_call_to() {
   pass "a deferring option shows its date on the card and in the queued answer"
 }
 
+# Display-only defer decoration must not consume the captain's 512-byte answer
+# budget. Both options submit the same 511-byte undecorated answer payload; the
+# deferring option then adds its visible date only after that payload passes.
+test_a_deferring_option_keeps_the_same_note_budget() {
+  local home out call answers note
+  home=$(make_home defer-note-budget)
+  note=$(printf 'n%.0s' {1..504})
+  call='[
+    {"key":"sample-budget-call","type":"decision","repo":"sample","title":"Budgeted answer","options":[{"value":"ship","label":"Ship now"},{"value":"wait","label":"Wait","until":"2027-10-01"}],"allow_freeform":true}
+  ]'
+  answers=$(jq -cn --arg note "$note" '[
+    {question:"sample-budget-call",selection:"ship",note:$note},
+    {question:"sample-budget-call",selection:"wait",note:$note}
+  ]')
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '
+    (.queued | length) == 2
+      and (.queued[0].data.note | length) == 504
+      and (.queued[1].data.note | length) == 504
+      and (.queued[0].text | startswith("Budgeted answer -> ship - "))
+      and (.queued[1].text | startswith("Budgeted answer -> wait - "))
+      and (.queued[1].text | endswith(" (deferred until 2027-10-01)"))
+  ' >/dev/null || fail "defer decoration reduced the note budget below an ordinary option: $out"
+  pass "a deferring option keeps the same 512-byte answer budget as an ordinary option"
+}
+
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status
 test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
@@ -342,3 +368,4 @@ test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
 test_an_option_date_emits_the_dated_defer_answer_context
 test_a_deferring_option_shows_the_date_it_commits_the_call_to
+test_a_deferring_option_keeps_the_same_note_budget

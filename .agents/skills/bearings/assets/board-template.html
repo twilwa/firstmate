@@ -568,12 +568,12 @@ __FM_BEARINGS_BOARD_DATA__
       var deferUntil = selectedOption && selectedOption.until ? selectedOption.until : "";
       var displayAnswer = value ? (note ? value + " - " + note : value) : note;
       if (!displayAnswer) return;
-      if (deferUntil) displayAnswer += " (deferred until " + deferUntil + ")";
       if (utf8ByteLength(displayAnswer) > 512) {
         answerLimit.textContent = "Answer is too long to queue (512 bytes maximum).";
         answerLimit.classList.add("is-visible");
         return;
       }
+      if (deferUntil) displayAnswer += " (deferred until " + deferUntil + ")";
       if (window.lavish && window.lavish.queuePrompt) {
         /* The versioned context keeps the selected option separate from its
            note. A selected option's own until is a dated defer; the card's

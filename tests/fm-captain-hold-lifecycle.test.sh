@@ -2495,8 +2495,18 @@ test_chat_channel_feeds_the_same_keyed_answer_intake() {
   run_captain "$home" hold sample-chat-defer --title "Revisit from chat" \
     --reason "captain chat timing pending" --repo sample >/dev/null \
     || fail "could not register the chat defer call"
+  run_captain "$home" hold sample-chat-empty-equals --title "Reject an empty equals defer date" \
+    --reason "captain empty equals defer pending" --repo sample >/dev/null \
+    || fail "could not register the empty-equals chat defer call"
+  run_captain "$home" hold sample-chat-empty-space --title "Reject an empty spaced defer date" \
+    --reason "captain empty spaced defer pending" --repo sample >/dev/null \
+    || fail "could not register the empty-space chat defer call"
+  run_captain "$home" hold sample-chat-defer-recovery --title "Recover a chat deferral" \
+    --reason "captain defer recovery pending" --repo sample >/dev/null \
+    || fail "could not register the chat defer recovery call"
   run_captain "$home" complete "$id" "$id-decision-chat-choice" sample-chat-followup \
-    sample-chat-reconcile sample-chat-defer >/dev/null \
+    sample-chat-reconcile sample-chat-defer sample-chat-empty-equals \
+    sample-chat-empty-space sample-chat-defer-recovery >/dev/null \
     || fail "completion failed for the chat calls"
   grep -F 'captain-held [key=chat-choice]' "$home/state/$id.status" >/dev/null \
     || fail "precondition: completion did not transfer the decision to its durable owner"
@@ -2545,6 +2555,42 @@ SH
     "the invalid chat date reached the keyed-answer intake"
 
   : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-empty-equals \
+      --defer-until= "later with no equals date" \
+      > "$home/empty-equals.out" 2> "$home/empty-equals.err"; then
+    fail "the chat preflight accepted an empty --defer-until= value"
+  fi
+  assert_grep "requires a YYYY-MM-DD date" "$home/empty-equals.err" \
+    "the empty equals defer date did not explain its refusal"
+  [ ! -s "$home/send.log" ] || fail "the empty equals defer date was delivered before refusal"
+  show=$(tasks_in "$home" show sample-chat-empty-equals --full)
+  assert_contains "$show" "state: queued" "an empty equals defer value closed the captain call"
+  assert_contains "$show" "held: yes" "an empty equals defer value released the captain call"
+  assert_not_contains "$show" "Resolution mode:" \
+    "an empty equals defer value reached the keyed-answer intake"
+
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-empty-space \
+      --defer-until "" "later with no spaced date" \
+      > "$home/empty-space.out" 2> "$home/empty-space.err"; then
+    fail "the chat preflight accepted an empty --defer-until value"
+  fi
+  assert_grep "requires a YYYY-MM-DD date" "$home/empty-space.err" \
+    "the empty spaced defer date did not explain its refusal"
+  [ ! -s "$home/send.log" ] || fail "the empty spaced defer date was delivered before refusal"
+  show=$(tasks_in "$home" show sample-chat-empty-space --full)
+  assert_contains "$show" "state: queued" "an empty spaced defer value closed the captain call"
+  assert_contains "$show" "held: yes" "an empty spaced defer value released the captain call"
+  assert_not_contains "$show" "Resolution mode:" \
+    "an empty spaced defer value reached the keyed-answer intake"
+
+  : > "$home/send.log"
   env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
@@ -2584,6 +2630,43 @@ SH
   assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
   assert_contains "$show" "Answer: later, after the release" \
     "a chat defer lost the captain's words"
+
+  cat > "$home/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = hold ] && [ "${2:-}" = sample-chat-defer-recovery ] \
+  && [ ! -e "$FM_HOME/defer-recovery-failed-once" ]; then
+  : > "$FM_HOME/defer-recovery-failed-once"
+  exit 92
+fi
+exec "${REAL_TASKS_AXI:?}" "$@"
+SH
+  chmod +x "$home/fakebin/tasks-axi"
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer-recovery \
+      --defer-until 2026-11-15 "later, after recovery" \
+      > "$home/defer-recovery.out" 2> "$home/defer-recovery.err"; then
+    fail "a forced post-record defer failure reported success"
+  fi
+  assert_grep "fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until 2026-11-15" \
+    "$home/defer-recovery.err" "the recovery guidance would turn a deferral into a close"
+  assert_grep "do not resend the answer" "$home/defer-recovery.err" \
+    "the defer recovery guidance lost the resend warning"
+  show=$(tasks_in "$home" show sample-chat-defer-recovery --full)
+  assert_contains "$show" "Resolution mode: deferred" \
+    "the forced defer failure did not occur after recording the answer"
+  assert_contains "$show" "Answer: later, after recovery" \
+    "the forced defer failure lost the captain's recorded words"
+  printf 'later, after recovery\n' > "$home/defer-recovery.txt"
+  run_captain "$home" answer sample-chat-defer-recovery \
+    --decision-file "$home/defer-recovery.txt" --defer-until 2026-11-15 >/dev/null \
+    || fail "the defer-preserving recovery command did not finish the interrupted answer"
+  show=$(tasks_in "$home" show sample-chat-defer-recovery --full)
+  assert_contains "$show" "hold_until: 2026-11-15" \
+    "the defer-preserving recovery command lost its date"
 
   : > "$home/send.log"
   set +e
