@@ -49,9 +49,9 @@
 # a UTC `Captain hold set:` timestamp in the task body: repeating an active
 # hold preserves the existing timestamp, while re-holding released work starts
 # a new lifecycle. A task already closed is refused rather than reopened.
-# `--until` records the captain's own deferral date through `tasks-axi hold
-# --until`, so a "revisit later" answer is stored as a date instead of a live
-# card.
+# `--until` gates the hold behind a date through `tasks-axi hold --until`, for
+# a call that should not surface until then; it records no answer, so the
+# captain's own "revisit later" goes through `answer --defer-until` below.
 #
 # `answer` records the captain's exact words and resolves the call in the same
 # act. It requires a non-empty captain decision file of at most 8192 bytes and
@@ -998,7 +998,9 @@ close_answered() {  # <task-id> <release-0-or-1>
 # keep one age basis, instead of the expired one silently restarting the clock
 # because tasks-axi no longer reports it held - and the parent channel keeps the
 # needs-decision line this call already opened rather than re-announcing the
-# question the captain just postponed.
+# question the captain just postponed. The caller passes the hold's existing
+# reason back, so the gate text a snapshot renders stays the question the call
+# was held under.
 defer_answered() {  # <task-id> <until> <reason>
   local id=$1 until=$2 reason=$3 show before_stamp after_stamp
   task_show_or_fail "$id" "task $id disappeared before deferring its captain call"
