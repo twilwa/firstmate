@@ -131,7 +131,6 @@ fm_utc_calendar_day() {
     return
   fi
   case "$observation" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) day=$observation ;;
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z)
       day=${observation%%T*}
       ;;
