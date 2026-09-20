@@ -288,6 +288,49 @@ test_an_option_date_emits_the_dated_defer_answer_context() {
   pass "an option date emits a dated defer while the card close governs every other answer"
 }
 
+# The date an option commits the call to has to be on the card the captain
+# reads, not only in the context the board emits behind it.
+test_a_deferring_option_shows_the_date_it_commits_the_call_to() {
+  local home out call answers
+  home=$(make_home defer-visible)
+  call='[
+    {"key":"sample-dated-call","type":"decision","repo":"sample","title":"Open question",
+     "options":[{"value":"yes","label":"Adopt","hint":"recommended"},
+                {"value":"later","label":"Revisit in October","until":"2027-10-01"}],
+     "allow_freeform":true}
+  ]'
+  answers='[
+    {"question":"sample-dated-call","selection":"later","note":""},
+    {"question":"sample-dated-call","selection":"yes","note":""}
+  ]'
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '.error == ""' >/dev/null \
+    || fail "the board rendered its fail-closed error instead of the deck: $out"
+  printf '%s' "$out" | jq -e '
+    .call[0].options
+    | ((map(select(.value == "later")) | length) == 1)
+      and (map(select(.value == "later"))[0]
+        | .until == "deferred until 2027-10-01" and .label == "Revisit in October")
+      and (map(select(.value == "yes"))[0]
+        | .until == null and .hint == "recommended" and .label == "Adopt")
+  ' >/dev/null || fail "the card did not show the date its defer option commits to: $out"
+
+  printf '%s' "$out" | jq -e '
+    .queued[0].text == "Open question -> later (deferred until 2027-10-01)"
+      and .queued[0].prompt == "Captain'"'"'s Call answer - Open question: later (deferred until 2027-10-01)"
+  ' >/dev/null || fail "the queued deferral did not state the date the captain chose: $out"
+  printf '%s' "$out" | jq -e '
+    .queued[1].text == "Open question -> yes"
+      and .queued[1].prompt == "Captain'"'"'s Call answer - Open question: yes"
+  ' >/dev/null || fail "an answer that defers nothing did not keep its confirmation shape: $out"
+
+  [ "$(queued_context "$out" 0)" = '{"schema":"fm-bearings-answer.v1","question":"sample-dated-call","selection":"later","note":"","close":"defer","until":"2027-10-01"}' ] \
+    || fail "showing the date changed the emitted deferral context: $out"
+  [ "$(queued_context "$out" 1)" = '{"schema":"fm-bearings-answer.v1","question":"sample-dated-call","selection":"yes","note":""}' ] \
+    || fail "showing the date changed a non-deferring answer's context: $out"
+  pass "a deferring option shows its date on the card and in the queued answer"
+}
+
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status
 test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
@@ -298,3 +341,4 @@ test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
 test_an_option_date_emits_the_dated_defer_answer_context
+test_a_deferring_option_shows_the_date_it_commits_the_call_to

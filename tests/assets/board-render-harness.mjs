@@ -8,8 +8,8 @@
 // is observed as the page emits it.
 // Prints one JSON document:
 //   { stats:[{n,label}], underway:[{title,sub,badges}],
-//     charted:[{title,sub,badges,pickable}], empty, more, error,
-//     queued:[{prompt,tag,text,data}] }
+//     charted:[{title,sub,badges,pickable}], call:[{question,options}], empty,
+//     more, error, queued:[{prompt,tag,text,data}] }
 import { readFileSync } from "node:fs";
 
 const html = readFileSync(process.argv[2], "utf8");
@@ -176,6 +176,28 @@ const underway = rowsOf(uw);
 
 const ch = byId.get("bb-charted") || new Node("div");
 const charted = rowsOf(ch);
+
+const hasClass = (n, cls) => n.className.split(/\s+/).includes(cls);
+const textIn = (n, cls) => {
+  const hit = n.descendants().find((c) => hasClass(c, cls));
+  return hit ? hit.textContent : null;
+};
+const call = (byId.get("bb-call") || new Node("div")).children
+  .filter((c) => hasClass(c, "bb-decision"))
+  .map((card) => {
+    const form = card.descendants().find((n) => n.attributes["data-lavish-question"]);
+    return {
+      question: form ? form.attributes["data-lavish-question"] : "",
+      options: (form ? form.descendants() : [])
+        .filter((n) => hasClass(n, "bb-opt"))
+        .map((o) => ({
+          value: (o.descendants().find((c) => c.type === "radio") || {}).value ?? "",
+          label: textIn(o, "bb-opt__label"),
+          hint: textIn(o, "bb-opt__hint"),
+          until: textIn(o, "bb-opt__until"),
+        })),
+    };
+  });
 // A fail-closed render replaces the page body instead of the board sections, so
 // surface it rather than reporting an empty board as a successful render.
 const errorText = [...byId.entries()]
@@ -186,4 +208,4 @@ const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
 process.stdout.write(
-  JSON.stringify({ stats, underway, charted, empty, more, error: errorText, queued }) + "\n");
+  JSON.stringify({ stats, underway, charted, call, empty, more, error: errorText, queued }) + "\n");
