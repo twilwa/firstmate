@@ -777,6 +777,49 @@ test_build_refuses_a_nondecision_reconcile_value() {
   pass "build reserves reconcile across non-decision cards"
 }
 
+test_build_accepts_only_dated_defer_options() {
+  local home data board out rc before after
+  home=$(make_home defer-option)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  jq '.captains_call[0].options += [{
+    "value":"later",
+    "label":"Revisit in October",
+    "hint":"Return after launch",
+    "close":"defer",
+    "until":"2026-10-01"
+  }]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "a dated option-level defer was refused"
+  extract_payload "$board" | jq -e '
+    .captains_call[0].options[]
+    | select(.value == "later")
+    | .close == "defer" and .until == "2026-10-01"
+  ' >/dev/null || fail "the built board lost its option-level defer metadata"
+  before=$(cksum < "$board")
+
+  jq 'del(.captains_call[0].options[-1].until)' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a defer option without a date was accepted"
+  after=$(cksum < "$board")
+  [ "$after" = "$before" ] || fail "a refused undated defer replaced the existing board"
+
+  write_valid_payload "$data"
+  jq '.captains_call[0].options[0].until = "2026-10-01"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a non-defer option carrying a date was accepted"
+  pass "build accepts a dated defer option and rejects ambiguous option shapes"
+}
+
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
@@ -795,3 +838,4 @@ test_build_fails_when_reconcile_cannot_establish_a_listener
 test_every_decision_card_carries_the_reconcile_choice
 test_build_refuses_a_payload_that_occupies_the_reconcile_value
 test_build_refuses_a_nondecision_reconcile_value
+test_build_accepts_only_dated_defer_options

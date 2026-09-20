@@ -1151,6 +1151,66 @@ EOF
   pass "a deferred captain call leaves the live Captain's Call until its date and stays answerable"
 }
 
+# The keyed intake records "later" as an answer before sending the same task
+# through hold --until. The date is mandatory and part of replay identity.
+test_keyed_defer_records_answer_and_dates_the_hold() {
+  local home out show records
+  home=$(make_home keyed-defer)
+  run_captain "$home" hold sample-keyed-defer --title "Revisit the sample plan" \
+    --reason "captain timing choice pending" --repo sample >/dev/null \
+    || fail "could not register the keyed defer fixture"
+
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a dated defer: $out"
+  assert_contains "$out" "closed: sample-keyed-defer" \
+    "the keyed intake did not accept the dated defer"
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  assert_contains "$show" "state: queued" "the defer completed the captain-held task"
+  assert_contains "$show" "held: yes" "the defer released the captain-held task"
+  assert_contains "$show" "hold_until: 2026-10-01" "the defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "the defer recorded the wrong outcome"
+  assert_contains "$show" "Deferred until: 2026-10-01" "the resolution lost its date"
+  assert_contains "$show" "Answer: later" "the defer lost the captain's exact answer"
+  assert_contains "$show" "Answer as shown to the captain: Revisit in October" \
+    "the defer lost the option label shown to the captain"
+
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "an exact dated defer replay was not idempotent: $out"
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
+  [ "$records" = 1 ] || fail "a defer replay duplicated the resolution record: $show"
+
+  if printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-11-01\n' \
+    | run_captain "$home" answers --source "captain chat" \
+      > "$home/date-drift.out" 2> "$home/date-drift.err"; then
+    fail "a defer replay changed its date"
+  fi
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  assert_contains "$show" "hold_until: 2026-10-01" "a drifted replay changed the durable date"
+
+  run_captain "$home" hold sample-missing-defer-date --title "Revisit without a date" \
+    --reason "captain timing choice pending" --repo sample >/dev/null
+  printf 'later\n' > "$home/later.txt"
+  if run_captain "$home" answer sample-missing-defer-date \
+    --decision-file "$home/later.txt" --defer-until \
+      > "$home/missing-direct-date.out" 2> "$home/missing-direct-date.err"; then
+    fail "the direct answer path treated a missing defer date as completion"
+  fi
+  if printf 'sample-missing-defer-date\tlater\tLater\tdefer\n' \
+    | run_captain "$home" answers --source "captain chat" \
+      > "$home/missing-date.out" 2> "$home/missing-date.err"; then
+    fail "the keyed intake invented a missing defer date"
+  fi
+  assert_grep "defer close mode requires a YYYY-MM-DD date" "$home/missing-date.out" \
+    "the missing-date refusal did not name the required field"
+  show=$(tasks_in "$home" show sample-missing-defer-date --full)
+  assert_not_contains "$show" "Resolution mode:" \
+    "a missing defer date recorded an answer before refusing"
+  pass "a keyed defer records the answer, dates the hold, and replays idempotently"
+}
+
 # The recorded-answer guard survives an out-of-band close: a bare tasks-axi done
 # fails verify until answer records the captain's word, and an ordinary finished
 # task can never be dressed up as an answered captain call.
@@ -1558,6 +1618,8 @@ test_bound_channel_answers_close_at_answer_time() {
     --reason "captain re-check pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-bare-reconcile --title "Captain call: bare reconcile" \
     --reason "captain bare re-check pending" --repo sample --origin "$id" >/dev/null
+  run_captain "$home" hold sample-deferred-call --title "Captain call: revisit later" \
+    --reason "captain timing choice pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-old-shape --title "Captain call: old board shape" \
     --reason "captain old board pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-old-reconcile --title "Captain call: old bare reconcile" \
@@ -1570,7 +1632,7 @@ test_bound_channel_answers_close_at_answer_time() {
   run_captain "$home" complete "$id" \
     sample-membership-call sample-headline-call sample-forged-call sample-invalid-close-call \
     sample-source-reconcile sample-bare-reconcile sample-old-shape sample-old-reconcile \
-    sample-old-reconcile-note sample-gated-work >/dev/null \
+    sample-old-reconcile-note sample-gated-work sample-deferred-call >/dev/null \
     || fail "completion failed for the deck's inventoried calls"
 
   artifact="$home/data/$id/review.html"
@@ -1591,11 +1653,12 @@ session:
   status: feedback
   session_ended: true
   ended_by: user
-prompts[13]{uid,prompt,selector,tag,text}:
+prompts[14]{uid,prompt,selector,tag,text}:
   "1","Reconcile first\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-source-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(6)",choice,"Reconcile"
   "2","Membership: gold-only - captain detail\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-membership-call\",\n  \"selection\": \"gold-only\",\n  \"note\": \"captain detail\"\n}","section#call > form:nth-of-type(1)",choice,"Membership: gold-only - captain detail"
   "3","Headline: f1-when-fp-gold\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-headline-call\",\n  \"selection\": \"f1-when-fp-gold\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(2)",choice,"Headline: f1-when-fp-gold"
   "4","Gated work: go\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-gated-work\",\n  \"selection\": \"go\",\n  \"note\": \"\",\n  \"close\": \"release\"\n}","section#call > form:nth-of-type(3)",choice,"Gated work: go"
+  "4a","Revisit in October\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-deferred-call\",\n  \"selection\": \"later\",\n  \"note\": \"after the launch\",\n  \"close\": \"defer\",\n  \"until\": \"2026-10-01\"\n}","section#call > form:nth-of-type(4)",choice,"Revisit: later - after the launch"
   "5","Absent call: yes\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-nonexistent-call\",\n  \"selection\": \"yes\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(4)",choice,"Absent call: yes"
   "6","Invalid close: yes\n\nContext data:\n{\n  \"question\": \"sample-invalid-close-call\",\n  \"answer\": \"yes\",\n  \"close\": \"drop\"\n}","section#call > form:nth-of-type(5)",choice,"Invalid close: yes"
   "7","Reconcile this - re-check latest publication\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-source-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"re-check latest publication\"\n}","section#call > form:nth-of-type(6)",choice,"Reconcile - re-check latest publication"
@@ -1616,6 +1679,8 @@ EOF
     "a repeated ordinary selection was not preserved"
   assert_contains "$out" "sample-gated-work	go	Gated work: go	release" \
     "the card-declared release mode was not relayed"
+  assert_contains "$out" "sample-deferred-call	later	Revisit: later - after the launch	defer	2026-10-01" \
+    "the option-declared defer mode and date were not relayed"
   assert_not_contains "$out" "sample-forged-call" \
     "a freeform captain message forged a task id from its own prose"
   assert_not_contains "$out" "sample-invalid-close-call" \
@@ -1667,6 +1732,12 @@ SH
   assert_contains "$show" "held: no" "the card-declared release did not lift the hold"
   assert_contains "$show" "Resolution mode: released" "the released work did not record its close path"
   assert_contains "$show" "Gated work plan." "the released work item lost its body"
+  show=$(tasks_in "$home" show sample-deferred-call --full)
+  assert_contains "$show" "state: queued" "the option-declared defer completed its task"
+  assert_contains "$show" "held: yes" "the option-declared defer released its task"
+  assert_contains "$show" "hold_until: 2026-10-01" "the option-declared defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "the option-declared defer recorded the wrong mode"
+  assert_contains "$show" "Answer: later" "the option-declared defer lost the selected answer"
   show=$(tasks_in "$home" show sample-forged-call --full)
   assert_contains "$show" "state: queued" "a forged key from freeform prose closed a captain call"
   show=$(tasks_in "$home" show sample-invalid-close-call --full)
@@ -1712,6 +1783,8 @@ SH
     "replaying an identical capture was not idempotent: $out"
   assert_contains "$out" "closed: sample-gated-work" \
     "replaying an identical released answer was not idempotent: $out"
+  assert_contains "$out" "closed: sample-deferred-call" \
+    "replaying an identical deferred answer was not idempotent: $out"
   assert_contains "$out" "skipped: sample-nonexistent-call" \
     "a key naming no task was not reported as skipped: $out"
 
@@ -2303,8 +2376,11 @@ test_chat_channel_feeds_the_same_keyed_answer_intake() {
   run_captain "$home" hold sample-chat-reconcile --title "Reconcile from chat" \
     --reason "captain chat reconcile pending" --repo sample >/dev/null \
     || fail "could not register the chat reconcile call"
+  run_captain "$home" hold sample-chat-defer --title "Revisit from chat" \
+    --reason "captain chat timing pending" --repo sample >/dev/null \
+    || fail "could not register the chat defer call"
   run_captain "$home" complete "$id" "$id-decision-chat-choice" sample-chat-followup \
-    sample-chat-reconcile >/dev/null \
+    sample-chat-reconcile sample-chat-defer >/dev/null \
     || fail "completion failed for the chat calls"
   grep -F 'captain-held [key=chat-choice]' "$home/state/$id.status" >/dev/null \
     || fail "precondition: completion did not transfer the decision to its durable owner"
@@ -2363,6 +2439,21 @@ SH
   assert_contains "$show" "Resolution mode: answered" "the chat-answered call did not record its close path"
   assert_contains "$show" "Answer: take the second option" "the chat-answered call lost the captain answer"
   assert_contains "$show" "answer sent to $id" "the chat-answered call lost its channel provenance"
+
+  : > "$home/send.log"
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-10-15 "later, after the release" >/dev/null 2>&1 \
+    || fail "a dated defer was refused by the chat channel"
+  show=$(tasks_in "$home" show sample-chat-defer --full)
+  assert_contains "$show" "state: queued" "a chat defer completed the task"
+  assert_contains "$show" "held: yes" "a chat defer released the task"
+  assert_contains "$show" "hold_until: 2026-10-15" "a chat defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
+  assert_contains "$show" "Answer: later, after the release" \
+    "a chat defer lost the captain's words"
 
   : > "$home/send.log"
   set +e
@@ -4036,6 +4127,7 @@ test_release_frees_held_work
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
 test_deferral_leaves_captains_call_until_due
+test_keyed_defer_records_answer_and_dates_the_hold
 test_out_of_band_close_is_recordable
 test_visual_review_uses_shared_completion_owner
 test_none_inventory_and_resolved_prose_do_not_create_holds

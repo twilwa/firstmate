@@ -62,6 +62,9 @@
 # carries no card type. Its meaning, and the reason it can never reach the
 # keyed-answer intake as a blind close, are owned by
 # docs/captain-hold-lifecycle.md.
+# A defer is not a second reserved answer value: an authored option carries
+# `close: "defer"` plus its explicit `until: "YYYY-MM-DD"`, and the renderer
+# relays those fields only when that option is selected.
 #
 # Validation is fail-closed: the payload must be valid JSON with
 # schema=fm-bearings-board.v1 and every renderer-consumed field must satisfy
@@ -125,6 +128,11 @@ validate_payload() {  # <data.json>
         then try ((fromdateiso8601 | strftime("%Y-%m-%dT%H:%M:%SZ")) == $filed) catch false
         else try (((. + "T00:00:00Z") | fromdateiso8601 | strftime("%Y-%m-%d")) == $filed) catch false
         end);
+    def valid_day:
+      . as $day
+      | type == "string"
+      and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+      and (try (((. + "T00:00:00Z") | fromdateiso8601 | strftime("%Y-%m-%d")) == $day) catch false);
     def optional_filed:
       (has("filed") | not) or (.filed == null) or (.filed | valid_filed);
     def optional_string($name): (has($name) | not) or (.[$name] | type == "string");
@@ -153,7 +161,12 @@ validate_payload() {  # <data.json>
         | type == "object"
           and (.value | slug(128))
           and (.label | nonempty_string)
-          and optional_string("hint")] | all)
+          and optional_string("hint")
+          and ((has("close") | not) or .close == "defer")
+          and (if .close? == "defer"
+            then (.until | valid_day)
+            else (has("until") | not)
+            end)] | all)
       and (optional_string("about"))
       and (optional_string("decide"))
       and (optional_string("detail"))

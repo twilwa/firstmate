@@ -568,14 +568,21 @@ __FM_BEARINGS_BOARD_DATA__
       }
       if (window.lavish && window.lavish.queuePrompt) {
         /* The versioned context keeps the selected option separate from its
-           note, while close carries the composer-declared completion mode. */
+           note. An option-level close can declare a dated defer; the card's
+           close remains the default for ordinary completion and release. */
+        var selectedOption = null;
+        item.options.forEach(function (option) {
+          if (option.value === value) selectedOption = option;
+        });
         var ctxData = {
           schema: "fm-bearings-answer.v1",
           question: item.key,
           selection: value || "",
           note: note
         };
-        if (item.close) ctxData.close = item.close;
+        var close = selectedOption && selectedOption.close ? selectedOption.close : item.close;
+        if (close) ctxData.close = close;
+        if (selectedOption && selectedOption.until) ctxData.until = selectedOption.until;
         window.lavish.queuePrompt(
           "Captain's Call answer - " + item.title + ": " + displayAnswer,
           { tag: "choice", text: item.title + " -> " + displayAnswer, element: form,
