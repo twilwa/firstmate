@@ -1,0 +1,55 @@
+Same brief, same rules, same fake typesafe.ai endpoint; base dd9b2ef vs target 42c0de7.
+
+--- base dd9b2ef -----------------------------------------------------
+  dispatch-resolve:
+    status: clear
+    model: jev-1.13.0   latency_ms: 41   tokens: 812/60
+    rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+    probabilities: rule_1=0.94 default=0.06
+    note: rule matched
+    candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+    profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+  model field in the request it sent: jev-latest   <- moving alias
+  state/dispatch-receipts.jsonl after the run: absent - the resolution was discarded
+
+--- target 42c0de7 ---------------------------------------------------
+  dispatch-resolve:
+    status: clear
+    model: jev-1.13.0   latency_ms: 27   tokens: 812/60
+    rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+    probabilities: rule_1=0.94 default=0.06
+    note: rule matched
+    candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+    profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+  model field in the request it sent: jev-1.13.0   <- pinned version
+  state/dispatch-receipts.jsonl after the run: present, 1 record(s)
+
+  the record the target wrote:
+    {
+      "receipt_type": "resolution",
+      "resolution_id": "sha256:21c22edfe2c56294e9c8a9898474eb976e1d8ab46aebe31c14dd1d0ab47cd463",
+      "timestamp_utc": "2026-09-20T06:38:55Z",
+      "brief_path": "/tmp/fm-live-Q3q6Gk/tgt-home2/brief.md",
+      "brief_sha256": "62b9f0ed05da618740125b2375eca0b875b8ce1898ff7582dc97a99207eed5c9",
+      "rules_sha256": "4405ee9e4c798e6087a83a24a745fc7013818a73313cb0849fbc46ac731c6c4d",
+      "requested_model": "jev-1.13.0",
+      "answering_model": "jev-1.13.0",
+      "request_id": "req-live-7c21",
+      "usage": {
+        "input_tokens": 812,
+        "output_tokens": 60
+      },
+      "latency_ms": 27,
+      "probabilities": {
+        "rule_1": 0.94,
+        "default": 0.06
+      },
+      "confidence": 0.93,
+      "status": "clear",
+      "reason": null,
+      "chosen_profile": {
+        "harness": "cursor",
+        "model": "cursor-grok-4.6-medium",
+        "provider": "cursor"
+      }
+    }

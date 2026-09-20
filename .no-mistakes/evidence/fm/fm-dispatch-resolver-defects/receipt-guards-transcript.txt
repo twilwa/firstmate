@@ -1,0 +1,48 @@
+
+=== A. baseline: receipts working ===
+exit=0
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 22   tokens: 812/60
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+  probabilities: rule_1=0.94 default=0.06
+  note: rule matched
+  candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+stderr: []
+
+=== B. the receipts path cannot be appended to (a directory sits there) ===
+exit=0
+stderr: [dispatch-resolve: no resolution receipt for this run]
+stdout: byte-identical to the healthy run
+
+=== C. adversarial: the receipts path is a DANGLING symlink aimed outside state/ ===
+$ ls -l state/dispatch-receipts.jsonl -> /tmp/fm-live-Q3q6Gk/gv/escaped-target.jsonl (target does not exist)
+exit=0
+stderr: [dispatch-resolve: no resolution receipt for this run]
+symlink target created by the append? no - refused, nothing written outside state/
+stdout: byte-identical to the healthy run
+
+=== D. adversarial: symlink aimed at an existing file outside state/ ===
+exit=0
+stderr: [dispatch-resolve: no resolution receipt for this run]
+bytes written into the linked file: 0
+
+=== E. key present, no rules file yet, and jq is not installed on this host ===
+$ command -v jq -> not installed
+exit=0
+dispatch-resolve:
+  status: escalate
+  reason: no rules to match
+stderr: [dispatch-resolve: no resolution receipt for this run]
+$ # the intake still gets its escalate block and exit 0; only the receipt is lost, and it says so.
+$ # once a rules file exists, missing jq is a real configuration error:
+exit=2
+stdout: []  stderr: [error: jq required]
+
+=== F. eight simultaneous intakes on one home ===
+exit codes:       8 0
+runs whose block carried the profile line: 8/8
+receipts appended: 8   runs reporting a drop: 0   sum: 8/8 (every run either records or says it did not)
+file is valid JSONL, one whole object per line, no interleaving
+earlier records byte-for-byte intact after a further append (append-only)

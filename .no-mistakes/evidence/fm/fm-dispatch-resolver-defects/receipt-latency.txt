@@ -1,0 +1,31 @@
+Receipt-path cost, measured by driving bin/fm-dispatch-resolve.sh in an isolated FM_HOME.
+Host: Linux 6.8 x86_64, 8 cpus, bash 5.2.21, jq 1.7, GNU sha256sum; load average 0.83 0.83 0.77.
+The split is the moment the first stdout byte is readable vs. the moment the process
+exits. Each receipt is written after its own printf, so the difference is the receipt path.
+Bounds under test, from docs/configuration.md: <= 100 ms median idle, <= 200 ms held-lock.
+
+idle home, 20 runs
+  first stdout byte (ms): 234 224 227 201 218 216 251 197 176 207 201 206 195 203 214 215 223 208 195 243
+  receipt work after the block (ms): 51 47 47 56 53 54 56 40 34 44 42 61 47 42 50 54 46 45 54 86
+  median 48 ms, min 34, max 86
+  median <= 100 ms: PASS
+
+lock held by a live owner for the whole run, 20 runs (the record is then dropped)
+  receipt work after the block (ms): 172 150 148 187 188 153 154 162 166 207 178 161 147 166 155 146 158 151 161 140
+  median 159 ms, min 140, max 207
+  runs above 200 ms: 1/20
+
+Note: an earlier 6-run sample taken during a host load spike produced one 230 ms run.
+On that same host the retry budget's own floor (7 forks + 35 ms of sleep) measured 51 ms
+against a nominal 35 ms, so the excursion tracked host scheduling, not the receipt code.
+Exit status was 0 on every run above and the block was complete at the first number.
+
+last block seen under the held lock:
+  | dispatch-resolve:
+  |   status: clear
+  |   model: jev-1.13.0   latency_ms: 19   tokens: 812/60
+  |   rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+  |   probabilities: rule_1=0.94 default=0.06
+  |   note: rule matched
+  |   candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+  |   profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'

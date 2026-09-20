@@ -1,0 +1,87 @@
+
+=== 1. the captain resolves a brief (defect 1: the request must name the pinned version) ===
+$ TYPESAFE_API_KEY=... bin/fm-dispatch-resolve.sh "$FM_HOME/brief.md" --project pager
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 20   tokens: 812/60
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+  probabilities: rule_1=0.94 default=0.06
+  note: rule matched
+  candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+exit=0
+
+$ # the request body this run actually sent to https://api.typesafe.ai/v1/systemone:
+{"model":"jev-1.13.0","state_keys":["brief","project"],"question":"rule"}
+$ # at base dd9b2ef the same run sent:  {"model":"jev-latest",...}
+
+=== 2. the resolution is persisted (defect 2: a receipt, not a discarded block) ===
+$ cat "$FM_HOME/state/dispatch-receipts.jsonl" | jq .
+{
+  "receipt_type": "resolution",
+  "resolution_id": "sha256:ec5aa0de7ee62e43b8ec9ee3e3030490785e9aafd66f30979339875061fc2b62",
+  "timestamp_utc": "2026-09-20T06:36:21Z",
+  "brief_path": "/tmp/fm-live-Q3q6Gk/ev/brief.md",
+  "brief_sha256": "7ca59ddf9d252635af75b939441521d6d68abda97d0ae74072895ddad4a5fa2f",
+  "rules_sha256": "4405ee9e4c798e6087a83a24a745fc7013818a73313cb0849fbc46ac731c6c4d",
+  "requested_model": "jev-1.13.0",
+  "answering_model": "jev-1.13.0",
+  "request_id": "req-live-7c21",
+  "usage": {
+    "input_tokens": 812,
+    "output_tokens": 60
+  },
+  "latency_ms": 20,
+  "probabilities": {
+    "rule_1": 0.94,
+    "default": 0.06
+  },
+  "confidence": 0.93,
+  "status": "clear",
+  "reason": null,
+  "chosen_profile": {
+    "harness": "cursor",
+    "model": "cursor-grok-4.6-medium",
+    "provider": "cursor"
+  }
+}
+
+$ sha256sum brief.md   -> 7ca59ddf9d252635af75b939441521d6d68abda97d0ae74072895ddad4a5fa2f
+$ sha256sum config/crew-dispatch.json -> 4405ee9e4c798e6087a83a24a745fc7013818a73313cb0849fbc46ac731c6c4d
+$ # both content hashes, the answering model id, the request id, usage and the
+$ # full probabilities are machine-readable fields a tee of the block cannot give.
+$ # at base dd9b2ef, state/ was empty after the same run.
+
+=== 3. the join to the dispatch that followed ===
+$ bin/fm-dispatch-resolve.sh --record-dispatch "$FM_HOME/brief.md" --harness cursor --model cursor-grok-4.6-medium
+exit=0
+$ bin/fm-dispatch-resolve.sh --record-dispatch "$FM_HOME/brief.md" --harness claude --model opus --effort high   # captain overrode
+exit=0
+
+$ jq -c "select(.receipt_type==\"dispatch\") | chosen vs dispatched" state/dispatch-receipts.jsonl
+{"resolution_id":"sha256:ec5aa0de7ee62e43b8ec9ee3e3030490785e9aafd66f30979339875061fc2b62","chosen":{"harness":"cursor","model":"cursor-grok-4.6-medium","effort":null},"dispatched":{"harness":"cursor","model":"cursor-grok-4.6-medium","effort":null},"agrees":true}
+{"resolution_id":"sha256:e9bec23ad232cd9111f8ef5c8211afa96db379d188bf3fd09ea869525a0c2a76","chosen":{"harness":"cursor","model":"cursor-grok-4.6-medium","effort":null},"dispatched":{"harness":"claude","model":"opus","effort":"high"},"agrees":false}
+
+=== 4. adversarial: the brief was edited after the resolve, so the join must refuse ===
+$ bin/fm-dispatch-resolve.sh --record-dispatch "$FM_HOME/brief.md" --harness cursor
+dispatch-resolve: no dispatch receipt (no resolution receipt carries this brief's current content hash; it may have been edited after the resolve)
+exit=0
+receipt lines: 4 -> 4  (nothing appended, nothing guessed)
+
+=== 5. adversarial: neither the key nor a rule's why may reach the receipts file ===
+api key absent from every receipt
+rule `why` text absent from every receipt
+receipt file mode: 600
+
+=== 6. adversarial: a confidence number is still not an authorisation ===
+$ # same 0.93-confidence answer, but the matched rule is approval-gated
+dispatch-resolve:
+  status: escalate
+  model: jev-1.13.0   latency_ms: 19   tokens: 812/60
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.93
+  probabilities: rule_1=0.94 default=0.06
+  reason: rule requires the captain's explicit approval before dispatch
+  candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.76  runway=through_reset  -> eligible
+exit=0
+$ # the receipt records the high confidence and refuses to name a profile:
+{"status":"escalate","confidence":0.93,"chosen_profile":null}
