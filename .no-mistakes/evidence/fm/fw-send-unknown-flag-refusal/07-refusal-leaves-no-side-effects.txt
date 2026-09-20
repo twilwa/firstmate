@@ -1,0 +1,8 @@
+$ fm-send.sh lane-se --resolve-key k --oops "merge it"   # a valid flag followed by a bogus one
+error: unknown flag '--oops'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- files created or removed anywhere under FM_HOME by the refused send ---
+2a3
+> ./state/.guard-watcher-stale-banner
+--- the open decision is still open (it was NOT closed by the refused answer) ---
+    needs-decision [key=k]: merge or hold?

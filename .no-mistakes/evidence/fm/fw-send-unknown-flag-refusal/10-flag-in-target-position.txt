@@ -1,0 +1,13 @@
+=== a flag in TARGET position (parsed before the option loop; unchanged by this fix) ===
+[base] $ fm-send.sh --help
+    error: target '--help' is not resolvable (tried meta=/tmp/fm-send-live.ZP8Kh7/homes/flagtarget/state/--help.meta; metadata window/terminal lookup; backend=none). Use fm---help for a recorded task/lane, or pass a well-formed explicit backend target such as session:window.
+    exit status: 1
+[base] $ fm-send.sh --key Enter
+    error: target '--key' is not resolvable (tried meta=/tmp/fm-send-live.ZP8Kh7/homes/flagtarget/state/--key.meta; metadata window/terminal lookup; backend=none). Use fm---key for a recorded task/lane, or pass a well-formed explicit backend target such as session:window.
+    exit status: 1
+[change] $ fm-send.sh --help
+    error: target '--help' is not resolvable (tried meta=/tmp/fm-send-live.ZP8Kh7/homes/flagtarget/state/--help.meta; metadata window/terminal lookup; backend=none). Use fm---help for a recorded task/lane, or pass a well-formed explicit backend target such as session:window.
+    exit status: 1
+[change] $ fm-send.sh --key Enter
+    error: target '--key' is not resolvable (tried meta=/tmp/fm-send-live.ZP8Kh7/homes/flagtarget/state/--key.meta; metadata window/terminal lookup; backend=none). Use fm---key for a recorded task/lane, or pass a well-formed explicit backend target such as session:window.
+    exit status: 1

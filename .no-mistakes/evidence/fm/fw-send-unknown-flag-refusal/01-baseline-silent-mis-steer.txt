@@ -1,0 +1,10 @@
+$ fm-send.sh lane-base --not-a-real-flag rebase onto main
+exit status: 0
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state ---
+state/lane-base.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:25:45Z
+    --
+    --not-a-real-flag rebase onto main
+--- what the live worker terminal received ---
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/handled/.

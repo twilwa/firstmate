@@ -1,0 +1,7 @@
+$ fm-send.sh lane-fix --not-a-real-flag rebase onto main
+error: unknown flag '--not-a-real-flag'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/fix-unknownflag/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)

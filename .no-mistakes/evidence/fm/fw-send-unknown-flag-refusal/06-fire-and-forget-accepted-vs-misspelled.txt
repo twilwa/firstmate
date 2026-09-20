@@ -1,0 +1,17 @@
+=== C. --fire-and-forget to a recorded secondmate: still accepted ===
+$ fm-send.sh sm-c --fire-and-forget 0123456789abcdef no\ reply\ needed
+exit status: 0
+record state/sm-c.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:27:55Z
+    delivery=fire-and-forget
+    --
+    [fm-from-firstmate]⁣delivery=0123456789abcdef no reply neededworker terminal received:
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/faf-ok/state/sm-c.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/faf-ok/state/sm-c.inbox'/handled/.
+
+=== C2. the same steer with the flag misspelled: refused, nothing recorded or typed ===
+$ fm-send.sh sm-c --fire-and-forgett 0123456789abcdef no\ reply\ needed
+error: unknown flag '--fire-and-forgett'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+(no steering record was written)
+(nothing was typed into the worker pane)

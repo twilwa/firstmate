@@ -1,0 +1,65 @@
+=== near-miss tokens that are NOT in the allowlist ===
+$ fm-send.sh lane-nm1 --resolve-keys hello there
+error: unknown flag '--resolve-keys'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-1/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm2 --resolve_key hello there
+error: unknown flag '--resolve_key'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-2/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm3 --fire-and-forget-id hello there
+error: unknown flag '--fire-and-forget-id'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-3/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm4 --Key hello there
+error: unknown flag '--Key'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-4/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm5 --key=Enter hello there
+error: unknown flag '--key=Enter'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-5/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm6 --keys hello there
+error: unknown flag '--keys'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-6/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm7 -- hello there
+error: unknown flag '--'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-7/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================
+$ fm-send.sh lane-nm8 --resolve-key- hello there
+error: unknown flag '--resolve-key-'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/nearmiss-8/state ---
+(no steering record was written)
+--- what the live worker terminal received ---
+(nothing was typed into the worker pane)
+==================================================

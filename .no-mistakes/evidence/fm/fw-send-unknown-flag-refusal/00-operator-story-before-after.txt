@@ -1,0 +1,50 @@
+################  BEFORE - base 9a0e566  ################
+The operator means to steer ship-42, but mistypes the flag:
+
+  $ fm-send.sh ship-42 --dry-run "abort the deploy"
+  $ echo $?  ->  0
+
+The worker's durable steering inbox now holds:
+  schema=fm-task-inbox.v1
+  at=2026-09-20T14:35:04Z
+  --
+  --dry-run abort the deploy
+
+The worker's live terminal now looks like:
+  | claude-sim worker ready (transcript: /tmp/fm-send-live.ZP8Kh7/worker-transcript.txt)
+  | : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/story-before/state/ship-42.inbox'/*.msg and, in
+  | numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/story-before/state/s
+  | hip-42.inbox'/handled/.
+  | [worker received] : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/story-before/state/ship-42.inb
+  | ox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/st
+  | ory-before/state/ship-42.inbox'/handled/.
+  | 
+  | 
+  | 
+  | 
+  | 
+
+################  AFTER - change 6882657  ################
+The operator means to steer ship-42, but mistypes the flag:
+
+  $ fm-send.sh ship-42 --dry-run "abort the deploy"
+  error: unknown flag '--dry-run'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  $ echo $?  ->  1
+
+The worker's durable steering inbox now holds:
+  (empty - no record was created)
+
+The worker's live terminal now looks like:
+  | claude-sim worker ready (transcript: /tmp/fm-send-live.ZP8Kh7/worker-transcript.txt)
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+

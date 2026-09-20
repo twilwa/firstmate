@@ -1,0 +1,53 @@
+=== A. ordinary steer (no flags) ===
+$ fm-send.sh lane-a rebase\ onto\ main\ and\ rerun\ the\ suite
+exit status: 0
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/ok-plain2/state ---
+state/lane-a.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:28:50Z
+    --
+    rebase onto main and rerun the suite
+--- what the live worker terminal received ---
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/ok-plain2/state/lane-a.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/ok-plain2/state/lane-a.inbox'/handled/.
+
+=== B. --resolve-key still accepted (answers an open decision) ===
+$ fm-send.sh lane-b --resolve-key k merge\ it
+exit status: 0
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/ok-resolve2/state ---
+state/lane-b.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:28:54Z
+    --
+    merge it
+--- what the live worker terminal received ---
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/ok-resolve2/state/lane-b.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/ok-resolve2/state/lane-b.inbox'/handled/.
+status file after the answer:
+    needs-decision [key=k]: merge or hold?
+    resolved [key=k] [at=1789914534]: answered: merge it
+
+(--fire-and-forget is exercised separately in 06, because it requires a secondmate target.)
+
+=== C. a message that legitimately begins with a single dash ===
+$ fm-send.sh lane-d -1\ means\ failure\,\ retry\ with\ -2
+exit status: 0
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/ok-dash2/state ---
+state/lane-d.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:28:58Z
+    --
+    -1 means failure, retry with -2
+--- what the live worker terminal received ---
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/ok-dash2/state/lane-d.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/ok-dash2/state/lane-d.inbox'/handled/.
+
+=== D. a flag-shaped token AFTER the message text is still text
+    (documented contract: everything after the last flag is the message) ===
+$ fm-send.sh lane-e check\ the\ build --not-a-real-flag
+exit status: 0
+--- steering inbox records under /tmp/fm-send-live.ZP8Kh7/homes/ok-after2/state ---
+state/lane-e.inbox/001.msg:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T14:29:01Z
+    --
+    check the build --not-a-real-flag
+--- what the live worker terminal received ---
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/ok-after2/state/lane-e.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-send-live.ZP8Kh7/homes/ok-after2/state/lane-e.inbox'/handled/.

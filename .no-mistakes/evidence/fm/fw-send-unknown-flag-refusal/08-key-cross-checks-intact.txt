@@ -1,0 +1,10 @@
+=== the --key cross-checks must keep their own diagnostics, not be swallowed by the allowlist ===
+$ fm-send.sh lane-x --resolve-key k --key Enter
+error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+exit status: 1
+
+$ fm-send.sh lane-x --key Enter --resolve-key k
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+exit status: 1
+

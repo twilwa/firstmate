@@ -1,0 +1,14 @@
+# the worker pane is holding a half-typed, unsubmitted line:
+worker pane now shows:
+    claude-sim worker ready (transcript: /tmp/fm-send-live.ZP8Kh7/worker-transcript.txt)
+    : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/fm-s
+    end-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/handled/.
+    [worker received] : Firstmate instruction waiting: list '/tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled
+    file to '/tmp/fm-send-live.ZP8Kh7/homes/base-unknownflag/state/lane-base.inbox'/handled/.
+    yes, proceed with the merge
+worker has received so far: (nothing - the line is unsubmitted)
+
+$ fm-send.sh lane-key --key Enter
+exit status: 0
+--- what the live worker terminal received ---
+    yes, proceed with the merge

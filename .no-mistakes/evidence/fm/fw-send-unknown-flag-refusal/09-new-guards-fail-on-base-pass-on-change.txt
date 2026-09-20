@@ -1,0 +1,13 @@
+# tests/fm-send-strict.test.sh (new guards) against the BASE tree 9a0e566 - must FAIL
+ok - fm-send strict: unmatched single-colon explicit targets must verify live before sending
+ok - fm-send strict: fm-prefixed Herdr sessions remain explicit backend targets
+ok - fm-send strict: healthy fm-<id> sends record the steer and ring once
+not ok - an unrecognised flag was accepted instead of refused
+base exit status: 1
+
+# the same file against the CHANGE 6882657 - must PASS
+ok - fm-send strict: healthy fm-<id> sends record the steer and ring once
+ok - fm-send strict: an unrecognised flag is refused, not delivered as the message body
+ok - fm-send strict: --key stays in the allowlist and its cross-checks keep their errors
+ok - fm-send strict: a single-dash message is still text, not a flag
+change exit status: 0
