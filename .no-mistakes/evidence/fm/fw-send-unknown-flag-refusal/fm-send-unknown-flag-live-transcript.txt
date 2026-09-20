@@ -1,0 +1,138 @@
+fm-send TES-60 live validation
+worktree : /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M2ZNGKD98XJJ0D0H55P4BWD4
+target   : c5ae283
+tmux     : tmux 3.4 on private socket dir /tmp/fm-tes60-live/tmuxsock
+FM_HOME  : /tmp/fm-tes60-live/home
+
+========================================================================
+SCENARIO 1: regression-reproduced-at-base-commit
+========================================================================
+$ fm-send.sh@9a0e566 lane-base --not-a-real-flag steer the worker
+exit status: 0
+inbox after the send:
+  [/tmp/fm-tes60-live/home/state/lane-base.inbox/001.msg]
+    schema=fm-task-inbox.v1
+    at=2026-09-20T15:13:12Z
+    --
+    --not-a-real-flag steer the workerASSERT PASS  base fm-send exits 0 on an unrecognised flag (the reported defect)
+ASSERT PASS  base fm-send durably records the bogus flag as message text (the reported defect)
+
+========================================================================
+SCENARIO 2: unknown-flag-refused-nothing-recorded-nothing-typed
+========================================================================
+$ fm-send.sh lane-uf --not-a-real-flag steer the worker
+error: unknown flag '--not-a-real-flag'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+inbox after the refusal:
+  (no inbox directory exists)
+live pane contents after the refusal:
+ASSERT PASS  refused with a nonzero exit status (1)
+ASSERT PASS  the diagnostic names the offending token
+ASSERT PASS  the diagnostic tells the caller nothing was sent
+ASSERT PASS  no steering record was written to the live lane inbox
+ASSERT PASS  the live worker pane was never typed into
+
+========================================================================
+SCENARIO 3: allowlisted---key-still-reaches-the-live-pane
+========================================================================
+$ fm-send.sh lane-key --key Enter
+exit status: 0
+pane cursor row before -> after: 0 -> 2
+ASSERT PASS  --key was accepted, not refused as an unknown flag
+ASSERT PASS  no unknown-flag diagnostic for --key
+ASSERT PASS  the Enter key really landed in the live pane (cursor advanced a row)
+
+========================================================================
+SCENARIO 4: --key-cross-checks-keep-their-own-errors
+========================================================================
+$ fm-send.sh lane-xc --resolve-key k --key Enter
+error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+exit status: 1
+ASSERT PASS  the --resolve-key/--key combination is still refused
+ASSERT PASS  it keeps its own cross-check error, not the generic unknown-flag one
+$ fm-send.sh sm-xc --fire-and-forget 0123456789abcdef --key Enter
+error: --fire-and-forget cannot accompany --key
+exit status: 1
+ASSERT PASS  the --fire-and-forget/--key combination is still refused
+ASSERT PASS  it keeps its own cross-check error too
+
+========================================================================
+SCENARIO 5: other-allowlisted-flags-still-parse
+========================================================================
+$ fm-send.sh lane-rk --resolve-key alpha go with option one
+exit status: 0
+inbox after the resolve-key send:
+  [/tmp/fm-tes60-live/home/state/lane-rk.inbox/001.msg]
+    schema=fm-task-inbox.v1
+    at=2026-09-20T15:13:19Z
+    --
+    go with option oneASSERT PASS  --resolve-key still parses and delivers
+ASSERT PASS  the answer text was recorded verbatim
+
+$ fm-send.sh lane-rk --resolve-key=bad/key some text     (value-form still validated)
+error: --resolve-key 'bad/key' is not a valid decision key (allowed: A-Z a-z 0-9 . _ -)
+ASSERT PASS  --resolve-key= still reaches its own validator, not the unknown-flag arm
+$ fm-send.sh lane-rk --fire-and-forget                   (arity still checked)
+error: --fire-and-forget requires a delivery id
+ASSERT PASS  --fire-and-forget still reaches its own arity check
+
+========================================================================
+SCENARIO 6: single-dash-message-is-still-text
+========================================================================
+$ fm-send.sh lane-ld "-1 means failure"
+exit status: 0
+inbox after the send:
+  [/tmp/fm-tes60-live/home/state/lane-ld.inbox/001.msg]
+    schema=fm-task-inbox.v1
+    at=2026-09-20T15:13:23Z
+    --
+    -1 means failureASSERT PASS  a message beginning with a single dash still sends
+ASSERT PASS  it was recorded verbatim
+
+========================================================================
+SCENARIO 7: double-dash-message-is-refused (the deliberate, documented-in-PR limitation)
+========================================================================
+$ fm-send.sh lane-dd "--urgent: stop what you are doing"
+error: unknown flag '--urgent: stop what you are doing'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+inbox after the refusal:
+  (no inbox directory exists)
+ASSERT PASS  a message whose text begins with -- is refused, loudly
+ASSERT PASS  and nothing was recorded for it (loud, not silent)
+ASSERT PASS  the refusal offers no escape-hatch sentence, as the intent requires
+
+========================================================================
+SCENARIO 8: adversarial-shapes
+========================================================================
+
+$ fm-send.sh lane-adv -- "payload text"
+error: unknown flag '--'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+ASSERT PASS  '--' is refused rather than delivered as text
+
+$ fm-send.sh lane-adv --key=Enter "payload text"
+error: unknown flag '--key=Enter'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+ASSERT PASS  '--key=Enter' is refused rather than delivered as text
+
+$ fm-send.sh lane-adv --resolve-keys "payload text"
+error: unknown flag '--resolve-keys'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+ASSERT PASS  '--resolve-keys' is refused rather than delivered as text
+
+$ fm-send.sh lane-adv --fire-and-forget-please "payload text"
+error: unknown flag '--fire-and-forget-please'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+ASSERT PASS  '--fire-and-forget-please' is refused rather than delivered as text
+
+$ fm-send.sh lane-adv ---triple "payload text"
+error: unknown flag '---triple'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+exit status: 1
+ASSERT PASS  '---triple' is refused rather than delivered as text
+inbox after all adversarial shapes:
+  (no inbox directory exists)
+ASSERT PASS  no adversarial flag shape produced a steering record
+
+========================================================================
+OVERALL: all live assertions passed
+========================================================================

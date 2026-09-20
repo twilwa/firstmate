@@ -1,0 +1,97 @@
+WHAT THE LIVE WORKER'S OWN TERMINAL SEES
+fm-send.sh drives a real tmux 3.4 pane; these are verbatim captures of that pane.
+
+------------------------------------------------------------------------
+A) Operator makes a typo in the flag:  fm-send.sh pane-a --urgnet 'rebase onto main'
+------------------------------------------------------------------------
+operator's terminal:
+  $ error: unknown flag '--urgnet'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit status: 1
+
+the worker's pane (fm-lab-tes60:fm-pane-a) right after:
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  -> the worker was never touched; nothing to un-do.
+  steering inbox: no inbox created
+
+------------------------------------------------------------------------
+B) The same steer, spelled correctly: fm-send.sh pane-b 'rebase onto main'
+------------------------------------------------------------------------
+operator's terminal:
+  exit status: 0
+
+the worker's pane (fm-lab-tes60:fm-pane-b) right after:
+  | : Firstmate instruction waiting: list '/tmp/fm-tes60-live/home/state/pane-b.inbo
+  | x'/*.msg and, in numeric order, read and act on each, then mv each handled file
+  | to '/tmp/fm-tes60-live/home/state/pane-b.inbox'/handled/.
+  | : Firstmate instruction waiting: list '/tmp/fm-tes60-live/home/state/pane-b.inbo
+  | x'/*.msg and, in numeric order, read and act on each, then mv each handled file
+  | to '/tmp/fm-tes60-live/home/state/pane-b.inbox'/handled/.
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  | 
+  steering inbox record actually delivered:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T15:14:43Z
+    --
+    rebase onto main
+------------------------------------------------------------------------
+C) THE SAME TYPO ON THE BASE COMMIT 9a0e566, for contrast
+   fm-send.sh@9a0e566 pane-c --urgnet 'rebase onto main'
+------------------------------------------------------------------------
+operator's terminal:
+  exit status: 0   <- success reported, no diagnostic
+
+the worker's pane (fm-lab-tes60:fm-pane-c) right after:
+  | : Firstmate instruction waiting: list '/tmp/fm-tes60-live/home/state/pane-c.inbo
+  | x'/*.msg and, in numeric order, read and act on each, then mv each handled file
+  | to '/tmp/fm-tes60-live/home/state/pane-c.inbox'/handled/.
+  | : Firstmate instruction waiting: list '/tmp/fm-tes60-live/home/state/pane-c.inbo
+  | x'/*.msg and, in numeric order, read and act on each, then mv each handled file
+  | to '/tmp/fm-tes60-live/home/state/pane-c.inbox'/handled/.
+
+  and what was durably written into the worker's steering inbox:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T15:15:03Z
+    --
+    --urgnet rebase onto main
+  -> the typo'd flag became the steer. This is the silent, durable,
+     worker-reaching failure TES-60 removes; panel A is the same call
+     on the target commit.
