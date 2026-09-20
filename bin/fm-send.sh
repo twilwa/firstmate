@@ -2,14 +2,6 @@
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell line into its terminal, best-effort.
 # Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
-#   --resolve-key and --fire-and-forget, plus the --key form below, are the
-#   only flags fm-send accepts.
-#   An unrecognised --<token> in flag position - anywhere before the message
-#   text begins - is refused before anything is recorded, rung, or typed.
-#   A single-dash word is text, not a flag, and a --<token> that appears after
-#   the text has begun is part of the message.
-#   There is deliberately no end-of-flags separator, so a message whose FIRST
-#   word begins with "--" cannot be sent through fm-send at all.
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -471,11 +463,6 @@ fi
 # Collect --resolve-key flags (answerer-closes; see the header contract). They
 # must precede --key or the message text; everything after the last flag is the
 # message exactly as before, so ordinary sends are byte-identical.
-# The accepted flags are an allowlist, not a pattern: an unrecognised
-# --<token> is a caller error, not text. It used to fall through and be
-# delivered as the literal message body with exit 0, which durably mis-steered
-# a live worker while reporting success. --key is still parsed AFTER this loop,
-# so it breaks out untouched.
 RESOLVE_KEYS=
 FIRE_AND_FORGET_ID=
 fm_send_add_resolve_key() { # <key>
