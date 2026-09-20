@@ -1151,20 +1151,25 @@ EOF
   pass "a deferred captain call leaves the live Captain's Call until its date and stays answerable"
 }
 
-# The keyed intake records "later" as an answer before sending the same task
-# through hold --until. The date is mandatory and part of replay identity.
+# The keyed intake records "later" as an answer before dating the same captain
+# hold. The date is mandatory and belongs to the recorded decision, so the same
+# words carried back with a new date are a new answer rather than a refusal.
+# A deferral continues one call, so it never restarts that call's age.
 test_keyed_defer_records_answer_and_dates_the_hold() {
   local home out show records
   home=$(make_home keyed-defer)
-  run_captain "$home" hold sample-keyed-defer --title "Revisit the sample plan" \
+  FM_CAPTAIN_HOLD_NOW=2026-06-01T12:00:00Z run_captain "$home" hold sample-keyed-defer \
+    --title "Revisit the sample plan" \
     --reason "captain timing choice pending" --repo sample >/dev/null \
     || fail "could not register the keyed defer fixture"
 
   out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "the keyed intake refused a dated defer: $out"
-  assert_contains "$out" "closed: sample-keyed-defer" \
-    "the keyed intake did not accept the dated defer"
+  assert_contains "$out" "deferred: sample-keyed-defer until 2026-10-01" \
+    "the keyed intake did not report the dated defer as a deferral"
+  assert_contains "$out" "answers: closed=0 deferred=1 skipped=0" \
+    "a still-open deferred call was counted as a closure"
   show=$(tasks_in "$home" show sample-keyed-defer --full)
   assert_contains "$show" "state: queued" "the defer completed the captain-held task"
   assert_contains "$show" "held: yes" "the defer released the captain-held task"
@@ -1174,6 +1179,8 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   assert_contains "$show" "Answer: later" "the defer lost the captain's exact answer"
   assert_contains "$show" "Answer as shown to the captain: Revisit in October" \
     "the defer lost the option label shown to the captain"
+  assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
+    "deferring a live captain hold restarted the call's age"
 
   out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
@@ -1182,13 +1189,35 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
   [ "$records" = 1 ] || fail "a defer replay duplicated the resolution record: $show"
 
-  if printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-11-01\n' \
-    | run_captain "$home" answers --source "captain chat" \
-      > "$home/date-drift.out" 2> "$home/date-drift.err"; then
-    fail "a defer replay changed its date"
-  fi
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-11-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "repeating later with a new date was refused as a drifted replay: $out"
+  assert_contains "$out" "deferred: sample-keyed-defer until 2026-11-01" \
+    "the re-dated deferral was not reported"
   show=$(tasks_in "$home" show sample-keyed-defer --full)
-  assert_contains "$show" "hold_until: 2026-10-01" "a drifted replay changed the durable date"
+  assert_contains "$show" "hold_until: 2026-11-01" "a repeated later did not carry its new date"
+  assert_contains "$show" "Deferred until: 2026-11-01" "the re-dated deferral lost its date"
+  records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
+  [ "$records" = 2 ] || fail "a re-dated deferral did not record its own answer: $show"
+  assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
+    "a repeated deferral restarted the call's age"
+
+  # The other branch of the same act: tasks-axi reports a date-expired hold as
+  # no longer held, and deferring it must keep the same age basis as a live one.
+  FM_CAPTAIN_HOLD_NOW=2026-06-02T12:00:00Z run_captain "$home" hold sample-expired-defer \
+    --title "Revisit the expired plan" \
+    --reason "captain expired timing pending" --repo sample --until 2020-01-01 >/dev/null \
+    || fail "could not register the expired defer fixture"
+  show=$(tasks_in "$home" show sample-expired-defer --full)
+  assert_contains "$show" "held: no" "precondition: the elapsed date still reports as held"
+  out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a defer on an expired hold: $out"
+  show=$(tasks_in "$home" show sample-expired-defer --full)
+  assert_contains "$show" "held: yes" "deferring an expired hold did not re-date it"
+  assert_contains "$show" "hold_until: 2026-10-01" "the expired hold lost its new date"
+  assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
+    "deferring an expired captain hold restarted the call's age"
 
   run_captain "$home" hold sample-missing-defer-date --title "Revisit without a date" \
     --reason "captain timing choice pending" --repo sample >/dev/null
@@ -1208,7 +1237,7 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   show=$(tasks_in "$home" show sample-missing-defer-date --full)
   assert_not_contains "$show" "Resolution mode:" \
     "a missing defer date recorded an answer before refusing"
-  pass "a keyed defer records the answer, dates the hold, and replays idempotently"
+  pass "a keyed defer records the answer, dates the hold, and never restarts the call's age"
 }
 
 # The recorded-answer guard survives an out-of-band close: a bare tasks-axi done
@@ -1511,6 +1540,21 @@ EOF
   [ "$(grep -c 'resolved \[key=captain-hold-batch-call-1\]' "$channel")" = 1 ] \
     || fail "batch retry did not restore exactly one parent resolution: $(cat "$channel")"
 
+  run_captain "$mate" hold defer-call --title "Choose the defer timing" \
+    --reason "timing choice pending" --repo sample >/dev/null \
+    || fail "defer hold failed"
+  assert_grep 'needs-decision [key=captain-hold-defer-call-1]: captain hold defer-call: timing choice pending' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "the defer fixture's hold did not reach the parent channel"
+  printf 'later\n' > "$decision"
+  run_captain "$mate" answer defer-call --decision-file "$decision" \
+    --defer-until 2026-10-01 >/dev/null || fail "mate defer answer failed"
+  assert_grep 'resolved [key=captain-hold-defer-call-1]: captain hold defer-call: deferred until 2026-10-01' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "the deferral did not publish its resolved line"
+  # The question the captain just postponed must not reappear on the parent as a
+  # live decision, so a deferral publishes no fresh needs-decision of its own.
+  [ "$(grep -c 'needs-decision \[key=captain-hold-defer-call' "$channel")" = 1 ] \
+    || fail "a deferral re-announced the postponed question: $(cat "$channel")"
+
   run_captain "$parent" hold main-call --title "Choose the main release" \
     --reason "main choice pending" --repo sample >/dev/null || fail "main hold failed"
   [ ! -e "$parent/state/parent-replies.status" ] || fail "a main home wrote a parent reply"
@@ -1783,7 +1827,7 @@ SH
     "replaying an identical capture was not idempotent: $out"
   assert_contains "$out" "closed: sample-gated-work" \
     "replaying an identical released answer was not idempotent: $out"
-  assert_contains "$out" "closed: sample-deferred-call" \
+  assert_contains "$out" "deferred: sample-deferred-call until 2026-10-01" \
     "replaying an identical deferred answer was not idempotent: $out"
   assert_contains "$out" "skipped: sample-nonexistent-call" \
     "a key naming no task was not reported as skipped: $out"

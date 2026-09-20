@@ -51,7 +51,7 @@ For a contribution wake or linked-issue filing, go directly to Contribution foll
    Never use hold-reason or body prose to classify or place a decision.
    A `live` hold appears in Captain's Call; `blocked`, `dated`, and `aged` holds appear as disclosed Charted Next gates stating their structured reason.
    Use `--all-decisions` to reveal every captain hold available within the bounded snapshot and remove each revealed gate from Charted Next so the buckets remain exclusive.
-   Aging is only a presentation safety net, and re-holding with `--until` remains the durable deferral.
+   Aging is only a presentation safety net, and the durable deferral is the recorded answer: `bin/fm-captain-hold.sh answer <id> --defer-until <date>`, or the keyed intake's `defer` mode with its date.
    Do not scrape reports, visual-review artifacts, raw status-event tails, or visible conversation history to supplement current state.
    A queued item under `gates` only becomes "next work" when its blocker is gone and its time/date gate has arrived.
    Until then it stays queued with the reason.

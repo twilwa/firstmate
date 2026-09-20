@@ -60,11 +60,18 @@
 # tasks-axi --archive-body). It closes a question with `tasks-axi done` - or,
 # with `--release`, lifts the hold with `tasks-axi unhold` so a captain-gated
 # WORK item resumes without closing - or, with `--defer-until`, records a
-# deferred resolution and returns through `hold --until` without closing.
+# deferred resolution carrying that date and re-dates the call's existing
+# captain hold through the same `tasks-axi hold --until` gate, without closing.
+# A deferral continues one captain call rather than opening another, so it
+# never rewrites the `Captain hold set:` stamp - the call keeps its original
+# age basis whether or not its previous date had already elapsed - and never
+# republishes the parent needs-decision line that call already carries.
 # Closed outcomes restore resolution-first body ordering. An exact retry also
 # completes unfinished ordering normalization and is idempotent only when its
-# requested close mode and defer date match the newest record; a changed
-# decision, mode, or defer date is rejected.
+# requested close mode matches the newest record; a changed decision or mode is
+# rejected. A defer date is part of the recorded decision's digest, so the same
+# words carried back with a new date are a genuinely new answer that records
+# its own resolution on top, while an exact redelivery stays idempotent.
 # A re-held task may record a new answer on top. On a task already closed outside this script,
 # `answer` records the missing resolution block (the old `repair` path) only
 # when the task still carries the captain-hold provenance tasks-axi preserves
@@ -82,10 +89,13 @@
 # task id - no identity arithmetic. The optional fourth field selects the close:
 # empty or `done` completes the task, `release` lifts the hold so held work
 # resumes, and `defer` requires a fifth YYYY-MM-DD field and records the answer
-# before routing the task back through `hold --until`; anything else is skipped.
+# before re-dating the task's existing captain hold; anything else is skipped.
 # A key that names no task, a task that is
 # not held for the captain, or a task already closed is reported as `skipped:`
-# and feeds nothing. A replayed delivery whose answer digest and requested
+# and feeds nothing. A resolved key is reported `closed:` and counted in
+# `closed=`, except a deferral, which leaves the task open behind its date and
+# is therefore reported `deferred: <id> until <date>` and counted separately in
+# `deferred=`. A replayed delivery whose answer digest and requested
 # close mode both match the newest record is reported `closed:` and is a no-op;
 # a mode mismatch is skipped. The command exits nonzero when any key was
 # skipped. `--source` is provenance text recorded in the
@@ -198,7 +208,9 @@
 #
 # Parent channel: inside a secondmate home a task held for the captain, and its
 # answer, are captain-facing facts the moment they are recorded, so `hold`
-# publishes `needs-decision [key=captain-hold-<task>-<n>]` and `answer` (and
+# publishes `needs-decision [key=captain-hold-<task>-<n>]` - and is the only
+# publisher of that verb, which is why a deferral re-dates the hold without
+# routing through `hold` - and `answer` (and
 # `answers`) the matching `resolved` line on the parent channel through
 # bin/fm-parent-channel-lib.sh, whether or not the mate model appends anything.
 # <n> is the count of resolution records the body already carries plus one, so
@@ -503,18 +515,6 @@ recorded_resolution_mode() {  # <task-body>
   local rest=$1
   case "$rest" in
     *"Resolution mode: "*) rest=${rest#*"Resolution mode: "} ;;
-    *) return 1 ;;
-  esac
-  rest=${rest%%\\n*}
-  rest=${rest%%$'\n'*}
-  printf '%s' "$rest"
-}
-
-# The date attached to the newest deferred resolution record.
-recorded_defer_until() {  # <task-body>
-  local rest=$1
-  case "$rest" in
-    *"Deferred until: "*) rest=${rest#*"Deferred until: "} ;;
     *) return 1 ;;
   esac
   rest=${rest%%\\n*}
@@ -1000,19 +1000,18 @@ close_answered() {  # <task-id> <release-0-or-1>
   fi
 }
 
-# Keep a deferred answer on the same captain-held task by running the existing
-# hold --until path. A matching retry whose date is already durable skips the
-# mutation, so replaying an expired deferral cannot reset its hold-set age.
+# Date the captain hold this answer deferred, through the same tasks-axi gate
+# `hold` uses. A deferral continues the call it answers rather than opening
+# another, so it deliberately does not re-enter `hold`: the `Captain hold set:`
+# stamp stays exactly as it was - a live and an already-expired hold therefore
+# keep one age basis, instead of the expired one silently restarting the clock
+# because tasks-axi no longer reports it held - and the parent channel keeps the
+# needs-decision line this call already opened rather than re-announcing the
+# question the captain just postponed.
 defer_answered() {  # <task-id> <until> <reason>
-  local id=$1 until=$2 reason=$3 show current_until
-  task_show_or_fail "$id" "task $id disappeared while deferring its captain call"
-  current_until=$(show_field_value "$show" hold_until)
-  if [ "$current_until" != "$until" ]; then
-    release_task_control_lock || fail "cannot release task control while deferring $id"
-    "$SCRIPT_DIR/fm-captain-hold.sh" hold "$id" --reason "$reason" --until "$until" >/dev/null \
-      || fail "could not defer captain-held task $id until $until"
-    acquire_task_control_lock "$id"
-  fi
+  local id=$1 until=$2 reason=$3 show
+  tasks_axi hold "$id" --reason "$reason" --kind captain --until "$until" >/dev/null \
+    || fail "could not defer captain-held task $id until $until"
   task_show_or_fail "$id" "task $id disappeared after deferring its captain call"
   [ "$(show_field "$show" state)" != "done" ] \
     || fail "deferring the captain answer closed task $id"
@@ -1020,6 +1019,8 @@ defer_answered() {  # <task-id> <until> <reason>
     || fail "task $id did not retain its captain hold after deferral"
   [ "$(show_field_value "$show" hold_until)" = "$until" ] \
     || fail "task $id did not retain its deferral date $until"
+  [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
+    || fail "task $id lost its hold-set stamp while being deferred"
 }
 
 remove_interrupted_answer_stamp() {  # <task-id>
@@ -1046,7 +1047,7 @@ remove_interrupted_answer_stamp() {  # <task-id>
 
 command_answer() {
   local id=${1:-} decision_file='' release=0 defer_requested=0 defer_until='' defer_reason=''
-  local show state hold_kind body outcome recorded_mode recorded_until occurrence
+  local show state hold_kind body outcome recorded_mode occurrence
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1071,6 +1072,12 @@ command_answer() {
   fi
   validate_slug task-id "$id"
   load_decision "$decision_file"
+  # The date is part of what the captain decided, so it belongs to the recorded
+  # decision's identity: repeating "later" with a new date is a new answer that
+  # records its own deferral, while an exact redelivery stays an idempotent
+  # replay of the one already recorded.
+  [ -z "$defer_until" ] \
+    || DECISION_DIGEST=$(sha256_text "$DECISION_TEXT"$'\n'"Deferred until: $defer_until")
   acquire_task_control_lock "$id"
   require_tasks_axi
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
@@ -1149,9 +1156,6 @@ command_answer() {
         deferred)
           [ -n "$defer_until" ] \
             || fail "task $id records this answer as deferred; retry with --defer-until"
-          recorded_until=$(recorded_defer_until "$body" || true)
-          [ "$recorded_until" = "$defer_until" ] \
-            || fail "task $id records this answer as deferred until ${recorded_until:-unknown}; retry with that date"
           ;;
         *) fail "task $id records this resolution with mode ${recorded_mode:-unknown}; it is not a captain-answer replay" ;;
       esac
@@ -1301,7 +1305,7 @@ sanitize_reconcile_provenance() {
 
 command_answers() {
   local origin='' source='' row rest key answer label mode until id show state hold_kind body digest legacy_digest legacy_key
-  local recorded_digest recorded_mode occurrence tmp err closed=0 skipped=0 reason tab=$'\t'
+  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t'
   local resolve_rc
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1459,8 +1463,15 @@ command_answers() {
       # A parent-channel delivery problem is reported on stderr by the answer
       # path even when the close succeeded; keep it visible.
       [ ! -s "$err" ] || cat "$err" >&2
-      printf 'closed: %s\n' "$id"
-      closed=$((closed + 1))
+      # A deferral is resolved but not closed: the task stays queued, held, and
+      # dated, so reporting it as `closed:` would misstate what happened.
+      if [ "$mode" = defer ]; then
+        printf 'deferred: %s until %s\n' "$id" "$until"
+        deferred=$((deferred + 1))
+      else
+        printf 'closed: %s\n' "$id"
+        closed=$((closed + 1))
+      fi
     else
       reason=$(tr -d '\n' < "$err" | sed 's/^fm-captain-hold: //')
       printf 'skipped: %s (%s)\n' "$id" "$reason"
@@ -1468,7 +1479,7 @@ command_answers() {
     fi
   done
   rm -f -- "$tmp" "$err"
-  printf 'answers: closed=%s skipped=%s\n' "$closed" "$skipped"
+  printf 'answers: closed=%s deferred=%s skipped=%s\n' "$closed" "$deferred" "$skipped"
   [ "$skipped" -eq 0 ]
 }
 
