@@ -294,17 +294,14 @@ test_key_flag_still_falls_through_the_allowlist() {
   pass "fm-send strict: --key stays in the allowlist and its cross-checks keep their errors"
 }
 
-# A message whose text legitimately begins with a dash must remain sendable.
-# Only a --<token> is refused, so a single-dash word is still plain text and
-# needs no ceremony; a bare -- ends flag parsing for anything that genuinely
-# starts with --, and that separator means text everywhere, including to the
-# --key dispatch that runs after the loop.
+# A message whose text legitimately begins with a single dash must remain
+# sendable. Only a --<token> is refused, so a single-dash word is still plain
+# text and needs no ceremony.
 test_leading_dash_messages_still_send() {
   local dir fb home err log rc
   dir="$TMP_ROOT/leading-dash"; mkdir -p "$dir"
   fb=$(make_stubs "$dir"); home=$(setup_home leadingdash); err="$dir/send.err"; log="$dir/tmux.log"; : > "$log"
-  # fm-lane-ok is the stub's live window, so the doorbell really rings here and
-  # its literal line discriminates the inbox plane from the key plane.
+  # fm-lane-ok is the stub's live window, so the doorbell really rings here.
   fm_write_meta "$home/state/lane-ld.meta" "window=sess:fm-lane-ok" "kind=ship"
 
   PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
@@ -312,22 +309,7 @@ test_leading_dash_messages_still_send() {
   expect_code 0 "$rc" "a single-dash message should still send"
   grep -qF -- '-1 means failure' "$home/state/lane-ld.inbox/001.msg" \
     || fail "the single-dash message was not recorded verbatim"
-
-  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
-    "$SEND" lane-ld -- --weird looking text >/dev/null 2>"$err"; rc=$?
-  expect_code 0 "$rc" "a -- separated message starting with -- should send"
-  grep -qF -- '--weird looking text' "$home/state/lane-ld.inbox/002.msg" \
-    || fail "the -- separated message was not recorded verbatim"
-
-  : > "$log"
-  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
-    "$SEND" lane-ld -- --key Enter >/dev/null 2>"$err"; rc=$?
-  expect_code 0 "$rc" "text after -- should send rather than being parsed as a flag"
-  grep -qF -- '--key Enter' "$home/state/lane-ld.inbox/003.msg" \
-    || fail "text after -- was not recorded as text"
-  assert_contains "$(cat "$log")" "literal=1 arg=: Firstmate instruction waiting" \
-    "text after -- should ride the inbox plane, not be dispatched as a keypress"
-  pass "fm-send strict: leading-dash messages still send, and -- means text everywhere"
+  pass "fm-send strict: a single-dash message is still text, not a flag"
 }
 
 test_exact_lane_id_send_still_works

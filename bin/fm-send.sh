@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell line into its terminal, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] [--] <text...>
+# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
 #   --resolve-key and --fire-and-forget, plus the --key form below, are the
 #   only flags fm-send accepts.
 #   An unrecognised --<token> is refused before anything is recorded, rung, or
-#   typed. A bare -- ends flag parsing, so a message whose text starts with "--"
-#   is sent by putting -- before it; a single-dash word is always text and needs
-#   no separator.
+#   typed. A single-dash word is text, not a flag.
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -473,11 +471,9 @@ fi
 # --<token> is a caller error, not text. It used to fall through and be
 # delivered as the literal message body with exit 0, which durably mis-steered
 # a live worker while reporting success. --key is still parsed AFTER this loop,
-# so it breaks out untouched. END_OF_FLAGS records an explicit "--" separator so
-# the text after it is text everywhere, including to the --key dispatch below.
+# so it breaks out untouched.
 RESOLVE_KEYS=
 FIRE_AND_FORGET_ID=
-END_OF_FLAGS=0
 fm_send_add_resolve_key() { # <key>
   local k=$1
   case "$k" in
@@ -529,13 +525,8 @@ while :; do
     shift
     ;;
   --key) break ;;
-  --)
-    END_OF_FLAGS=1
-    shift
-    break
-    ;;
   --*)
-    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent. To send a message whose text starts with '--', put a bare '--' before it." >&2
+    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent." >&2
     exit 1
     ;;
   *) break ;;
@@ -641,7 +632,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
     echo "error: --resolve-key needs a task selector resolved through this home's metadata; an explicit backend target has no decision ledger here" >&2
     exit 1
   fi
-  if [ "$END_OF_FLAGS" = 0 ] && [ "${1:-}" = "--key" ]; then
+  if [ "${1:-}" = "--key" ]; then
     echo "error: --resolve-key cannot accompany --key; answering a decision requires a text answer" >&2
     exit 1
   fi
@@ -780,7 +771,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
 # send implementation. A failed backend send is still surfaced below as a hard
 # error with the attempted resolution attached.
 
-if [ "$END_OF_FLAGS" = 0 ] && [ "${1:-}" = "--key" ]; then
+if [ "${1:-}" = "--key" ]; then
   [ -z "$FIRE_AND_FORGET_ID" ] ||
     {
       echo "error: --fire-and-forget cannot accompany --key" >&2
