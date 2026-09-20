@@ -1196,6 +1196,8 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
     "the re-dated deferral was not reported"
   show=$(tasks_in "$home" show sample-keyed-defer --full)
   assert_contains "$show" "hold_until: 2026-11-01" "a repeated later did not carry its new date"
+  assert_contains "$show" "hold_reason: captain timing choice pending" \
+    "a repeated deferral rewrote the gate text the call was held under"
   assert_contains "$show" "Deferred until: 2026-11-01" "the re-dated deferral lost its date"
   records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
   [ "$records" = 2 ] || fail "a re-dated deferral did not record its own answer: $show"
@@ -1210,12 +1212,16 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
     || fail "could not register the expired defer fixture"
   show=$(tasks_in "$home" show sample-expired-defer --full)
   assert_contains "$show" "held: no" "precondition: the elapsed date still reports as held"
+  assert_contains "$show" "hold_reason: captain expired timing pending" \
+    "precondition: the elapsed date gate dropped the hold reason"
   out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "the keyed intake refused a defer on an expired hold: $out"
   show=$(tasks_in "$home" show sample-expired-defer --full)
   assert_contains "$show" "held: yes" "deferring an expired hold did not re-date it"
   assert_contains "$show" "hold_until: 2026-10-01" "the expired hold lost its new date"
+  assert_contains "$show" "hold_reason: captain expired timing pending" \
+    "deferring an expired hold rewrote the gate text the call was held under"
   assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
     "deferring an expired captain hold restarted the call's age"
 

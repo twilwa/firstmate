@@ -1082,7 +1082,6 @@ command_answer() {
   if [ -n "$defer_until" ]; then
     outcome=deferred
     defer_reason=$(show_field_value "$show" hold_reason)
-    [ -n "$defer_reason" ] || defer_reason="captain deferred until $defer_until"
   elif [ "$release" = 1 ]; then
     outcome=released
   else
