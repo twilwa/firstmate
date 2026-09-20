@@ -469,17 +469,6 @@ fi
 RESOLVE_KEYS=
 RESOLVE_DEFER_UNTIL=
 FIRE_AND_FORGET_ID=
-fm_send_valid_until_date() { # <YYYY-MM-DD>
-  case "$1" in
-  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-  *) return 1 ;;
-  esac
-  perl -MTime::Piece -e '
-    my $value = shift;
-    my $parsed = eval { Time::Piece->strptime($value, "%Y-%m-%d") };
-    exit 1 if !$parsed || $parsed->strftime("%Y-%m-%d") ne $value;
-  ' "$1" 2>/dev/null
-}
 fm_send_add_resolve_key() { # <key>
   local k=$1
   case "$k" in
@@ -682,7 +671,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
     exit 1
   done
   if [ -n "$RESOLVE_DEFER_UNTIL" ]; then
-    fm_send_valid_until_date "$RESOLVE_DEFER_UNTIL" || {
+    fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
       echo "error: --defer-until requires a YYYY-MM-DD date: $RESOLVE_DEFER_UNTIL" >&2
       exit 1
     }

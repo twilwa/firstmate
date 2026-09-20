@@ -1219,6 +1219,20 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
     "deferring an expired captain hold restarted the call's age"
 
+  # Legacy captain holds can predate the hold-set stamp. Deferral preserves
+  # that absence instead of rejecting the already-durable answer afterward.
+  tasks_in "$home" add sample-stampless-defer "Revisit a legacy call" --repo sample >/dev/null
+  tasks_in "$home" hold sample-stampless-defer --reason "legacy captain timing pending" \
+    --kind captain >/dev/null || fail "could not create the stampless defer fixture"
+  out=$(printf 'sample-stampless-defer\tlater\tRevisit in December\tdefer\t2026-12-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a legacy stampless hold: $out"
+  show=$(tasks_in "$home" show sample-stampless-defer --full)
+  assert_contains "$show" "hold_until: 2026-12-01" "the stampless hold lost its defer date"
+  assert_contains "$show" "Resolution mode: deferred" "the stampless hold lost its answer"
+  assert_not_contains "$show" "Captain hold set:" \
+    "deferring a stampless legacy hold invented a new age basis"
+
   run_captain "$home" hold sample-missing-defer-date --title "Revisit without a date" \
     --reason "captain timing choice pending" --repo sample >/dev/null
   printf 'later\n' > "$home/later.txt"
@@ -1256,11 +1270,20 @@ test_out_of_band_close_is_recordable() {
   run_captain "$home" hold sample-submission-call --title "Choose the sample submission" \
     --reason "captain submission choice pending" --repo sample --origin "$id" >/dev/null \
     || fail "could not register the captain-held task"
-  run_captain "$home" complete "$id" sample-submission-call >/dev/null \
+  run_captain "$home" hold sample-deferred-close-call --title "Choose the deferred sample" \
+    --reason "captain deferred close pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not register the deferred close fixture"
+  run_captain "$home" complete "$id" sample-submission-call sample-deferred-close-call >/dev/null \
     || fail "completion failed before the out-of-band close"
+
+  printf 'Later, after the sample window.\n' > "$home/deferred.txt"
+  run_captain "$home" answer sample-deferred-close-call --decision-file "$home/deferred.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "could not defer the close fixture"
 
   tasks_in "$home" "done" sample-submission-call >/dev/null \
     || fail "could not reproduce the direct out-of-band close"
+  tasks_in "$home" "done" sample-deferred-close-call >/dev/null \
+    || fail "could not close the deferred call out of band"
   if run_captain "$home" verify "$id" > "$home/broken-verify.out" 2> "$home/broken-verify.err"; then
     fail "verification passed a captain call closed with no recorded answer"
   fi
@@ -1277,8 +1300,23 @@ test_out_of_band_close_is_recordable() {
   assert_contains "$show" "Resolution mode: repaired" "the retroactive record did not name its path"
   assert_contains "$show" "Declined: do not submit the sample full run upstream." \
     "the retroactive record lost the captain decision text"
+  if run_captain "$home" verify "$id" > "$home/deferred-verify.out" 2> "$home/deferred-verify.err"; then
+    fail "a deferred record hid the still-unrecorded out-of-band close"
+  fi
+
+  printf 'Proceed with the sample after all.\n' > "$home/final-deferred.txt"
+  run_captain "$home" answer sample-deferred-close-call \
+    --decision-file "$home/final-deferred.txt" >/dev/null \
+    || fail "answer could not repair an out-of-band close over a deferred record"
+  show=$(tasks_in "$home" show sample-deferred-close-call --full)
+  assert_contains "$show" "Resolution mode: repaired" \
+    "the close over a deferred record did not receive a terminal repair"
+  assert_contains "$show" "Resolution mode: deferred" \
+    "repairing the later close discarded the earlier deferral"
+  assert_contains "$show" "Proceed with the sample after all." \
+    "the repaired close lost the captain's final words"
   run_captain "$home" verify "$id" >/dev/null \
-    || fail "the recorded answer did not satisfy the completion gate"
+    || fail "the repaired terminal answers did not satisfy the completion gate"
   run_captain "$home" answer sample-submission-call --decision-file "$home/submission.txt" >/dev/null \
     || fail "identical retroactive retry was not idempotent"
   printf 'A different answer entirely.\n' > "$home/drifted.txt"
@@ -1945,6 +1983,34 @@ test_normal_answers_retire_pending_reconcile_requests() {
   pass "normal answers and their replays retire reconcile requests"
 }
 
+test_deferred_answers_keep_pending_reconcile_requests() {
+  local home list show
+  home=$(make_home reconcile-deferred-answer)
+  tasks_in "$home" add sample-direct-defer "Captain call to defer" --repo sample >/dev/null
+  run_captain "$home" hold sample-direct-defer --reason "waiting for the captain" >/dev/null
+  request_reconciles "$home" board-src sample-direct-defer \
+    || fail "could not create a reconcile request before deferral"
+
+  printf 'Revisit after the sample launch.\n' > "$home/defer.txt"
+  run_captain "$home" answer sample-direct-defer --decision-file "$home/defer.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "a direct deferred answer failed"
+  list=$(run_captain "$home" reconcile list)
+  assert_contains "$list" "sample-direct-defer" \
+    "deferring the call silently retired its pending reconcile request"
+  assert_contains "$list" "reconcile-requests: 1" \
+    "deferring the call changed the pending reconcile request count"
+
+  run_captain "$home" answer sample-direct-defer --decision-file "$home/defer.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "a deferred-answer replay failed"
+  list=$(run_captain "$home" reconcile list)
+  assert_contains "$list" "reconcile-requests: 1" \
+    "a deferred-answer replay retired the pending reconcile request"
+  show=$(tasks_in "$home" show sample-direct-defer --full)
+  [ "$(printf '%s\n' "$show" | grep -c 'Resolution mode: deferred')" -eq 1 ] \
+    || fail "a deferred replay duplicated its resolution record"
+  pass "deferred answers and their replays keep pending reconcile requests"
+}
+
 # The two verification outcomes, and the honesty of the record each writes.
 test_reconcile_closes_with_evidence_or_keeps_the_call_open() {
   local home show list rc out
@@ -2457,6 +2523,20 @@ esac
 exit 0
 SH
   chmod +x "$fb/tmux"
+
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-31 "later on an impossible date" \
+      > "$home/invalid-chat-date.out" 2> "$home/invalid-chat-date.err"; then
+    fail "the chat preflight accepted an impossible calendar date"
+  fi
+  [ ! -s "$home/send.log" ] || fail "the invalid defer date was sent before being refused"
+  show=$(tasks_in "$home" show sample-chat-defer --full)
+  assert_not_contains "$show" "Resolution mode:" \
+    "the invalid chat date reached the keyed-answer intake"
 
   : > "$home/send.log"
   env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
@@ -4182,6 +4262,7 @@ test_secondmate_reconcile_publishes_before_request_retirement
 test_bound_channel_answers_close_at_answer_time
 test_reconcile_never_closes_through_the_keyed_answer_intake
 test_normal_answers_retire_pending_reconcile_requests
+test_deferred_answers_keep_pending_reconcile_requests
 test_reconcile_closes_with_evidence_or_keeps_the_call_open
 test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold

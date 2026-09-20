@@ -41,7 +41,8 @@ A bound captured source uses a separate seam: its adapter omits reconcile from k
 A remote-secondmate card whose task is absent from the main backlog therefore remains announced but cannot create a main-home request; owner-aware request and mutation routing to the authoritative secondmate home is a separate follow-up.
 That board-created request is yours to work off in the turn that receives it: `bin/fm-captain-hold.sh reconcile close <id> --evidence-file <path>` records the EVIDENCE and closes a moot call, while `reconcile note <id> --note-file <path>` annotates a genuinely active call and leaves it held.
 Both outcomes refuse unless that task still has the pending request created by the captain's board selection, so neither is a standalone way to mutate a captain call.
-A normal captain answer also retires any pending request because the call is settled, including close, release, and idempotent replay paths.
+A terminal captain answer retires any pending request because the call is settled, including close, release, and idempotent replay paths.
+A defer leaves the call open, so it keeps any pending reconcile request for the still-owed re-check.
 A retirement failure makes the command fail without reversing the already-durable answer, close, or note, and `reconcile list` keeps the surviving request visible for retry.
 `reconcile list` names every request still outstanding.
 Never use `answer` for an evidence-only moot call: `answer` records what the captain said, while `reconcile close` records verified evidence.

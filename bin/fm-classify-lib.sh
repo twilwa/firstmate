@@ -105,6 +105,21 @@ FM_CLASSIFY_PAUSED_VERB_DEFAULT='paused'
 # shellcheck disable=SC2034 # Read by the watcher and daemon (fm-watch.sh, fm-supervise-daemon.sh), not this lib.
 FM_PAUSE_RESURFACE_SECS_DEFAULT=14400
 
+# fm_valid_calendar_day <YYYY-MM-DD>: validate both the wire shape and the
+# actual calendar day. Captain-hold intake and its send-time preflight share
+# this owner so a date accepted before delivery cannot be rejected afterward.
+fm_valid_calendar_day() {
+  case "$1" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) return 1 ;;
+  esac
+  perl -MTime::Piece -e '
+    my $value = shift;
+    my $parsed = eval { Time::Piece->strptime($value, "%Y-%m-%d") };
+    exit 1 if !$parsed || $parsed->strftime("%Y-%m-%d") ne $value;
+  ' "$1" 2>/dev/null
+}
+
 # fm_utc_iso_to_epoch <YYYY-MM-DDTHH:MM[:SS]Z>: the one portable UTC ISO 8601
 # reader shared by the declared-wait vocabulary and the away-posture record
 # (bin/fm-afk-contract.sh). Prints epoch seconds; returns 1 on any other shape

@@ -121,7 +121,8 @@
 # under a `Reconciliation evidence:` label so it can never read as the
 # captain's words, and closes the task. `note` is the still-active outcome: it
 # appends one dated `Captain hold reconciled:` note and leaves the hold in
-# place. A normal answer also retires the request because the call is settled.
+# place. A terminal normal answer also retires the request because the call is
+# settled. A defer leaves both the call and any pending re-check obligation open.
 # `list` is the read-only enumeration.
 # docs/captain-hold-lifecycle.md owns the semantics.
 #
@@ -298,18 +299,6 @@ validate_one_line() {  # <label> <value>
   case "$value" in
     *$'\n'*|*$'\r'*) fail "$label must be one line" ;;
   esac
-}
-
-valid_until_date() {  # <YYYY-MM-DD>
-  case "$1" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-    *) return 1 ;;
-  esac
-  perl -MTime::Piece -e '
-    my $value = shift;
-    my $parsed = eval { Time::Piece->strptime($value, "%Y-%m-%d") };
-    exit 1 if !$parsed || $parsed->strftime("%Y-%m-%d") ne $value;
-  ' "$1" 2>/dev/null
 }
 
 acquire_task_control_lock() {  # <task-id>
@@ -541,8 +530,9 @@ resolution_block() {  # <mode> [defer-until]
   printf '\n%s\n%s\n' "$label" "$DECISION_TEXT"
 }
 
-# Durable state of one captain call: an active captain hold (annotations
-# surviving even when a date gate has expired) or a recorded captain answer.
+# Durable terminal state of one captain call: an active captain hold
+# (annotations surviving even when a date gate has expired) or a recorded
+# terminal answer. A deferred record is an answer, but not proof of closure.
 verify_hold_durable() {  # <task-id>
   local id=$1 show state hold_kind body
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
@@ -550,7 +540,8 @@ verify_hold_durable() {  # <task-id>
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
-  if body_has_resolution_record "$body"; then
+  if body_has_resolution_record "$body" \
+    && [ "$(recorded_resolution_mode "$body" || true)" != deferred ]; then
     return 0
   fi
   if [ "$state" != "done" ] && [ "$hold_kind" = captain ]; then
@@ -864,7 +855,7 @@ command_hold() {
     validate_slug origin-id "$origin"
   fi
   if [ -n "$until" ]; then
-    valid_until_date "$until" || fail "--until must be a YYYY-MM-DD date: $until"
+    fm_valid_calendar_day "$until" || fail "--until must be a YYYY-MM-DD date: $until"
   fi
   hold_set=${FM_CAPTAIN_HOLD_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
   case "$hold_set" in
@@ -1009,7 +1000,9 @@ close_answered() {  # <task-id> <release-0-or-1>
 # needs-decision line this call already opened rather than re-announcing the
 # question the captain just postponed.
 defer_answered() {  # <task-id> <until> <reason>
-  local id=$1 until=$2 reason=$3 show
+  local id=$1 until=$2 reason=$3 show before_stamp after_stamp
+  task_show_or_fail "$id" "task $id disappeared before deferring its captain call"
+  before_stamp=$(body_hold_set_timestamp "$(show_field_value "$show" body)")
   tasks_axi hold "$id" --reason "$reason" --kind captain --until "$until" >/dev/null \
     || fail "could not defer captain-held task $id until $until"
   task_show_or_fail "$id" "task $id disappeared after deferring its captain call"
@@ -1019,8 +1012,9 @@ defer_answered() {  # <task-id> <until> <reason>
     || fail "task $id did not retain its captain hold after deferral"
   [ "$(show_field_value "$show" hold_until)" = "$until" ] \
     || fail "task $id did not retain its deferral date $until"
-  [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
-    || fail "task $id lost its hold-set stamp while being deferred"
+  after_stamp=$(body_hold_set_timestamp "$(show_field_value "$show" body)")
+  [ "$after_stamp" = "$before_stamp" ] \
+    || fail "task $id changed its hold-set stamp while being deferred"
 }
 
 remove_interrupted_answer_stamp() {  # <task-id>
@@ -1067,7 +1061,7 @@ command_answer() {
   [ "$release" = 0 ] || [ "$defer_requested" = 0 ] \
     || fail "--release and --defer-until are mutually exclusive"
   if [ "$defer_requested" = 1 ]; then
-    valid_until_date "$defer_until" \
+    fm_valid_calendar_day "$defer_until" \
       || fail "--defer-until must be a YYYY-MM-DD date: $defer_until"
   fi
   validate_slug task-id "$id"
@@ -1101,11 +1095,11 @@ command_answer() {
   if [ "$state" = "done" ]; then
     [ -z "$defer_until" ] \
       || fail "task $id is already closed; --defer-until cannot reopen it"
-    if body_has_resolution_record "$body"; then
+    recorded_mode=$(recorded_resolution_mode "$body" || true)
+    if body_has_resolution_record "$body" && [ "$recorded_mode" != deferred ]; then
       # An exact compatible retry is an idempotent no-op; drift is rejected.
       [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
         || fail "captain-held task $id records a different captain decision"
-      recorded_mode=$(recorded_resolution_mode "$body" || true)
       closed_answer_replay_mode_compatible "$recorded_mode" "$body" \
         || fail "task $id records this resolution with mode ${recorded_mode:-unknown}; it is not a captain-answer replay"
       [ "$release" = 0 ] \
@@ -1161,7 +1155,7 @@ command_answer() {
       esac
       if [ "$recorded_mode" = deferred ]; then
         defer_answered "$id" "$defer_until" "$defer_reason"
-        publish_parent_resolution_then_retire "$id" $((occurrence - 1)) "deferred until $defer_until"
+        publish_parent_resolution "$id" $((occurrence - 1)) "deferred until $defer_until"
         printf 'deferred: %s until %s\n' "$id" "$defer_until"
         return 0
       fi
@@ -1176,7 +1170,7 @@ command_answer() {
     write_resolution_record "$id" "$outcome" "$body" "$defer_until"
     if [ -n "$defer_until" ]; then
       defer_answered "$id" "$defer_until" "$defer_reason"
-      publish_parent_resolution_then_retire "$id" "$occurrence" "deferred until $defer_until"
+      publish_parent_resolution "$id" "$occurrence" "deferred until $defer_until"
       printf 'deferred: %s until %s\n' "$id" "$defer_until"
       return 0
     fi
@@ -1371,7 +1365,7 @@ command_answers() {
             continue
             ;;
         esac
-        if ! valid_until_date "$until"; then
+        if ! fm_valid_calendar_day "$until"; then
           printf 'skipped: %s (invalid defer date %s)\n' "$key" "$(sanitize_field "$until")"
           skipped=$((skipped + 1))
           continue
@@ -1535,14 +1529,18 @@ reconcile_request_retire() {  # <task-id>
     || fail "could not retire the pending reconcile request for $1"
 }
 
-publish_parent_resolution_then_retire() {  # <task-id> <occurrence> <note>
+publish_parent_resolution() {  # <task-id> <occurrence> <note>
   local id=$1 occurrence=$2 note=$3 request
   request=$(reconcile_request_path "$id")
   publish_parent_hold "$id" "$occurrence" resolved "$note"
   if [ -e "$request" ] && [ "$PARENT_HOLD_PUBLISHED" != 1 ]; then
     fail "could not publish the answered captain-held task $id to its parent"
   fi
-  reconcile_request_retire "$id"
+}
+
+publish_parent_resolution_then_retire() {  # <task-id> <occurrence> <note>
+  publish_parent_resolution "$1" "$2" "$3"
+  reconcile_request_retire "$1"
 }
 
 command_reconcile_requests() {
