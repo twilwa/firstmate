@@ -568,7 +568,7 @@ __FM_BEARINGS_BOARD_DATA__
       }
       if (window.lavish && window.lavish.queuePrompt) {
         /* The versioned context keeps the selected option separate from its
-           note. An option-level close can declare a dated defer; the card's
+           note. A selected option's own until is a dated defer; the card's
            close remains the default for ordinary completion and release. */
         var selectedOption = null;
         item.options.forEach(function (option) {
@@ -580,7 +580,7 @@ __FM_BEARINGS_BOARD_DATA__
           selection: value || "",
           note: note
         };
-        var close = selectedOption && selectedOption.close ? selectedOption.close : item.close;
+        var close = selectedOption && selectedOption.until ? "defer" : item.close;
         if (close) ctxData.close = close;
         if (selectedOption && selectedOption.until) ctxData.until = selectedOption.until;
         window.lavish.queuePrompt(

@@ -4,7 +4,8 @@
 # `fm-bearings-board.sh build` and then executed under the minimal DOM shim in
 # tests/assets/board-render-harness.mjs. The assertions are on what the page
 # renders - row badges, the stat strip, the empty state - never on the
-# template's source text.
+# template's source text, and the answer context the page hands to lavish when a
+# Captain's Call card is answered.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -76,6 +77,27 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
 # Build the board from <charted-json> alone and return what the renderer produced.
 render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
   render_board "$1" '[]' "$2" "${3:-0}" "${4:-0}"
+}
+
+# Build a Captain's Call deck from <call-json> and return what the renderer
+# produced after <answers-json> is submitted against its cards.
+render_call() {  # <home> <call-json> <answers-json>
+  local home=$1 call=$2 answers=$3 data="$1/payload.json"
+  jq -n --argjson call "$call" '{
+    schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
+    prs_live:false, captains_call:$call, underway:[], landed:[],
+    charted:[], charted_more:0, charted_warning_more:0}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" "$answers" \
+    || fail "the built board could not be rendered"
+}
+
+# The context bytes queued for the <n>th answer, exactly as lavish receives them.
+queued_context() {  # <render-json> <index>
+  printf '%s' "$1" | jq -c --argjson i "$2" '.queued[$i].data'
 }
 
 charted_next_count() {  # <render-json>
@@ -228,6 +250,44 @@ test_charted_rows_without_a_filed_date_follow_the_dated_rows_in_payload_order() 
   pass "charted rows with no filed date follow the dated rows in payload order"
 }
 
+# The board expresses a dated defer with the option's own `until`; the emitted
+# answer context fm-procevent-lavish.sh reads is what proves which close mode
+# the captain's selection actually carries.
+test_an_option_date_emits_the_dated_defer_answer_context() {
+  local home out call answers
+  home=$(make_home defer-context)
+  call='[
+    {"key":"sample-open-call","type":"decision","repo":"sample","title":"Open question",
+     "options":[{"value":"yes","label":"Adopt"},
+                {"value":"later","label":"Revisit in October","until":"2026-10-01"}],
+     "allow_freeform":true},
+    {"key":"sample-gated-call","type":"decision","repo":"sample","title":"Gated work",
+     "close":"release",
+     "options":[{"value":"go","label":"Proceed"},
+                {"value":"later","label":"Revisit in October","until":"2026-10-01"}],
+     "allow_freeform":true}
+  ]'
+  answers='[
+    {"question":"sample-open-call","selection":"later","note":"after the launch"},
+    {"question":"sample-open-call","selection":"yes","note":""},
+    {"question":"sample-gated-call","selection":"go","note":""},
+    {"question":"sample-gated-call","selection":"later","note":""}
+  ]'
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '.error == ""' >/dev/null \
+    || fail "the board rendered its fail-closed error instead of the deck: $out"
+
+  [ "$(queued_context "$out" 0)" = '{"schema":"fm-bearings-answer.v1","question":"sample-open-call","selection":"later","note":"after the launch","close":"defer","until":"2026-10-01"}' ] \
+    || fail "an option date did not emit the dated defer context: $out"
+  [ "$(queued_context "$out" 1)" = '{"schema":"fm-bearings-answer.v1","question":"sample-open-call","selection":"yes","note":""}' ] \
+    || fail "an option without a date emitted a close mode: $out"
+  [ "$(queued_context "$out" 2)" = '{"schema":"fm-bearings-answer.v1","question":"sample-gated-call","selection":"go","note":"","close":"release"}' ] \
+    || fail "the card close did not govern an option carrying no date: $out"
+  [ "$(queued_context "$out" 3)" = '{"schema":"fm-bearings-answer.v1","question":"sample-gated-call","selection":"later","note":"","close":"defer","until":"2026-10-01"}' ] \
+    || fail "an option date did not override the card's release close: $out"
+  pass "an option date emits a dated defer while the card close governs every other answer"
+}
+
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status
 test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
@@ -237,3 +297,4 @@ test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_an_option_date_emits_the_dated_defer_answer_context

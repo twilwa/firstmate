@@ -62,9 +62,9 @@
 # carries no card type. Its meaning, and the reason it can never reach the
 # keyed-answer intake as a blind close, are owned by
 # docs/captain-hold-lifecycle.md.
-# A defer is not a second reserved answer value: an authored option carries
-# `close: "defer"` plus its explicit `until: "YYYY-MM-DD"`, and the renderer
-# relays those fields only when that option is selected.
+# A defer is not a second reserved answer value: an authored option carries its
+# explicit `until: "YYYY-MM-DD"`, and the renderer emits the dated defer only
+# when that option is selected.
 #
 # Validation is fail-closed: the payload must be valid JSON with
 # schema=fm-bearings-board.v1 and every renderer-consumed field must satisfy
@@ -162,11 +162,7 @@ validate_payload() {  # <data.json>
           and (.value | slug(128))
           and (.label | nonempty_string)
           and optional_string("hint")
-          and ((has("close") | not) or .close == "defer")
-          and (if .close? == "defer"
-            then (.until | valid_day)
-            else (has("until") | not)
-            end)] | all)
+          and ((has("until") | not) or (.until | valid_day))] | all)
       and (optional_string("about"))
       and (optional_string("decide"))
       and (optional_string("detail"))
