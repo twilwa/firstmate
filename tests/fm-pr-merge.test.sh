@@ -451,6 +451,28 @@ test_verified_merge_records_pr_and_head() {
   pass "fm-pr-merge records pr= and pr_head= for a verified GitHub merge"
 }
 
+test_reviewed_head_handoff_refuses_a_later_push() {
+  local case_dir rc live reviewed
+  case_dir=$(make_case reviewed-head-race)
+  mkdir -p "$case_dir/wt"
+  live=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  reviewed=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  add_gh_mocks "$case_dir" "$live"
+
+  set +e
+  FM_PR_REVIEW_EXPECTED_HEAD="$reviewed" run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "reviewed-head-race: a push after ledger verification must refuse"
+  assert_grep "live head $live does not equal ledger-reviewed head $reviewed" "$case_dir/stderr" \
+    "reviewed-head-race: refusal did not name both exact heads"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "reviewed-head-race: the forge merge ran for an unreviewed head"
+  pass "fm-pr-merge refuses when its live head differs from the ledger-reviewed handoff"
+}
+
 # The forge call is the point of no return: once gh-axi has merged, nothing this
 # script does afterwards can un-merge it. Proving pr= is already in the task's
 # meta at that moment is what makes a later failure unable to lose the merge.
@@ -2156,6 +2178,7 @@ test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
 test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
+test_reviewed_head_handoff_refuses_a_later_push
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_github_open_unqueued_outcome_refuses

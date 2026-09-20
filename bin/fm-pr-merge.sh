@@ -100,6 +100,10 @@
 # away-grant check, or a captain hold.
 #
 # Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [-- <extra forge merge args>]
+# FM_PR_REVIEW_EXPECTED_HEAD is an internal handoff from fm-pr-review.sh.
+# When present on GitHub, the live pre-merge head must equal that reviewed head;
+# a push between ledger verification and this script therefore refuses instead
+# of letting this script validate and merge a different, unreviewed head.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -142,6 +146,13 @@ PR_PATH=$FM_PR_PATH
 PR_OWNER=$FM_PR_OWNER
 PR_REPO=$FM_PR_REPO
 PR_NUMBER=$FM_PR_NUMBER
+FM_PR_REVIEW_EXPECTED_HEAD=${FM_PR_REVIEW_EXPECTED_HEAD:-}
+if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+  if [ "$PROVIDER" != github ] || ! fm_pr_head_valid "$FM_PR_REVIEW_EXPECTED_HEAD"; then
+    echo "error: invalid reviewed-head merge handoff" >&2
+    exit 2
+  fi
+fi
 # glab resolves the instance from the project URL passed to -R, so the host is
 # rebuilt from the parsed identity rather than read from any ambient default.
 PROJECT_URL="https://$FM_PR_HOST/$FM_PR_PATH"
@@ -616,6 +627,11 @@ FIELDS
 
   if ! fm_pr_head_valid "$live_head"; then
     echo "error: could not read the GitHub pull request head commit before merging" >&2
+    return 1
+  fi
+  if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] && [ "$live_head" != "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+    printf 'error: refusing to merge %s\n  - live head %s does not equal ledger-reviewed head %s\n' \
+      "$URL" "$live_head" "$FM_PR_REVIEW_EXPECTED_HEAD" >&2
     return 1
   fi
   if ! red=$(github_checks_not_green "$json"); then
