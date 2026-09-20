@@ -1,0 +1,27 @@
+Live worker panes after the evidence run
+========================================
+
+The steering inbox and the doorbell are what actually reach a worker, so
+these are the panes themselves, captured from the running tmux server.
+
+--- S1 BEFORE (base 9a0e566): fm-send.sh lane-ufA --not-a-real-flag steer the worker
+    the worker was rung, and the record it was told to read is the literal flag string
+    | : Firstmate instruction waiting: list '/tmp/fmsend-evidence-777998/home/state/la
+    | ne-ufA.inbox'/*.msg and, in numeric order, read and act on each, then mv each ha
+    | ndled file to '/tmp/fmsend-evidence-777998/home/state/lane-ufA.inbox'/handled/.
+    | : Firstmate instruction waiting: list '/tmp/fmsend-evidence-777998/home/state/la
+    | ne-ufA.inbox'/*.msg and, in numeric order, read and act on each, then mv each ha
+    | ndled file to '/tmp/fmsend-evidence-777998/home/state/lane-ufA.inbox'/handled/.
+
+--- S1 AFTER (HEAD): identical command against the twin pane fm-lane-ufB
+    the pane is untouched; nothing was rung and nothing was recorded
+    | (empty - no doorbell was ever typed)
+
+--- S3 BEFORE (base): fm-send.sh lane-ktA --key Enter --not-a-real-flag
+    the primed line is echoed back, so a real Enter was submitted while the extra argument vanished
+    | PROBE-BETA-unsubmitted-line
+    | PROBE-BETA-unsubmitted-line
+
+--- S3 AFTER (HEAD): identical command against the twin pane fm-lane-ktB
+    the primed line appears once only, so no keystroke was delivered
+    | PROBE-BETA-unsubmitted-line

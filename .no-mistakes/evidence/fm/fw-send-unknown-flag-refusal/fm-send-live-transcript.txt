@@ -1,0 +1,131 @@
+fm-send unknown-flag refusal - live product transcript
+worktree HEAD : 967427d   base: 9a0e566
+product driven: bin/fm-send.sh against a real tmux server on a private socket,
+                a real FM_HOME, and real agent-classified pane occupants.
+======================================================================
+
+### S1  unknown-flag-refused-not-delivered
+--- BEFORE (base 9a0e566): the reported defect, reproduced live ---
+$ fm-send.sh lane-ufA --not-a-real-flag steer the worker
+  exit=0
+  durable record left in the live worker's steering inbox:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T20:54:20Z
+    --
+    --not-a-real-flag steer the worker  doorbell lines rung into the live worker pane: 2
+
+--- AFTER (HEAD): identical command, twin pane ---
+$ fm-send.sh lane-ufB --not-a-real-flag steer the worker
+error: unknown flag '--not-a-real-flag'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+  steering inbox:
+    (no steering record exists for lane-ufB)
+  doorbell lines rung into the live worker pane: 0
+
+### S2  key-flag-still-reaches-the-live-pane  (the allowlist trap)
+  priming the live pane with an unsubmitted line, so a real Enter is observable
+  occurrences before the send: 1  (1 = typed, not yet submitted)
+$ fm-send.sh lane-kx --key Enter
+  exit=0
+  occurrences after the send : 2  (2 = the agent received a real Enter and echoed the line back)
+
+### S3  trailing-argument-after-key-refused
+--- BEFORE (base 9a0e566) ---
+$ fm-send.sh lane-ktA --key Enter --not-a-real-flag
+  exit=0
+  pane echo count: 2  (2 = Enter delivered, extra argument silently discarded)
+--- AFTER (HEAD) ---
+$ fm-send.sh lane-ktB --key Enter --not-a-real-flag
+error: unexpected argument '--not-a-real-flag' after '--key Enter'; --key takes exactly one key and nothing else. Nothing was sent.
+  exit=1
+  pane echo count: 1  (1 = no keystroke was delivered)
+
+### S4  fire-and-forget-with-key-refused-in-either-order
+--- order: --fire-and-forget before --key (guard pre-existed) ---
+$ fm-send.sh sm-ffB --fire-and-forget 0123456789abcdef --key Enter
+error: --fire-and-forget cannot accompany --key
+  exit=1
+--- order: --key before --fire-and-forget (the bypass this round closes) ---
+  BEFORE (base 9a0e566):
+$ fm-send.sh sm-ffA --key Enter --fire-and-forget 0123456789abcdef
+  exit=0
+  pane echo count: 2  (2 = Enter delivered despite the incompatible flag)
+  AFTER (HEAD):
+$ fm-send.sh sm-ffB --key Enter --fire-and-forget 0123456789abcdef
+error: --fire-and-forget cannot accompany --key
+  exit=1
+  pane echo count: 1  (1 = nothing delivered)
+
+### S5  legitimate-dash-text-still-delivers
+$ fm-send.sh lane-ld1 -1 means failure, check the exit code
+  exit=0
+  delivered record:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T20:54:32Z
+    --
+    -1 means failure, check the exit code$ fm-send.sh lane-ld2 please run the build --verbose and report
+  exit=0
+  delivered record (a flag-shaped token in text position stays text):
+    schema=fm-task-inbox.v1
+    at=2026-09-20T20:54:35Z
+    --
+    please run the build --verbose and report
+### S6  supported-flags-unaffected
+$ fm-send.sh lane-rk --resolve-key deploy yes, ship it
+  exit=0
+  delivered record:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T20:54:37Z
+    --
+    yes, ship it$ fm-send.sh sm-ok --fire-and-forget 0123456789abcdef report your findings
+  exit=0
+  delivered record:
+    schema=fm-task-inbox.v1
+    at=2026-09-20T20:54:39Z
+    delivery=fire-and-forget
+    --
+    [fm-from-firstmate]⁣delivery=0123456789abcdef report your findings
+### S7  allowlist-boundary-probes  (adversarial)
+--- near-miss spellings of real flags must not slip through as message text ---
+$ fm-send.sh lane-ld3 --resolve-keys deploy answer
+error: unknown flag '--resolve-keys'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+$ fm-send.sh lane-ld3 --key=Enter
+error: unknown flag '--key=Enter'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+$ fm-send.sh lane-ld3 --fire-and-forget-please 0123456789abcdef hello
+error: unknown flag '--fire-and-forget-please'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+$ fm-send.sh lane-ld3 --Key Enter
+error: unknown flag '--Key'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+--- deliberate, PR-documented limitation: text beginning with -- is refused ---
+$ fm-send.sh lane-ld3 -- please treat this as text
+error: unknown flag '--'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+  exit=1
+  (no steering record exists for lane-ld3)
+
+### S8  key-path-adversarial-trailing-arguments
+$ fm-send.sh lane-kx --key Enter oops
+error: unexpected argument 'oops' after '--key Enter'; --key takes exactly one key and nothing else. Nothing was sent.
+  exit=1
+$ fm-send.sh lane-kx --key Enter one two --fire-and-forget 0123456789abcdef
+error: --fire-and-forget cannot accompany --key
+  exit=1
+$ fm-send.sh lane-kx --key Enter one two --fire-and-forget=0123456789abcdef
+error: --fire-and-forget cannot accompany --key
+  exit=1
+$ fm-send.sh lane-kx --resolve-key deploy --key Enter
+error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+  exit=1
+$ fm-send.sh lane-kx --key Enter --resolve-key deploy
+error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+  exit=1
+--- out-of-scope boundary: --key with no key must still fail loudly, not deliver ---
+$ fm-send.sh lane-kx --key
+/home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M308WHWJ1496H3CECCZ8RHZM/bin/fm-send.sh: line 795: $2: unbound variable
+  exit=1
+  pane echo count for PROBE-ALPHA: 2  (still 2 from S2: no adversarial call delivered a further keystroke)
+
+======================================================================
+end of transcript
