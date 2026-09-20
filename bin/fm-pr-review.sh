@@ -4,8 +4,9 @@
 # Ledger files live below the data-relative directory configured by the tracked
 # review policy, keyed as github--OWNER--REPO--NUMBER.json.
 # A head change creates a generation with fresh checkpoint, check, disposition,
-# and attestation state. The tracked policy file owns timing and reviewer/model
-# requirements; bin/fm-pr-risk.sh is the single risk classifier.
+# attestation, and post-merge verification state. The tracked policy file owns
+# timing and reviewer/model requirements; bin/fm-pr-risk.sh is the single risk
+# classifier.
 #
 # Usage:
 #   fm-pr-review.sh init <task-id> <pr-url> [--snapshot <snapshot.json>]
@@ -19,9 +20,31 @@
 #   fm-pr-review.sh ready <pr-url> <head>
 #   fm-pr-review.sh merge-decision <pr-url> [--snapshot <snapshot.json>]
 #   fm-pr-review.sh merge <task-id> <pr-url> [fm-pr-merge args...]
+#   fm-pr-review.sh post-merge <pr-url> <head> <evidence.json>
+#   fm-pr-review.sh ready-for-qa <pr-url> <head>
 #   fm-pr-review.sh show <pr-url>
 #   fm-pr-review.sh poll
 #   fm-pr-review.sh arm|disarm
+#
+# `post-merge` accepts `firstmate-post-merge-verification.v1` JSON.
+# A non-browser record uses `applicability:"not-applicable"`, the reviewed
+# `head`, and a non-empty `reason`.
+# A browser record uses `applicability:"browser"`, the reviewed `head`, an
+# `outcome` of `passed` or `failed`, the forge's actual `merged_sha`, the
+# observed `running_sha`, and the `running_url`.
+# It also records non-empty `journeys`, `data_checks`, and `api_checks` with
+# result and evidence, `console_errors`, `network_errors`, desktop and mobile
+# coverage, a `screenshot_url`, and a `posted_evidence_url` on this PR or Linear.
+# Its `browser` object must name `mode:"local"`, a fresh profile scoped to the
+# ledger task, and must set personal cookie import, paid Browser Use, and Jev
+# cloud use to false.
+# `destructive_production_actions` must also be false.
+# A passing record requires the running and merged SHAs to match, every journey
+# and data/API check to pass, no console or network errors, and no bug record.
+# A failed record requires a failed observation or SHA mismatch plus a bug URL
+# whose action is `created` or `reopened`.
+# `ready-for-qa` allows only the latest passing browser record or an evidenced
+# non-browser N/A record for the current reviewed head.
 #
 # `poll` is the only watcher-facing command. It performs no network access and
 # prints at most one line when one or more ledger checkpoints are due. The
@@ -134,7 +157,8 @@ new_generation() {
           risk:$risk[0],not_before_epoch:$not_before,next_checkpoint_epoch:$not_before,
           retry_index:0,checkpoints:[],review_items:[],attestations:[],final_disposition:null,
           merge_decision:(if $prior_decision.decision == "hold"
-            then $prior_decision + {carried_from_head:$old_head} else null end)}]
+            then $prior_decision + {carried_from_head:$old_head} else null end),
+          post_merge_verifications:[]}]
     ' "$target" > "$target.next"
   else
     jq -n --arg task "$task" --arg url "$URL" --arg head "$head" --arg at "$iso" \
@@ -142,7 +166,8 @@ new_generation() {
       schema:"firstmate-pr-review-ledger.v1",task:$task,url:$url,current_head:$head,
       generations:[{head:$head,created_at:$at,created_epoch:$epoch,risk:$risk[0],
         not_before_epoch:$not_before,next_checkpoint_epoch:$not_before,retry_index:0,
-        checkpoints:[],review_items:[],attestations:[],final_disposition:null,merge_decision:null}]}' > "$target.next"
+        checkpoints:[],review_items:[],attestations:[],final_disposition:null,merge_decision:null,
+        post_merge_verifications:[]}]}' > "$target.next"
   fi
   rm -f -- "$risk"
   mv -f -- "$target.next" "$target"
@@ -223,6 +248,87 @@ ready_check() {
   model=$(jq -r '.generations[-1].attestations[]? | select(.kind == "no-mistakes") | .model' "$LEDGER" | tail -1)
   independent=$(jq '[.generations[-1].attestations[] | select(.kind == "independent-agent-review")] | length' "$LEDGER")
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
+}
+
+validate_post_merge_evidence() {
+  local file=$1 head=$2 task=$3
+  [ -f "$file" ] && [ ! -L "$file" ] || die 'post-merge evidence is unavailable'
+  jq -e --arg head "$head" --arg url "$URL" --arg task "$task" '
+    def text: type == "string" and length > 0;
+    def sha: type == "string" and test("^[0-9a-fA-F]{40}$");
+    def web_url: text and (startswith("https://") or startswith("http://"));
+    def posted_url:
+      text and (startswith($url + "#") or startswith($url + "/files") or startswith("https://linear.app/"));
+    def bug_url:
+      text and (startswith("https://linear.app/") or test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
+    .schema == "firstmate-post-merge-verification.v1" and .head == $head and
+    if .applicability == "not-applicable" then
+      (.reason | text)
+    elif .applicability == "browser" then
+      ((.outcome == "passed") or (.outcome == "failed")) and
+      (.merged_sha | sha) and (.running_sha | sha) and
+      (.running_url | web_url) and
+      .browser.mode == "local" and .browser.profile_scope == $task and .browser.fresh_profile == true and
+      .browser.personal_cookies_imported == false and
+      .browser.paid_browser_use == false and .browser.jev_cloud == false and
+      .destructive_production_actions == false and
+      (.journeys | type == "array" and length > 0 and
+        all(.[]; (.name | text) and ((.result == "passed") or (.result == "failed")) and (.evidence | text))) and
+      (.data_checks | type == "array" and length > 0 and
+        all(.[]; (.name | text) and ((.result == "passed") or (.result == "failed")) and (.evidence | text))) and
+      (.api_checks | type == "array" and length > 0 and
+        all(.[]; (.name | text) and ((.result == "passed") or (.result == "failed")) and (.evidence | text))) and
+      (.console_errors | type == "array" and all(.[]; text)) and
+      (.network_errors | type == "array" and all(.[]; text)) and
+      .desktop.checked == true and (.desktop.evidence | text) and
+      (.mobile.relevant | type == "boolean") and
+      (if .mobile.relevant then .mobile.checked == true and (.mobile.evidence | text)
+       else .mobile.checked == false and (.mobile.reason | text) end) and
+      (.screenshot_url | web_url) and (.posted_evidence_url | posted_url) and
+      if .outcome == "passed" then
+        .running_sha == .merged_sha and
+        all(.journeys[]; .result == "passed") and
+        all(.data_checks[]; .result == "passed") and
+        all(.api_checks[]; .result == "passed") and
+        (.console_errors | length) == 0 and (.network_errors | length) == 0 and
+        .bug == null
+      else
+        ((.running_sha != .merged_sha) or any(.journeys[]; .result == "failed") or
+          any(.data_checks[]; .result == "failed") or
+          any(.api_checks[]; .result == "failed") or
+          (.console_errors | length) > 0 or (.network_errors | length) > 0) and
+        (.bug.url | bug_url) and ((.bug.action == "created") or (.bug.action == "reopened"))
+      end
+    else false
+    end
+  ' "$file" >/dev/null || die 'post-merge evidence is incomplete, unsafe, or does not match the reviewed head'
+}
+
+ready_for_qa_check() {
+  local head=$1 errors latest applicability outcome
+  ledger_valid || die 'review ledger is unavailable'
+  errors=$(jq -r --arg head "$head" '
+    .generations[-1] as $g
+    | ($g.post_merge_verifications // [] | last) as $latest
+    | [
+      (if .current_head == $head and $g.head == $head then empty else "ledger generation does not match the Ready for QA head" end),
+      (if $g.merge_decision.decision == "merge" and $g.merge_decision.verified_head == $head
+        then empty else "the current head has no recorded merge decision" end),
+      (if $latest != null and $latest.head == $head
+        then empty else "post-merge verification is missing for the current head" end),
+      (if $latest.ready_for_qa == "allowed" then empty
+       elif $latest.ready_for_qa == "blocked" then
+         "post-merge smoke failed; owning bug: " + ($latest.bug.url // "not recorded")
+       else "post-merge verification has no Ready for QA decision" end)
+    ] | .[]' "$LEDGER")
+  if [ -n "$errors" ]; then
+    printf '%s\n' "$errors" | sed 's/^/Ready for QA gate: /' >&2
+    return 1
+  fi
+  latest=$(jq '.generations[-1].post_merge_verifications[-1]' "$LEDGER")
+  applicability=$(printf '%s' "$latest" | jq -r .applicability)
+  outcome=$(printf '%s' "$latest" | jq -r '.outcome // "not-applicable"')
+  printf 'ready-for-qa: %s head=%s applicability=%s outcome=%s\n' "$URL" "$head" "$applicability" "$outcome"
 }
 
 SNAPSHOT_TEMP=0
@@ -369,6 +475,33 @@ case "$cmd" in
       || die 'reviewed-head merge handoff is unavailable'
     export FM_PR_REVIEW_EXPECTED_HEAD
     exec "$SCRIPT_DIR/fm-pr-merge.sh" "$TASK" "$URL" "$@"
+    ;;
+  post-merge)
+    [ "$#" -eq 3 ] || die 'post-merge requires pull-request URL, head, and evidence JSON'
+    parse_url "$1"; HEAD=$2; EVIDENCE=$3
+    ledger_valid || die 'review ledger is unavailable'
+    [ "$(jq -r .current_head "$LEDGER")" = "$HEAD" ] || die 'post-merge head is not the current ledger generation'
+    [ "$(jq -r '.generations[-1].merge_decision.decision // ""' "$LEDGER")" = merge ] \
+      || die 'post-merge verification requires a recorded merge decision'
+    [ "$(jq -r '.generations[-1].merge_decision.verified_head // ""' "$LEDGER")" = "$HEAD" ] \
+      || die 'post-merge verification head does not match the merge decision'
+    validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")"
+    WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
+    jq --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" --slurpfile evidence "$EVIDENCE" '
+      ($evidence[0] + {recorded_at:$at,recorded_epoch:$epoch,
+        ready_for_qa:(if $evidence[0].applicability == "not-applicable" or $evidence[0].outcome == "passed"
+          then "allowed" else "blocked" end)}) as $record
+      | .generations[-1].post_merge_verifications = ((.generations[-1].post_merge_verifications // []) + [$record])
+    ' "$LEDGER" > "$WORK"
+    publish "$WORK"; rm -f -- "$WORK"
+    printf 'post-merge: %s head=%s applicability=%s outcome=%s ready_for_qa=%s\n' \
+      "$URL" "$HEAD" "$(jq -r '.generations[-1].post_merge_verifications[-1].applicability' "$LEDGER")" \
+      "$(jq -r '.generations[-1].post_merge_verifications[-1].outcome // "not-applicable"' "$LEDGER")" \
+      "$(jq -r '.generations[-1].post_merge_verifications[-1].ready_for_qa' "$LEDGER")"
+    ;;
+  ready-for-qa)
+    [ "$#" -eq 2 ] || die 'ready-for-qa requires pull-request URL and head'
+    parse_url "$1"; ready_for_qa_check "$2"
     ;;
   show)
     [ "$#" -eq 1 ] || die 'show requires pull-request URL'

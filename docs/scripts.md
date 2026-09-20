@@ -136,7 +136,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-pr-reviewers.sh`     | Read-only: suggest reviewers from GitHub's own author mapping of recent commits on a pull request's changed files, never requesting one |
 | `fm-pr-risk.sh`          | Classify a complete PR changed-file surface as low or high stakes with a one-line reason, resolving uncertainty to high |
 | `fm-pr-review-snapshot.sh` | Collect a head-stable GitHub snapshot of required checks, requested reviews, top-level comments, review submissions, and every inline thread |
-| `fm-pr-review.sh`        | Own the durable per-PR/per-head review ledger, delayed watcher checkpoint, dispositions, high-stakes attestations, and reviewed-head merge handoff |
+| `fm-pr-review.sh`        | Own the durable per-PR/per-head review ledger, delayed watcher checkpoint, dispositions, high-stakes attestations, reviewed-head merge handoff, and post-merge Ready for QA gate |
 | `fm-merge-outcome-lib.sh` | Publish a confirmed merge's durable, role-routed supervision outcome                 |
 | `fm-merge-authority-lib.sh` | Resolve merge authority at the gate, persist it against the accepted canonical PR, and identity-check its later poll consumption |
 | `fm-parent-channel-lib.sh` | Resolve a secondmate home's parent channel and append a captain-facing outcome line to it at most once |

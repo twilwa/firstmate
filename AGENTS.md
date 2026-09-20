@@ -362,6 +362,7 @@ Without a current explicit captain instruction that states the concrete merge, t
 Load `ask-user-authority` before deciding any ask-user finding; the implementation worker never answers its own finding.
 Use `bin/fm-pr-review.sh merge` for every GitHub task PR merge, `bin/fm-pr-merge.sh` directly for GitLab, and `bin/fm-merge-local.sh` for approved local-only landing; never call a lower-level merge command around their guards.
 After an autonomous merge, give the captain a one-line full-URL or local-main outcome.
+Before applying Ready for QA after a GitHub merge or deploy, load `pr-review-policy` and satisfy its head-keyed post-merge gate without weakening any pre-merge browser check.
 
 ### Validate
 
@@ -593,7 +594,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the Relay configuration blocker, on a `public-followup ...` `check:` wake or a startup-surfaced public commitment, and on any milestone or terminal wake for a Relay-linked task before posting its completion follow-up; relevant only when Relay is on.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
-- `pr-review-policy` - load after a GitHub PR becomes ready, on a PR review checkpoint wake, before dispositioning PR feedback, and before merging a GitHub PR.
+- `pr-review-policy` - load after a GitHub PR becomes ready, on a PR review checkpoint wake, before dispositioning PR feedback, before merging a GitHub PR, and before applying Ready for QA after merge or deploy.
 
 ## 14. Relay
 

@@ -14,6 +14,7 @@ mkdir -p "$HOME_DIR/data" "$HOME_DIR/state"
 URL=https://github.com/o/r/pull/7
 HEAD_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 HEAD_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+MERGED_SHA=cccccccccccccccccccccccccccccccccccccccc
 
 snapshot() { # path head pending-json comments-json checks-json files-json
   jq -n --arg url "$URL" --arg head "$2" \
@@ -324,6 +325,140 @@ test_arm_reuses_the_authenticated_watcher_check() {
   pass 'review checkpoints reuse the authenticated watcher check without another monitor'
 }
 
+prepare_post_merge_ledger() {
+  local initial="$TMP_ROOT/post-merge-initial.json"
+  snapshot "$initial" "$HEAD_A" '[]' '[]' "$GREEN" "$LOW_FILES"
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=8000 review init task-post-merge "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=8600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-post-merge' >/dev/null
+  FM_TEST_NOW_EPOCH=8601 review merge-decision "$URL" --snapshot "$initial" >/dev/null \
+    || fail 'post-merge fixture could not record its merge decision'
+}
+
+browser_evidence() { # path outcome running-sha bug-json
+  jq -n --arg head "$HEAD_A" --arg running_sha "$3" --arg outcome "$2" \
+    --arg merged_sha "$MERGED_SHA" --arg posted "$URL#issuecomment-100" --argjson bug "$4" '{
+      schema:"firstmate-post-merge-verification.v1",
+      applicability:"browser",head:$head,outcome:$outcome,
+      merged_sha:$merged_sha,running_sha:$running_sha,running_url:"https://app.example.test/",
+      browser:{mode:"local",profile_scope:"task-post-merge",fresh_profile:true,personal_cookies_imported:false,
+        paid_browser_use:false,jev_cloud:false},
+      destructive_production_actions:false,
+      journeys:[{name:"sign in and open dashboard",result:(if $outcome == "passed" then "passed" else "failed" end),
+        evidence:"https://evidence.example.test/journey"}],
+      data_checks:[{name:"persisted dashboard row",result:"passed",
+        evidence:"https://evidence.example.test/data"}],
+      api_checks:[{name:"dashboard API payload",result:"passed",
+        evidence:"https://evidence.example.test/api"}],
+      console_errors:(if $outcome == "passed" then [] else ["Uncaught dashboard error"] end),
+      network_errors:(if $outcome == "passed" then [] else ["GET /api/dashboard 500"] end),
+      desktop:{checked:true,evidence:"https://evidence.example.test/desktop"},
+      mobile:{relevant:true,checked:true,reason:"",evidence:"https://evidence.example.test/mobile"},
+      screenshot_url:"https://evidence.example.test/screenshot.png",
+      posted_evidence_url:$posted,
+      bug:$bug
+    }' > "$1"
+}
+
+test_post_merge_non_browser_records_not_applicable() {
+  local changed evidence path status=0
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-na.json"
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+    head:$head,reason:"shell-only ledger maintenance with no browser-facing behavior"
+  }' > "$evidence"
+  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+    || fail 'non-browser post-merge verification did not record its N/A reason'
+  path=$(ledger)
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].applicability' "$path")" = not-applicable ] \
+    || fail 'non-browser post-merge record was not retained on the current head'
+  [ -n "$(jq -r '.generations[-1].post_merge_verifications[-1].reason' "$path")" ] \
+    || fail 'non-browser post-merge record lost its reason'
+  review ready-for-qa "$URL" "$HEAD_A" >/dev/null \
+    || fail 'an evidenced non-browser N/A record did not satisfy the Ready for QA gate'
+  changed="$TMP_ROOT/post-merge-new-head.json"
+  snapshot "$changed" "$HEAD_B" '[]' '[]' "$GREEN" "$LOW_FILES"
+  FM_TEST_NOW_EPOCH=9000 review checkpoint "$URL" --snapshot "$changed" >/dev/null
+  [ "$(jq '.generations[-1].post_merge_verifications | length' "$path")" -eq 0 ] \
+    || fail 'a new head inherited the old head post-merge verification'
+  status=0; review ready-for-qa "$URL" "$HEAD_B" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'a new head reused the old head Ready for QA decision'
+  pass 'non-browser changes record a head-keyed N/A reason that a new head invalidates'
+}
+
+test_post_merge_browser_pass_requires_full_local_evidence() {
+  local evidence path
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-pass.json"
+  browser_evidence "$evidence" passed "$MERGED_SHA" null
+  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+    || fail 'complete local-browser post-merge evidence was refused'
+  path=$(ledger)
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].running_sha' "$path")" = "$MERGED_SHA" ] \
+    || fail 'post-merge record did not retain the running merged SHA'
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].ready_for_qa' "$path")" = allowed ] \
+    || fail 'a complete passing smoke did not record an allowed Ready for QA decision'
+  review ready-for-qa "$URL" "$HEAD_A" >/dev/null \
+    || fail 'complete passing browser evidence did not satisfy the Ready for QA gate'
+  pass 'browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence'
+}
+
+test_post_merge_rejects_superficial_or_unsafe_browser_evidence() {
+  local evidence mutation status
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-superficial.json"
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"browser",head:$head,
+    outcome:"passed",http_status:200,worker_done:true
+  }' > "$evidence"
+  status=0; review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'HTTP 200 and a worker done marker counted as a post-merge QA pass'
+
+  browser_evidence "$evidence" passed "$MERGED_SHA" null
+  for mutation in remote-browser reused-profile wrong-scope personal-cookies destructive-action paid-browser jev-cloud missing-data missing-api unchecked-mobile stale-sha; do
+    case "$mutation" in
+      remote-browser) jq '.browser.mode="remote"' "$evidence" > "$evidence.tmp" ;;
+      reused-profile) jq '.browser.fresh_profile=false' "$evidence" > "$evidence.tmp" ;;
+      wrong-scope) jq '.browser.profile_scope="another-task"' "$evidence" > "$evidence.tmp" ;;
+      personal-cookies) jq '.browser.personal_cookies_imported=true' "$evidence" > "$evidence.tmp" ;;
+      destructive-action) jq '.destructive_production_actions=true' "$evidence" > "$evidence.tmp" ;;
+      paid-browser) jq '.browser.paid_browser_use=true' "$evidence" > "$evidence.tmp" ;;
+      jev-cloud) jq '.browser.jev_cloud=true' "$evidence" > "$evidence.tmp" ;;
+      missing-data) jq '.data_checks=[]' "$evidence" > "$evidence.tmp" ;;
+      missing-api) jq '.api_checks=[]' "$evidence" > "$evidence.tmp" ;;
+      unchecked-mobile) jq '.mobile.checked=false' "$evidence" > "$evidence.tmp" ;;
+      stale-sha) jq --arg stale "$HEAD_B" '.running_sha=$stale' "$evidence" > "$evidence.tmp" ;;
+    esac
+    status=0; review post-merge "$URL" "$HEAD_A" "$evidence.tmp" >/dev/null 2>&1 || status=$?
+    [ "$status" -ne 0 ] || fail "unsafe or incomplete post-merge evidence was accepted: $mutation"
+  done
+  pass 'post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims'
+}
+
+test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
+  local evidence path status=0
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-failed.json"
+  browser_evidence "$evidence" failed "$HEAD_B" null
+  status=0; review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'a failed post-merge smoke recorded without creating or reopening its owning bug'
+
+  browser_evidence "$evidence" failed "$HEAD_B" \
+    '{"url":"https://linear.app/example/issue/BUG-1","action":"created"}'
+  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+    || fail 'failed post-merge evidence with an owning bug was not recorded'
+  path=$(ledger)
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].ready_for_qa' "$path")" = blocked ] \
+    || fail 'a failed smoke did not record the Ready for QA block'
+  status=0; review ready-for-qa "$URL" "$HEAD_A" > "$TMP_ROOT/ready-failed.out" 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'a failed post-merge smoke allowed the Ready for QA label'
+  assert_grep 'https://linear.app/example/issue/BUG-1' "$TMP_ROOT/ready-failed.out" \
+    'the Ready for QA refusal did not name the owning bug'
+  pass 'a failed post-merge smoke requires an owning bug and blocks Ready for QA'
+}
+
 test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
 test_high_stakes_requires_exact_fable_and_independent_review
@@ -334,3 +469,7 @@ test_migrated_assessment_rows_are_durable_fixtures
 test_human_hold_survives_head_change_until_evidenced_release
 test_merge_forwards_guarded_options_to_the_merge_parser
 test_arm_reuses_the_authenticated_watcher_check
+test_post_merge_non_browser_records_not_applicable
+test_post_merge_browser_pass_requires_full_local_evidence
+test_post_merge_rejects_superficial_or_unsafe_browser_evidence
+test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa

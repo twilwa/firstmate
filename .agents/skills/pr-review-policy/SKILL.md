@@ -2,7 +2,7 @@
 name: pr-review-policy
 description: >-
   Agent-only procedure for the low/high-stakes pull-request review ledger and autonomous merge gate.
-  Load after a GitHub PR becomes ready, on a PR review checkpoint wake, before dispositioning review feedback, and before merging a GitHub PR.
+  Load after a GitHub PR becomes ready, on a PR review checkpoint wake, before dispositioning review feedback, before merging a GitHub PR, and before applying Ready for QA after merge or deploy.
 user-invocable: false
 metadata:
   internal: true
@@ -53,4 +53,34 @@ Use `bin/fm-pr-review.sh merge <task> <url> [fm-pr-merge args...]` for a GitHub 
 It takes a fresh complete snapshot, starts a new generation if the head moved, refuses pending reviews, stale checks, missing dispositions, or missing high-stakes attestations, records the merge decision with the reviewed and immediately verified head, then hands the same URL to the guarded merge command.
 The guarded merge command binds the forge request to that head, so a push in the remaining interval fails instead of merging unreviewed code.
 
-After landing, continue the ordinary teardown and downstream-work path.
+## Post-merge QA
+
+Pre-merge browser checks remain required wherever their existing delivery path calls for them.
+They do not satisfy this post-merge stage because this stage checks the code and data actually running after merge or deploy.
+
+Decide whether the merged change can affect browser-visible behavior, browser-driven journeys, browser data, or APIs consumed by a browser.
+For a non-browser change, write a `firstmate-post-merge-verification.v1` evidence file with the current reviewed head, `applicability:"not-applicable"`, and a concrete reason, then record it with `bin/fm-pr-review.sh post-merge <url> <head> <evidence.json>`.
+Do not skip the ledger entry.
+
+For a browser-facing change, read the forge's actual merged commit SHA and compare it with a build marker, version endpoint, or equivalent observation from the running URL.
+Do not assume that a squash or merge commit has the pull-request head SHA.
+Drive the critical journeys in a real browser and inspect the resulting data and API responses, console errors, and network errors.
+Cover desktop and mobile when mobile is relevant, or record why mobile is not relevant.
+An HTTP 200 response, a healthy landing page, or a worker done line is not a QA pass.
+
+Use `chrome-devtools-axi` only against a local browser session with a fresh profile scoped to this task.
+Never import personal cookies or reuse a personal browser profile.
+Do not perform destructive production actions.
+This stage authorizes no paid Browser Use session and no Jev cloud run.
+
+Capture a screenshot and post the evidence on the tracking Linear issue or the pull request.
+The evidence file schema and exact safety fields are owned by the `bin/fm-pr-review.sh` header.
+Record the result with `post-merge`.
+If the smoke fails, create or reopen the owning bug first and include its URL and action in the failed evidence record.
+
+Run `bin/fm-pr-review.sh ready-for-qa <url> <head>` immediately before applying the Ready for QA label.
+Apply the label only when that command succeeds.
+A failed latest smoke stays recorded as blocked and the refusal names the owning bug.
+A later fix needs a fresh passing post-merge record for the same reviewed head, or a new ledger generation when the head changes.
+
+After the post-merge gate passes, continue the ordinary teardown and downstream-work path.
