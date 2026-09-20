@@ -4,8 +4,12 @@
 # Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
 #   --resolve-key and --fire-and-forget, plus the --key form below, are the
 #   only flags fm-send accepts.
-#   An unrecognised --<token> is refused before anything is recorded, rung, or
-#   typed. A single-dash word is text, not a flag.
+#   An unrecognised --<token> in flag position - anywhere before the message
+#   text begins - is refused before anything is recorded, rung, or typed.
+#   A single-dash word is text, not a flag, and a --<token> that appears after
+#   the text has begun is part of the message.
+#   There is deliberately no end-of-flags separator, so a message whose FIRST
+#   word begins with "--" cannot be sent through fm-send at all.
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
