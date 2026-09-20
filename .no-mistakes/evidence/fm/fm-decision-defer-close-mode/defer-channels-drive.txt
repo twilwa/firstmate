@@ -1,0 +1,305 @@
+Decision defer, driven against the running product
+==================================================
+branch fm/fm-decision-defer-close-mode   base 9a0e566   target c7fc69a
+Every command below is the real CLI an operator runs, against a real tasks-axi
+backlog in a throwaway home, on 2026-09-20.
+
+
+==============================================================
+0. THE DEFECT, REPRODUCED ON THE BASE COMMIT (9a0e566)
+==============================================================
+
+
+--- the captain says 'later' on the chat/keyed intake ---
+$ fm-captain-hold.sh answers --source "captain chat"   <<< later ... defer 2026-10-15
+skipped: sample-release-timing (unknown close mode defer 2026-10-15)
+answers: closed=0 skipped=1
+rc=1
+
+--- the captain says 'later' on the direct answer path ---
+$ fm-captain-hold.sh answer sample-release-timing --decision-file later.txt --defer-until 2026-10-15
+fm-captain-hold.sh - deterministic mechanics for tasks held for the captain.
+
+(the whole usage text follows; base has no --defer-until)
+rc=2
+
+--- the call after both attempts: no answer recorded anywhere ---
+Captain hold set: 2026-09-20T12:08:40Z
+
+
+==============================================================
+1. TARGET: THE DIRECT CLI RECORDS 'LATER' AS AN ANSWER AND DATES THE HOLD
+==============================================================
+
+$ fm-captain-hold.sh answer sample-release-timing --decision-file later.txt --defer-until 2026-08-01
+deferred: sample-release-timing until 2026-08-01
+
+--- the call: still queued, still captain-held, now dated, with the answer recorded ---
+  state: queued
+  held: no
+  hold_reason: captain timing choice pending
+  hold_until: 2026-08-01
+Captain hold set: 2026-07-14T12:00:00Z
+
+Resolution recorded by fm-captain-hold.
+Decision digest: 3e97d023bb82296eb358bbb61b9803cd7e14983227d6fdd8c8bf489eace7f2e3
+Resolution mode: deferred
+Deferred until: 2026-08-01
+
+Captain decision:
+Later - revisit after the 2.0 release ships.
+
+--- /bearings before the date (snapshot clock 2026-07-20): a dated gate, not a live card ---
+[{"captain_actionable":false,"hold_bucket":"dated","hold_until":"2026-08-01","hold_set":"2026-07-14T12:00:00Z","hold_age_days":6}]
+
+--- /bearings after the date (snapshot clock 2026-08-02): the call is due again, aged from its ORIGINAL hold date ---
+[{"captain_actionable":true,"hold_bucket":"live","hold_until":"2026-08-01","hold_age_days":19}]
+
+--- a call whose date has really elapsed is back in the live Captain's Call feed ---
+deferred: sample-due-today until 2026-09-19
+{"live_captains_call":["sample-release-timing","sample-due-today"],"charted_gates":[]}
+
+--- and the postponed call is still answerable for real once its date passes ---
+answered: sample-release-timing
+  state: done
+Resolution recorded by fm-captain-hold.
+Decision digest: 1d5d05dae8a73dbbcd146340645d6f8b16a3ac30b1fe4041e0c5304681a3ba09
+Resolution mode: answered
+
+Captain decision:
+Swap the vendor now.
+
+Resolution recorded by fm-captain-hold.
+Decision digest: 3e97d023bb82296eb358bbb61b9803cd7e14983227d6fdd8c8bf489eace7f2e3
+Resolution mode: deferred
+Deferred until: 2026-08-01
+
+Captain decision:
+Later - revisit after the 2.0 release ships.
+
+
+==============================================================
+2. THE CHAT CHANNEL CAN NOW SAY 'LATER'
+==============================================================
+
+$ fm-send.sh sample-chat-review --resolve-key sample-chat-defer --defer-until 2026-10-15 "later, after the release"
+fm-send: doorbell not typed because the agent in firstmate:fm-sample-chat-review has exited; the steer is durably recorded at /tmp/fm-defer-lab/run/chat/state/sample-chat-review.inbox/001.msg for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane
+
+--- the captain call after the chat answer ---
+  state: queued
+  held: yes
+  hold_until: 2026-10-15
+Captain hold set: 2026-09-20T12:08:56Z
+
+Resolution recorded by fm-captain-hold.
+Decision digest: e1fed3dbdc633fe837e376b69b7aafd5d63927c2cd614e4e42d43070735fe71c
+Resolution mode: deferred
+Deferred until: 2026-10-15
+
+Captain decision:
+Captain answered this call through a firstmate answer sent to sample-chat-review.
+Task: sample-chat-defer
+Answer: later, after the release
+
+Origin: sample-chat-review
+
+--- an impossible calendar day is refused BEFORE the answer is delivered ---
+$ fm-send.sh sample-chat-review --resolve-key sample-chat-defer-2 --defer-until 2026-09-31 "later on an impossible date"
+/tmp/fm-defer-lab/run/chat/refused.err:WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+/tmp/fm-defer-lab/run/chat/refused.err:error: --defer-until requires a YYYY-MM-DD date: 2026-09-31
+rc=1
+bytes delivered to the crew pane: 0
+resolution records on the call: 0
+
+
+==============================================================
+3. THE BOARD CAN NOW SAY 'LATER', END TO END
+==============================================================
+
+
+--- the board is built and served to the captain by the real lavish-axi ---
+$ fm-bearings-board.sh build payload.json
+board: /tmp/fm-defer-lab/run/board/.lavish/bearings-board.html
+session:
+session: live
+served: /tmp/fm-defer-lab/run/board/.lavish/bearings-board.html
+bound: lavish-f48fc0077c4a1bf8
+armed: lavish-f48fc0077c4a1bf8
+listening: live
+$ lavish-axi   (open sessions)
+  /tmp/fm-defer-lab/run/board/.lavish/bearings-board.html,open,"http://firstmate-vps.tail7f759.ts.net:4387/session/f48fc0077c4a1bf8",0
+
+--- what the captain sees on the card, produced by the shipped board script itself ---
+[
+  {
+    "value": "swap-now",
+    "label": "Swap now",
+    "hint": "Two days of migration work this sprint",
+    "until": null
+  },
+  {
+    "value": "later",
+    "label": "Revisit after the 2.0 release",
+    "hint": "Keep the cap until then",
+    "until": "deferred until 2026-10-15"
+  },
+  {
+    "value": "drop",
+    "label": "Stay on the current vendor",
+    "hint": "Accept the cap permanently",
+    "until": null
+  },
+  {
+    "value": "reconcile",
+    "label": "Reconcile",
+    "hint": "Re-check the latest state, then close this with evidence or keep it open with a note",
+    "until": null
+  }
+]
+
+--- the captain picks the deferring option; this is the answer the page queues ---
+{
+  "confirmation": "Swap the PDF vendor now or later? -> later (deferred until 2026-10-15)",
+  "prompt": "Captain's Call answer - Swap the PDF vendor now or later?: later (deferred until 2026-10-15)",
+  "context": {
+    "schema": "fm-bearings-answer.v1",
+    "question": "sample-vendor-swap",
+    "selection": "later",
+    "note": "",
+    "close": "defer",
+    "until": "2026-10-15"
+  }
+}
+
+--- that exact queued context, captured as a board result, becomes keyed intake rows ---
+$ fm-procevent-lavish.sh answers <captured board result>   (key TAB answer TAB label TAB mode TAB until)
+sample-vendor-swap  <TAB>  later  <TAB>  Swap the PDF vendor now or later? -> later (deferred until 2026-10-15)  <TAB>  defer  <TAB>  2026-10-15
+
+$ fm-captain-hold.sh answers --source "captured board result"
+deferred: sample-vendor-swap until 2026-10-15
+answers: closed=0 deferred=1 skipped=0
+
+--- the captain call after the board answer ---
+  state: queued
+  held: yes
+  hold_until: 2026-10-15
+Captain hold set: 2026-09-20T12:09:08Z
+
+Resolution recorded by fm-captain-hold.
+Decision digest: efe9aca71a2c5f21e24f773164d6e2a52feac67467b267c589d000d533c12b21
+Resolution mode: deferred
+Deferred until: 2026-10-15
+
+Captain decision:
+Captain answered this call through captured board result.
+Task: sample-vendor-swap
+Answer: later
+Answer as shown to the captain: Swap the PDF vendor now or later? -> later (deferred until 2026-10-15)
+
+
+==============================================================
+4. THE GUARDS AROUND THE NEW CLOSE MODE
+==============================================================
+
+
+--- --release and --defer-until together ---
+fm-captain-hold: --release and --defer-until are mutually exclusive
+
+--- an impossible calendar day on the direct path ---
+fm-captain-hold: --defer-until must be a YYYY-MM-DD date: 2026-09-31
+
+--- the keyed intake: impossible day / missing day / a date on done / a date on release ---
+skipped: sample-guard-call (invalid defer date 2026-02-30)
+answers: closed=0 deferred=0 skipped=1
+skipped: sample-guard-call (defer close mode requires a YYYY-MM-DD date)
+answers: closed=0 deferred=0 skipped=1
+skipped: sample-guard-call (close mode done does not accept a deferral date)
+answers: closed=0 deferred=0 skipped=1
+skipped: sample-guard-call (close mode release does not accept a deferral date)
+answers: closed=0 deferred=0 skipped=1
+
+--- the reserved reconcile value still cannot become a close of any kind ---
+refused: sample-guard-call (reconcile requests require a bound captured source)
+answers: closed=0 deferred=0 skipped=1
+
+--- a deferral cannot reopen a call that is already closed ---
+fm-captain-hold: task sample-closed-call is already closed; --defer-until cannot reopen it
+
+--- after every refusal the guard call is untouched: no record, no date ---
+  state: queued
+  held: yes
+  hold_until: "-"
+Captain hold set: 2026-09-20T12:09:25Z
+
+
+==============================================================
+5. A POSTPONEMENT IS NOT PROOF THE CALL WAS ANSWERED
+==============================================================
+
+deferred: sample-deferred-then-closed until 2026-12-01
+
+--- someone closes the deferred call out of band with a bare tasks-axi done ---
+(closed outside fm-captain-hold)
+
+--- the scout completion gate refuses to call that call resolved ---
+$ fm-captain-hold.sh verify sample-scout-run
+fm-captain-hold: captain-held task sample-deferred-then-closed is neither held for the captain nor closed with a recorded captain answer
+rc=1
+
+--- and the captain's real answer can still be recorded on top of the deferral ---
+repaired: sample-deferred-then-closed
+Resolution recorded by fm-captain-hold.
+Decision digest: fbd18d6eefb6efe5e8addfba17b2a18f48f9fd2d055d1eebb8324112973dd2a0
+Resolution mode: repaired
+
+Captain decision:
+Proceed with the vendor swap after all.
+
+Resolution recorded by fm-captain-hold.
+Decision digest: 0331ea3abb3e68de7785d8b369c5384e8319c94a2d72a30e5ef6f156193191f8
+Resolution mode: deferred
+Deferred until: 2026-12-01
+
+Captain decision:
+Later - revisit after the 2.0 release.
+
+Origin: sample-scout-run
+$ fm-captain-hold.sh verify sample-scout-run
+verified: sample-scout-run captain-call inventory
+rc=0
+
+
+==============================================================
+6. A DEFERRAL KEEPS A PENDING BOARD RE-CHECK OBLIGATION OPEN
+==============================================================
+
+
+--- pending re-check requests before the deferral ---
+sample-direct-defer	requested=2026-09-20T12:09:49Z	source=captured board result
+reconcile-requests: 1
+deferred: sample-direct-defer until 2026-12-01
+
+--- and after it - the call stays open, so its re-check obligation stays open too ---
+sample-direct-defer	requested=2026-09-20T12:09:49Z	source=captured board result
+reconcile-requests: 1
+
+
+==============================================================
+7. INSIDE A SECONDMATE HOME, A DEFERRAL PUBLISHES ONE RESOLVED LINE
+==============================================================
+
+$ fm-captain-hold.sh hold defer-call --title "Choose the defer timing" --reason "timing choice pending"
+$ fm-captain-hold.sh answer defer-call --decision-file d.txt --defer-until 2026-10-01
+deferred: defer-call until 2026-10-01
+
+--- the parent channel the captain reads ---
+needs-decision [key=captain-hold-defer-call-1]: captain hold defer-call: timing choice pending
+resolved [key=captain-hold-defer-call-1]: captain hold defer-call: deferred until 2026-10-01
+  (the postponed question is not re-announced as a fresh needs-decision)
+
+--- the real answer, given later, closes the call's next occurrence ---
+$ fm-captain-hold.sh answer defer-call --decision-file d2.txt
+answered: defer-call
+needs-decision [key=captain-hold-defer-call-1]: captain hold defer-call: timing choice pending
+resolved [key=captain-hold-defer-call-1]: captain hold defer-call: deferred until 2026-10-01
+resolved [key=captain-hold-defer-call-2]: captain hold defer-call: answered
