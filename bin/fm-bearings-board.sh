@@ -177,6 +177,7 @@ validate_payload() {  # <data.json>
           and (.recommend_value as $recommend
             | ([.options[].value] | index($recommend) != null))))
       and ([.options[].value] | index("reconcile") == null)
+      and ([.options[].value] | length == (unique | length))
       and (if .type == "merge" then (.risk | nonempty_string) else true end);
     def underway_item:
       type == "object" and repo_marker and name_marker and (.id | nonempty_string)
@@ -211,6 +212,20 @@ validate_payload() {  # <data.json>
     and ([.landed[] | landed_item] | all)
     and ([.charted[] | charted_item] | all)
   ' "$1" >/dev/null
+}
+
+# The schema gate is one boolean, so it refuses a repeated option value without
+# saying which one. This names the first repeat for the refusal message.
+duplicate_option_value() {  # <data.json>
+  jq -r '
+    [.captains_call[]?
+      | select(type == "object" and (.options | type == "array"))
+      | (.key | tostring) as $key
+      | [.options[]? | select(type == "object") | .value | strings]
+      | group_by(.)
+      | map(select(length > 1) | "\(.[0]) (card \($key))")[]]
+    | first // ""
+  ' "$1" 2>/dev/null
 }
 
 # --- Lavish session liveness -------------------------------------------------
@@ -367,12 +382,17 @@ await_source_owner() {  # <source-id>
 }
 
 command_build() {
-  local data=${1-} board json tmp sid extracted effective owner version pre_reopen_owner
+  local data=${1-} board json tmp sid extracted effective owner version pre_reopen_owner duplicate
   [ "$#" -eq 1 ] || { usage >&2; exit 2; }
   command -v jq >/dev/null 2>&1 || fail "jq is required"
   [ -f "$data" ] || fail "board data does not exist: $data"
   jq empty "$data" 2>/dev/null || fail "board data is not valid JSON: $data"
-  validate_payload "$data" || fail "board data does not satisfy $BOARD_SCHEMA: $data"
+  if ! validate_payload "$data"; then
+    duplicate=$(duplicate_option_value "$data")
+    [ -z "$duplicate" ] \
+      || fail "board data repeats the option value $duplicate; each option value must be unique within its card: $data"
+    fail "board data does not satisfy $BOARD_SCHEMA: $data"
+  fi
   [ -f "$TEMPLATE" ] && [ ! -L "$TEMPLATE" ] || fail "board template is missing: $TEMPLATE"
   [ "$(grep -cxF "$PLACEHOLDER" "$TEMPLATE")" -eq 1 ] \
     || fail "board template does not carry exactly one data slot: $TEMPLATE"

@@ -801,7 +801,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
   if ! printf '%s' "$lines" | "$SCRIPT_DIR/fm-captain-hold.sh" answers \
     --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
     if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
-      echo "error: the answer was delivered to $T, but this captain-held task could not be deferred: ${RESOLVE_HOLD_KEYS}. Finish each still-open task with fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until $RESOLVE_DEFER_UNTIL - do not resend the answer." >&2
+      echo "error: the answer was delivered to $T, but this captain-held task could not be deferred: ${RESOLVE_HOLD_KEYS}. Finish each still-open task with fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until $RESOLVE_DEFER_UNTIL; if that is refused because $RESOLVE_DEFER_UNTIL is no longer later than UTC today, supply the next day instead of repeating this date - do not resend the answer." >&2
     else
       echo "error: the answer was delivered to $T, but this captain-held task could not be closed: ${RESOLVE_HOLD_KEYS}. Close it with fm-captain-hold.sh answer - do not resend the answer." >&2
     fi
