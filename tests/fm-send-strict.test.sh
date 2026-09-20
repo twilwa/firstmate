@@ -312,6 +312,64 @@ test_leading_dash_messages_still_send() {
   pass "fm-send strict: a single-dash message is still text, not a flag"
 }
 
+# The option loop breaks at --key without consuming anything after it, and the
+# key path reads only the key itself, so every remaining argument used to be
+# discarded in silence while the key was still delivered and the command still
+# exited 0. That is the same silent-delivery shape this script's unknown-flag
+# refusal exists to remove, so the key path must refuse a trailing argument
+# rather than drop it. The absence of the keystroke is asserted, not just the
+# exit code, because the defect was that delivery happened anyway.
+test_trailing_arguments_after_key_are_refused() {
+  local dir fb home err log rc
+  dir="$TMP_ROOT/key-trailing"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); home=$(setup_home keytrailing); err="$dir/send.err"; log="$dir/tmux.log"; : > "$log"
+  fm_write_meta "$home/state/lane-kt.meta" "window=sess:fm-lane-kt" "kind=ship"
+
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" lane-kt --key Enter --not-a-real-flag >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a trailing argument after --key was accepted instead of refused"
+  assert_contains "$(cat "$err")" "--not-a-real-flag" \
+    "the refusal should name the discarded argument"
+  assert_no_grep 'literal=0 arg=Enter' "$log" \
+    "the key was still delivered despite the trailing argument being refused"
+
+  # A trailing plain word is the same defect without the flag shape.
+  : > "$log"
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" lane-kt --key Enter stray >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a trailing word after --key was accepted instead of refused"
+  assert_no_grep 'literal=0 arg=Enter' "$log" \
+    "the key was still delivered despite a trailing word being refused"
+  pass "fm-send strict: --key refuses a trailing argument instead of silently discarding it"
+}
+
+# The --fire-and-forget/--key incompatibility used to hold only when the flag
+# came first, because FIRE_AND_FORGET_ID is set by the option loop and the loop
+# breaks at --key. Reversing the order bypassed both that check and the
+# --resolve-key glob beside it. The guard must hold on either ordering.
+test_fire_and_forget_with_key_is_refused_in_either_order() {
+  local dir fb home err log rc
+  dir="$TMP_ROOT/key-faf-order"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); home=$(setup_home keyfaforder); err="$dir/send.err"; log="$dir/tmux.log"; : > "$log"
+  fm_write_meta "$home/state/sm-fo.meta" "window=sess:fm-sm-fo" "kind=secondmate"
+
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" sm-fo --fire-and-forget 0123456789abcdef --key Enter >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "--fire-and-forget before --key should be refused"
+  assert_contains "$(cat "$err")" "--fire-and-forget cannot accompany --key" \
+    "the flag-first ordering should keep its exact error"
+
+  : > "$log"
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" sm-fo --key Enter --fire-and-forget 0123456789abcdef >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "--fire-and-forget after --key should be refused too"
+  assert_contains "$(cat "$err")" "--fire-and-forget cannot accompany --key" \
+    "the key-first ordering should give the same incompatibility error"
+  assert_no_grep 'literal=0 arg=Enter' "$log" \
+    "the key was still delivered despite the incompatible flag being refused"
+  pass "fm-send strict: --fire-and-forget and --key are incompatible in either order"
+}
+
 test_exact_lane_id_send_still_works
 test_key_send_exit_status_follows_delivery
 test_unset_fm_home_fails
@@ -323,3 +381,5 @@ test_healthy_fm_id_send_still_works
 test_unknown_flag_is_refused_before_anything_is_recorded
 test_key_flag_still_falls_through_the_allowlist
 test_leading_dash_messages_still_send
+test_trailing_arguments_after_key_are_refused
+test_fire_and_forget_with_key_is_refused_in_either_order
