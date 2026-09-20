@@ -62,6 +62,9 @@
 # WORK item resumes without closing - or, with `--defer-until`, records a
 # deferred resolution carrying that date and re-dates the call's existing
 # captain hold through the same `tasks-axi hold --until` gate, without closing.
+# A recorded-answer defer date must be strictly later than today's UTC date;
+# a past or same-day date is refused before the captain's words are recorded.
+# Bare `hold --until` remains the calendar-only scheduling primitive above.
 # A deferral continues one captain call rather than opening another, so it
 # never rewrites the `Captain hold set:` stamp - the call keeps its original
 # age basis whether or not its previous date had already elapsed - and never
@@ -88,8 +91,9 @@
 # identically no matter which channel the answer arrived on. The key IS the
 # task id - no identity arithmetic. The optional fourth field selects the close:
 # empty or `done` completes the task, `release` lifts the hold so held work
-# resumes, and `defer` requires a fifth YYYY-MM-DD field and records the answer
-# before re-dating the task's existing captain hold; anything else is skipped.
+# resumes, and `defer` requires a fifth YYYY-MM-DD field strictly later than
+# today's UTC date and records the answer before re-dating the task's existing
+# captain hold; anything else is skipped.
 # A key that names no task, a task that is
 # not held for the captain, or a task already closed is reported as `skipped:`
 # and feeds nothing. A resolved key is reported `closed:` and counted in
@@ -1043,7 +1047,7 @@ remove_interrupted_answer_stamp() {  # <task-id>
 
 command_answer() {
   local id=${1:-} decision_file='' release=0 defer_requested=0 defer_until='' defer_reason=''
-  local show state hold_kind body outcome recorded_mode occurrence
+  local show state hold_kind body outcome recorded_mode occurrence defer_today
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1065,6 +1069,10 @@ command_answer() {
   if [ "$defer_requested" = 1 ]; then
     fm_valid_calendar_day "$defer_until" \
       || fail "--defer-until must be a YYYY-MM-DD date: $defer_until"
+    defer_today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
+      || fail "could not determine the UTC calendar date for --defer-until"
+    fm_future_calendar_day "$defer_until" "$defer_today" \
+      || fail "--defer-until date $defer_until must be later than UTC today $defer_today; nothing was recorded"
   fi
   validate_slug task-id "$id"
   load_decision "$decision_file"
@@ -1300,7 +1308,7 @@ sanitize_reconcile_provenance() {
 
 command_answers() {
   local origin='' source='' row rest key answer label mode until id show state hold_kind body digest legacy_digest legacy_key
-  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t'
+  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t' defer_today=''
   local resolve_rc
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1368,6 +1376,16 @@ command_answers() {
         esac
         if ! fm_valid_calendar_day "$until"; then
           printf 'skipped: %s (invalid defer date %s)\n' "$key" "$(sanitize_field "$until")"
+          skipped=$((skipped + 1))
+          continue
+        fi
+        if [ -z "$defer_today" ]; then
+          defer_today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
+            || fail "could not determine the UTC calendar date for defer answers"
+        fi
+        if ! fm_future_calendar_day "$until" "$defer_today"; then
+          printf 'skipped: %s (defer date %s must be later than UTC today %s; nothing was recorded)\n' \
+            "$key" "$(sanitize_field "$until")" "$defer_today"
           skipped=$((skipped + 1))
           continue
         fi

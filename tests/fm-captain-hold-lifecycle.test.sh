@@ -1156,7 +1156,8 @@ EOF
 # words carried back with a new date are a new answer rather than a refusal.
 # A deferral continues one call, so it never restarts that call's age.
 test_keyed_defer_records_answer_and_dates_the_hold() {
-  local home out show records
+  local home out show records FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home keyed-defer)
   FM_CAPTAIN_HOLD_NOW=2026-06-01T12:00:00Z run_captain "$home" hold sample-keyed-defer \
     --title "Revisit the sample plan" \
@@ -1260,11 +1261,89 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   pass "a keyed defer records the answer, dates the hold, and never restarts the call's age"
 }
 
+# Defer writes use the same strict boundary as the snapshot projection: the
+# date must be later than today's UTC calendar date. Direct and keyed intake
+# refusals leave the serialized task state byte-identical; tomorrow succeeds.
+test_direct_and_keyed_defer_dates_must_be_future() {
+  local home before out show rc FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
+  home=$(make_home future-defer-boundary)
+  run_captain "$home" hold sample-direct-future --title "Direct future boundary" \
+    --reason "captain direct future choice pending" --repo sample >/dev/null \
+    || fail "could not register the direct future-boundary fixture"
+  run_captain "$home" hold sample-keyed-future --title "Keyed future boundary" \
+    --reason "captain keyed future choice pending" --repo sample >/dev/null \
+    || fail "could not register the keyed future-boundary fixture"
+  printf 'later, after the boundary\n' > "$home/future.txt"
+
+  before="$home/direct-before.md"
+  cp "$home/data/backlog.md" "$before"
+  if run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-19 > "$home/direct-past.out" 2> "$home/direct-past.err"; then
+    fail "the direct answer path accepted a past defer date"
+  fi
+  assert_grep "date 2026-09-19 must be later than UTC today 2026-09-20" \
+    "$home/direct-past.err" "the direct past-date refusal lost its boundary"
+  assert_grep "nothing was recorded" "$home/direct-past.err" \
+    "the direct past-date refusal did not state its durable outcome"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the direct past-date refusal changed the recorded task state"
+  if run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-20 > "$home/direct-today.out" 2> "$home/direct-today.err"; then
+    fail "the direct answer path accepted today's defer date"
+  fi
+  assert_grep "date 2026-09-20 must be later than UTC today 2026-09-20" \
+    "$home/direct-today.err" "the direct same-day refusal lost its boundary"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the direct same-day refusal changed the recorded task state"
+  run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-21 >/dev/null \
+    || fail "the direct answer path refused tomorrow's defer date"
+  show=$(tasks_in "$home" show sample-direct-future --full)
+  assert_contains "$show" "hold_until: 2026-09-21" \
+    "the direct tomorrow defer lost its date"
+
+  before="$home/keyed-before.md"
+  cp "$home/data/backlog.md" "$before"
+  set +e
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-19\n' \
+    | run_captain "$home" answers --source "captain chat")
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "the keyed intake accepted a past defer date"
+  assert_contains "$out" "defer date 2026-09-19 must be later than UTC today 2026-09-20; nothing was recorded" \
+    "the keyed past-date refusal lost its boundary or durable outcome"
+  assert_contains "$out" "answers: closed=0 deferred=0 skipped=1" \
+    "the keyed past-date refusal changed skipped semantics"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the keyed past-date refusal changed the recorded task state"
+  set +e
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-20\n' \
+    | run_captain "$home" answers --source "captain chat")
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "the keyed intake accepted today's defer date"
+  assert_contains "$out" "defer date 2026-09-20 must be later than UTC today 2026-09-20; nothing was recorded" \
+    "the keyed same-day refusal lost its boundary or durable outcome"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the keyed same-day refusal changed the recorded task state"
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-21\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused tomorrow's defer date: $out"
+  assert_contains "$out" "deferred: sample-keyed-future until 2026-09-21" \
+    "the keyed tomorrow defer was not accepted"
+  show=$(tasks_in "$home" show sample-keyed-future --full)
+  assert_contains "$show" "hold_until: 2026-09-21" \
+    "the keyed tomorrow defer lost its date"
+  pass "direct and keyed defer writes refuse past and same-day dates without mutation, then accept tomorrow"
+}
+
 # The recorded-answer guard survives an out-of-band close: a bare tasks-axi done
 # fails verify until answer records the captain's word, and an ordinary finished
 # task can never be dressed up as an answered captain call.
 test_out_of_band_close_is_recordable() {
-  local home id show
+  local home id show FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home out-of-band)
   id=sample-fullrun-review
   mkdir -p "$home/data/$id"
@@ -1505,7 +1584,8 @@ EOF
 # closes a distinct parent decision and a retry never duplicates a line. A main
 # home publishes nothing anywhere.
 test_secondmate_home_publishes_holds_and_answers() {
-  local parent mate fakebin channel decision out
+  local parent mate fakebin channel decision out FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   parent=$(make_home parent-channel)
   mate="$TMP_ROOT/channel-mate-home"
   mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects"
@@ -1685,7 +1765,8 @@ test_secondmate_reconcile_publishes_before_request_retirement() {
 # answer time, a card-declared release mode frees held work, freeform prose can
 # forge nothing, and a replayed capture is idempotent.
 test_bound_channel_answers_close_at_answer_time() {
-  local home id sid artifact result out show rc
+  local home id sid artifact result out show rc FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home channel-answer-closure)
   id=sample-eval-proposal
   mkdir -p "$home/data/$id"
@@ -1990,7 +2071,8 @@ test_normal_answers_retire_pending_reconcile_requests() {
 }
 
 test_deferred_answers_keep_pending_reconcile_requests() {
-  local home list show
+  local home list show FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home reconcile-deferred-answer)
   tasks_in "$home" add sample-direct-defer "Captain call to defer" --repo sample >/dev/null
   run_captain "$home" hold sample-direct-defer --reason "waiting for the captain" >/dev/null
@@ -2474,7 +2556,8 @@ SH
 # The intake is channel-agnostic, so chat must reach it the same way a captured
 # review does - for a task-id key, and for a legacy composed identity.
 test_chat_channel_feeds_the_same_keyed_answer_intake() {
-  local home id fb show list
+  local home id fb show list before FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home chat-channel)
   id=sample-chat-review
   mkdir -p "$home/data/$id"
@@ -2616,17 +2699,47 @@ SH
   assert_contains "$show" "Answer: take the second option" "the chat-answered call lost the captain answer"
   assert_contains "$show" "answer sent to $id" "the chat-answered call lost its channel provenance"
 
+  before="$home/chat-defer-before.md"
+  cp "$home/data/backlog.md" "$before"
   : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-19 "later, after the release" \
+      > "$home/chat-past.out" 2> "$home/chat-past.err"; then
+    fail "the chat preflight accepted a past defer date"
+  fi
+  assert_grep "date 2026-09-19 must be later than UTC today 2026-09-20" \
+    "$home/chat-past.err" "the chat past-date refusal lost its boundary"
+  assert_grep "nothing was recorded or sent" "$home/chat-past.err" \
+    "the chat past-date refusal did not state its durable and delivery outcome"
+  [ ! -s "$home/send.log" ] || fail "the chat past-date refusal delivered the answer"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the chat past-date refusal changed the recorded task state"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-20 "later, after the release" \
+      > "$home/chat-today.out" 2> "$home/chat-today.err"; then
+    fail "the chat preflight accepted today's defer date"
+  fi
+  assert_grep "date 2026-09-20 must be later than UTC today 2026-09-20" \
+    "$home/chat-today.err" "the chat same-day refusal lost its boundary"
+  [ ! -s "$home/send.log" ] || fail "the chat same-day refusal delivered the answer"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the chat same-day refusal changed the recorded task state"
   env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
     "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
-      --defer-until 2026-10-15 "later, after the release" >/dev/null 2>&1 \
-    || fail "a dated defer was refused by the chat channel"
+      --defer-until 2026-09-21 "later, after the release" >/dev/null 2>&1 \
+    || fail "tomorrow's dated defer was refused by the chat channel"
   show=$(tasks_in "$home" show sample-chat-defer --full)
   assert_contains "$show" "state: queued" "a chat defer completed the task"
   assert_contains "$show" "held: yes" "a chat defer released the task"
-  assert_contains "$show" "hold_until: 2026-10-15" "a chat defer lost its date"
+  assert_contains "$show" "hold_until: 2026-09-21" "a chat defer lost its date"
   assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
   assert_contains "$show" "Answer: later, after the release" \
     "a chat defer lost the captain's words"
@@ -4341,6 +4454,7 @@ test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
 test_deferral_leaves_captains_call_until_due
 test_keyed_defer_records_answer_and_dates_the_hold
+test_direct_and_keyed_defer_dates_must_be_future
 test_out_of_band_close_is_recordable
 test_visual_review_uses_shared_completion_owner
 test_none_inventory_and_resolved_prose_do_not_create_holds

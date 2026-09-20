@@ -194,6 +194,8 @@
 # `--defer-until YYYY-MM-DD` adds the intake's `defer` mode and required date;
 # it is valid only for keys already carried by captain-held tasks, because the
 # intake - not the status-log close path - owns dated deferral.
+# The date must be strictly later than today's UTC date; past and same-day
+# values are refused before the answer is recorded or sent.
 # This is what lets an answer reach a decision that has already been
 # transferred from the live status log to its durable captain-held task, which
 # the status ledger alone can no longer close.
@@ -469,6 +471,7 @@ fi
 RESOLVE_KEYS=
 RESOLVE_DEFER_UNTIL=
 RESOLVE_DEFER_UNTIL_SET=0
+RESOLVE_DEFER_TODAY=
 FIRE_AND_FORGET_ID=
 fm_send_add_resolve_key() { # <key>
   local k=$1
@@ -549,6 +552,14 @@ done
 if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
   fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
     echo "error: --defer-until requires a YYYY-MM-DD date: $RESOLVE_DEFER_UNTIL" >&2
+    exit 1
+  }
+  RESOLVE_DEFER_TODAY=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") || {
+    echo "error: could not determine the UTC calendar date for --defer-until; nothing was recorded or sent" >&2
+    exit 1
+  }
+  fm_future_calendar_day "$RESOLVE_DEFER_UNTIL" "$RESOLVE_DEFER_TODAY" || {
+    echo "error: --defer-until date $RESOLVE_DEFER_UNTIL must be later than UTC today $RESOLVE_DEFER_TODAY; nothing was recorded or sent" >&2
     exit 1
   }
 fi
