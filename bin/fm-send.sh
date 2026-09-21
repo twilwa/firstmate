@@ -256,6 +256,8 @@ fi
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-calendar-lib.sh
+. "$SCRIPT_DIR/fm-calendar-lib.sh"
 # shellcheck source=bin/fm-line-cap-lib.sh
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
@@ -472,6 +474,7 @@ RESOLVE_KEYS=
 RESOLVE_DEFER_UNTIL=
 RESOLVE_DEFER_UNTIL_SET=0
 RESOLVE_DEFER_TODAY=
+RESOLVE_DEFER_OBSERVATION=
 FIRE_AND_FORGET_ID=
 fm_send_add_resolve_key() { # <key>
   local k=$1
@@ -562,6 +565,9 @@ if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
     echo "error: --defer-until date $RESOLVE_DEFER_UNTIL must be later than UTC today $RESOLVE_DEFER_TODAY; nothing was recorded or sent" >&2
     exit 1
   }
+  # Reuse the hold lifecycle's existing deterministic clock input so the
+  # intake and its answer subprocess validate against this pre-send day.
+  RESOLVE_DEFER_OBSERVATION=${FM_CAPTAIN_HOLD_NOW:-${RESOLVE_DEFER_TODAY}T00:00:00Z}
 fi
 
 if [ "$TARGET_BACKEND" != remote ]; then
@@ -801,7 +807,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
   # Delivery may cross UTC midnight. Carry the day accepted before delivery
   # into the sole intake so it cannot reject the already-sent answer as today.
   if ! printf '%s' "$lines" \
-    | FM_CAPTAIN_HOLD_PREFLIGHT_TODAY="$RESOLVE_DEFER_TODAY" \
+    | FM_CAPTAIN_HOLD_NOW="$RESOLVE_DEFER_OBSERVATION" \
       "$SCRIPT_DIR/fm-captain-hold.sh" answers \
         --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
     if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then

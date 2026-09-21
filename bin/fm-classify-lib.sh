@@ -105,51 +105,6 @@ FM_CLASSIFY_PAUSED_VERB_DEFAULT='paused'
 # shellcheck disable=SC2034 # Read by the watcher and daemon (fm-watch.sh, fm-supervise-daemon.sh), not this lib.
 FM_PAUSE_RESURFACE_SECS_DEFAULT=14400
 
-# fm_valid_calendar_day <YYYY-MM-DD>: validate both the wire shape and the
-# actual calendar day. Captain-hold intake and its send-time preflight share
-# this owner so a date accepted before delivery cannot be rejected afterward.
-fm_valid_calendar_day() {
-  case "$1" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-    *) return 1 ;;
-  esac
-  perl -MTime::Piece -e '
-    my $value = shift;
-    my $parsed = eval { Time::Piece->strptime($value, "%Y-%m-%d") };
-    exit 1 if !$parsed || $parsed->strftime("%Y-%m-%d") ne $value;
-  ' "$1" 2>/dev/null
-}
-
-# fm_utc_calendar_day [<UTC observation>]: print the UTC calendar date shared
-# by every recorded-answer defer boundary. An explicit observation is the
-# deterministic test clock; absent one, read the current UTC day exactly once
-# here so those consumers cannot drift apart.
-fm_utc_calendar_day() {
-  local observation=${1:-} day
-  if [ -z "$observation" ]; then
-    date -u +%Y-%m-%d
-    return
-  fi
-  case "$observation" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z)
-      day=${observation%%T*}
-      ;;
-    *) return 1 ;;
-  esac
-  fm_valid_calendar_day "$day" || return 1
-  printf '%s\n' "$day"
-}
-
-# fm_future_calendar_day <YYYY-MM-DD> <UTC-today>: a defer write is useful only
-# when the snapshot's own strict `hold_until > today` boundary will classify it
-# as dated. Calendar parsing remains separate so historical stored dates stay
-# readable; only the three new defer write entry points call this predicate.
-fm_future_calendar_day() {
-  fm_valid_calendar_day "$1" || return 1
-  fm_valid_calendar_day "$2" || return 1
-  [[ "$1" > "$2" ]]
-}
-
 # fm_utc_iso_to_epoch <YYYY-MM-DDTHH:MM[:SS]Z>: the one portable UTC ISO 8601
 # reader shared by the declared-wait vocabulary and the away-posture record
 # (bin/fm-afk-contract.sh). Prints epoch seconds; returns 1 on any other shape

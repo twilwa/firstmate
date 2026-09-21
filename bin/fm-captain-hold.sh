@@ -105,10 +105,6 @@
 # skipped. `--source` is provenance text recorded in the
 # durable decision, never a behavior switch: this command has no per-channel
 # branch and no knowledge of chat, review decks, or any transport.
-# A channel that validates immediately before an asynchronous delivery may
-# carry that validated UTC day in `FM_CAPTAIN_HOLD_PREFLIGHT_TODAY`; both this
-# intake and its `answer` subprocess validate and reuse that one calendar day,
-# so crossing midnight after delivery cannot reject an answer already sent.
 # Legacy input: an optional positional origin (or a stored concrete-origin
 # binding) makes a key that names no task fall back to the old
 # `<origin>-decision-<key>` identity, so an in-flight pre-collapse channel
@@ -240,6 +236,9 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-classify-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-calendar-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-calendar-lib.sh"
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
@@ -1049,9 +1048,50 @@ remove_interrupted_answer_stamp() {  # <task-id>
   rm -f -- "$tmp"
 }
 
+command_defer_answer() {  # <task-id> <decision-file> <until>
+  local id=$1 decision_file=$2 until=$3 today show state hold_kind body reason recorded_mode occurrence
+  fm_valid_calendar_day "$until" \
+    || fail "--defer-until must be a YYYY-MM-DD date: $until"
+  today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
+    || fail "could not determine the UTC calendar date for --defer-until"
+  fm_future_calendar_day "$until" "$today" \
+    || fail "--defer-until date $until must be later than UTC today $today; nothing was recorded"
+  validate_slug task-id "$id"
+  load_decision "$decision_file"
+  # The date is part of the decision identity: changing it records a new
+  # deferral, while an exact redelivery remains an idempotent replay.
+  DECISION_DIGEST=$(sha256_text "$DECISION_TEXT"$'\n'"Deferred until: $until")
+  acquire_task_control_lock "$id"
+  require_tasks_axi
+  task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
+  show=$TASK_SHOW_OUTPUT
+  state=$(show_field "$show" state)
+  hold_kind=$(show_field_value "$show" hold_kind)
+  body=$(show_field "$show" body)
+  [ "$state" != "done" ] || fail "task $id is already closed; --defer-until cannot reopen it"
+  [ "$hold_kind" = captain ] \
+    || fail "task $id is not held for the captain; hold it first or name the right task"
+  reason=$(show_field_value "$show" hold_reason)
+  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  if body_has_resolution_record "$body" \
+    && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
+    recorded_mode=$(recorded_resolution_mode "$body" || true)
+    [ "$recorded_mode" = deferred ] \
+      || fail "task $id records this resolution with mode ${recorded_mode:-unknown}; it is not a captain-answer replay"
+    defer_answered "$id" "$until" "$reason"
+    publish_parent_resolution "$id" $((occurrence - 1)) "deferred until $until"
+    printf 'deferred: %s until %s\n' "$id" "$until"
+    return 0
+  fi
+  write_resolution_record "$id" deferred "$body" "$until"
+  defer_answered "$id" "$until" "$reason"
+  publish_parent_resolution "$id" "$occurrence" "deferred until $until"
+  printf 'deferred: %s until %s\n' "$id" "$until"
+}
+
 command_answer() {
-  local id=${1:-} decision_file='' release=0 defer_requested=0 defer_until='' defer_reason=''
-  local show state hold_kind body outcome recorded_mode occurrence defer_today
+  local id=${1:-} decision_file='' release=0 defer_requested=0 defer_until=''
+  local show state hold_kind body outcome recorded_mode occurrence
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1068,32 +1108,13 @@ command_answer() {
     esac
     shift
   done
-  [ "$release" = 0 ] || [ "$defer_requested" = 0 ] \
-    || fail "--release and --defer-until are mutually exclusive"
   if [ "$defer_requested" = 1 ]; then
-    fm_valid_calendar_day "$defer_until" \
-      || fail "--defer-until must be a YYYY-MM-DD date: $defer_until"
-    # fm-send can cross UTC midnight after it has delivered the answer. Its
-    # validated preflight day is the boundary this already-sent answer crossed.
-    defer_today=${FM_CAPTAIN_HOLD_PREFLIGHT_TODAY:-}
-    if [ -n "$defer_today" ]; then
-      fm_valid_calendar_day "$defer_today" \
-        || fail "preflight UTC calendar date is invalid: $defer_today"
-    else
-      defer_today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
-        || fail "could not determine the UTC calendar date for --defer-until"
-    fi
-    fm_future_calendar_day "$defer_until" "$defer_today" \
-      || fail "--defer-until date $defer_until must be later than UTC today $defer_today; nothing was recorded"
+    [ "$release" = 0 ] || fail "--release and --defer-until are mutually exclusive"
+    command_defer_answer "$id" "$decision_file" "$defer_until"
+    return
   fi
   validate_slug task-id "$id"
   load_decision "$decision_file"
-  # The date is part of what the captain decided, so it belongs to the recorded
-  # decision's identity: repeating "later" with a new date is a new answer that
-  # records its own deferral, while an exact redelivery stays an idempotent
-  # replay of the one already recorded.
-  [ -z "$defer_until" ] \
-    || DECISION_DIGEST=$(sha256_text "$DECISION_TEXT"$'\n'"Deferred until: $defer_until")
   acquire_task_control_lock "$id"
   require_tasks_axi
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
@@ -1101,24 +1122,12 @@ command_answer() {
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
-  if [ -n "$defer_until" ]; then
-    outcome=deferred
-    defer_reason=$(show_field_value "$show" hold_reason)
-  elif [ "$release" = 1 ]; then
-    outcome=released
-  else
-    outcome=answered
-  fi
-  # The occurrence the parent line names: the record about to be written is
-  # one past those already in the body, and a retry names the newest one.
+  if [ "$release" = 1 ]; then outcome=released; else outcome=answered; fi
   occurrence=$(( $(resolution_record_count "$body") + 1 ))
 
   if [ "$state" = "done" ]; then
-    [ -z "$defer_until" ] \
-      || fail "task $id is already closed; --defer-until cannot reopen it"
     recorded_mode=$(recorded_resolution_mode "$body" || true)
     if body_has_resolution_record "$body" && [ "$recorded_mode" != deferred ]; then
-      # An exact compatible retry is an idempotent no-op; drift is rejected.
       [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
         || fail "captain-held task $id records a different captain decision"
       closed_answer_replay_mode_compatible "$recorded_mode" "$body" \
@@ -1135,9 +1144,6 @@ command_answer() {
       return 0
     fi
     [ "$release" = 0 ] || fail "task $id is already closed; --release cannot reopen it"
-    # Closed outside this script: record the captain's answer retroactively.
-    # tasks-axi keeps hold_kind through a close, so it is the surviving proof
-    # this really was the captain's item rather than ordinary finished work.
     [ "$hold_kind" = captain ] \
       || fail "task $id was never held for the captain; nothing to record an answer on"
     write_resolution_record "$id" repaired "$body"
@@ -1153,33 +1159,14 @@ command_answer() {
   fi
 
   if [ "$hold_kind" = captain ]; then
-    # Actively the captain's item (a date-expired hold keeps its annotations
-    # and stays answerable). A matching record means an interrupted close to
-    # finish; a different digest is a NEW answer on a re-held task and gets
-    # its own record on top. Either way the close mode is the caller's flag,
-    # checked against an interrupted close's recorded mode so a retry cannot
-    # silently flip a release into a close.
     if body_has_resolution_record "$body" \
       && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
       recorded_mode=$(recorded_resolution_mode "$body" || true)
       case "$recorded_mode" in
         released) [ "$release" = 1 ] || fail "task $id records this answer as a release; retry with --release" ;;
-        answered|routed)
-          [ "$release" = 0 ] && [ -z "$defer_until" ] \
-            || fail "task $id records this answer as a close; retry without --release or --defer-until"
-          ;;
-        deferred)
-          [ -n "$defer_until" ] \
-            || fail "task $id records this answer as deferred; retry with --defer-until"
-          ;;
+        answered|routed) [ "$release" = 0 ] || fail "task $id records this answer as a close; retry without --release" ;;
         *) fail "task $id records this resolution with mode ${recorded_mode:-unknown}; it is not a captain-answer replay" ;;
       esac
-      if [ "$recorded_mode" = deferred ]; then
-        defer_answered "$id" "$defer_until" "$defer_reason"
-        publish_parent_resolution "$id" $((occurrence - 1)) "deferred until $defer_until"
-        printf 'deferred: %s until %s\n' "$id" "$defer_until"
-        return 0
-      fi
       if ! close_answered "$id" "$release"; then
         fail "could not close answered captain-held task $id"
       fi
@@ -1188,13 +1175,7 @@ command_answer() {
       printf '%s: %s\n' "$outcome" "$id"
       return 0
     fi
-    write_resolution_record "$id" "$outcome" "$body" "$defer_until"
-    if [ -n "$defer_until" ]; then
-      defer_answered "$id" "$defer_until" "$defer_reason"
-      publish_parent_resolution "$id" "$occurrence" "deferred until $defer_until"
-      printf 'deferred: %s until %s\n' "$id" "$defer_until"
-      return 0
-    fi
+    write_resolution_record "$id" "$outcome" "$body"
     if ! close_answered "$id" "$release"; then
       fail "could not close answered captain-held task $id"
     fi
@@ -1208,7 +1189,6 @@ command_answer() {
     return 0
   fi
 
-  # Not held and not closed: only an already-recorded release replays cleanly.
   if body_has_resolution_record "$body"; then
     recorded_mode=$(recorded_resolution_mode "$body" || true)
     [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
@@ -1320,8 +1300,7 @@ sanitize_reconcile_provenance() {
 
 command_answers() {
   local origin='' source='' row rest key answer label mode until id show state hold_kind body digest legacy_digest legacy_key
-  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t'
-  local defer_today=${FM_CAPTAIN_HOLD_PREFLIGHT_TODAY:-}
+  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t' defer_today=''
   local resolve_rc
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1340,8 +1319,6 @@ command_answers() {
   fi
   [ -n "$source" ] || fail "--source provenance is required so the durable decision records where the answer came from"
   source=$(sanitize_field "$source")
-  [ -z "$defer_today" ] || fm_valid_calendar_day "$defer_today" \
-    || fail "preflight UTC calendar date is invalid: $defer_today"
   require_tasks_axi
   tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision.XXXXXX") || fail "cannot stage the captain decision"
   err=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision-err.XXXXXX") \
