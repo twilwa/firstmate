@@ -798,8 +798,12 @@ fm_send_feed_resolved_holds() { # <answer-text>
       lines="${lines}${k}"$'\t'"${note}"$'\t'$'\n'
     fi
   done
-  if ! printf '%s' "$lines" | "$SCRIPT_DIR/fm-captain-hold.sh" answers \
-    --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
+  # Delivery may cross UTC midnight. Carry the day accepted before delivery
+  # into the sole intake so it cannot reject the already-sent answer as today.
+  if ! printf '%s' "$lines" \
+    | FM_CAPTAIN_HOLD_PREFLIGHT_TODAY="$RESOLVE_DEFER_TODAY" \
+      "$SCRIPT_DIR/fm-captain-hold.sh" answers \
+        --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
     if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
       echo "error: the answer was delivered to $T, but this captain-held task could not be deferred: ${RESOLVE_HOLD_KEYS}. Finish each still-open task with fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until $RESOLVE_DEFER_UNTIL; if that is refused because $RESOLVE_DEFER_UNTIL is no longer later than UTC today, supply the next day instead of repeating this date - do not resend the answer." >&2
     else

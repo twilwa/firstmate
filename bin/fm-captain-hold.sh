@@ -105,6 +105,10 @@
 # skipped. `--source` is provenance text recorded in the
 # durable decision, never a behavior switch: this command has no per-channel
 # branch and no knowledge of chat, review decks, or any transport.
+# A channel that validates immediately before an asynchronous delivery may
+# carry that validated UTC day in `FM_CAPTAIN_HOLD_PREFLIGHT_TODAY`; both this
+# intake and its `answer` subprocess validate and reuse that one calendar day,
+# so crossing midnight after delivery cannot reject an answer already sent.
 # Legacy input: an optional positional origin (or a stored concrete-origin
 # binding) makes a key that names no task fall back to the old
 # `<origin>-decision-<key>` identity, so an in-flight pre-collapse channel
@@ -1069,8 +1073,16 @@ command_answer() {
   if [ "$defer_requested" = 1 ]; then
     fm_valid_calendar_day "$defer_until" \
       || fail "--defer-until must be a YYYY-MM-DD date: $defer_until"
-    defer_today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
-      || fail "could not determine the UTC calendar date for --defer-until"
+    # fm-send can cross UTC midnight after it has delivered the answer. Its
+    # validated preflight day is the boundary this already-sent answer crossed.
+    defer_today=${FM_CAPTAIN_HOLD_PREFLIGHT_TODAY:-}
+    if [ -n "$defer_today" ]; then
+      fm_valid_calendar_day "$defer_today" \
+        || fail "preflight UTC calendar date is invalid: $defer_today"
+    else
+      defer_today=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") \
+        || fail "could not determine the UTC calendar date for --defer-until"
+    fi
     fm_future_calendar_day "$defer_until" "$defer_today" \
       || fail "--defer-until date $defer_until must be later than UTC today $defer_today; nothing was recorded"
   fi
@@ -1308,7 +1320,8 @@ sanitize_reconcile_provenance() {
 
 command_answers() {
   local origin='' source='' row rest key answer label mode until id show state hold_kind body digest legacy_digest legacy_key
-  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t' defer_today=''
+  local recorded_digest recorded_mode occurrence tmp err closed=0 deferred=0 skipped=0 reason tab=$'\t'
+  local defer_today=${FM_CAPTAIN_HOLD_PREFLIGHT_TODAY:-}
   local resolve_rc
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1327,6 +1340,8 @@ command_answers() {
   fi
   [ -n "$source" ] || fail "--source provenance is required so the durable decision records where the answer came from"
   source=$(sanitize_field "$source")
+  [ -z "$defer_today" ] || fm_valid_calendar_day "$defer_today" \
+    || fail "preflight UTC calendar date is invalid: $defer_today"
   require_tasks_axi
   tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision.XXXXXX") || fail "cannot stage the captain decision"
   err=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision-err.XXXXXX") \

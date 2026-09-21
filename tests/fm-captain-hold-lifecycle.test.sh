@@ -2556,7 +2556,7 @@ SH
 # The intake is channel-agnostic, so chat must reach it the same way a captured
 # review does - for a task-id key, and for a legacy composed identity.
 test_chat_channel_feeds_the_same_keyed_answer_intake() {
-  local home id fb show list before FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  local home id fb show list before real_date date_counter FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
   export FM_CAPTAIN_HOLD_NOW
   home=$(make_home chat-channel)
   id=sample-chat-review
@@ -2587,9 +2587,12 @@ test_chat_channel_feeds_the_same_keyed_answer_intake() {
   run_captain "$home" hold sample-chat-defer-recovery --title "Recover a chat deferral" \
     --reason "captain defer recovery pending" --repo sample >/dev/null \
     || fail "could not register the chat defer recovery call"
+  run_captain "$home" hold sample-chat-midnight-defer --title "Defer across UTC midnight" \
+    --reason "captain midnight timing pending" --repo sample >/dev/null \
+    || fail "could not register the midnight chat defer call"
   run_captain "$home" complete "$id" "$id-decision-chat-choice" sample-chat-followup \
     sample-chat-reconcile sample-chat-defer sample-chat-empty-equals \
-    sample-chat-empty-space sample-chat-defer-recovery >/dev/null \
+    sample-chat-empty-space sample-chat-defer-recovery sample-chat-midnight-defer >/dev/null \
     || fail "completion failed for the chat calls"
   grep -F 'captain-held [key=chat-choice]' "$home/state/$id.status" >/dev/null \
     || fail "precondition: completion did not transfer the decision to its durable owner"
@@ -2743,6 +2746,40 @@ SH
   assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
   assert_contains "$show" "Answer: later, after the release" \
     "a chat defer lost the captain's words"
+
+  # Preflight and post-delivery intake must share one UTC boundary. Simulate a
+  # send accepted just before midnight whose delivered answer is recorded just
+  # after it: independently reading today would reject the already-sent words.
+  real_date=$(command -v date)
+  date_counter="$home/date-counter"
+  cat > "$fb/date" <<'SH'
+#!/usr/bin/env bash
+if [ "$#" = 2 ] && [ "$1" = -u ] && [ "$2" = +%Y-%m-%d ]; then
+  if [ -e "$FM_FAKE_DATE_COUNTER" ]; then
+    printf '2026-09-21\n'
+  else
+    : > "$FM_FAKE_DATE_COUNTER"
+    printf '2026-09-20\n'
+  fi
+  exit 0
+fi
+exec "$REAL_DATE" "$@"
+SH
+  chmod +x "$fb/date"
+  : > "$home/send.log"
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 FM_CAPTAIN_HOLD_NOW= \
+    REAL_DATE="$real_date" FM_FAKE_DATE_COUNTER="$date_counter" \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-midnight-defer \
+      --defer-until 2026-09-21 "later, across midnight" >/dev/null 2>&1 \
+    || fail "a defer accepted before UTC midnight was rejected after delivery"
+  rm -f -- "$fb/date"
+  show=$(tasks_in "$home" show sample-chat-midnight-defer --full)
+  assert_contains "$show" "Resolution mode: deferred" \
+    "the midnight-crossing defer was delivered without recording its answer"
+  assert_contains "$show" "Deferred until: 2026-09-21" \
+    "the midnight-crossing defer lost its accepted date"
 
   cat > "$home/fakebin/tasks-axi" <<'SH'
 #!/usr/bin/env bash
