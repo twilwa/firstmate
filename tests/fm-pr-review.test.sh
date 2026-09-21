@@ -54,6 +54,19 @@ ledger() {
   printf '%s/data/pr-review-ledger/github--o--r--7.json\n' "$HOME_DIR"
 }
 
+FINAL_DISPOSITION_SNAPSHOT=
+bind_final_disposition() { # head evidence-url snapshot-without-final-post
+  local head=$1 evidence=$2 source=$3 posted="$TMP_ROOT/final-disposition-observed.json"
+  review final-disposition "$URL" "$head" "$evidence" >/dev/null
+  jq --arg evidence "$evidence" --arg head "$head" '
+    .collector_actor as $actor
+    | .comments += [{kind:"top-level",id:"final-disposition",url:$evidence,author:$actor,
+        body:"final disposition evidence",updated_at:"2026-09-20T00:30:00Z",head:$head}]
+  ' "$source" > "$posted"
+  FM_TEST_NOW_EPOCH=999999 review checkpoint "$URL" --snapshot "$posted" >/dev/null
+  FINAL_DISPOSITION_SNAPSHOT=$posted
+}
+
 GREEN='[{"name":"ci","state":"SUCCESS","bucket":"pass","status":"COMPLETED","conclusion":"pass","required":true,"url":"https://example.test/ci"}]'
 RED_LINT='[{"name":"lint","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/lint"}]'
 RED_LINT_AND_UNIT='[{"name":"lint","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/lint"},{"name":"unit","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/unit"}]'
@@ -102,7 +115,7 @@ test_pending_review_retries_and_every_review_surface_needs_disposition() {
   review disposition "$URL" "$HEAD_A" top-level 10 rejected 'not applicable: linked reproduction disproves it' >/dev/null
   review disposition "$URL" "$HEAD_A" review-submission 11 addressed 'fixed by commit deadbeef' >/dev/null
   review disposition "$URL" "$HEAD_A" inline-thread THREAD_12 addressed 'fixed and thread resolved' >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-a' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-101" "$withdrawn"
   review ready "$URL" "$HEAD_A" >/dev/null || fail 'fully dispositioned review surfaces did not become ready'
   pass 'pending reviews retry, and top-level comments, submissions, and inline threads all require dispositions'
 }
@@ -140,7 +153,7 @@ test_high_stakes_requires_exact_fable_and_independent_review() {
   status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail 'another model was silently substituted for Fable 5.1'
   review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-high' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-102" "$checkpoint"
   review ready "$URL" "$HEAD_A" >/dev/null || fail 'exact Fable 5.1 and an independent review did not satisfy the high-stakes gate without repository-required checks'
   pass 'high-stakes readiness requires exact Fable 5.1 plus an independent review and accepts an empty required-check set'
 }
@@ -200,6 +213,7 @@ test_risk_classifier_treats_review_and_hold_guards_as_high() {
     bin/fm-pr-review-snapshot.sh \
     bin/fm-pr-risk.sh \
     bin/fm-captain-hold.sh \
+    .agents/skills/pr-review-policy/SKILL.md \
     .github/firstmate-review-policy.json
   do
     jq -n --arg path "$path" '[{filename:$path,status:"modified",additions:2,deletions:1}]' \
@@ -220,14 +234,14 @@ test_late_attestation_invalidates_final_disposition() {
   FM_TEST_NOW_EPOCH=3700 review init task-late-attestation "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=4300 review checkpoint "$URL" --snapshot "$initial" >/dev/null
   review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-before-model-proof' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-103" "$initial"
   review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
   path=$(ledger)
   [ "$(jq -r '.generations[-1].final_disposition' "$path")" = null ] \
     || fail 'a late high-stakes attestation left an earlier final disposition bound'
   review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail 'late attestation evidence made a stale final-disposition post merge-ready'
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-after-model-proof' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-104" "$initial"
   review ready "$URL" "$HEAD_A" >/dev/null \
     || fail 'a fresh final disposition did not bind the complete attestation state'
   pass 'attestation changes invalidate and become part of the bound final disposition state'
@@ -241,8 +255,8 @@ test_merge_decision_records_only_the_live_reviewed_head() {
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=4000 review init task-merge "$URL" --snapshot "$exact" >/dev/null
   FM_TEST_NOW_EPOCH=4600 review checkpoint "$URL" --snapshot "$exact" >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-merge' >/dev/null
-  FM_TEST_NOW_EPOCH=4601 review merge-decision "$URL" --snapshot "$exact" >/dev/null \
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-105" "$exact"
+  FM_TEST_NOW_EPOCH=4601 review merge-decision "$URL" --snapshot "$FINAL_DISPOSITION_SNAPSHOT" >/dev/null \
     || fail 'exact-head merge decision was refused'
   path=$(ledger)
   [ "$(jq -r '.generations[-1].merge_decision.reviewed_head' "$path")" = "$HEAD_A" ] \
@@ -316,7 +330,7 @@ SH
 }
 
 test_bound_final_disposition_excludes_only_its_exact_post() {
-  local initial posted path
+  local initial posted path status=0
   initial="$TMP_ROOT/operator-review-initial.json"
   posted="$TMP_ROOT/operator-review-posted.json"
   snapshot "$initial" "$HEAD_A" '[]' '[{
@@ -329,7 +343,7 @@ test_bound_final_disposition_excludes_only_its_exact_post() {
     "author":"maintainer","body":"real operator review finding",
     "updated_at":"2026-09-20T00:10:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },{
-    "kind":"top-level","id":"21","url":"https://example.test/final-disposition",
+    "kind":"top-level","id":"21","url":"https://github.com/o/r/pull/7#issuecomment-21",
     "author":"maintainer","body":"final disposition evidence",
     "updated_at":"2026-09-20T00:11:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   }]' "$GREEN" "$LOW_FILES"
@@ -337,7 +351,10 @@ test_bound_final_disposition_excludes_only_its_exact_post() {
   FM_TEST_NOW_EPOCH=6000 review init task-operator "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=6600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
   review disposition "$URL" "$HEAD_A" top-level 20 addressed 'fixed by commit abc123' >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-disposition' >/dev/null
+  status=0
+  review final-disposition "$URL" "$HEAD_A" "$URL#arbitrary" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'an arbitrary PR fragment was accepted as final-disposition evidence'
+  review final-disposition "$URL" "$HEAD_A" "$URL#issuecomment-21" >/dev/null
   FM_TEST_NOW_EPOCH=6601 review merge-decision "$URL" --snapshot "$posted" >/dev/null \
     || fail 'the exact bound final-disposition post blocked the fresh merge snapshot'
   path=$(ledger)
@@ -345,7 +362,12 @@ test_bound_final_disposition_excludes_only_its_exact_post() {
     || fail 'the final-disposition filter removed too much or retained its own exact post'
   [ "$(jq -r '.generations[-1].review_items[0].id' "$path")" = 20 ] \
     || fail 'the final-disposition filter removed genuine operator review feedback'
-  pass 'only the exact ledger-bound final-disposition post is excluded from reviewer input'
+  [ "$(jq -r '.generations[-1].final_disposition.observed_in_latest_snapshot' "$path")" = true ] \
+    || fail 'the fresh snapshot did not record observation of the bound final-disposition post'
+  FM_TEST_NOW_EPOCH=6602 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'a deleted final-disposition post remained merge-ready'
+  pass 'only an observed exact ledger-bound final-disposition post is excluded from reviewer input'
 }
 
 test_live_collector_keeps_unreported_required_checks_pending() {
@@ -449,7 +471,10 @@ case "${1:-} ${2:-}" in
   "api /repos/o/r/pulls/7/files?per_page=100")
     printf '%s\n' '[[{"filename":"tests/x.test.sh","status":"modified","additions":2,"deletions":0}]]'
     ;;
-  "api /repos/o/r/issues/7/comments?per_page=100"|"api /repos/o/r/pulls/7/reviews?per_page=100")
+  "api /repos/o/r/issues/7/comments?per_page=100")
+    printf '[[{"id":106,"html_url":"%s","user":{"login":"maintainer"},"body":"final disposition evidence","updated_at":"2026-09-20T00:30:00Z"}]]\n' "$FM_TEST_FINAL_URL"
+    ;;
+  "api /repos/o/r/pulls/7/reviews?per_page=100")
     printf '%s\n' '[[]]'
     ;;
   "api graphql")
@@ -481,10 +506,10 @@ SH
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-forward' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-106" "$initial"
 
   set +e
-  PATH="$fakebin:$PATH" FM_TEST_NOW_EPOCH=7601 \
+  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-106" FM_TEST_NOW_EPOCH=7601 \
     review merge task-forward "$URL" --allow-red lint --attended-override=bad \
       > "$TMP_ROOT/merge-forward.stdout" 2> "$TMP_ROOT/merge-forward.stderr"
   rc=$?
@@ -501,10 +526,11 @@ SH
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-forward-two-red' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-107" "$initial"
   rc=0
   set +e
-  PATH="$fakebin:$PATH" FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
+  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-107" \
+    FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
     review merge task-forward "$URL" --allow-red lint --attended-override=bad \
       > "$TMP_ROOT/merge-forward-two-red.stdout" 2> "$TMP_ROOT/merge-forward-two-red.stderr"
   rc=$?
@@ -523,7 +549,7 @@ test_merge_rejects_a_task_that_does_not_own_the_ledger() {
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=7000 review init task-owner "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-task-owner' >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-108" "$initial"
   set +e
   review merge task-other "$URL" > "$TMP_ROOT/task-binding.stdout" \
     2> "$TMP_ROOT/task-binding.stderr"
@@ -564,8 +590,8 @@ prepare_post_merge_ledger() {
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=8000 review init task-post-merge "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=8600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-post-merge' >/dev/null
-  FM_TEST_NOW_EPOCH=8601 review merge-decision "$URL" --snapshot "$initial" >/dev/null \
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-109" "$initial"
+  FM_TEST_NOW_EPOCH=8601 review merge-decision "$URL" --snapshot "$FINAL_DISPOSITION_SNAPSHOT" >/dev/null \
     || fail 'post-merge fixture could not record its merge decision'
 }
 
@@ -763,6 +789,15 @@ test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
   browser_evidence "$evidence" failed "$HEAD_B" null
   status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail 'a failed post-merge smoke recorded without creating or reopening its owning bug'
+
+  browser_evidence "$evidence" failed "$HEAD_B" \
+    '{"url":"https://linear.app/","action":"created"}'
+  status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'the Linear root was accepted as an owning bug URL'
+  browser_evidence "$evidence" failed "$HEAD_B" \
+    '{"url":"https://linear.app/example/team/not-an-issue","action":"reopened"}'
+  status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'an unrelated Linear path was accepted as an owning bug URL'
 
   browser_evidence "$evidence" failed "$HEAD_B" \
     '{"url":"https://linear.app/example/issue/BUG-1","action":"created"}'

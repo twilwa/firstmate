@@ -200,6 +200,8 @@ checkpoint_apply() {
   fi
   jq --arg at "$iso" --argjson epoch "$epoch" --argjson next "$next" --slurpfile snap "$snapshot" '
     .generations[-1] as $g
+    | (any($snap[0].comments[];
+        .url == ($g.final_disposition.evidence // "") and .author == $snap[0].collector_actor)) as $final_disposition_seen
     | ($snap[0].comments
         | map(select(($g.final_disposition.evidence // "") == "" or
             .url != $g.final_disposition.evidence or .author != $snap[0].collector_actor))
@@ -219,6 +221,9 @@ checkpoint_apply() {
           | $old + {present:false}])
     | .generations[-1].retry_index = (if ($snap[0].pending_reviews | length) > 0 then (.generations[-1].retry_index + 1) else 0 end)
     | .generations[-1].next_checkpoint_epoch = $next
+    | .generations[-1].final_disposition =
+        (if $g.final_disposition == null then null
+         else $g.final_disposition + {observed_in_latest_snapshot:$final_disposition_seen} end)
     | .generations[-1].merge_decision = (if .generations[-1].merge_decision.decision == "merge" then null else .generations[-1].merge_decision end)
   ' "$work" > "$work.next"
   mv -f -- "$work.next" "$work"
@@ -242,6 +247,7 @@ ready_check() {
       (if all($g.review_items[]; (.disposition == "addressed" or .disposition == "rejected") and (.evidence | type == "string" and length > 0)) then empty else "a reviewer comment, submitted review, or inline thread lacks a disposition with evidence" end),
       (if $g.final_disposition != null
           and ($g.final_disposition.evidence | type == "string" and length > 0)
+          and $g.final_disposition.observed_in_latest_snapshot == true
           and $g.final_disposition.state_digest == ({pending:$g.checkpoints[-1].pending_reviews,
             checks:($g.checkpoints[-1].checks | map({name,state,bucket,url,status,conclusion,required})),
             attestations:($g.attestations | map({kind,head,evidence,model,actor})),
@@ -310,7 +316,8 @@ validate_post_merge_evidence() {
         test("^https://linear[.]app/[^/]+/issue/[A-Za-z]+-[0-9]+([/?#].*)?$")
       );
     def bug_url:
-      text and (startswith("https://linear.app/") or test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
+      text and (test("^https://linear[.]app/[^/]+/issue/[A-Za-z][A-Za-z0-9]*-[0-9]+([/?#].*)?$") or
+        test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
     .schema == "firstmate-post-merge-verification.v1" and .head == $head and
     if .applicability == "not-applicable" then
       (.reason | text)
@@ -462,12 +469,18 @@ case "$cmd" in
     [ "$#" -eq 3 ] || die 'final-disposition requires URL, head, and posted evidence'
     parse_url "$1"; HEAD=$2; EVIDENCE=$3
     [ -n "$EVIDENCE" ] || die 'posted disposition evidence must not be empty'
+    jq -en --arg url "$URL" --arg evidence "$EVIDENCE" '
+      ($evidence | startswith($url + "#")) and
+      ($evidence | ltrimstr($url + "#") |
+        test("^(issuecomment-[0-9]+|discussion_r[0-9]+|pullrequestreview-[0-9]+)$"))
+    ' >/dev/null || die 'final disposition evidence must be a concrete post URL on this pull request'
     ledger_valid || die 'review ledger is unavailable'
     [ "$(jq -r .current_head "$LEDGER")" = "$HEAD" ] || die 'final-disposition head is not the current ledger generation'
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
     jq --arg head "$HEAD" --arg evidence "$EVIDENCE" --arg at "$(now_iso)" '
       .generations[-1] as $g
       | .generations[-1].final_disposition={head:$head,evidence:$evidence,posted_at:$at,
+          observed_in_latest_snapshot:false,
           state_digest:({pending:$g.checkpoints[-1].pending_reviews,
             checks:($g.checkpoints[-1].checks | map({name,state,bucket,url,status,conclusion,required})),
             attestations:($g.attestations | map({kind,head,evidence,model,actor})),
