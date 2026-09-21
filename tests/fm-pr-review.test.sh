@@ -179,6 +179,24 @@ test_risk_classifier_treats_migrate_directories_as_high() {
   pass 'conventional migrate directories are high stakes'
 }
 
+test_risk_classifier_treats_review_guards_as_high() {
+  local path result
+  for path in \
+    bin/fm-pr-review.sh \
+    bin/fm-pr-merge.sh \
+    bin/fm-pr-review-snapshot.sh \
+    bin/fm-pr-risk.sh \
+    .github/firstmate-review-policy.json
+  do
+    jq -n --arg path "$path" '[{filename:$path,status:"modified",additions:2,deletions:1}]' \
+      > "$TMP_ROOT/review-guard-risk.json"
+    result=$($RISK "$TMP_ROOT/review-guard-risk.json") || fail "risk classifier failed for $path"
+    [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
+      || fail "a PR review or merge guard was classified low: $path"
+  done
+  pass 'PR review, merge, snapshot, classifier, and policy surfaces are high stakes'
+}
+
 test_merge_decision_records_only_the_live_reviewed_head() {
   local exact moved status=0 path
   exact="$TMP_ROOT/exact.json"; moved="$TMP_ROOT/moved.json"
@@ -537,6 +555,46 @@ test_post_merge_rejects_multiple_json_documents() {
   pass 'post-merge validation and recording use one exact JSON document'
 }
 
+test_post_merge_validates_the_immutable_staged_evidence() {
+  local evidence replacement fakebin marker real_jq path status=0
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-swap-source.json"
+  replacement="$TMP_ROOT/post-merge-swap-replacement.json"
+  marker="$TMP_ROOT/post-merge-swap.marker"
+  real_jq=$(command -v jq) || fail 'post-merge evidence swap test requires jq'
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+    head:$head,reason:""
+  }' > "$evidence"
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+    head:$head,reason:"valid replacement that must not be substituted after staging"
+  }' > "$replacement"
+  fakebin=$(fm_fakebin "$TMP_ROOT/post-merge-swap-fake")
+  cat > "$fakebin/jq" <<'SH'
+#!/usr/bin/env bash
+set -eu
+if [ "${1:-}" = -cse ] && [ ! -e "$FM_TEST_JQ_SWAP_MARKER" ]; then
+  "$FM_TEST_REAL_JQ" "$@"
+  cp "$FM_TEST_EVIDENCE_REPLACEMENT" "$FM_TEST_EVIDENCE_SOURCE"
+  : > "$FM_TEST_JQ_SWAP_MARKER"
+  exit 0
+fi
+exec "$FM_TEST_REAL_JQ" "$@"
+SH
+  chmod +x "$fakebin/jq"
+
+  PATH="$fakebin:$POST_MERGE_FAKEBIN:$PATH" \
+    FM_TEST_REAL_JQ="$real_jq" FM_TEST_EVIDENCE_SOURCE="$evidence" \
+    FM_TEST_EVIDENCE_REPLACEMENT="$replacement" FM_TEST_JQ_SWAP_MARKER="$marker" \
+    review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'post-merge accepted a source replacement after staging'
+  path=$(ledger)
+  [ "$(jq '.generations[-1].post_merge_verifications | length' "$path")" -eq 0 ] \
+    || fail 'post-merge recorded evidence other than the immutable object it validated'
+  pass 'post-merge validates and records the same immutable staged evidence object'
+}
+
 test_post_merge_browser_pass_requires_full_local_evidence() {
   local evidence path
   prepare_post_merge_ledger
@@ -626,6 +684,7 @@ test_high_stakes_requires_exact_fable_and_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high
+test_risk_classifier_treats_review_guards_as_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_live_collector_keeps_unreported_required_checks_pending
@@ -636,6 +695,7 @@ test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
 test_post_merge_requires_confirmed_forge_merge
 test_post_merge_rejects_multiple_json_documents
+test_post_merge_validates_the_immutable_staged_evidence
 test_post_merge_browser_pass_requires_full_local_evidence
 test_post_merge_rejects_superficial_or_unsafe_browser_evidence
 test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa

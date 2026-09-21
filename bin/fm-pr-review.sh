@@ -340,7 +340,7 @@ validate_post_merge_evidence() {
       end
     else false
     end
-  ' "$file" >/dev/null || die 'post-merge evidence is incomplete, unsafe, or does not match the reviewed head'
+  ' "$normalized" >/dev/null || die 'post-merge evidence is incomplete, unsafe, or does not match the reviewed head'
 }
 
 ready_for_qa_check() {

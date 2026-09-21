@@ -100,10 +100,11 @@
 # away-grant check, or a captain hold.
 #
 # Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [-- <extra forge merge args>]
-# FM_PR_REVIEW_EXPECTED_HEAD is an internal handoff from fm-pr-review.sh.
-# When present on GitHub, the live pre-merge head must equal that reviewed head;
-# a push between ledger verification and this script therefore refuses instead
-# of letting this script validate and merge a different, unreviewed head.
+# FM_PR_REVIEW_EXPECTED_HEAD is the required internal GitHub handoff from
+# fm-pr-review.sh. The live pre-merge head must equal that reviewed head, so a
+# push between ledger verification and this script refuses instead of letting
+# this script validate and merge a different, unreviewed head. GitLab callers
+# use this script directly and must not provide the GitHub-only handoff.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -147,11 +148,10 @@ PR_OWNER=$FM_PR_OWNER
 PR_REPO=$FM_PR_REPO
 PR_NUMBER=$FM_PR_NUMBER
 FM_PR_REVIEW_EXPECTED_HEAD=${FM_PR_REVIEW_EXPECTED_HEAD:-}
-if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
-  if [ "$PROVIDER" != github ] || ! fm_pr_head_valid "$FM_PR_REVIEW_EXPECTED_HEAD"; then
-    echo "error: invalid reviewed-head merge handoff" >&2
-    exit 2
-  fi
+if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
+  && { [ "$PROVIDER" != github ] || ! fm_pr_head_valid "$FM_PR_REVIEW_EXPECTED_HEAD"; }; then
+  echo "error: invalid reviewed-head merge handoff" >&2
+  exit 2
 fi
 # glab resolves the instance from the project URL passed to -R, so the host is
 # rebuilt from the parsed identity rather than read from any ambient default.
@@ -337,6 +337,10 @@ fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
 if [ ! -f "$META" ] || [ -L "$META" ]; then
   echo "error: task metadata is unavailable" >&2
   exit 1
+fi
+if [ "$PROVIDER" = github ] && [ -z "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+  echo "error: GitHub merges require the reviewed-head handoff from bin/fm-pr-review.sh merge" >&2
+  exit 2
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then
   echo "error: PR merge refused: $FM_BACKLOG_TRANSITION_ERROR" >&2
