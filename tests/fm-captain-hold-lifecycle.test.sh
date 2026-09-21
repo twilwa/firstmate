@@ -2734,12 +2734,12 @@ SH
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
     "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
-      --defer-until 2026-09-21 "later, after the release" >/dev/null 2>&1 \
-    || fail "tomorrow's dated defer was refused by the chat channel"
+      --defer-until 2099-09-21 "later, after the release" >/dev/null 2>&1 \
+    || fail "a future dated defer was refused by the chat channel"
   show=$(tasks_in "$home" show sample-chat-defer --full)
   assert_contains "$show" "state: queued" "a chat defer completed the task"
   assert_contains "$show" "held: yes" "a chat defer released the task"
-  assert_contains "$show" "hold_until: 2026-09-21" "a chat defer lost its date"
+  assert_contains "$show" "hold_until: 2099-09-21" "a chat defer lost its date"
   assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
   assert_contains "$show" "Answer: later, after the release" \
     "a chat defer lost the captain's words"
