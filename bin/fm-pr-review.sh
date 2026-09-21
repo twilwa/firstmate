@@ -220,9 +220,9 @@ checkpoint_apply() {
   mv -f -- "$work.next" "$work"
 }
 ready_check() {
-  local head=$1 errors model independent risk
+  local head=$1 allowed_red=${2:-} errors model independent risk
   ledger_valid || die 'review ledger is unavailable'
-  errors=$(jq -r --arg head "$head" --slurpfile policy "$POLICY" '
+  errors=$(jq -r --arg head "$head" --arg allowed_red "$allowed_red" --slurpfile policy "$POLICY" '
     .generations[-1] as $g
     | ($policy[0].high_stakes.no_mistakes_model) as $model
     | ($policy[0].high_stakes.independent_agent_reviews) as $needed
@@ -231,7 +231,10 @@ ready_check() {
       (if $g.merge_decision.decision != "hold" then empty else "pull request is held: " + ($g.merge_decision.reason // "no reason recorded") end),
       (if any($g.checkpoints[]; .head == $head and .at_epoch >= $g.not_before_epoch) then empty else "ten-minute review checkpoint has not completed on this head" end),
       (if ($g.checkpoints | length) > 0 and ($g.checkpoints[-1].pending_reviews | length) == 0 then empty else "an explicitly pending review still needs bounded-backoff retry" end),
-      (if ($g.checkpoints | length) > 0 and all($g.checkpoints[-1].checks[]; .status == "COMPLETED" and (.conclusion == "pass" or .conclusion == "skipping")) then empty else "a required check is not green on this head" end),
+      (if ($g.checkpoints | length) > 0 and all($g.checkpoints[-1].checks[];
+          (.status == "COMPLETED" and (.conclusion == "pass" or .conclusion == "skipping")) or
+          ($allowed_red != "" and .name == $allowed_red))
+        then empty else "a required check is not green on this head" end),
       (if all($g.review_items[]; (.disposition == "addressed" or .disposition == "rejected") and (.evidence | type == "string" and length > 0)) then empty else "a reviewer comment, submitted review, or inline thread lacks a disposition with evidence" end),
       (if $g.final_disposition != null
           and ($g.final_disposition.evidence | type == "string" and length > 0)
@@ -252,13 +255,28 @@ ready_check() {
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
 }
 
+find_merge_allowed_red() {
+  MERGE_ALLOWED_RED=
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --attended-override) shift ;;
+      --allow-red)
+        [ -n "${2:-}" ] || return 0
+        MERGE_ALLOWED_RED=$2
+        return 0
+        ;;
+      --|*) return 0 ;;
+    esac
+  done
+}
+
 read_forge_merge_sha() {
-  local result
+  local expected_head=$1 result
   command -v gh >/dev/null 2>&1 || die 'gh is required to confirm the forge merge result'
   result=$(gh api "/repos/$FM_PR_PATH/pulls/$FM_PR_NUMBER") \
     || die 'could not confirm the pull request merge result'
-  FORGE_MERGE_SHA=$(printf '%s\n' "$result" | jq -er '
-    select(.merged == true)
+  FORGE_MERGE_SHA=$(printf '%s\n' "$result" | jq -er --arg expected_head "$expected_head" '
+    select(.merged == true and .head.sha == $expected_head)
     | .merge_commit_sha
     | select(type == "string" and test("^[0-9a-fA-F]{40}$"))
   ') || die 'post-merge verification requires a forge-confirmed merge commit'
@@ -469,15 +487,24 @@ case "$cmd" in
     [ "$#" -ge 1 ] || die 'merge-decision requires pull-request URL'
     parse_url "$1"; shift
     ledger_valid || die 'review ledger is unavailable'
+    ALLOWED_RED_CHECK=
+    if [ "${1:-}" = --allowed-red-check ]; then
+      [ -n "${2:-}" ] || die '--allowed-red-check requires a check name'
+      ALLOWED_RED_CHECK=$2
+      shift 2
+    fi
     snapshot_arg "$@"
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX"); cp "$LEDGER" "$WORK"
     checkpoint_apply "$(jq -r .task "$WORK")" "$SNAPSHOT" "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
     HEAD=$(jq -r .head "$SNAPSHOT")
-    ready_check "$HEAD" >/dev/null
+    ready_check "$HEAD" "$ALLOWED_RED_CHECK" >/dev/null
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
-    jq --arg head "$HEAD" --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" '
-      .generations[-1].merge_decision={decision:"merge",reviewed_head:$head,verified_head:$head,verified_at:$at,verified_epoch:$epoch}' "$LEDGER" > "$WORK"
+    jq --arg head "$HEAD" --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
+      --arg allowed_red "$ALLOWED_RED_CHECK" '
+      .generations[-1].merge_decision={decision:"merge",reviewed_head:$head,verified_head:$head,
+        verified_at:$at,verified_epoch:$epoch,allowed_red_check:(if $allowed_red == "" then null else $allowed_red end)}' \
+      "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
     printf 'merge-decision: %s verified_head=%s verified_at=%s\n' "$URL" "$HEAD" "$(jq -r '.generations[-1].merge_decision.verified_at' "$LEDGER")"
     ;;
@@ -485,7 +512,12 @@ case "$cmd" in
     [ "$#" -ge 2 ] || die 'merge requires task id and pull-request URL'
     TASK=$1; parse_url "$2"; shift 2
     fm_pr_task_id_valid "$TASK" || die 'invalid task id'
-    "$0" merge-decision "$URL"
+    find_merge_allowed_red "$@"
+    if [ -n "$MERGE_ALLOWED_RED" ]; then
+      "$0" merge-decision "$URL" --allowed-red-check "$MERGE_ALLOWED_RED"
+    else
+      "$0" merge-decision "$URL"
+    fi
     FM_PR_REVIEW_EXPECTED_HEAD=$(jq -er '.generations[-1].merge_decision.verified_head' "$LEDGER") \
       || die 'reviewed-head merge handoff is unavailable'
     export FM_PR_REVIEW_EXPECTED_HEAD
@@ -500,7 +532,7 @@ case "$cmd" in
       || die 'post-merge verification requires a recorded merge decision'
     [ "$(jq -r '.generations[-1].merge_decision.verified_head // ""' "$LEDGER")" = "$HEAD" ] \
       || die 'post-merge verification head does not match the merge decision'
-    read_forge_merge_sha
+    read_forge_merge_sha "$HEAD"
     validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")" "$FORGE_MERGE_SHA"
     if [ "$(jq -r .applicability "$EVIDENCE")" = not-applicable ] \
       && jq -e 'any(.generations[-1].post_merge_verifications[]?; .applicability == "browser")' \

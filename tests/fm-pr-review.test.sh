@@ -21,10 +21,11 @@ cat > "$POST_MERGE_FAKEBIN/gh" <<'SH'
 set -eu
 case "${1:-} ${2:-}" in
   "api /repos/o/r/pulls/7")
+    head=${FM_TEST_PR_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
     if [ "${FM_TEST_PR_MERGED:-true}" = true ]; then
-      printf '%s\n' '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc"}'
+      printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}}\n' "$head"
     else
-      printf '%s\n' '{"merged":false,"merge_commit_sha":null}'
+      printf '{"merged":false,"merge_commit_sha":null,"head":{"sha":"%s"}}\n' "$head"
     fi
     ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
@@ -54,6 +55,8 @@ ledger() {
 }
 
 GREEN='[{"name":"ci","state":"SUCCESS","bucket":"pass","status":"COMPLETED","conclusion":"pass","required":true,"url":"https://example.test/ci"}]'
+RED_LINT='[{"name":"lint","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/lint"}]'
+RED_LINT_AND_UNIT='[{"name":"lint","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/lint"},{"name":"unit","state":"FAILURE","bucket":"fail","status":"FAILURE","conclusion":"fail","required":true,"url":"https://example.test/unit"}]'
 LOW_FILES='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
 COMMENTS='[
   {"kind":"top-level","id":"10","url":"https://example.test/top","author":"sourcery","body":"consider the edge case","updated_at":"2026-09-20T00:10:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
@@ -152,6 +155,18 @@ test_risk_classifier_resolves_incomplete_evidence_high() {
   assert_contains "$(printf '%s' "$result" | jq -r .reason)" uncertain \
     'incomplete changed-surface classification did not state its uncertainty'
   pass 'the risk classifier resolves incomplete changed-surface evidence to high stakes with a reason'
+}
+
+test_risk_classifier_treats_authentication_names_as_high() {
+  local path result
+  for path in src/authentication.ts src/authorization.go; do
+    jq -n --arg path "$path" '[{filename:$path,status:"modified",additions:2,deletions:1}]' \
+      > "$TMP_ROOT/auth-risk.json"
+    result=$($RISK "$TMP_ROOT/auth-risk.json") || fail "risk classifier failed for $path"
+    [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
+      || fail "authentication or authorization code was classified low: $path"
+  done
+  pass 'authentication and authorization filenames are high stakes'
 }
 
 test_merge_decision_records_only_the_live_reviewed_head() {
@@ -333,7 +348,12 @@ case "${1:-} ${2:-}" in
     printf '%s\n' '{"data":{"repository":{"pullRequest":{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
     ;;
   "pr checks")
-    printf '%s\n' '[{"name":"ci","state":"SUCCESS","bucket":"pass","link":"https://example.test/ci"}]'
+    if [ "${FM_TEST_EXTRA_RED:-false}" = true ]; then
+      printf '%s\n' '[{"name":"lint","state":"FAILURE","bucket":"fail","link":"https://example.test/lint"},{"name":"unit","state":"FAILURE","bucket":"fail","link":"https://example.test/unit"}]'
+    else
+      printf '%s\n' '[{"name":"lint","state":"FAILURE","bucket":"fail","link":"https://example.test/lint"}]'
+    fi
+    exit 1
     ;;
   "pr view")
     case "$*" in
@@ -349,7 +369,7 @@ SH
   chmod +x "$fakebin/gh"
 
   initial="$TMP_ROOT/merge-forward-initial.json"
-  snapshot "$initial" "$HEAD_A" '[]' '[]' "$GREEN" "$LOW_FILES"
+  snapshot "$initial" "$HEAD_A" '[]' '[]' "$RED_LINT" "$LOW_FILES"
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
@@ -357,15 +377,35 @@ SH
 
   set +e
   PATH="$fakebin:$PATH" FM_TEST_NOW_EPOCH=7601 \
-    review merge task-forward "$URL" --attended-override=bad \
+    review merge task-forward "$URL" --allow-red lint --attended-override=bad \
       > "$TMP_ROOT/merge-forward.stdout" 2> "$TMP_ROOT/merge-forward.stderr"
   rc=$?
   set -e
 
   expect_code 2 "$rc" 'merge forwarding: guarded option parser should reject the invalid value'
   assert_grep 'error: --attended-override takes no value' "$TMP_ROOT/merge-forward.stderr" \
-    'merge forwarding: the wrapper hid a guarded merge option behind the forge separator'
-  pass 'the review wrapper forwards guarded merge options to fm-pr-merge before forge arguments'
+    'merge forwarding: the wrapper blocked or hid guarded options before the merge parser'
+  [ "$(jq -r '.generations[-1].merge_decision.allowed_red_check' "$(ledger)")" = lint ] \
+    || fail 'merge forwarding: the ledger did not record the exact waived check'
+
+  initial="$TMP_ROOT/merge-forward-two-red.json"
+  snapshot "$initial" "$HEAD_A" '[]' '[]' "$RED_LINT_AND_UNIT" "$LOW_FILES"
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-forward-two-red' >/dev/null
+  rc=0
+  set +e
+  PATH="$fakebin:$PATH" FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
+    review merge task-forward "$URL" --allow-red lint --attended-override=bad \
+      > "$TMP_ROOT/merge-forward-two-red.stdout" 2> "$TMP_ROOT/merge-forward-two-red.stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" 'merge forwarding: an unwaived red check must block before the merge parser'
+  assert_grep 'review gate: a required check is not green on this head' \
+    "$TMP_ROOT/merge-forward-two-red.stderr" \
+    'merge forwarding: naming one red check also waived another red check'
+  pass 'the review wrapper applies one named red-check waiver and forwards guarded options'
 }
 
 test_arm_reuses_the_authenticated_watcher_check() {
@@ -463,7 +503,12 @@ test_post_merge_requires_confirmed_forge_merge() {
     > /dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] \
     || fail 'a recorded merge intent allowed post-merge verification before the forge confirmed landing'
-  pass 'post-merge verification requires a confirmed forge merge, not only a merge decision'
+  status=0
+  FM_TEST_PR_HEAD="$HEAD_B" post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" \
+    > /dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] \
+    || fail 'a merge of an unreviewed replacement head satisfied the reviewed generation'
+  pass 'post-merge verification requires a forge merge of the reviewed source head'
 }
 
 test_post_merge_browser_pass_requires_full_local_evidence() {
@@ -553,6 +598,7 @@ test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
 test_high_stakes_requires_exact_fable_and_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
+test_risk_classifier_treats_authentication_names_as_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_live_collector_keeps_unreported_required_checks_pending
