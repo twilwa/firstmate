@@ -262,6 +262,13 @@ The [`firstmate-coding-guidelines` skill](../.agents/skills/firstmate-coding-gui
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the firstmate-specific local test policy and entry points.
 Portable shard evidence and coverage rules are in [fm-test-portable-shards.md](fm-test-portable-shards.md); [herdr-backend.md](herdr-backend.md#destructive-lab-safety) owns the real-Herdr lane's isolation boundary, and [runtime-backends.md](verification/runtime-backends.md#herdr) owns active evidence.
 
+## Pull-request reviewer policy (.github/firstmate-review-policy.json)
+
+The tracked policy file configures the GitHub PR review ledger without changing no-mistakes itself.
+It fixes the data-relative ledger directory, the first review checkpoint at roughly ten minutes, the bounded retry delays for explicitly pending reviews, conservative broad and low-stakes size thresholds, reviewer-check name markers, the exact `fable-5.1` high-stakes no-mistakes model, and the required independent-agent review count.
+`bin/fm-pr-risk.sh` owns the classification decision, while `bin/fm-pr-review.sh` owns the private data-relative ledger schema, the authenticated watcher shim, and the head-keyed post-merge Ready for QA gate.
+The agent-only [`pr-review-policy` skill](../.agents/skills/pr-review-policy/SKILL.md) owns the operating procedure and the preserved human gates.
+
 ## Captain Preferences (data/captain.md / data/captain-shared.md)
 
 Domain-local preferences for one captain's fleet live locally in each home's `data/captain.md`; it is gitignored and printed in the session-start context digest after `data/projects.md` and optional `data/secondmates.md`.

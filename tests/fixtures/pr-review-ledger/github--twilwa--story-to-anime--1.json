@@ -1,0 +1,9 @@
+{
+  "schema": "firstmate-pr-review-ledger.v1", "task": "", "url": "https://github.com/twilwa/story-to-anime/pull/1", "current_head": "f3662f1b16adf2976acece07911fd9d589179abe",
+  "generations": [{"head": "f3662f1b16adf2976acece07911fd9d589179abe", "created_at": "2026-09-20T00:00:00Z", "created_epoch": 1789862400,
+    "risk": {"level": "low", "reason": "imported content assessment: reversible research and specification documents only; no code path"}, "not_before_epoch": 1789863000, "next_checkpoint_epoch": null, "retry_index": 0,
+    "checkpoints": [{"at": "2026-09-20T00:10:00Z", "at_epoch": 1789863000, "head": "f3662f1b16adf2976acece07911fd9d589179abe", "pending_reviews": [], "checks": [], "comment_ids": [["inline-thread", "imported-1"], ["inline-thread", "imported-2"], ["inline-thread", "imported-3"], ["inline-thread", "imported-4"], ["inline-thread", "imported-5"]]}],
+    "review_items": [{"kind": "inline-thread", "id": "imported-1", "fingerprint": "imported-1", "disposition": null, "evidence": null}, {"kind": "inline-thread", "id": "imported-2", "fingerprint": "imported-2", "disposition": null, "evidence": null}, {"kind": "inline-thread", "id": "imported-3", "fingerprint": "imported-3", "disposition": null, "evidence": null}, {"kind": "inline-thread", "id": "imported-4", "fingerprint": "imported-4", "disposition": null, "evidence": null}, {"kind": "inline-thread", "id": "imported-5", "fingerprint": "imported-5", "disposition": null, "evidence": null}],
+    "attestations": [], "final_disposition": null,
+    "merge_decision": {"decision": "hold", "reviewed_head": "f3662f1b16adf2976acece07911fd9d589179abe", "verified_head": "f3662f1b16adf2976acece07911fd9d589179abe", "verified_at": "2026-09-20T00:10:00Z", "reason": "five undispositioned findings and five unresolved episode-one product decisions"}}]
+}
