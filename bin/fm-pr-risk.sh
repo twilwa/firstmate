@@ -51,7 +51,7 @@ fi
 SENSITIVE=$(jq -r '
   .[].filename
   | select(test(
-      "(^|/)(auth(entication|ori[sz]ation)?|permissions?|secrets?|credentials?|migrations?|schema|payments?|billing|money)(/|\\.|$)";
+      "(^|/)(auth(entication|ori[sz]ation)?|permissions?|secrets?|credentials?|migrat(e|ions?)|schema|payments?|billing|money)(/|\\.|$)";
       "i") or
     test("(^|/)(deploy|production|infra|terraform|kubernetes|\\.github/workflows)(/|$)"; "i") or
     test("(^|/)(fm-(spawn|teardown|control|watch|session|afk|merge|lease|recover)|backends?)([./-]|$)"; "i"))

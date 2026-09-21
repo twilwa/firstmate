@@ -169,6 +169,16 @@ test_risk_classifier_treats_authentication_names_as_high() {
   pass 'authentication and authorization filenames are high stakes'
 }
 
+test_risk_classifier_treats_migrate_directories_as_high() {
+  local result
+  jq -n '[{filename:"db/migrate/20260921_add_users.rb",status:"added",additions:8,deletions:0}]' \
+    > "$TMP_ROOT/migrate-risk.json"
+  result=$($RISK "$TMP_ROOT/migrate-risk.json") || fail 'risk classifier failed for db/migrate'
+  [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
+    || fail 'a conventional db/migrate change was classified low'
+  pass 'conventional migrate directories are high stakes'
+}
+
 test_merge_decision_records_only_the_live_reviewed_head() {
   local exact moved status=0 path
   exact="$TMP_ROOT/exact.json"; moved="$TMP_ROOT/moved.json"
@@ -511,6 +521,22 @@ test_post_merge_requires_confirmed_forge_merge() {
   pass 'post-merge verification requires a forge merge of the reviewed source head'
 }
 
+test_post_merge_rejects_multiple_json_documents() {
+  local evidence path status=0
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-multiple.json"
+  printf '%s\n' \
+    '{"schema":"firstmate-post-merge-verification.v1","applicability":"not-applicable","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reason":""}' \
+    '{"schema":"firstmate-post-merge-verification.v1","applicability":"not-applicable","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reason":"valid second document"}' \
+    > "$evidence"
+  post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'multiple JSON evidence documents were accepted'
+  path=$(ledger)
+  [ "$(jq '.generations[-1].post_merge_verifications | length' "$path")" -eq 0 ] \
+    || fail 'post-merge recorded a different evidence document than the one it validated'
+  pass 'post-merge validation and recording use one exact JSON document'
+}
+
 test_post_merge_browser_pass_requires_full_local_evidence() {
   local evidence path
   prepare_post_merge_ledger
@@ -599,6 +625,7 @@ test_new_head_invalidates_old_checks_and_review_coverage
 test_high_stakes_requires_exact_fable_and_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
+test_risk_classifier_treats_migrate_directories_as_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_live_collector_keeps_unreported_required_checks_pending
@@ -608,6 +635,7 @@ test_merge_forwards_guarded_options_to_the_merge_parser
 test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
 test_post_merge_requires_confirmed_forge_merge
+test_post_merge_rejects_multiple_json_documents
 test_post_merge_browser_pass_requires_full_local_evidence
 test_post_merge_rejects_superficial_or_unsafe_browser_evidence
 test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa

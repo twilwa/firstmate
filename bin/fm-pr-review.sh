@@ -283,8 +283,14 @@ read_forge_merge_sha() {
 }
 
 validate_post_merge_evidence() {
-  local file=$1 head=$2 task=$3 forge_merge_sha=$4
+  local file=$1 head=$2 task=$3 forge_merge_sha=$4 normalized=$5
   [ -f "$file" ] && [ ! -L "$file" ] || die 'post-merge evidence is unavailable'
+  jq -cse '
+    if length == 1 and (.[0] | type == "object") then .[0]
+    else error("expected exactly one JSON object")
+    end
+  ' "$file" > "$normalized" \
+    || die 'post-merge evidence must contain exactly one JSON object'
   jq -e --arg head "$head" --arg url "$URL" --arg task "$task" \
     --arg forge_merge_sha "$forge_merge_sha" '
     def text: type == "string" and length > 0;
@@ -365,7 +371,11 @@ ready_for_qa_check() {
 }
 
 SNAPSHOT_TEMP=0
-cleanup_snapshot() { [ "$SNAPSHOT_TEMP" -eq 0 ] || rm -f -- "${SNAPSHOT:-}"; }
+POST_MERGE_TEMP=
+cleanup_snapshot() {
+  [ "$SNAPSHOT_TEMP" -eq 0 ] || rm -f -- "${SNAPSHOT:-}"
+  [ -z "$POST_MERGE_TEMP" ] || rm -f -- "$POST_MERGE_TEMP"
+}
 trap cleanup_snapshot EXIT HUP INT TERM
 need_tools
 cmd=${1:-}
@@ -533,7 +543,12 @@ case "$cmd" in
     [ "$(jq -r '.generations[-1].merge_decision.verified_head // ""' "$LEDGER")" = "$HEAD" ] \
       || die 'post-merge verification head does not match the merge decision'
     read_forge_merge_sha "$HEAD"
-    validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")" "$FORGE_MERGE_SHA"
+    POST_MERGE_TEMP=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-evidence.XXXXXX") \
+      || die 'could not stage post-merge evidence'
+    chmod 0600 "$POST_MERGE_TEMP"
+    validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")" \
+      "$FORGE_MERGE_SHA" "$POST_MERGE_TEMP"
+    EVIDENCE=$POST_MERGE_TEMP
     if [ "$(jq -r .applicability "$EVIDENCE")" = not-applicable ] \
       && jq -e 'any(.generations[-1].post_merge_verifications[]?; .applicability == "browser")' \
         "$LEDGER" >/dev/null; then
@@ -548,6 +563,7 @@ case "$cmd" in
       | .generations[-1].post_merge_verifications = ((.generations[-1].post_merge_verifications // []) + [$record])
     ' "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
+    rm -f -- "$POST_MERGE_TEMP"; POST_MERGE_TEMP=
     printf 'post-merge: %s head=%s applicability=%s outcome=%s ready_for_qa=%s\n' \
       "$URL" "$HEAD" "$(jq -r '.generations[-1].post_merge_verifications[-1].applicability' "$LEDGER")" \
       "$(jq -r '.generations[-1].post_merge_verifications[-1].outcome // "not-applicable"' "$LEDGER")" \
