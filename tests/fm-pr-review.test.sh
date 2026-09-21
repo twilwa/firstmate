@@ -196,6 +196,7 @@ test_risk_classifier_treats_review_and_hold_guards_as_high() {
   for path in \
     bin/fm-pr-review.sh \
     bin/fm-pr-merge.sh \
+    bin/fm-pr-lib.sh \
     bin/fm-pr-review-snapshot.sh \
     bin/fm-pr-risk.sh \
     bin/fm-captain-hold.sh \
@@ -207,7 +208,29 @@ test_risk_classifier_treats_review_and_hold_guards_as_high() {
     [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
       || fail "a PR review or merge guard was classified low: $path"
   done
-  pass 'PR review, merge, captain-hold, snapshot, classifier, and policy surfaces are high stakes'
+  pass 'PR review, merge, shared identity, captain-hold, snapshot, classifier, and policy surfaces are high stakes'
+}
+
+test_late_attestation_invalidates_final_disposition() {
+  local high_files initial path status=0
+  high_files='[{"filename":"bin/fm-teardown.sh","status":"modified","additions":2,"deletions":1}]'
+  initial="$TMP_ROOT/late-attestation.json"
+  snapshot "$initial" "$HEAD_A" '[]' '[]' '[]' "$high_files"
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=3700 review init task-late-attestation "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=4300 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-before-model-proof' >/dev/null
+  review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
+  path=$(ledger)
+  [ "$(jq -r '.generations[-1].final_disposition' "$path")" = null ] \
+    || fail 'a late high-stakes attestation left an earlier final disposition bound'
+  review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'late attestation evidence made a stale final-disposition post merge-ready'
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-after-model-proof' >/dev/null
+  review ready "$URL" "$HEAD_A" >/dev/null \
+    || fail 'a fresh final disposition did not bind the complete attestation state'
+  pass 'attestation changes invalidate and become part of the bound final disposition state'
 }
 
 test_merge_decision_records_only_the_live_reviewed_head() {
@@ -772,6 +795,7 @@ test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high
 test_risk_classifier_treats_public_api_and_infrastructure_as_high
 test_risk_classifier_treats_review_and_hold_guards_as_high
+test_late_attestation_invalidates_final_disposition
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_bound_final_disposition_excludes_only_its_exact_post

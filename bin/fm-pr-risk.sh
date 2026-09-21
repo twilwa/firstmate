@@ -56,7 +56,7 @@ SENSITIVE=$(jq -r '
     test("(^|/)(api|openapi|swagger|proto)([./-]|$)"; "i") or
     test("(^|/)(deploy(ment)?s?|production|infra(structure)?|terraform|kubernetes|k8s|helm|charts?|cloudformation|pulumi|ansible)([./-]|$)"; "i") or
     test("(^|/)\\.github/workflows(/|$)"; "i") or
-    test("(^|/)(fm-pr-(merge|review|review-snapshot|risk))([./-]|$)"; "i") or
+    test("(^|/)(fm-pr-(lib|merge|review|review-snapshot|risk))([./-]|$)"; "i") or
     test("(^|/)firstmate-review-policy[.]json$"; "i") or
     test("(^|/)(fm-(spawn|teardown|control|watch|session|afk|merge|lease|recover|captain-hold)|backends?)([./-]|$)"; "i"))
   ' "$1" | head -1)

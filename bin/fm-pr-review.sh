@@ -244,6 +244,7 @@ ready_check() {
           and ($g.final_disposition.evidence | type == "string" and length > 0)
           and $g.final_disposition.state_digest == ({pending:$g.checkpoints[-1].pending_reviews,
             checks:($g.checkpoints[-1].checks | map({name,state,bucket,url,status,conclusion,required})),
+            attestations:($g.attestations | map({kind,head,evidence,model,actor})),
             items:($g.review_items | map({kind,id,fingerprint,disposition,evidence}))} | @json)
         then empty else "final disposition and evidence have not been posted for the latest review state on this head" end),
       (if $g.risk.level != "high" or any($g.attestations[]; .kind == "no-mistakes" and .model == $model and .head == $head) then empty else "high-stakes work lacks a no-mistakes attestation for the configured exact model" end),
@@ -452,6 +453,7 @@ case "$cmd" in
     jq --arg kind "$KIND" --arg subject "$SUBJECT" --arg evidence "$EVIDENCE" --arg head "$HEAD" --arg at "$(now_iso)" '
       .generations[-1].attestations += [({kind:$kind,head:$head,evidence:$evidence,at:$at}
         + if $kind == "no-mistakes" then {model:$subject} else {actor:$subject} end)]
+      | .generations[-1].final_disposition=null
       | .generations[-1].merge_decision = (if .generations[-1].merge_decision.decision == "merge" then null else .generations[-1].merge_decision end)' "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
     printf 'attested: %s head=%s kind=%s subject=%s\n' "$URL" "$HEAD" "$KIND" "$SUBJECT"
@@ -468,6 +470,7 @@ case "$cmd" in
       | .generations[-1].final_disposition={head:$head,evidence:$evidence,posted_at:$at,
           state_digest:({pending:$g.checkpoints[-1].pending_reviews,
             checks:($g.checkpoints[-1].checks | map({name,state,bucket,url,status,conclusion,required})),
+            attestations:($g.attestations | map({kind,head,evidence,model,actor})),
             items:($g.review_items | map({kind,id,fingerprint,disposition,evidence}))} | @json)}
       | .generations[-1].merge_decision = (if .generations[-1].merge_decision.decision == "merge" then null else .generations[-1].merge_decision end)' "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
