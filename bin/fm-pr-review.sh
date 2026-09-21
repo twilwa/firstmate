@@ -26,7 +26,9 @@
 #   fm-pr-review.sh poll
 #   fm-pr-review.sh arm|disarm
 #
-# `post-merge` accepts `firstmate-post-merge-verification.v1` JSON.
+# `post-merge` first confirms that GitHub reports the pull request merged and
+# records its actual merge commit separately from the reviewed head.
+# It accepts `firstmate-post-merge-verification.v1` JSON.
 # A non-browser record uses `applicability:"not-applicable"`, the reviewed
 # `head`, and a non-empty `reason`.
 # A browser record uses `applicability:"browser"`, the reviewed `head`, an
@@ -250,10 +252,23 @@ ready_check() {
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
 }
 
+read_forge_merge_sha() {
+  local result
+  command -v gh >/dev/null 2>&1 || die 'gh is required to confirm the forge merge result'
+  result=$(gh api "/repos/$FM_PR_PATH/pulls/$FM_PR_NUMBER") \
+    || die 'could not confirm the pull request merge result'
+  FORGE_MERGE_SHA=$(printf '%s\n' "$result" | jq -er '
+    select(.merged == true)
+    | .merge_commit_sha
+    | select(type == "string" and test("^[0-9a-fA-F]{40}$"))
+  ') || die 'post-merge verification requires a forge-confirmed merge commit'
+}
+
 validate_post_merge_evidence() {
-  local file=$1 head=$2 task=$3
+  local file=$1 head=$2 task=$3 forge_merge_sha=$4
   [ -f "$file" ] && [ ! -L "$file" ] || die 'post-merge evidence is unavailable'
-  jq -e --arg head "$head" --arg url "$URL" --arg task "$task" '
+  jq -e --arg head "$head" --arg url "$URL" --arg task "$task" \
+    --arg forge_merge_sha "$forge_merge_sha" '
     def text: type == "string" and length > 0;
     def sha: type == "string" and test("^[0-9a-fA-F]{40}$");
     def web_url: text and (startswith("https://") or startswith("http://"));
@@ -266,7 +281,7 @@ validate_post_merge_evidence() {
       (.reason | text)
     elif .applicability == "browser" then
       ((.outcome == "passed") or (.outcome == "failed")) and
-      (.merged_sha | sha) and (.running_sha | sha) and
+      (.merged_sha | sha) and .merged_sha == $forge_merge_sha and (.running_sha | sha) and
       (.running_url | web_url) and
       .browser.mode == "local" and .browser.profile_scope == $task and .browser.fresh_profile == true and
       .browser.personal_cookies_imported == false and
@@ -485,10 +500,17 @@ case "$cmd" in
       || die 'post-merge verification requires a recorded merge decision'
     [ "$(jq -r '.generations[-1].merge_decision.verified_head // ""' "$LEDGER")" = "$HEAD" ] \
       || die 'post-merge verification head does not match the merge decision'
-    validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")"
+    read_forge_merge_sha
+    validate_post_merge_evidence "$EVIDENCE" "$HEAD" "$(jq -r .task "$LEDGER")" "$FORGE_MERGE_SHA"
+    if [ "$(jq -r .applicability "$EVIDENCE")" = not-applicable ] \
+      && jq -e 'any(.generations[-1].post_merge_verifications[]?; .applicability == "browser")' \
+        "$LEDGER" >/dev/null; then
+      die 'a browser verification on this head cannot be replaced by not-applicable evidence'
+    fi
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
-    jq --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" --slurpfile evidence "$EVIDENCE" '
-      ($evidence[0] + {recorded_at:$at,recorded_epoch:$epoch,
+    jq --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
+      --arg forge_merge_sha "$FORGE_MERGE_SHA" --slurpfile evidence "$EVIDENCE" '
+      ($evidence[0] + {forge_merge_sha:$forge_merge_sha,recorded_at:$at,recorded_epoch:$epoch,
         ready_for_qa:(if $evidence[0].applicability == "not-applicable" or $evidence[0].outcome == "passed"
           then "allowed" else "blocked" end)}) as $record
       | .generations[-1].post_merge_verifications = ((.generations[-1].post_merge_verifications // []) + [$record])

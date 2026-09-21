@@ -15,6 +15,22 @@ URL=https://github.com/o/r/pull/7
 HEAD_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 HEAD_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 MERGED_SHA=cccccccccccccccccccccccccccccccccccccccc
+POST_MERGE_FAKEBIN=$(fm_fakebin "$TMP_ROOT/post-merge-fake")
+cat > "$POST_MERGE_FAKEBIN/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+case "${1:-} ${2:-}" in
+  "api /repos/o/r/pulls/7")
+    if [ "${FM_TEST_PR_MERGED:-true}" = true ]; then
+      printf '%s\n' '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc"}'
+    else
+      printf '%s\n' '{"merged":false,"merge_commit_sha":null}'
+    fi
+    ;;
+  *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
+esac
+SH
+chmod +x "$POST_MERGE_FAKEBIN/gh"
 
 snapshot() { # path head pending-json comments-json checks-json files-json
   jq -n --arg url "$URL" --arg head "$2" \
@@ -27,6 +43,10 @@ snapshot() { # path head pending-json comments-json checks-json files-json
 review() {
   FM_HOME="$HOME_DIR" FM_REVIEW_NOW="${FM_TEST_NOW_ISO:-2026-09-20T00:00:00Z}" \
     FM_REVIEW_NOW_EPOCH="${FM_TEST_NOW_EPOCH:-1000}" "$REVIEW" "$@"
+}
+
+post_merge_review() {
+  PATH="$POST_MERGE_FAKEBIN:$PATH" review "$@"
 }
 
 ledger() {
@@ -189,7 +209,7 @@ case "${1:-} ${2:-}" in
   "pr view")
     case "$*" in
       *statusCheckRollup*)
-        printf '%s\n' '{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","statusCheckRollup":[{"__typename":"CheckRun","name":"codex","status":"IN_PROGRESS","conclusion":null}]}'
+        printf '%s\n' '{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","statusCheckRollup":[{"__typename":"CheckRun","name":"codex","status":"IN_PROGRESS","conclusion":null},{"__typename":"StatusContext","context":"sourcery","state":"SUCCESS"}]}'
         ;;
       *) printf '%s\n' "$head" ;;
     esac
@@ -209,6 +229,49 @@ SH
   [ "$(jq -r '.checks[0].conclusion' "$out")" = fail ] \
     || fail 'a nonzero checks verdict discarded the complete required-check result'
   pass 'live collection reads top-level comments, submitted reviews, inline threads, and pending reviewers'
+}
+
+test_live_collector_keeps_unreported_required_checks_pending() {
+  local fakebin out
+  fakebin=$(fm_fakebin "$TMP_ROOT/unreported-required-fake")
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+case "${1:-} ${2:-}" in
+  "api /repos/o/r/pulls/7")
+    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"author"},"requested_reviewers":[],"requested_teams":[]}'
+    ;;
+  "api /repos/o/r/pulls/7/files?per_page=100")
+    printf '%s\n' '[[{"filename":"tests/x.test.sh","status":"modified","additions":2,"deletions":0}]]'
+    ;;
+  "api /repos/o/r/issues/7/comments?per_page=100"|"api /repos/o/r/pulls/7/reviews?per_page=100")
+    printf '%s\n' '[[]]'
+    ;;
+  "api graphql")
+    printf '%s\n' '{"data":{"repository":{"pullRequest":{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
+    ;;
+  "pr checks")
+    printf "%s\n" "no required checks reported on the 'topic' branch" >&2
+    exit 1
+    ;;
+  "pr view")
+    case "$*" in
+      *statusCheckRollup*)
+        printf '%s\n' '{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","statusCheckRollup":[]}'
+        ;;
+      *) printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;;
+    esac
+    ;;
+  *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
+esac
+SH
+  chmod +x "$fakebin/gh"
+  out="$TMP_ROOT/unreported-required.json"
+  PATH="$fakebin:$PATH" "$SNAPSHOTTER" "$URL" "$out" \
+    || fail 'live collector refused the known unreported-required-check state'
+  [ "$(jq '[.checks[] | select(.status != "COMPLETED")] | length' "$out")" -eq 1 ] \
+    || fail 'an unreported required check was normalized to an empty green check set'
+  pass 'unreported required checks remain pending instead of satisfying readiness'
 }
 
 test_migrated_assessment_rows_are_durable_fixtures() {
@@ -369,7 +432,7 @@ test_post_merge_non_browser_records_not_applicable() {
     schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
     head:$head,reason:"shell-only ledger maintenance with no browser-facing behavior"
   }' > "$evidence"
-  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+  post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
     || fail 'non-browser post-merge verification did not record its N/A reason'
   path=$(ledger)
   [ "$(jq -r '.generations[-1].post_merge_verifications[-1].applicability' "$path")" = not-applicable ] \
@@ -388,16 +451,33 @@ test_post_merge_non_browser_records_not_applicable() {
   pass 'non-browser changes record a head-keyed N/A reason that a new head invalidates'
 }
 
+test_post_merge_requires_confirmed_forge_merge() {
+  local evidence status=0
+  prepare_post_merge_ledger
+  evidence="$TMP_ROOT/post-merge-unmerged.json"
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+    head:$head,reason:"shell-only ledger maintenance with no browser-facing behavior"
+  }' > "$evidence"
+  FM_TEST_PR_MERGED=false post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" \
+    > /dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] \
+    || fail 'a recorded merge intent allowed post-merge verification before the forge confirmed landing'
+  pass 'post-merge verification requires a confirmed forge merge, not only a merge decision'
+}
+
 test_post_merge_browser_pass_requires_full_local_evidence() {
   local evidence path
   prepare_post_merge_ledger
   evidence="$TMP_ROOT/post-merge-pass.json"
   browser_evidence "$evidence" passed "$MERGED_SHA" null
-  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+  post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
     || fail 'complete local-browser post-merge evidence was refused'
   path=$(ledger)
   [ "$(jq -r '.generations[-1].post_merge_verifications[-1].running_sha' "$path")" = "$MERGED_SHA" ] \
     || fail 'post-merge record did not retain the running merged SHA'
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].forge_merge_sha' "$path")" = "$MERGED_SHA" ] \
+    || fail 'post-merge record did not retain the forge-confirmed merge SHA separately'
   [ "$(jq -r '.generations[-1].post_merge_verifications[-1].ready_for_qa' "$path")" = allowed ] \
     || fail 'a complete passing smoke did not record an allowed Ready for QA decision'
   review ready-for-qa "$URL" "$HEAD_A" >/dev/null \
@@ -413,11 +493,11 @@ test_post_merge_rejects_superficial_or_unsafe_browser_evidence() {
     schema:"firstmate-post-merge-verification.v1",applicability:"browser",head:$head,
     outcome:"passed",http_status:200,worker_done:true
   }' > "$evidence"
-  status=0; review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail 'HTTP 200 and a worker done marker counted as a post-merge QA pass'
 
   browser_evidence "$evidence" passed "$MERGED_SHA" null
-  for mutation in remote-browser reused-profile wrong-scope personal-cookies destructive-action paid-browser jev-cloud missing-data missing-api unchecked-mobile stale-sha; do
+  for mutation in remote-browser reused-profile wrong-scope personal-cookies destructive-action paid-browser jev-cloud missing-data missing-api unchecked-mobile stale-sha wrong-merge-sha; do
     case "$mutation" in
       remote-browser) jq '.browser.mode="remote"' "$evidence" > "$evidence.tmp" ;;
       reused-profile) jq '.browser.fresh_profile=false' "$evidence" > "$evidence.tmp" ;;
@@ -430,24 +510,25 @@ test_post_merge_rejects_superficial_or_unsafe_browser_evidence() {
       missing-api) jq '.api_checks=[]' "$evidence" > "$evidence.tmp" ;;
       unchecked-mobile) jq '.mobile.checked=false' "$evidence" > "$evidence.tmp" ;;
       stale-sha) jq --arg stale "$HEAD_B" '.running_sha=$stale' "$evidence" > "$evidence.tmp" ;;
+      wrong-merge-sha) jq --arg stale "$HEAD_B" '.merged_sha=$stale' "$evidence" > "$evidence.tmp" ;;
     esac
-    status=0; review post-merge "$URL" "$HEAD_A" "$evidence.tmp" >/dev/null 2>&1 || status=$?
+    status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence.tmp" >/dev/null 2>&1 || status=$?
     [ "$status" -ne 0 ] || fail "unsafe or incomplete post-merge evidence was accepted: $mutation"
   done
   pass 'post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims'
 }
 
 test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
-  local evidence path status=0
+  local evidence na_evidence path status=0
   prepare_post_merge_ledger
   evidence="$TMP_ROOT/post-merge-failed.json"
   browser_evidence "$evidence" failed "$HEAD_B" null
-  status=0; review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+  status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail 'a failed post-merge smoke recorded without creating or reopening its owning bug'
 
   browser_evidence "$evidence" failed "$HEAD_B" \
     '{"url":"https://linear.app/example/issue/BUG-1","action":"created"}'
-  review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
+  post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null \
     || fail 'failed post-merge evidence with an owning bug was not recorded'
   path=$(ledger)
   [ "$(jq -r '.generations[-1].post_merge_verifications[-1].ready_for_qa' "$path")" = blocked ] \
@@ -456,6 +537,15 @@ test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
   [ "$status" -ne 0 ] || fail 'a failed post-merge smoke allowed the Ready for QA label'
   assert_grep 'https://linear.app/example/issue/BUG-1' "$TMP_ROOT/ready-failed.out" \
     'the Ready for QA refusal did not name the owning bug'
+  na_evidence="$TMP_ROOT/post-merge-na-after-failure.json"
+  jq -n --arg head "$HEAD_A" '{
+    schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+    head:$head,reason:"reclassified after the browser smoke failed"
+  }' > "$na_evidence"
+  status=0
+  post_merge_review post-merge "$URL" "$HEAD_A" "$na_evidence" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] \
+    || fail 'a not-applicable record cleared a failed browser smoke on the same head'
   pass 'a failed post-merge smoke requires an owning bug and blocks Ready for QA'
 }
 
@@ -465,11 +555,13 @@ test_high_stakes_requires_exact_fable_and_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
+test_live_collector_keeps_unreported_required_checks_pending
 test_migrated_assessment_rows_are_durable_fixtures
 test_human_hold_survives_head_change_until_evidenced_release
 test_merge_forwards_guarded_options_to_the_merge_parser
 test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
+test_post_merge_requires_confirmed_forge_merge
 test_post_merge_browser_pass_requires_full_local_evidence
 test_post_merge_rejects_superficial_or_unsafe_browser_evidence
 test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa

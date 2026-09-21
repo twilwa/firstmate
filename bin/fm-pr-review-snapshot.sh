@@ -44,7 +44,9 @@ gh pr checks "$URL" --required --json name,state,bucket,link > "$TMP/required.js
 if jq -e 'type == "array"' "$TMP/required.json" >/dev/null 2>&1; then
   : # Pending and failed checks deliberately return nonzero with complete JSON.
 elif grep -q "^no required checks reported on the '" "$TMP/checks.err"; then
-  printf '[]\n' > "$TMP/required.json"
+  printf '%s\n' \
+    '[{"name":"required checks have not reported","state":"PENDING","bucket":"pending","link":null}]' \
+    > "$TMP/required.json"
 elif grep -q "^no checks reported on the '" "$TMP/checks.err"; then
   printf '[]\n' > "$TMP/required.json"
 else
@@ -80,7 +82,12 @@ jq -n \
   --slurpfile policy "$POLICY" '
   def pages($x): ($x[0] | add // []);
   def external: select((.user.login // .author.login // "") != $author);
-  def check_pending: (.status != "COMPLETED");
+  def check_pending:
+    if .__typename == "StatusContext" then
+      (.state != "SUCCESS" and .state != "FAILURE" and .state != "ERROR")
+    else
+      .status != "COMPLETED"
+    end;
   ($policy[0].reviewer_check_name_patterns | map(ascii_downcase)) as $markers
   | ($rollup[0].statusCheckRollup // []) as $rollup_checks
   | {
