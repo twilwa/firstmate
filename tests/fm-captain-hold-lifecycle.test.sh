@@ -135,7 +135,9 @@ run_pr_merge() {  # <home> <id> <url>
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
-    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" "$ROOT/bin/fm-pr-merge.sh" "$@"
+    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" \
+    FM_PR_REVIEW_EXPECTED_HEAD=1111111111111111111111111111111111111111 \
+    "$ROOT/bin/fm-pr-merge.sh" "$@"
 }
 
 wait_for_test_file() {  # <path> <pid>

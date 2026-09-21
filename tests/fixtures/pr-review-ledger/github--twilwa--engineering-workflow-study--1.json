@@ -1,0 +1,7 @@
+{
+  "schema": "firstmate-pr-review-ledger.v1", "task": "ews-first-study", "url": "https://github.com/twilwa/engineering-workflow-study/pull/1", "current_head": "344d0675a003e58ccfc4cb5f2603527b15699059",
+  "generations": [{"head": "344d0675a003e58ccfc4cb5f2603527b15699059", "created_at": "2026-09-20T00:00:00Z", "created_epoch": 1789862400,
+    "risk": {"level": "high", "reason": "broad change and incomplete risk evidence: 246 files and 34689 changed lines"}, "not_before_epoch": 1789863000, "next_checkpoint_epoch": null, "retry_index": 0,
+    "checkpoints": [{"at": "2026-09-20T00:10:00Z", "at_epoch": 1789863000, "head": "344d0675a003e58ccfc4cb5f2603527b15699059", "pending_reviews": [], "checks": [], "comment_ids": []}], "review_items": [], "attestations": [], "final_disposition": null,
+    "merge_decision": {"decision": "hold", "reviewed_head": "344d0675a003e58ccfc4cb5f2603527b15699059", "verified_head": "344d0675a003e58ccfc4cb5f2603527b15699059", "verified_at": "2026-09-20T00:10:00Z", "reason": "human decision required on merge and on whether the repository keeps its private remote or remains local-only"}}]
+}
