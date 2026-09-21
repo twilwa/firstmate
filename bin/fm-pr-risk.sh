@@ -53,7 +53,9 @@ SENSITIVE=$(jq -r '
   | select(test(
       "(^|/)(auth(entication|ori[sz]ation)?|permissions?|secrets?|credentials?|migrat(e|ions?)|schema|payments?|billing|money)(/|\\.|$)";
       "i") or
-    test("(^|/)(deploy|production|infra|terraform|kubernetes|\\.github/workflows)(/|$)"; "i") or
+    test("(^|/)(api|openapi|swagger|proto)([./-]|$)"; "i") or
+    test("(^|/)(deploy(ment)?s?|production|infra(structure)?|terraform|kubernetes|k8s|helm|charts?|cloudformation|pulumi|ansible)([./-]|$)"; "i") or
+    test("(^|/)\\.github/workflows(/|$)"; "i") or
     test("(^|/)(fm-pr-(merge|review|review-snapshot|risk))([./-]|$)"; "i") or
     test("(^|/)firstmate-review-policy[.]json$"; "i") or
     test("(^|/)(fm-(spawn|teardown|control|watch|session|afk|merge|lease|recover)|backends?)([./-]|$)"; "i"))

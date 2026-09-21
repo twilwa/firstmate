@@ -4,7 +4,9 @@
 # pagination truncation, or unreadable surface refuses instead of producing a
 # partial snapshot. The output includes top-level comments, submitted reviews,
 # every inline review thread, requested reviewers, triggered reviewer checks,
-# and required checks bound to the exact head.
+# and required checks bound to the exact head. Comments from the pull-request
+# author and the authenticated collection actor are excluded, so the required
+# final-disposition post cannot become fresh reviewer input on an external PR.
 #
 # Usage: fm-pr-review-snapshot.sh <pr-url> <output.json>
 set -eu
@@ -37,6 +39,8 @@ trap cleanup EXIT HUP INT TERM
 gh api "/repos/$PATH_PART/pulls/$NUMBER" > "$TMP/core.json" || die 'could not read pull-request state'
 HEAD=$(jq -er '.head.sha | select(test("^[0-9a-fA-F]{40}$"))' "$TMP/core.json") || die 'pull-request head is unreadable'
 AUTHOR=$(jq -er '.user.login | select(type == "string" and length > 0)' "$TMP/core.json") || die 'pull-request author is unreadable'
+gh api user > "$TMP/viewer.json" || die 'could not read authenticated GitHub actor'
+ACTOR=$(jq -er '.login | select(type == "string" and length > 0)' "$TMP/viewer.json") || die 'authenticated GitHub actor is unreadable'
 gh api "/repos/$PATH_PART/pulls/$NUMBER/files?per_page=100" --paginate --slurp > "$TMP/files-pages.json" || die 'could not read changed files'
 gh api "/repos/$PATH_PART/issues/$NUMBER/comments?per_page=100" --paginate --slurp > "$TMP/top-pages.json" || die 'could not read top-level comments'
 gh api "/repos/$PATH_PART/pulls/$NUMBER/reviews?per_page=100" --paginate --slurp > "$TMP/reviews-pages.json" || die 'could not read submitted reviews'
@@ -71,7 +75,7 @@ AFTER=$(gh pr view "$URL" --json headRefOid -q .headRefOid) || die 'could not re
 [ "$(jq -r .data.repository.pullRequest.headRefOid "$TMP/threads.json")" = "$HEAD" ] || die 'inline threads were read from a different head'
 
 jq -n \
-  --arg url "$URL" --arg head "$HEAD" --arg author "$AUTHOR" \
+  --arg url "$URL" --arg head "$HEAD" --arg author "$AUTHOR" --arg actor "$ACTOR" \
   --slurpfile core "$TMP/core.json" \
   --slurpfile files "$TMP/files-pages.json" \
   --slurpfile top "$TMP/top-pages.json" \
@@ -81,7 +85,8 @@ jq -n \
   --slurpfile rollup "$TMP/rollup.json" \
   --slurpfile policy "$POLICY" '
   def pages($x): ($x[0] | add // []);
-  def external: select((.user.login // .author.login // "") != $author);
+  def reviewer_login: . != "" and . != $author and . != $actor;
+  def external: select((.user.login // .author.login // "") | reviewer_login);
   def check_pending:
     if .__typename == "StatusContext" then
       (.state != "SUCCESS" and .state != "FAILURE" and .state != "ERROR")
@@ -112,13 +117,14 @@ jq -n \
           | {kind:"review-submission",id:(.id|tostring),url:.html_url,author:.user.login,
              body:(.body // ""),updated_at:.submitted_at,head:(.commit_id // "")}]
         + [$threads[0].data.repository.pullRequest.reviewThreads.nodes[]
-          | select(any(.comments.nodes[]; (.author.login // "") != $author))
+          | [.comments.nodes[] | select((.author.login // "") | reviewer_login)] as $reviewer_comments
+          | select(($reviewer_comments | length) > 0)
           | {kind:"inline-thread",id:.id,
-             url:([.comments.nodes[] | select((.author.login // "") != $author) | .url] | first // $url),
-             author:([.comments.nodes[] | select((.author.login // "") != $author) | .author.login] | unique | join(",")),
-             body:([.comments.nodes[] | select((.author.login // "") != $author) | .body] | join("\n\n")),
-             updated_at:([.comments.nodes[] | .updatedAt] | max),
-             head:([.comments.nodes[] | .commit.oid // ""] | map(select(. != "")) | last // ""),
+             url:([$reviewer_comments[] | .url] | first // $url),
+             author:([$reviewer_comments[] | .author.login] | unique | join(",")),
+             body:([$reviewer_comments[] | .body] | join("\n\n")),
+             updated_at:([$reviewer_comments[] | .updatedAt] | max),
+             head:([$reviewer_comments[] | .commit.oid // ""] | map(select(. != "")) | last // ""),
              resolved:.isResolved}]
         | unique_by([.kind,.id])),
       checks:($required[0] | map({name,state,bucket,url:.link,

@@ -179,6 +179,18 @@ test_risk_classifier_treats_migrate_directories_as_high() {
   pass 'conventional migrate directories are high stakes'
 }
 
+test_risk_classifier_treats_public_api_and_infrastructure_as_high() {
+  local path result
+  for path in openapi.yaml api/public.ts k8s/deployment.yaml helm/service.yaml; do
+    jq -n --arg path "$path" '[{filename:$path,status:"modified",additions:2,deletions:1}]' \
+      > "$TMP_ROOT/public-infra-risk.json"
+    result=$($RISK "$TMP_ROOT/public-infra-risk.json") || fail "risk classifier failed for $path"
+    [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
+      || fail "a public API or conventional infrastructure surface was classified low: $path"
+  done
+  pass 'public API definitions and conventional production infrastructure paths are high stakes'
+}
+
 test_risk_classifier_treats_review_guards_as_high() {
   local path result
   for path in \
@@ -230,20 +242,23 @@ test_live_collector_includes_submitted_reviews_and_inline_threads() {
 set -eu
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 case "${1:-} ${2:-}" in
+  "api user")
+    printf '%s\n' '{"login":"maintainer"}'
+    ;;
   "api /repos/o/r/pulls/7")
-    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"author"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
+    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"contributor"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
     ;;
   "api /repos/o/r/pulls/7/files?per_page=100")
     printf '%s\n' '[[{"filename":"tests/x.test.sh","status":"modified","additions":2,"deletions":0}]]'
     ;;
   "api /repos/o/r/issues/7/comments?per_page=100")
-    printf '%s\n' '[[{"id":10,"html_url":"https://example.test/top","user":{"login":"sourcery"},"body":"top","updated_at":"2026-09-20T00:10:00Z"}]]'
+    printf '%s\n' '[[{"id":10,"html_url":"https://example.test/top","user":{"login":"sourcery"},"body":"top","updated_at":"2026-09-20T00:10:00Z"},{"id":13,"html_url":"https://example.test/final","user":{"login":"maintainer"},"body":"final disposition evidence","updated_at":"2026-09-20T00:11:00Z"}]]'
     ;;
   "api /repos/o/r/pulls/7/reviews?per_page=100")
     printf '%s\n' '[[{"id":11,"html_url":"https://example.test/review","user":{"login":"codex"},"body":"submitted","state":"COMMENTED","submitted_at":"2026-09-20T00:10:00Z","commit_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]]'
     ;;
   "api graphql")
-    printf '%s\n' '{"data":{"repository":{"pullRequest":{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"THREAD_12","isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[{"databaseId":12,"url":"https://example.test/thread","body":"inline","updatedAt":"2026-09-20T00:10:00Z","author":{"login":"sentry"},"commit":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}]}}]}}}}}'
+    printf '%s\n' '{"data":{"repository":{"pullRequest":{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"THREAD_12","isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[{"databaseId":12,"url":"https://example.test/thread","body":"inline","updatedAt":"2026-09-20T00:10:00Z","author":{"login":"sentry"},"commit":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},{"databaseId":13,"url":"https://example.test/final","body":"final disposition evidence","updatedAt":"2026-09-20T00:11:00Z","author":{"login":"maintainer"},"commit":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}]}}]}}}}}'
     ;;
   "pr checks")
     printf '%s\n' '[{"name":"ci","state":"FAILURE","bucket":"fail","link":"https://example.test/ci"}]'
@@ -267,6 +282,8 @@ SH
   assert_contains "$kinds" 'top-level' 'top-level comment was absent from the live snapshot'
   assert_contains "$kinds" 'review-submission' 'submitted review was missed by the live collector'
   assert_contains "$kinds" 'inline-thread' 'inline review thread was missed by the live collector'
+  [ "$(jq '[.comments[] | select(.author == "maintainer" or (.body | contains("final disposition evidence")))] | length' "$out")" -eq 0 ] \
+    || fail 'the authenticated maintainer final-disposition post became reviewer input'
   [ "$(jq '.pending_reviews | length' "$out")" -eq 2 ] \
     || fail 'requested reviewer and pending reviewer check were not both retained'
   [ "$(jq -r '.checks[0].conclusion' "$out")" = fail ] \
@@ -281,6 +298,9 @@ test_live_collector_keeps_unreported_required_checks_pending() {
 #!/usr/bin/env bash
 set -eu
 case "${1:-} ${2:-}" in
+  "api user")
+    printf '%s\n' '{"login":"maintainer"}'
+    ;;
   "api /repos/o/r/pulls/7")
     printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"author"},"requested_reviewers":[],"requested_teams":[]}'
     ;;
@@ -363,6 +383,9 @@ test_merge_forwards_guarded_options_to_the_merge_parser() {
 set -eu
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 case "${1:-} ${2:-}" in
+  "api user")
+    printf '%s\n' '{"login":"maintainer"}'
+    ;;
   "api /repos/o/r/pulls/7")
     printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"author"},"requested_reviewers":[],"requested_teams":[]}'
     ;;
@@ -596,7 +619,7 @@ SH
 }
 
 test_post_merge_browser_pass_requires_full_local_evidence() {
-  local evidence path
+  local evidence linear_evidence path
   prepare_post_merge_ledger
   evidence="$TMP_ROOT/post-merge-pass.json"
   browser_evidence "$evidence" passed "$MERGED_SHA" null
@@ -611,6 +634,10 @@ test_post_merge_browser_pass_requires_full_local_evidence() {
     || fail 'a complete passing smoke did not record an allowed Ready for QA decision'
   review ready-for-qa "$URL" "$HEAD_A" >/dev/null \
     || fail 'complete passing browser evidence did not satisfy the Ready for QA gate'
+  linear_evidence="$TMP_ROOT/post-merge-pass-linear.json"
+  jq '.posted_evidence_url="https://linear.app/example/issue/TES-79"' "$evidence" > "$linear_evidence"
+  post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null \
+    || fail 'a concrete Linear issue evidence URL was refused'
   pass 'browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence'
 }
 
@@ -626,7 +653,7 @@ test_post_merge_rejects_superficial_or_unsafe_browser_evidence() {
   [ "$status" -ne 0 ] || fail 'HTTP 200 and a worker done marker counted as a post-merge QA pass'
 
   browser_evidence "$evidence" passed "$MERGED_SHA" null
-  for mutation in remote-browser reused-profile wrong-scope personal-cookies destructive-action paid-browser jev-cloud missing-data missing-api unchecked-mobile stale-sha wrong-merge-sha; do
+  for mutation in remote-browser reused-profile wrong-scope personal-cookies destructive-action paid-browser jev-cloud missing-data missing-api unchecked-mobile stale-sha wrong-merge-sha root-linear arbitrary-pr-fragment bare-files; do
     case "$mutation" in
       remote-browser) jq '.browser.mode="remote"' "$evidence" > "$evidence.tmp" ;;
       reused-profile) jq '.browser.fresh_profile=false' "$evidence" > "$evidence.tmp" ;;
@@ -640,6 +667,9 @@ test_post_merge_rejects_superficial_or_unsafe_browser_evidence() {
       unchecked-mobile) jq '.mobile.checked=false' "$evidence" > "$evidence.tmp" ;;
       stale-sha) jq --arg stale "$HEAD_B" '.running_sha=$stale' "$evidence" > "$evidence.tmp" ;;
       wrong-merge-sha) jq --arg stale "$HEAD_B" '.merged_sha=$stale' "$evidence" > "$evidence.tmp" ;;
+      root-linear) jq '.posted_evidence_url="https://linear.app/"' "$evidence" > "$evidence.tmp" ;;
+      arbitrary-pr-fragment) jq --arg url "$URL" '.posted_evidence_url=($url + "#arbitrary")' "$evidence" > "$evidence.tmp" ;;
+      bare-files) jq --arg url "$URL" '.posted_evidence_url=($url + "/files")' "$evidence" > "$evidence.tmp" ;;
     esac
     status=0; post_merge_review post-merge "$URL" "$HEAD_A" "$evidence.tmp" >/dev/null 2>&1 || status=$?
     [ "$status" -ne 0 ] || fail "unsafe or incomplete post-merge evidence was accepted: $mutation"
@@ -684,6 +714,7 @@ test_high_stakes_requires_exact_fable_and_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high
+test_risk_classifier_treats_public_api_and_infrastructure_as_high
 test_risk_classifier_treats_review_guards_as_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads

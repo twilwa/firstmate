@@ -297,7 +297,13 @@ validate_post_merge_evidence() {
     def sha: type == "string" and test("^[0-9a-fA-F]{40}$");
     def web_url: text and (startswith("https://") or startswith("http://"));
     def posted_url:
-      text and (startswith($url + "#") or startswith($url + "/files") or startswith("https://linear.app/"));
+      text and (
+        (startswith($url + "#") and
+          (ltrimstr($url + "#") | test("^(issuecomment-[0-9]+|discussion_r[0-9]+|pullrequestreview-[0-9]+)$"))) or
+        (startswith($url + "/files#") and
+          (ltrimstr($url + "/files#") | test("^diff-[0-9a-fA-F]+(R[0-9]+(-R[0-9]+)?)?$"))) or
+        test("^https://linear[.]app/[^/]+/issue/[A-Za-z]+-[0-9]+([/?#].*)?$")
+      );
     def bug_url:
       text and (startswith("https://linear.app/") or test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
     .schema == "firstmate-post-merge-verification.v1" and .head == $head and
