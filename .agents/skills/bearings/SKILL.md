@@ -51,7 +51,7 @@ For a contribution wake or linked-issue filing, go directly to Contribution foll
    Never use hold-reason or body prose to classify or place a decision.
    A `live` hold appears in Captain's Call; `blocked`, `dated`, and `aged` holds appear as disclosed Charted Next gates stating their structured reason.
    Use `--all-decisions` to reveal every captain hold available within the bounded snapshot and remove each revealed gate from Charted Next so the buckets remain exclusive.
-   Aging is only a presentation safety net, and re-holding with `--until` remains the durable deferral.
+   Aging is only a presentation safety net, and the durable deferral is the recorded answer: `bin/fm-captain-hold.sh answer <id> --defer-until <date>`, or the keyed intake's `defer` mode with its date.
    Do not scrape reports, visual-review artifacts, raw status-event tails, or visible conversation history to supplement current state.
    A queued item under `gates` only becomes "next work" when its blocker is gone and its time/date gate has arrived.
    Until then it stays queued with the reason.
@@ -105,6 +105,9 @@ Compose the payload from the same snapshot with the same ranking judgment as the
 - Decision cards carry agent-authored copy: a short noun-phrase title, one-line `about` and `decide` context rows, and option labels with hints, with the recommended option marked.
 - Card `type` (decision, merge, credential) is your composing judgment from the row's content; no backlog field types a card for you.
 - When the card's task is a captain-gated WORK item (the answer should free it to proceed rather than complete it), set the card's `close: "release"` so the answer lifts the hold instead of closing the task; question-shaped items omit it.
+- When one authored option means "later", put an explicit `until: "YYYY-MM-DD"` on that option so only that selection records the answer and dates the hold.
+- Do not reserve a `defer` answer value: the option's `until` carries the behavior, while the option value remains the captain-facing answer and only `reconcile` stays reserved.
+- Give every option on a card a distinct `value`; two options sharing one value are indistinguishable to the answer the captain submits, so `build` refuses the payload and names the repeated value. Two "later" choices with different dates need two values.
 - A Charted Next row's optional `kind` separates work from alarms: omit it (or set `"queued"`) for real queued work, and set `"warning"` on every action-free fleet-integrity notice - the `(main-inventory)` gate, the `(return-catchup)` gate, an unavailable secondmate home, and an inventory-mismatch repair notice. The board badges a warning row `needs repair` instead of `waiting` and leaves it out of the Charted Next count, so those rows never read as dispatchable queued work.
 - `charted_more` counts omitted queued rows only, while `charted_warning_more` counts omitted warning rows only; keep both counts separate whenever the board payload truncates Charted Next.
 - Every Underway row copies the task-identifying `in_flight.name` from the snapshot into an explicit `name` field, which the board leads with while keeping the run status on its second line.
@@ -122,7 +125,9 @@ Never run `lavish-axi poll` for the board yourself: the armed source's supervise
 ### Handling a board wake
 
 A board answer arrives as an ordinary `procevent lavish <source-id> <sequence>` check wake. Identify it by comparing the wake source id with `bin/fm-procevent-lavish.sh source-id "$(bin/fm-bearings-board.sh path)"`, regardless of which answer kinds the result contains; then load `process-event-sources` and follow its contract for the result read, adapter classification, and the handled acknowledgement.
-Decision answers need no routing from you: the runner feeds the board's binding into `bin/fm-captain-hold.sh`'s one keyed-answer intake, which closes or releases each answered captain-held task at answer time; reconcile any `skipped:` key yourself with a direct `answer`, and when the captain's answer is "later", record it as a deferral with `bin/fm-captain-hold.sh hold <id> --reason "<reason>" --until <date>` instead of a closure.
+Decision answers need no routing from you: the runner feeds the board's binding into `bin/fm-captain-hold.sh`'s one keyed-answer intake, which closes, releases, or dates each answered captain-held task at answer time; reconcile any `skipped:` key yourself with a direct `answer` using the same close mode and date.
+One skip reason is the exception: a defer key skipped because its date is not later than UTC today was authored on an earlier bearings pass and has since elapsed, so the date is the stale part and replaying it is refused identically.
+Ask the captain for a fresh date and answer with that; never substitute a date of your own, and never leave the call closed as though it were answered.
 A current structured Reconcile selection closes nothing: the versioned board context carries its exact selected option separately from any typed note, and the adapter routes that selection only into a durable re-check request while preserving the note as provenance.
 The rollout-compatible old context still feeds ordinary non-reconcile answers, but its bare or separator-annotated reconcile values and every structurally uncertain choice feed neither intake and remain announced for deliberate handling.
 Verify the call's latest state, then retire the request through `bin/fm-captain-hold.sh reconcile close <id> --evidence-file <path>` when it turns out to be moot, or `reconcile note <id> --note-file <path>` when it is genuinely still open.
