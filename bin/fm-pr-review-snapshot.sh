@@ -5,8 +5,9 @@
 # partial snapshot. The output includes top-level comments, submitted reviews,
 # every inline review thread, requested reviewers, triggered reviewer checks,
 # and required checks bound to the exact head. Comments from the pull-request
-# author and the authenticated collection actor are excluded, so the required
-# final-disposition post cannot become fresh reviewer input on an external PR.
+# author are excluded. The authenticated collection actor is recorded so the
+# ledger can exclude only its exact bound final-disposition post while retaining
+# genuine review feedback from that same actor.
 #
 # Usage: fm-pr-review-snapshot.sh <pr-url> <output.json>
 set -eu
@@ -85,8 +86,7 @@ jq -n \
   --slurpfile rollup "$TMP/rollup.json" \
   --slurpfile policy "$POLICY" '
   def pages($x): ($x[0] | add // []);
-  def reviewer_login: . != "" and . != $author and . != $actor;
-  def external: select((.user.login // .author.login // "") | reviewer_login);
+  def external: select((.user.login // .author.login // "") != $author);
   def check_pending:
     if .__typename == "StatusContext" then
       (.state != "SUCCESS" and .state != "FAILURE" and .state != "ERROR")
@@ -99,6 +99,7 @@ jq -n \
       schema:"firstmate-pr-review-snapshot.v1",
       url:$url,
       head:$head,
+      collector_actor:$actor,
       files:(pages($files) | map({filename,status,additions,deletions})),
       pending_reviews:(
         ([($core[0].requested_reviewers // [])[] | "user:" + .login]
@@ -117,7 +118,7 @@ jq -n \
           | {kind:"review-submission",id:(.id|tostring),url:.html_url,author:.user.login,
              body:(.body // ""),updated_at:.submitted_at,head:(.commit_id // "")}]
         + [$threads[0].data.repository.pullRequest.reviewThreads.nodes[]
-          | [.comments.nodes[] | select((.author.login // "") | reviewer_login)] as $reviewer_comments
+          | [.comments.nodes[] | select((.author.login // "") != $author)] as $reviewer_comments
           | select(($reviewer_comments | length) > 0)
           | {kind:"inline-thread",id:.id,
              url:([$reviewer_comments[] | .url] | first // $url),
@@ -136,6 +137,7 @@ jq -n \
 jq -e '
   .schema == "firstmate-pr-review-snapshot.v1" and
   (.head | test("^[0-9a-fA-F]{40}$")) and
+  (.collector_actor | type == "string" and length > 0) and
   (.files | type == "array") and (.comments | type == "array") and
   (.pending_reviews | type == "array") and (.checks | type == "array")
 ' "$TMP/snapshot.json" >/dev/null || die 'normalized review snapshot is invalid'

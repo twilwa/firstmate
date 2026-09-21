@@ -58,7 +58,7 @@ SENSITIVE=$(jq -r '
     test("(^|/)\\.github/workflows(/|$)"; "i") or
     test("(^|/)(fm-pr-(merge|review|review-snapshot|risk))([./-]|$)"; "i") or
     test("(^|/)firstmate-review-policy[.]json$"; "i") or
-    test("(^|/)(fm-(spawn|teardown|control|watch|session|afk|merge|lease|recover)|backends?)([./-]|$)"; "i"))
+    test("(^|/)(fm-(spawn|teardown|control|watch|session|afk|merge|lease|recover|captain-hold)|backends?)([./-]|$)"; "i"))
   ' "$1" | head -1)
 if [ -n "$SENSITIVE" ]; then
   jq -cn --arg path "$SENSITIVE" \

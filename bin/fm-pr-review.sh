@@ -95,6 +95,7 @@ validate_snapshot() {
   jq -e --arg url "$URL" '
     .schema == "firstmate-pr-review-snapshot.v1" and .url == $url and
     (.head | type == "string" and test("^[0-9a-fA-F]{40}$")) and
+    (.collector_actor | type == "string" and length > 0) and
     (.files | type == "array" and length > 0) and
     (.pending_reviews | type == "array" and all(.[]; type == "string")) and
     (.comments | type == "array" and all(.[];
@@ -199,7 +200,10 @@ checkpoint_apply() {
   fi
   jq --arg at "$iso" --argjson epoch "$epoch" --argjson next "$next" --slurpfile snap "$snapshot" '
     .generations[-1] as $g
-    | ($snap[0].comments | map(. + {fingerprint:([.kind,.id,.body,.head,.updated_at] | @json)})) as $incoming
+    | ($snap[0].comments
+        | map(select(($g.final_disposition.evidence // "") == "" or
+            .url != $g.final_disposition.evidence or .author != $snap[0].collector_actor))
+        | map(. + {fingerprint:([.kind,.id,.body,.head,.updated_at] | @json)})) as $incoming
     | .generations[-1].checkpoints += [{at:$at,at_epoch:$epoch,head:$snap[0].head,
         pending_reviews:$snap[0].pending_reviews,checks:$snap[0].checks,
         comment_ids:($incoming | map([.kind,.id]))}]
@@ -528,6 +532,8 @@ case "$cmd" in
     [ "$#" -ge 2 ] || die 'merge requires task id and pull-request URL'
     TASK=$1; parse_url "$2"; shift 2
     fm_pr_task_id_valid "$TASK" || die 'invalid task id'
+    ledger_valid || die 'review ledger is unavailable'
+    [ "$(jq -r .task "$LEDGER")" = "$TASK" ] || die 'merge task does not match the review ledger task'
     find_merge_allowed_red "$@"
     if [ -n "$MERGE_ALLOWED_RED" ]; then
       "$0" merge-decision "$URL" --allowed-red-check "$MERGE_ALLOWED_RED"

@@ -36,7 +36,7 @@ chmod +x "$POST_MERGE_FAKEBIN/gh"
 snapshot() { # path head pending-json comments-json checks-json files-json
   jq -n --arg url "$URL" --arg head "$2" \
     --argjson pending "$3" --argjson comments "$4" --argjson checks "$5" --argjson files "$6" '{
-      schema:"firstmate-pr-review-snapshot.v1",url:$url,head:$head,
+      schema:"firstmate-pr-review-snapshot.v1",url:$url,head:$head,collector_actor:"maintainer",
       pending_reviews:$pending,comments:$comments,checks:$checks,files:$files
     }' > "$1"
 }
@@ -191,13 +191,14 @@ test_risk_classifier_treats_public_api_and_infrastructure_as_high() {
   pass 'public API definitions and conventional production infrastructure paths are high stakes'
 }
 
-test_risk_classifier_treats_review_guards_as_high() {
+test_risk_classifier_treats_review_and_hold_guards_as_high() {
   local path result
   for path in \
     bin/fm-pr-review.sh \
     bin/fm-pr-merge.sh \
     bin/fm-pr-review-snapshot.sh \
     bin/fm-pr-risk.sh \
+    bin/fm-captain-hold.sh \
     .github/firstmate-review-policy.json
   do
     jq -n --arg path "$path" '[{filename:$path,status:"modified",additions:2,deletions:1}]' \
@@ -206,7 +207,7 @@ test_risk_classifier_treats_review_guards_as_high() {
     [ "$(printf '%s' "$result" | jq -r .level)" = high ] \
       || fail "a PR review or merge guard was classified low: $path"
   done
-  pass 'PR review, merge, snapshot, classifier, and policy surfaces are high stakes'
+  pass 'PR review, merge, captain-hold, snapshot, classifier, and policy surfaces are high stakes'
 }
 
 test_merge_decision_records_only_the_live_reviewed_head() {
@@ -282,13 +283,46 @@ SH
   assert_contains "$kinds" 'top-level' 'top-level comment was absent from the live snapshot'
   assert_contains "$kinds" 'review-submission' 'submitted review was missed by the live collector'
   assert_contains "$kinds" 'inline-thread' 'inline review thread was missed by the live collector'
-  [ "$(jq '[.comments[] | select(.author == "maintainer" or (.body | contains("final disposition evidence")))] | length' "$out")" -eq 0 ] \
-    || fail 'the authenticated maintainer final-disposition post became reviewer input'
+  [ "$(jq '[.comments[] | select((.author | contains("maintainer")) and (.body | contains("final disposition evidence")))] | length' "$out")" -eq 2 ] \
+    || fail 'authenticated maintainer review feedback was removed from the snapshot'
   [ "$(jq '.pending_reviews | length' "$out")" -eq 2 ] \
     || fail 'requested reviewer and pending reviewer check were not both retained'
   [ "$(jq -r '.checks[0].conclusion' "$out")" = fail ] \
     || fail 'a nonzero checks verdict discarded the complete required-check result'
   pass 'live collection reads top-level comments, submitted reviews, inline threads, and pending reviewers'
+}
+
+test_bound_final_disposition_excludes_only_its_exact_post() {
+  local initial posted path
+  initial="$TMP_ROOT/operator-review-initial.json"
+  posted="$TMP_ROOT/operator-review-posted.json"
+  snapshot "$initial" "$HEAD_A" '[]' '[{
+    "kind":"top-level","id":"20","url":"https://example.test/maintainer-review",
+    "author":"maintainer","body":"real operator review finding",
+    "updated_at":"2026-09-20T00:10:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }]' "$GREEN" "$LOW_FILES"
+  snapshot "$posted" "$HEAD_A" '[]' '[{
+    "kind":"top-level","id":"20","url":"https://example.test/maintainer-review",
+    "author":"maintainer","body":"real operator review finding",
+    "updated_at":"2026-09-20T00:10:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },{
+    "kind":"top-level","id":"21","url":"https://example.test/final-disposition",
+    "author":"maintainer","body":"final disposition evidence",
+    "updated_at":"2026-09-20T00:11:00Z","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }]' "$GREEN" "$LOW_FILES"
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=6000 review init task-operator "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=6600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  review disposition "$URL" "$HEAD_A" top-level 20 addressed 'fixed by commit abc123' >/dev/null
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-disposition' >/dev/null
+  FM_TEST_NOW_EPOCH=6601 review merge-decision "$URL" --snapshot "$posted" >/dev/null \
+    || fail 'the exact bound final-disposition post blocked the fresh merge snapshot'
+  path=$(ledger)
+  [ "$(jq '.generations[-1].review_items | length' "$path")" -eq 1 ] \
+    || fail 'the final-disposition filter removed too much or retained its own exact post'
+  [ "$(jq -r '.generations[-1].review_items[0].id' "$path")" = 20 ] \
+    || fail 'the final-disposition filter removed genuine operator review feedback'
+  pass 'only the exact ledger-bound final-disposition post is excluded from reviewer input'
 }
 
 test_live_collector_keeps_unreported_required_checks_pending() {
@@ -457,6 +491,28 @@ SH
     "$TMP_ROOT/merge-forward-two-red.stderr" \
     'merge forwarding: naming one red check also waived another red check'
   pass 'the review wrapper applies one named red-check waiver and forwards guarded options'
+}
+
+test_merge_rejects_a_task_that_does_not_own_the_ledger() {
+  local initial path status=0
+  initial="$TMP_ROOT/task-binding.json"
+  snapshot "$initial" "$HEAD_A" '[]' '[]' "$GREEN" "$LOW_FILES"
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=7000 review init task-owner "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  review final-disposition "$URL" "$HEAD_A" 'https://example.test/final-task-owner' >/dev/null
+  set +e
+  review merge task-other "$URL" > "$TMP_ROOT/task-binding.stdout" \
+    2> "$TMP_ROOT/task-binding.stderr"
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail 'a task that does not own the review ledger reached the merge path'
+  assert_grep 'merge task does not match the review ledger task' "$TMP_ROOT/task-binding.stderr" \
+    'the task-binding refusal did not identify the ledger mismatch'
+  path=$(ledger)
+  [ "$(jq -r '.generations[-1].merge_decision' "$path")" = null ] \
+    || fail 'a mismatched task recorded a merge decision in another task ledger'
+  pass 'the merge wrapper binds its task id to the task recorded in the review ledger'
 }
 
 test_arm_reuses_the_authenticated_watcher_check() {
@@ -715,13 +771,15 @@ test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high
 test_risk_classifier_treats_public_api_and_infrastructure_as_high
-test_risk_classifier_treats_review_guards_as_high
+test_risk_classifier_treats_review_and_hold_guards_as_high
 test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
+test_bound_final_disposition_excludes_only_its_exact_post
 test_live_collector_keeps_unreported_required_checks_pending
 test_migrated_assessment_rows_are_durable_fixtures
 test_human_hold_survives_head_change_until_evidenced_release
 test_merge_forwards_guarded_options_to_the_merge_parser
+test_merge_rejects_a_task_that_does_not_own_the_ledger
 test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
 test_post_merge_requires_confirmed_forge_merge
