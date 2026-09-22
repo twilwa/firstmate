@@ -20,8 +20,8 @@
 # establish a fresh callback instead of silently losing the old one to timeout.
 # Away or quiet mode, no remaining supervision need, a foreign live session
 # owner, child worktrees, malformed input, and cancellation all stand down.
-# On a genuine arm failure, the shared turn-end guard supplies its existing
-# one-continuation repair path, bounded by stop_hook_active.
+# A genuine arm failure starts a bounded park-owned repair episode, independent
+# of stop_hook_active, because that field is also true after real watcher wakes.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +35,8 @@ OWNER_LOCK="$STATE/.codex-park-owner.lock"
 POLL=${FM_CODEX_PARK_POLL:-1}
 HOOK_TIMEOUT_SECONDS=${FM_CODEX_STOP_TIMEOUT_SECONDS:-86400}
 LOCK_ATTEMPTS=${FM_CODEX_PARK_LOCK_ATTEMPTS:-50}
+FAILURE_BUDGET=${FM_CODEX_PARK_FAILURE_BUDGET:-3}
+FAILURE_FILE="$STATE/.codex-park-failures"
 case "$POLL" in ''|*[!0-9]*|0) POLL=1 ;; esac
 case "$HOOK_TIMEOUT_SECONDS" in ''|*[!0-9]*|0) HOOK_TIMEOUT_SECONDS=86400 ;; esac
 RENEW_DEFAULT=$((HOOK_TIMEOUT_SECONDS / 4))
@@ -43,6 +45,7 @@ RENEW_SECONDS=${FM_CODEX_PARK_RENEW_SECONDS:-$RENEW_DEFAULT}
 case "$RENEW_SECONDS" in ''|*[!0-9]*|0) RENEW_SECONDS=$RENEW_DEFAULT ;; esac
 [ "$RENEW_SECONDS" -lt "$HOOK_TIMEOUT_SECONDS" ] || RENEW_SECONDS=$RENEW_DEFAULT
 case "$LOCK_ATTEMPTS" in ''|*[!0-9]*|0) LOCK_ATTEMPTS=50 ;; esac
+case "$FAILURE_BUDGET" in ''|*[!0-9]*|0) FAILURE_BUDGET=3 ;; esac
 
 # shellcheck source=bin/fm-primary-scope-lib.sh
 . "$SCRIPT_DIR/fm-primary-scope-lib.sh"
@@ -118,6 +121,44 @@ emit_continuation() { # <kind> <body>
   exit 2
 }
 
+failure_episode_reset() {
+  lock_acquire_bounded "$OWNER_LOCK" || return 1
+  if park_still_ours && current_session_still_ours; then
+    rm -f "$FAILURE_FILE" 2>/dev/null || true
+  fi
+  fm_lock_release "$OWNER_LOCK"
+}
+
+handle_park_failure() {
+  local count
+  if ! lock_acquire_bounded "$OWNER_LOCK"; then
+    printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILED: the failure episode lock could not be acquired, so this Stop cannot safely schedule another automatic continuation."}\n'
+    exit 0
+  fi
+  if ! park_still_ours || ! current_session_still_ours || [ -e "$STATE/.afk" ]; then
+    fm_lock_release "$OWNER_LOCK"
+    exit 0
+  fi
+  count=$(sed -n 's/^count=\([0-9][0-9]*\)$/\1/p' "$FAILURE_FILE" 2>/dev/null || true)
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  count=$((count + 1))
+  if ! printf 'count=%s\n' "$count" > "$FAILURE_FILE" 2>/dev/null; then
+    fm_lock_release "$OWNER_LOCK"
+    printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILED: the bounded failure episode could not be persisted, so this Stop cannot safely schedule another automatic continuation."}\n'
+    exit 0
+  fi
+  fm_lock_release "$OWNER_LOCK"
+
+  if [ "$count" -le "$FAILURE_BUDGET" ]; then
+    emit_continuation turn-end-guard "FIRSTMATE CODEX WATCHER PARK FAILED - supervision remains required, but the synchronous watcher arm closed without an actionable wake.
+
+This is repair attempt $count of $FAILURE_BUDGET for the current failure episode. Inspect the watcher failure, repair supervision, and let the turn end normally; the next Stop retries the park even when stop_hook_active is true. Do not launch bin/fm-watch-arm.sh from the model."
+  fi
+
+  printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILURE BUDGET EXHAUSTED: supervision is still required after %s consecutive failed park attempts; automatic Stop continuations are now bounded."}\n' "$FAILURE_BUDGET"
+  exit 0
+}
+
 # Only the lock-owning primary may park. Session start owns stale lock recovery;
 # this hook never steals from a live session or guesses through uncertainty.
 if ! fm_session_lock_owned_by_self "$STATE"; then
@@ -132,8 +173,14 @@ case "$OWNER_ID" in ''|*[!0-9]*) exit 0 ;; esac
 PARK_SEQ=
 claim_park || exit 0
 
-[ -e "$STATE/.afk" ] && exit 0
-fm_supervision_needed "$STATE" "$GRACE" || exit 0
+if [ -e "$STATE/.afk" ]; then
+  rm -f "$FAILURE_FILE" 2>/dev/null || true
+  exit 0
+fi
+if ! fm_supervision_needed "$STATE" "$GRACE"; then
+  rm -f "$FAILURE_FILE" 2>/dev/null || true
+  exit 0
+fi
 
 # Relay supplies its own poll cadence through this generated environment.
 # shellcheck source=/dev/null
@@ -178,12 +225,16 @@ fi
 wait "$ARM_PID" 2>/dev/null || true
 ARM_PID=
 
-[ -e "$STATE/.afk" ] && exit 0
+[ -e "$STATE/.afk" ] && { rm -f "$FAILURE_FILE" 2>/dev/null || true; exit 0; }
 park_still_ours || exit 0
 current_session_still_ours || exit 0
-fm_supervision_needed "$STATE" "$GRACE" || exit 0
+if ! fm_supervision_needed "$STATE" "$GRACE"; then
+  failure_episode_reset || true
+  exit 0
+fi
 
 if [ "$RENEW" -eq 1 ]; then
+  failure_episode_reset || true
   emit_continuation turn-end-guard "FIRSTMATE CODEX WATCHER PARK RENEWAL - the synchronous Stop hook reached its bounded renewal interval before the native hook timeout.
 
 No watcher event is implied. Let this continuation end normally after checking for queued wakes; the next Stop automatically establishes a fresh watcher park. Do not launch bin/fm-watch-arm.sh from the model."
@@ -191,6 +242,7 @@ fi
 
 if [ -n "$ARM_OUT" ] && grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$ARM_OUT" 2>/dev/null; then
   WAKE=$(grep -E '^(signal:|stale:|check:|heartbeat)' "$ARM_OUT" 2>/dev/null | head -8)
+  failure_episode_reset || true
   emit_continuation watcher "firstmate watcher wake - one supervision event needs a handling turn now.
 $WAKE
 
@@ -198,8 +250,6 @@ Run bin/fm-wake-drain.sh first, handle the wake, then run its exact WAKE_ACK_REQ
 fi
 
 # A non-actionable arm close is a continuity failure even if a leftover beacon
-# is fresh. Ask the shared guard for its bounded repair continuation, but force
-# the Codex repair wording instead of depending on hook-process ancestry.
-printf '%s' "$PAYLOAD" \
-  | FM_PRIMARY_HARNESS_OVERRIDE=codex "$SCRIPT_DIR/fm-turnend-guard.sh"
-exit $?
+# is fresh. Its bounded episode is owned here because stop_hook_active also
+# follows genuine wake and renewal continuations.
+handle_park_failure
