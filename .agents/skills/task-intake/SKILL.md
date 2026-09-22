@@ -52,9 +52,7 @@ Serialize only for a true semantic dependency, shared mutable external state, in
 
 ## Resolve the worker profile
 
-Load `harness-adapters` before every spawn or recovery and before trust handling, skill invocation, interrupt, exit, resume, or adapter verification.
-Never dispatch on an unverified adapter.
-If static `config/crew-harness` or `config/secondmate-harness` names an unverified adapter, follow that skill's fallback and reporting policy.
+[`AGENTS.md`](../../../AGENTS.md) section 4 owns the `harness-adapters` load trigger and the unverified-adapter rule; that skill owns static-config fallback and reporting.
 
 [`docs/configuration.md`](../../../docs/configuration.md) owns dispatch-profile and runtime-backend schemas, [`bin/fm-harness.sh`](../../../bin/fm-harness.sh) owns static resolution, and [`bin/fm-spawn.sh`](../../../bin/fm-spawn.sh) owns launch flags and fail-closed validation.
 When dispatch profiles exist, consult them at every crewmate or scout intake and pass the resolved concrete profile required by `fm-spawn`.

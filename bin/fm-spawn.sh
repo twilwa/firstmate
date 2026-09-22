@@ -6,7 +6,7 @@
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
-#   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
+#   per task at intake (the task-intake skill); data/projects.md holds the captain's
 #   standing posture as context, not as this task's answer, so a spawn never looks
 #   the mode up. A ship spawn additionally reads the brief's recorded
 #   "Delivery contract: mode=<mode>" line and REFUSES a mismatch, so the worker's
