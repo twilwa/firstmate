@@ -25,40 +25,38 @@ test_quiet_checkpoint_exits_124_cleanly() {
   expect_code 124 "$status" "quiet checkpoint exit"
   assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 1s" "quiet checkpoint line missing"
   assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout"
-  pass "quiet checkpoint exits 124 only after its watcher lock is released"
+  pass "quiet checkpoint exits 124 with a clean checkpoint line and no live lock"
 }
 
-test_timeout_with_retained_lock_fails_loudly() {
-  local home fakebin out err status=0 watcher_pid
-  home=$(make_home retained-lock)
-  fakebin="$home/fakebin"
+test_timeout_during_watcher_initialization_releases_lock() {
+  local home out err status=0 holder ready
+  home=$(make_home initialization-timeout)
   out="$home/out.txt"
   err="$home/err.txt"
-  mkdir -p "$fakebin"
-  cat > "$fakebin/timeout" <<'SH'
-#!/usr/bin/env bash
-case "$1" in --kill-after=*) shift ;; esac
-shift
-"$@" &
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  [ -s "$FM_HOME/state/.watch.lock/pid" ] && exit 124
-  sleep 0.05
-done
-exit 124
-SH
-  chmod +x "$fakebin/timeout"
+  ready="$home/holder-ready"
+  FM_HOME="$home" READY="$ready" ROOT="$ROOT" bash -c '
+    . "$ROOT/bin/fm-wake-lib.sh"
+    fm_lock_try_acquire "$FM_HOME/state/.watcher-down.lock" || exit 1
+    : > "$READY"
+    trap '\''fm_lock_release "$FM_HOME/state/.watcher-down.lock"'\'' EXIT
+    sleep 20
+  ' &
+  holder=$!
+  while [ ! -e "$ready" ]; do
+    kill -0 "$holder" 2>/dev/null || fail "initialization lock holder exited early"
+    sleep 0.05
+  done
 
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_POLL=30 FM_CHECK_INTERVAL=999999 \
-    FM_CHECKPOINT_CLEANUP_ATTEMPTS=2 "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
-  expect_code 1 "$status" "retained-lock checkpoint exit"
-  assert_contains "$(cat "$err")" "did not release its singleton lock" \
-    "retained-lock checkpoint did not report uncertain supervision state"
-
-  watcher_pid=$(cat "$home/state/.watch.lock/pid" 2>/dev/null || true)
-  [ -z "$watcher_pid" ] || kill -TERM "$watcher_pid" 2>/dev/null || true
-  sleep 0.2
-  [ -z "$watcher_pid" ] || kill -KILL "$watcher_pid" 2>/dev/null || true
-  pass "checkpoint refuses a quiet success while a timed-out watcher lock remains"
+  FM_HOME="$home" FM_POLL=30 FM_CHECK_INTERVAL=999999 \
+    "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
+  kill -TERM "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
+  expect_code 124 "$status" "initialization-timeout checkpoint exit"
+  assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 1s" \
+    "initialization-timeout checkpoint line missing"
+  assert_absent "$home/state/.watch.lock/pid" \
+    "watch lock survived timeout during post-claim initialization"
+  pass "checkpoint timeout during watcher initialization releases its owned lock"
 }
 
 test_signal_passes_through_and_exits_zero() {
@@ -115,7 +113,7 @@ test_existing_singleton_watcher_is_not_success() {
 }
 
 test_quiet_checkpoint_exits_124_cleanly
-test_timeout_with_retained_lock_fails_loudly
+test_timeout_during_watcher_initialization_releases_lock
 test_signal_passes_through_and_exits_zero
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success

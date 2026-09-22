@@ -2104,6 +2104,11 @@ if ! fm_lock_try_acquire "$WATCH_LOCK"; then
   fi
   exit 0
 fi
+watcher_initializing_cleanup() {
+  fm_lock_release "$WATCH_LOCK"
+}
+trap watcher_initializing_cleanup EXIT
+trap 'exit 1' HUP INT TERM
 WATCHER_RECOVERY_PENDING=0
 if [ -n "${FM_LOCK_RECOVERED_PID:-}" ]; then
   WATCHER_RECOVERY_PENDING=1

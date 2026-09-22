@@ -5,16 +5,6 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECONDS_ARG=${FM_CODEX_WATCH_CHECKPOINT:-180}
-FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
-STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
-CLEANUP_ATTEMPTS=${FM_CHECKPOINT_CLEANUP_ATTEMPTS:-50}
-KILL_GRACE=${FM_CHECKPOINT_KILL_GRACE:-${FM_SIGNAL_GRACE:-5}}
-case "$CLEANUP_ATTEMPTS" in ''|*[!0-9]*|0) CLEANUP_ATTEMPTS=50 ;; esac
-case "$KILL_GRACE" in ''|*[!0-9]*|0) KILL_GRACE=5 ;; esac
-
-# shellcheck source=bin/fm-wake-lib.sh
-. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -90,25 +80,12 @@ run_with_perl_timeout() {
   ' "$SECONDS_ARG" "$SCRIPT_DIR/fm-watch.sh"
 }
 
-wait_for_watcher_release() {
-  local attempt=0 pid
-  while [ -e "$STATE/.watch.lock/pid" ] && [ "$attempt" -lt "$CLEANUP_ATTEMPTS" ]; do
-    pid=$(cat "$STATE/.watch.lock/pid" 2>/dev/null || true)
-    if ! fm_pid_alive "$pid" && fm_lock_try_acquire "$STATE/.watch.lock"; then
-      fm_lock_release "$STATE/.watch.lock"
-    fi
-    sleep 0.1
-    attempt=$((attempt + 1))
-  done
-  [ ! -e "$STATE/.watch.lock/pid" ]
-}
-
 set +e
 if command -v timeout >/dev/null 2>&1; then
-  timeout --kill-after="$KILL_GRACE" "$SECONDS_ARG" "$SCRIPT_DIR/fm-watch.sh" >"$OUT" 2>"$ERR"
+  timeout "$SECONDS_ARG" "$SCRIPT_DIR/fm-watch.sh" >"$OUT" 2>"$ERR"
   RC=$?
 elif command -v gtimeout >/dev/null 2>&1; then
-  gtimeout --kill-after="$KILL_GRACE" "$SECONDS_ARG" "$SCRIPT_DIR/fm-watch.sh" >"$OUT" 2>"$ERR"
+  gtimeout "$SECONDS_ARG" "$SCRIPT_DIR/fm-watch.sh" >"$OUT" 2>"$ERR"
   RC=$?
 else
   run_with_perl_timeout >"$OUT" 2>"$ERR"
@@ -130,11 +107,6 @@ if grep -E '^watcher: already running' "$OUT" "$ERR" >/dev/null 2>&1; then
 fi
 
 if [ "$RC" -eq 124 ]; then
-  if ! wait_for_watcher_release; then
-    [ ! -s "$ERR" ] || cat "$ERR" >&2
-    echo "checkpoint: timed-out watcher did not release its singleton lock; supervision state is uncertain" >&2
-    exit 1
-  fi
   printf 'checkpoint: no actionable wake within %ss\n' "$SECONDS_ARG"
   exit 124
 fi

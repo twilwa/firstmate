@@ -103,7 +103,7 @@ A newer Stop therefore supersedes an older park without duplicate delivery.
 The watcher itself may remain quiet indefinitely, while Codex command hooks have a finite configured timeout.
 The park returns a scheduled `turn-end-guard` renewal after one quarter of the tracked 86400-second timeout and lets the next Stop establish a new callback.
 This is a bounded six-hour cadence, not an immediate hook loop.
-Only a non-actionable arm close delegates to the shared guard, where `stop_hook_active=true` retains the one-repair-turn bound.
+A non-actionable arm close uses the park-owned bounded failure episode described in `docs/supervision-protocols/codex.md`, independently of `stop_hook_active`.
 While `state/.afk` exists, the park stands down because the away or quiet daemon owns the watcher under the handoff contract above.
 
 Claude runs the guard with `--claude`, which ignores `stop_hook_active` and cooperates with the Stop-owned auto-arm.
