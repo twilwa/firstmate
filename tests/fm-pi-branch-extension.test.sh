@@ -1374,8 +1374,15 @@ let finishReplacementPrompt;
 globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishReplacementPrompt = resolve; });
 const replacementOffer = dispatch("signal: after replacement");
 if (!replacementOffer.accepted) throw new Error("branch refused a wake after the replacement");
-await settle(() => (globalThis.__fmSessions ?? []).length === 2, "replacement branch session");
-await settle(() => (globalThis.__fmPrompts ?? []).length === 2, "replacement branch prompt");
+// The built session is not the synchronization point: the wake snapshots the
+// durable report revision only just before it prompts, and several awaited
+// scripts run between the build and that snapshot. A report made in that
+// window is invisible to the wake, which then rejects its own settled prompt
+// as outcome-less. Wait for the prompt itself, as the routine wake above does.
+await settle(
+  () => (globalThis.__fmSessions ?? []).length === 2 && (globalThis.__fmPrompts ?? []).length === 2,
+  "replacement branch session and its wake prompt",
+);
 const report2 = globalThis.__fmSessions[1].options.customTools.find((tool) => tool.name === "fm_branch_report");
 const beforePair = requests().length;
 const second = await report2.execute("captain-2", { task: "branch-driver", verdict: "captain", summary: "PR https://example.com/pr/e is ready for review" }, undefined, undefined, {});
