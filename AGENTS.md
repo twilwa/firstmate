@@ -81,7 +81,6 @@ Load `bootstrap-diagnostics` for every actionable bootstrap or network-check dia
 
 ## 4. Harness and runtime dispatch
 
-Load `task-intake` before classifying, briefing, or dispatching any new ship or scout.
 Load `harness-adapters` before every spawn or recovery and before trust handling, harness-specific skill invocation, interrupt, exit, resume, or adapter verification.
 Load `quota-array-dispatch` before choosing among a matched dispatch-profile array.
 Load `secondmate-provisioning` for every secondmate dispatch or recovery condition named in section 13.
@@ -120,9 +119,6 @@ When the captain invokes `/stow`, load the `stow` skill.
 
 ## 7. Task lifecycle and merge authority
 
-Load `task-intake` before classifying, briefing, dispatching, or steering a new ship or scout.
-Load `task-delivery` before starting or steering validation, on validation or delivery milestones, after a ship or scout reports done, before any merge or local landing, before teardown, and before scout promotion.
-Load `backlog-management` before any backlog mutation or queue review.
 The selected task's delivery mode and `yolo` posture must be explicit; the new task's brief and spawn record both values and never infer them later.
 
 Hard rule 2 governs every merge.
@@ -158,7 +154,7 @@ Handle actionable wakes as follows:
 1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it.
 2. For `stale:`, inspect the recorded endpoint and load `stuck-crewmate-recovery` for a stopped, looping, confused, or unresponsive worker; a deep-inspection reason also requires current-state and validation-log inspection.
 3. For `check:`, act on the named poll result, including merges, contribution signals, Relay events, process-to-event source results, and captain inbox notes; a handled inbox note is also acknowledged with `bin/fm-inbox.sh drain --ack <id>`, or it stays counted as still waiting for firstmate.
-4. For `heartbeat:`, review the whole fleet from the structured fleet view, reconcile suspicious tasks and PR state, load `backlog-management` to review the queue, and never report an unchanged fleet as progress.
+4. For `heartbeat:`, review the whole fleet from the structured fleet view, reconcile suspicious tasks and PR state, review the backlog queue, and never report an unchanged fleet as progress.
 
 Load `bearings` on a contributions check wake or when filing work linked to an upstream issue; its contribution-follow-up section owns triage and exact signal acknowledgement.
 
@@ -245,14 +241,12 @@ Mention cost as a courtesy when unusually much work is running, but never block 
 
 ## 10. Backlog contract
 
-Load `backlog-management` before filing, holding, handing off, updating, reviewing, or closing backlog work and before replacing a task note.
 Load `captain-hold-lifecycle` for captain calls discovered by investigations or visual reviews and whenever recording or routing the captain's answer.
 Use `bin/fm-tasks-axi.sh` for configured tasks-axi operations so they reach this home's backlog from any directory; `docs/configuration.md` owns the manual-backend exception.
 Persistent secondmates are agents, never backlog items, and work routed to one belongs in that home's own backlog.
 
 ## 11. Crewmate briefs
 
-Load `task-intake` before writing or changing any ship or scout brief.
 Load `secondmate-provisioning` before creating or using a charter brief.
 `bin/fm-brief.sh` and `bin/fm-dod-lib.sh` own scaffold syntax, generated safety text, intent provenance, and delivery definitions of done.
 The scaffold is a safety contract, not a suggestion.

@@ -32,8 +32,8 @@
 # is checked against the wrong quota row. This is an accepted limitation of the
 # optional helper. Authoritative multi-provider routing - including provider
 # discovery from the harness catalog and quota matching by that explicit
-# provider - is owned by AGENTS.md section 4 and the quota-array-dispatch skill,
-# not by this helper. Use this helper only when the brief already fixed the
+# provider - is owned by the task-intake and quota-array-dispatch skills, not by
+# this helper. Use this helper only when the brief already fixed the
 # candidate order and every candidate's provider is the harness's primary family.
 #
 # omp (Oh My Pi) has no single primary family, so its candidate model prefix

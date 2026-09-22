@@ -442,7 +442,7 @@ Every claude launch's inline `--settings` JSON also carries `"attribution":{"com
 ## Crew dispatch profiles (config/crew-dispatch.json)
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.
-The shell scripts do not match those rules; firstmate chooses the best matching rule with judgment, resolves its profile object or array under the operating contract in `AGENTS.md` section 4 and `quota-array-dispatch`, and passes only concrete `--harness`, `--model`, and `--effort` flags to `fm-spawn.sh`.
+The shell scripts do not match those rules; firstmate chooses the best matching rule with judgment, resolves its profile object or array under the operating contract in the agent-only `task-intake` skill and `quota-array-dispatch`, and passes only concrete `--harness`, `--model`, and `--effort` flags to `fm-spawn.sh`.
 When the file exists, `fm-spawn.sh` enforces that contract by refusing crewmate and scout spawns that lack an explicit harness (`--harness`, a positional adapter, or a raw launch command).
 Batch spawns satisfy the same requirement with a shared `--harness`.
 Secondmate spawns are exempt and still resolve through `config/secondmate-harness` and its optional model and effort tokens.
@@ -527,7 +527,7 @@ Response probabilities must contain exactly every offered choice, use numeric va
 Only a usage or configuration error exits 2: an unreadable brief, an existing but unreadable or malformed canonical rules file, or missing `jq` once a rules file exists to match against, each reported and never selected around.
 With no rules file at all, the `no rules to match` block and exit 0 hold whether or not `jq` is installed, because that path asks nothing of the model or the rules; the run's own receipt is the only casualty, and it says so on its one stderr line.
 Missing `curl` is a normal structured `error` outcome with exit 0 so firstmate uses today's routing.
-The tool never replaces firstmate's judgment, `quota-array-dispatch`, the captain-approval gate, or `fm-spawn.sh` validation; `AGENTS.md` section 4 owns what firstmate does with each outcome.
+The tool never replaces firstmate's judgment, `quota-array-dispatch`, the captain-approval gate, or `fm-spawn.sh` validation; the agent-only `task-intake` skill owns what firstmate does with each outcome.
 By accepted design, a `clear` result does not enforce catalog/authentication, reasoning-class, or completion-runway gates.
 Firstmate passes its profile line unless it states a reason to override, such as the brief's reasoning class or an eligible-unranked-candidate note; every non-clear result returns to the full existing intake.
 
