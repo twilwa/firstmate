@@ -296,6 +296,7 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
+  Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding.
 
 After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done [at=<epoch>]: PR {url} checks green\` and stop. You are finished.
 EOF

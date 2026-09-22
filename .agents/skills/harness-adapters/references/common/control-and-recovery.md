@@ -25,6 +25,7 @@ Pi gates the fresh-worktree case too, but unlike Claude its dialog is answered w
 Codex shows a directory-trust dialog on the first run for a repository root.
 
 Use the tool's exact skill form, or natural language only when no separate command is verified or the form remains uncertain.
+NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`; ask-user gates must return to firstmate as `needs-decision`.
 A successful send or key return is not proof of submission; require the tool-specific postcondition.
 Popup, queued-input, and readiness handling belongs to `../../../bin/fm-composer-lib.sh` and the selected backend.
 
