@@ -150,20 +150,43 @@ test_failure_episode_survives_active_stop_and_stays_bounded() {
   make_primary "$dir"
   : > "$dir/state/task.meta"
   write_arm_failure "$dir"
-  out=$(run_park "$dir" false 2>&1) || status=$?
-  expect_code 2 "$status" "initial failed Codex park"
-  assert_contains "$out" "repair attempt 1 of 3" "failed park omitted its episode position"
-  for attempt in 2 3; do
-    status=0
-    out=$(run_park "$dir" true 2>&1) || status=$?
-    expect_code 2 "$status" "active-stop failed Codex park attempt $attempt"
-    assert_contains "$out" "repair attempt $attempt of 3" "stop_hook_active suppressed park failure attempt $attempt"
+  out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
+    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    for attempt in 1 2 3 4; do
+      status=0
+      printf "{\"hook_event_name\":\"Stop\",\"session_id\":\"codex-test\",\"stop_hook_active\":true}" \
+        | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || status=$?
+      printf "status=%s\n" "$status"
+    done
+  ' 2>&1) || status=$?
+  expect_code 0 "$status" "bounded Codex park failure episode fixture"
+  for attempt in 1 2 3; do
+    assert_contains "$out" "repair attempt $attempt of 3" "active Stop suppressed failed park attempt $attempt"
   done
-  status=0
-  out=$(run_park "$dir" true 2>&1) || status=$?
-  expect_code 0 "$status" "exhausted Codex park failure episode"
+  [ "$(printf '%s\n' "$out" | grep -c '^status=2$')" = 3 ] \
+    || fail "bounded failure episode did not return exactly three repair continuations: $out"
+  assert_contains "$out" "status=0" "exhausted Codex park failure episode did not end"
   assert_contains "$out" "FAILURE BUDGET EXHAUSTED" "bounded fail-open was silent"
   pass "Codex park: failures after an active Stop retry deterministically to a visible finite bound"
+}
+
+test_replacement_session_gets_its_own_failure_episode() {
+  local dir="$TMP_ROOT/replacement-failure" first_out out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  write_arm_failure "$dir"
+  first_out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
+    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    for _ in 1 2 3 4; do
+      printf "{\"hook_event_name\":\"Stop\",\"session_id\":\"first\",\"stop_hook_active\":true}" \
+        | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || true
+    done
+  ' 2>&1)
+  assert_contains "$first_out" "FAILURE BUDGET EXHAUSTED" "first session did not exhaust its failure episode"
+  out=$(run_park "$dir" true 2>&1) || status=$?
+  expect_code 2 "$status" "replacement-session failed Codex park"
+  assert_contains "$out" "repair attempt 1 of 3" "replacement session inherited the prior owner's exhausted failure budget"
+  pass "Codex park: a replacement session receives its own bounded failure episode"
 }
 
 test_real_wake_resets_failure_episode() {
@@ -171,18 +194,29 @@ test_real_wake_resets_failure_episode() {
   make_primary "$dir"
   : > "$dir/state/task.meta"
   write_arm_failure "$dir"
-  out=$(run_park "$dir" false 2>&1) || status=$?
-  expect_code 2 "$status" "pre-wake failed Codex park"
-  write_arm_actionable "$dir"
-  status=0
-  out=$(run_park "$dir" true 2>&1) || status=$?
-  expect_code 2 "$status" "active-stop real watcher wake"
+  out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
+    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    payload="{\"hook_event_name\":\"Stop\",\"session_id\":\"codex-test\",\"stop_hook_active\":true}"
+    printf "%s" "$payload" | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || true
+    cat > "$FM_HOME/bin/fm-watch-arm.sh" <<'"'"'SH'"'"'
+#!/usr/bin/env bash
+printf "signal: crew.status\n"
+SH
+    chmod +x "$FM_HOME/bin/fm-watch-arm.sh"
+    printf "%s" "$payload" | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || true
+    cat > "$FM_HOME/bin/fm-watch-arm.sh" <<'"'"'SH'"'"'
+#!/usr/bin/env bash
+printf "watcher: FAILED - fixture\n"
+exit 1
+SH
+    chmod +x "$FM_HOME/bin/fm-watch-arm.sh"
+    printf "%s" "$payload" | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || true
+  ' 2>&1) || status=$?
+  expect_code 0 "$status" "same-session wake-reset fixture"
   assert_contains "$out" "signal: crew.status" "real wake was not delivered while resetting the episode"
-  write_arm_failure "$dir"
-  status=0
-  out=$(run_park "$dir" true 2>&1) || status=$?
-  expect_code 2 "$status" "new post-wake failed Codex park"
-  assert_contains "$out" "repair attempt 1 of 3" "a real wake did not start the next failure as a new episode"
+  [ "$(printf '%s\n' "$out" | grep -c 'repair attempt 1 of 3')" = 2 ] \
+    || fail "a real wake did not reset the next failure to attempt 1: $out"
+  assert_not_contains "$out" "repair attempt 2 of 3" "a real wake retained the prior failure count"
   pass "Codex park: a delivered real wake resets the bounded failure episode"
 }
 
@@ -318,6 +352,7 @@ test_stop_active_does_not_suppress_real_wake
 test_park_waits_in_hook_until_event
 test_away_mode_stands_down
 test_failure_episode_survives_active_stop_and_stays_bounded
+test_replacement_session_gets_its_own_failure_episode
 test_real_wake_resets_failure_episode
 test_beacons_do_not_mask_a_failed_park
 test_quiet_park_renews_before_native_timeout

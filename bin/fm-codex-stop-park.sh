@@ -130,7 +130,7 @@ failure_episode_reset() {
 }
 
 handle_park_failure() {
-  local count
+  local count failure_owner
   if ! lock_acquire_bounded "$OWNER_LOCK"; then
     printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILED: the failure episode lock could not be acquired, so this Stop cannot safely schedule another automatic continuation."}\n'
     exit 0
@@ -139,10 +139,12 @@ handle_park_failure() {
     fm_lock_release "$OWNER_LOCK"
     exit 0
   fi
+  failure_owner=$(sed -n 's/^owner=\([0-9][0-9]*\)$/\1/p' "$FAILURE_FILE" 2>/dev/null || true)
   count=$(sed -n 's/^count=\([0-9][0-9]*\)$/\1/p' "$FAILURE_FILE" 2>/dev/null || true)
+  [ "$failure_owner" = "$OWNER_ID" ] || count=0
   case "$count" in ''|*[!0-9]*) count=0 ;; esac
   count=$((count + 1))
-  if ! printf 'count=%s\n' "$count" > "$FAILURE_FILE" 2>/dev/null; then
+  if ! printf 'owner=%s\ncount=%s\n' "$OWNER_ID" "$count" > "$FAILURE_FILE" 2>/dev/null; then
     fm_lock_release "$OWNER_LOCK"
     printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILED: the bounded failure episode could not be persisted, so this Stop cannot safely schedule another automatic continuation."}\n'
     exit 0
