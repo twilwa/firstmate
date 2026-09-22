@@ -56,6 +56,7 @@ Each secondmate has a persistent isolated `FM_HOME`, including its own state, ba
 `bin/fm-send.sh` fails closed unless `FM_HOME` is explicit, so a steer cannot silently resolve against another home.
 
 A `state/<id>.status` line is a wake event, not current-state truth; `bin/fm-crew-state.sh` owns current-state reconciliation.
+Every `state/` file a producer script names as its own internal record (watcher, wake queue, session lock, auto-arm, sub-supervisor, and Relay markers) is never hand-edited or deleted; repair goes only through the emitted owner path.
 Treat `data/captain.md` as the domain-local record of captain preferences, optional `data/captain-shared.md` as the main-authoritative shared captain-preference file for secondmate inheritance, and `data/learnings.md` as curated home-local knowledge, regardless of harness memory.
 
 ## 3. Session start (run once at every session start)
@@ -119,7 +120,7 @@ When the captain invokes `/stow`, load the `stow` skill.
 
 ## 7. Task lifecycle and merge authority
 
-The selected task's delivery mode and `yolo` posture must be explicit; the new task's brief and spawn record both values and never infer them later.
+The selected task's delivery mode and `yolo` posture must be explicit and never inferred later; pass the mode explicitly to the brief, and both values explicitly to the spawn and any scout promotion.
 
 Hard rule 2 governs every merge.
 The captain's current explicit merge instruction, a project's standing `yolo` posture, and the captain-approved GitHub review policy are the only merge-authority sources, each within the exact scope owned by `task-delivery` and `pr-review-policy`.
