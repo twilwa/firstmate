@@ -1,0 +1,62 @@
+FM_TEST_BEGIN 2026-09-22T04:09:43Z tests/fm-brief.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-brief: scaffolds leave the worker role scope to the launch boundary and keep the secondmate contract
+ok - fm-brief.sh: bash -n succeeds
+/tmp/fm-test-run.eUxpzc/w1/tmp/fm-brief.CkDo0W/heredoc-in-substitution.sh:2
+ok - fm-brief.sh: no heredoc is nested inside a command substitution (Bash 3.2 parse-safe)
+ok - fm-brief.sh: --help renders the complete header
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: ship --mode is required and closed-set validated
+ok - fm-brief.sh: the explicit ship mode wins over the registered posture
+ok - fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped
+ok - fm-brief.sh: faster paths use configured authority without stacked review
+ok - fm-brief.sh: no-mistakes DOD keeps its apostrophe prose and bans --yes outright
+ok - fm-brief.sh: no-mistakes ask-user findings use one event plus a verbatim snapshot
+ok - fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar
+ok - fm-brief.sh: --herdr-lab emits the complete hard safety contract
+ok - fm-brief.sh: --herdr-lab uses its quoted Firstmate-owned helper path
+ok - fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible
+ok - fm-brief.sh: the documented {TASK} and {FIRSTMATE_SPEC} fills cannot corrupt the Herdr safety gate
+ok - fm-brief.sh: Herdr lab contract covers scouts and rejects secondmate misuse
+ok - fm-brief.sh: --no-projects scaffolds a project-less charter and guards misuse
+ok - fm-brief.sh: marked requests avoid generic acknowledgements and preserve material reporting
+ok - fm-brief.sh: relative directory inputs ignore CDPATH, render stable absolute charter paths, or fail loudly
+ok - fm-brief.sh: custom pause verb renders in every scaffold
+ok - fm-brief.sh: ship and scout scaffolds teach validation-round pauses
+ok - fm-brief.sh: investigation and visual-review completions load the shared decision policy
+ok - fm-brief: scout and secondmate code paths still scaffold well-formed briefs
+ok - fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor
+FM_TEST_END 2026-09-22T04:10:02Z tests/fm-brief.test.sh exit=0 duration_ms=19175 gate_skip=false
+FM_TEST_BEGIN 2026-09-22T04:10:02Z tests/fm-task-delivery.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-09-22T04:10:02Z tests/fm-documentation-audiences.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-09-22T04:10:02Z tests/fm-ask-user-authority.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-09-22T04:10:02Z tests/fm-harness-adapter-references.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - harness adapter routing artifact is normalized and every target is readable
+FM_TEST_END 2026-09-22T04:10:02Z tests/fm-harness-adapter-references.test.sh exit=0 duration_ms=217 gate_skip=false
+ok - primary workers and secondmates receive the authority rule through generated instructions
+FM_TEST_END 2026-09-22T04:10:03Z tests/fm-ask-user-authority.test.sh exit=0 duration_ms=456 gate_skip=false
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+FM_TEST_END 2026-09-22T04:10:04Z tests/fm-documentation-audiences.test.sh exit=0 duration_ms=2103 gate_skip=false
+ok - fm-spawn/fm-promote: authorized intent preserves exact words and refuses operator-address lines
+ok - fm-spawn: every legacy worker receives scoped role instructions without changing project or primary instructions
+ok - fm-spawn: a ship spawn requires a valid explicit mode and yolo before anything is created
+ok - fm-spawn: scout and secondmate spawns refuse ship delivery flags
+ok - fm-spawn: the brief's recorded mode and the spawn's explicit mode must agree
+ok - fm-spawn: a rigor downgrade against the registered posture is announced, never blocked
+ok - fm-spawn: a scout spawn resolves no delivery posture from the registry
+ok - fm-promote: promotion requires the delivery contract and records it exactly once
+ok - fm-promote: a symlinked task record is refused and its target is left untouched
+ok - fm-promote: a promoted worker receives the same mode-specific delivery contract a briefed one does
+ok - fm-project-mode: the conditional policy is accepted, mapped for mechanical callers, and readable raw
+ok - fm-spawn/fm-promote: leftover Task placeholders are refused until both subsections are filled
+# all fm-task-delivery tests passed
+FM_TEST_END 2026-09-22T04:11:23Z tests/fm-task-delivery.test.sh exit=0 duration_ms=80749 gate_skip=false
+FM_TEST_SUMMARY total=5 failed=0 skipped_gate=0 duration_ms=100639
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=5 duration_ms=102700 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-task-delivery.test.sh duration_ms=80749
+FM_TEST_SLOWEST rank=2 script=tests/fm-brief.test.sh duration_ms=19175
+FM_TEST_SLOWEST rank=3 script=tests/fm-documentation-audiences.test.sh duration_ms=2103
+FM_TEST_SLOWEST rank=4 script=tests/fm-ask-user-authority.test.sh duration_ms=456
+FM_TEST_SLOWEST rank=5 script=tests/fm-harness-adapter-references.test.sh duration_ms=217

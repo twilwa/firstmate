@@ -1,0 +1,23 @@
+# harness-adapters skill-invocation guidance, resolved through the real routing contract
+
+## Reference bundle the router selects for operation=skill, scenario=default, harness=claude
+$ jq -r '.operations.skill.default[], .harnesses.claude' <harness-adapter-routing-v1>
+references/common/control-and-recovery.md
+references/harness/claude.md
+
+## The --yes guidance present in that resolved bundle at TARGET 99a0187
+.agents/skills/harness-adapters/references/common/control-and-recovery.md:28:NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`; ask-user gates must return to firstmate as `needs-decision`.
+
+## Same grep over the BASE 0ec2f6c bundle -- no guidance existed
+(no match in references/common/control-and-recovery.md)
+(no match in references/harness/claude.md)
+
+## Every operation whose bundle now carries it
+start
+trust
+skill
+interrupt
+exit
+resume
+recovery
+verify

@@ -1,0 +1,14 @@
+# Normalized diff of EVERY generated scaffold kind (ship no-mistakes / direct-PR / local-only, scout, secondmate charter)
+# base 0ec2f6c -> target 99a0187. FM_ROOT and FM_HOME paths normalized so only wording differences remain.
+# Result: exactly one added line, only in the no-mistakes ship brief.
+
+diff -ru /tmp/fm-live-brief.7hStU8/norm-0ec2f6c/ship-no-mistakes.md /tmp/fm-live-brief.7hStU8/norm-target/ship-no-mistakes.md
+--- /tmp/fm-live-brief.7hStU8/norm-0ec2f6c/ship-no-mistakes.md	2026-09-22 06:04:00.456496886 +0200
++++ /tmp/fm-live-brief.7hStU8/norm-target/ship-no-mistakes.md	2026-09-22 06:04:00.371496082 +0200
+@@ -106,5 +106,6 @@
+   When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+ - NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.
+   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
++  Ask-user gates must return to firstmate as `needs-decision`; the worker never answers its own finding.
+ 
+ After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append `done [at=<epoch>]: PR {url} checks green` and stop. You are finished.

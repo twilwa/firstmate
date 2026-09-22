@@ -1,0 +1,11 @@
+# Regression proof: the new routing assertion is load-bearing, and the pre-review wording break was real.
+
+## 1. Target test file run against BASE 0ec2f6c product code -- expected to FAIL
+$ (in base tree) bin/fm-test-run.sh tests/fm-ask-user-authority.test.sh
+not ok - generated implementation brief does not route ask-user gates back to firstmate
+FM_TEST_END 2026-09-22T04:09:22Z tests/fm-ask-user-authority.test.sh exit=1 duration_ms=237 gate_skip=false
+
+## 2. Same test at TARGET 99a0187 -- expected to PASS
+$ bin/fm-test-run.sh tests/fm-ask-user-authority.test.sh
+ok - primary workers and secondmates receive the authority rule through generated instructions
+FM_TEST_END 2026-09-22T04:09:22Z tests/fm-ask-user-authority.test.sh exit=0 duration_ms=298 gate_skip=false
