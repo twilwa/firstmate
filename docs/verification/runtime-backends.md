@@ -66,6 +66,10 @@ SUPERVISION OPERATING INSTRUCTIONS - primary harness: codex
 Mode: Codex foreground checkpoint.
 ```
 
+The `Mode` line above records the protocol that existed during the 2026-09-01 ancestry probe.
+Current Codex supervision uses `Mode: Codex Stop-hook-owned park.`
+`tests/fm-harness-precedence.test.sh` revalidated that current renderer selection on 2026-09-22.
+
 Two boundaries are load-bearing here, and the marker-versus-ancestry precedence above is only the first.
 The walk also used to stop as soon as the next pid was 1, on the assumption that pid 1 is always init.
 That assumption inverts inside a PID namespace, where the harness is pid 1: the walk returned no ancestry at all, so the retained marker won by default even with precedence corrected.

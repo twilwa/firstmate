@@ -1,16 +1,23 @@
-Mode: Codex foreground checkpoint.
+Mode: Codex Stop-hook-owned park.
 
 When this session owns supervision and away mode is not active:
 1. Drain first with `bin/fm-wake-drain.sh`.
-   After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`; until then the work remains durable for idempotent re-handling after interruption.
-2. Source `__FM_X_MODE_ENV__` first when Relay is active.
-3. First cycle: run one foreground watcher checkpoint with `bin/fm-watch-checkpoint.sh --seconds "${FM_CODEX_WATCH_CHECKPOINT:-180}"`.
-4. Ordinary wake: if the command prints `signal:`, `stale:`, `check:`, or `heartbeat`, drain queued wakes, handle that wake, then start the next checkpoint.
-5. If the command prints `checkpoint:` or exits 124 with no wake, drain queued wakes anyway, process any queued user message now visible to Codex, then start the next checkpoint.
-6. Never use shell `&` or Codex background tasks for firstmate watcher supervision.
-7. Do not run `bin/fm-watch-arm.sh` as Codex's normal supervision command.
-   If it is ever shelled anyway, a backgrounded, piped, or bundled anti-pattern is denied automatically by the PreToolUse seatbelt (`bin/fm-arm-pretool-check.sh`) registered in `.codex/hooks.json`.
-8. Failure or missing cycle only: drain queued wakes, inspect the failure, then start a fresh foreground checkpoint.
+   After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`.
+   Until then, the work remains durable for idempotent re-handling after interruption.
+2. Routine watcher arm and re-arm belong to the synchronous Stop hook in `bin/fm-codex-stop-park.sh`, never to a model-issued background task.
+   Every turn end while supervision is needed keeps `bin/fm-watch-arm.sh` inside that hook's process tree until the watcher closes.
+3. An actionable close returns through the same Stop hook as a `FIRSTMATE_OP: v1 watcher:` continuation.
+   Run `bin/fm-wake-drain.sh` first, handle the wake, run its exact acknowledgement command, and let the next turn end park again.
+   A quiet park returns one `FIRSTMATE_OP: v1 turn-end-guard:` renewal at one quarter of the tracked 86400-second hook timeout.
+   That continuation carries no watcher event; let the next Stop establish a fresh park.
+4. Never run `bin/fm-watch-arm.sh` after an ordinary wake.
+   If it is ever shelled manually, a backgrounded, piped, or bundled command remains denied by the PreToolUse seatbelt in `.codex/hooks.json`.
+5. A captain message or cancellation keeps control of the session.
+   The active hook retires its tracked arm child on cancellation, and a newer Stop claim supersedes an older park before either can deliver a duplicate wake.
+6. Away and quiet mode transfer watcher ownership to their daemon.
+   The Stop park stands down while `state/.afk` exists.
+7. If the hook reports `TURN WOULD END BLIND`, inspect its registration, session-lock ownership, and watcher startup failure before ending the turn.
+   That repair continuation remains bounded by Codex's `stop_hook_active`; it is not a substitute for a healthy park.
 
-Codex cannot reason while a foreground tool call is running.
-The bounded checkpoint returns control regularly so user messages and queued wakes can be handled without relying on background-task wake semantics.
+The synchronous park is the callback.
+A fresh watcher heartbeat without the park proves only recent liveness and never makes ending the turn safe.

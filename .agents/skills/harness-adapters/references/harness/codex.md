@@ -40,14 +40,21 @@ This is why `$no-mistakes` reaches a Codex worker instead of being consumed by t
 
 ## Primary integration
 
-The primary integration was verified on 2026-07-08 with codex-cli 0.142.1.
-The firstmate primary's `.codex/hooks.json` registers a Stop hook that pipes Codex's payload to `../../../bin/fm-turnend-guard.sh`.
-Codex Stop hooks preserve exit status 2 and stderr to block, and expose `stop_hook_active` for the same one-block loop safety used by the guard's default mode.
+The current primary integration was verified on 2026-09-22 with codex-cli 0.155.1.
+The firstmate primary's `.codex/hooks.json` registers a synchronous Stop hook that pipes Codex's payload to `../../../bin/fm-codex-stop-park.sh`.
+Codex waits for that hook, preserves exit status 2 and stderr as a continuation prompt, and exposes `stop_hook_active` after a hook-driven continuation.
+The park does not suppress a real watcher close when that field is true.
+It uses the shared one-block guard only after an arm failure.
 
-The Stop payload includes `cwd`, but the tracked hook does not use it to choose the guard executable.
+The Stop payload includes `cwd`, but the tracked hook does not use it to choose the park executable.
 Codex runs the Stop command with process PWD set to the hook-loaded project root, while no `CODEX_PROJECT_DIR`, `CODEX_WORKSPACE_ROOT`, or `CODEX_CWD` root variable is set.
-The tracked hook anchors to `pwd -P`, verifies that root is Firstmate-shaped and hook-bearing, and then invokes the guard with the original payload.
+The tracked hook anchors to `pwd -P`, verifies that root is Firstmate-shaped and hook-bearing, and then invokes the park with the original payload.
 
-Codex's primary watcher protocol is `../../../bin/fm-watch-checkpoint.sh --seconds "${FM_CODEX_WATCH_CHECKPOINT:-180}"`, not `../../../bin/fm-watch-arm.sh`.
-Codex cannot reason while a foreground tool call is running, so the checkpoint is deliberately foreground and bounded to return control regularly for user messages and queued notifications.
+Codex's primary watcher protocol is the Stop-owned park, not a model-issued watcher command.
+The park keeps `../../../bin/fm-watch-arm.sh` in the synchronous hook's process tree, returns an actionable close through exit 2, and claims a home-scoped sequence so a newer Stop supersedes an older park without duplicate delivery.
+The watcher can remain quiet indefinitely, so the park schedules a renewal continuation at one quarter of the tracked 86400-second hook timeout.
+That renewal replaces the callback before Codex can time it out.
+Away and quiet mode keep their existing daemon ownership, and the park stands down while `state/.afk` exists.
+The portable regression is `../../../tests/fm-codex-stop-park.test.sh`.
+The real installed-harness regression is `FM_CODEX_LIVE_E2E=1 ../../../tests/fm-codex-continuity-live-e2e.test.sh`.
 Codex's PreToolUse watcher-arm seatbelt blocks directly through its project hook.

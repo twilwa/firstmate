@@ -12,6 +12,11 @@ Pi same-process session replacement follows the generation-owner contract in `.p
 A main follow-up counts as delivered once Pi accepts it, never once the model reads it, because a follow-up queued while main is streaming joins the running run without a `before_agent_start`; the extension header owns how consumption is observed and why it only decides what a replacement replays.
 omp's replacement follows the same generation-owner contract in `.omp/extensions/fm-primary-omp-watch.ts`, whose header owns the one difference: omp reports no shutdown reason, so every shutdown with a pending actionable close persists the handoff for the next owning `session_start` to replay.
 Cursor's `.cursor/hooks.json` `stop` hook (`bin/fm-turnend-guard-cursor.sh`) owns routine tokenless re-arm for a Cursor primary by parking that awaited hook on `bin/fm-watch-arm.sh` and returning an actionable close as one follow-up; [`turnend-guard.md`](turnend-guard.md#harness-integrations) owns its Pi-host stand-down, loop bounds, and supersession baton.
+Codex's `.codex/hooks.json` `Stop` hook (`bin/fm-codex-stop-park.sh`) owns the equivalent synchronous park for a Codex primary.
+It returns an actionable close through exit 2, keeps real wakes enabled after `stop_hook_active=true`, and renews a quiet park at one quarter of the hook's 86400-second timeout so the native timeout never becomes a silent continuity boundary.
+Each invocation publishes a sequence in `state/.codex-park-owner` under `state/.codex-park-owner.lock`.
+A newer Stop claim makes an older park stop its child and exit without delivering a duplicate wake.
+Away and quiet mode keep their existing daemon ownership, so the Codex park stands down while `state/.afk` exists.
 Claude's `.claude/settings.json` Stop `asyncRewake` hook (`bin/fm-claude-stop-autoarm.sh`) owns routine tokenless re-arm.
 The hook fires on every Stop, and an eligible primary with supervision need admits one home-scoped owner that foregrounds `bin/fm-watch-arm.sh` inside the hook-owned process tree.
 A numeric session-lock owner that fails the shared `fm_harness_pid_alive` predicate is reclaimed through `bin/fm-lock.sh` before auto-arm state changes, while a live owner the session does not own, an absent lock, or a malformed lock keeps the competing hook inert.
@@ -43,7 +48,7 @@ The model no longer re-arms after ordinary wakes.
 No PreToolUse hook denies fleet commands based on watcher status.
 A genuine auto-arm failure describes the automatic mechanism as broken and never directs a routine manual background arm.
 Terminal arm-output classification (`started`, `attached`, or `FAILED`) remains defense in depth for the manual recovery path.
-Codex retains its bounded foreground checkpoint protocol.
+Codex uses the synchronous Stop-hook park and never relies on a model-issued checkpoint for normal continuity.
 Grok retains its tracked background-task notification protocol.
 No adapter starts a replacement with shell `&`.
 
@@ -120,6 +125,9 @@ The same suite covers ordinary same-process session replacement for `/new`, `/re
 `tests/fm-watch-recovery-loop.test.sh` covers the once-per-generation announcement bound with the real Pi extension against a refused handling handshake, and a handling successor that must surface a real crew event instead of going blind.
 `tests/fm-watcher-lock.test.sh` covers verified-successor attach, recovery publication before stale-lock removal, the typed self-eviction failure, bounded and successor-linked lifecycle rows, and a SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
+`tests/fm-codex-stop-park.test.sh` covers no-work stand-down, initial and repeated Stop delivery, delayed wakes, quiet renewal before native timeout, away and quiet handoff, failed-arm repair, fresh and stale beacon rejection, supersession, foreign session ownership, worker-only exemption, and cancellation cleanup.
+`FM_CODEX_LIVE_E2E=1 tests/fm-codex-continuity-live-e2e.test.sh` proves native SessionStart, `Bash` matching, both Stop states, a quiet checkpoint expiry, and a real actionable close returning through the sleeping Stop hook against the installed Codex.
+`tests/fm-watch-checkpoint.test.sh` keeps the attended diagnostic bounded and proves that timeout reports quiet only after the watcher lock is released; a timed-out holder that remains live is supervision uncertainty and fails loudly.
 `tests/fm-claude-stop-autoarm.test.sh` covers the auto-arm's scope, stale and live session owners, unchanged AFK and need boundaries, single-flight, bounded failure retries, benign live-watcher cycle ends, one-notice failure episodes, exit-2 translation, and host-timeout HUP/TERM/INT translation into the same durable failure handoff.
 It also covers generation-claim single-flight, stuck-claim supersession, superseded-owner silence, notice-marker refusal and retry, ownership-atomic episode reset, and the legacy upgrade shim; [`turnend-guard.md`](turnend-guard.md) owns those behavior contracts.
 `FM_CLAUDE_LIVE_E2E=1 tests/fm-claude-stop-autoarm-live-e2e.test.sh` starts with the reproduced stale-lock state, runs session start first, completes two tokenless cycles, and checks the competing-live-owner negative control.
@@ -130,6 +138,6 @@ It also covers generation-claim single-flight, stuck-claim supersession, superse
 The goal is continuity without a Pi, omp, or OpenCode model-memory re-arm step.
 No zero-latency guarantee is claimed because lock verification, watcher startup, and bounded retry delays remain deliberate safety work.
 OpenCode support targets persistent TUI sessions rather than headless `opencode run`.
-Claude depends on the Stop `asyncRewake` rewake, Cursor depends on its awaited stop-hook park, Grok retains native background-completion notifications, and Codex retains bounded foreground checkpoints.
+Claude depends on the Stop `asyncRewake` rewake, Codex and Cursor depend on awaited stop-hook parks, and Grok retains native background-completion notifications.
 
 [`verification/supervision.md`](verification/supervision.md#watcher-continuity) records the current five-harness live evidence, the 2026-07-24 Stop-owned Claude auto-arm results, and exact opt-in commands.

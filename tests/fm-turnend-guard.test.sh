@@ -202,7 +202,7 @@ install_guard_scripts() {
 mark_codex_hook_root() {
   local dir=$1
   mkdir -p "$dir/.codex"
-  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fm-turnend-guard.sh"}]}]}}\n' > "$dir/.codex/hooks.json"
+  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fm-codex-stop-park.sh"}]}]}}\n' > "$dir/.codex/hooks.json"
 }
 
 # A primary-shaped checkout: plain (non-worktree) git repo, AGENTS.md, bin/,
@@ -947,17 +947,18 @@ test_codex_hook_uses_process_pwd_when_payload_cwd_is_outside_root() {
   expected_root=$(cd "$dir" && pwd -P)
   outside="$TMP_ROOT/codex-hook-outside"
   mkdir -p "$outside"
-  cat > "$dir/bin/fm-turnend-guard.sh" <<'EOF'
+  cat > "$dir/bin/fm-codex-stop-park.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'guard=%s\n' "$0"
+printf 'park=%s timeout=%s\n' "$0" "$FM_CODEX_STOP_TIMEOUT_SECONDS"
 cat
 EOF
-  chmod +x "$dir/bin/fm-turnend-guard.sh"
+  chmod +x "$dir/bin/fm-codex-stop-park.sh"
   payload=$(jq -cn --arg cwd "$outside" '{cwd:$cwd,stop_hook_active:false}')
   out=$(printf '%s' "$payload" | (cd "$dir" && bash -c "$command") 2>&1); status=$?
   expect_code 0 "$status" "codex hook must execute successfully when payload cwd is outside the firstmate root"
-  assert_contains "$out" "guard=$expected_root/bin/fm-turnend-guard.sh" "codex hook must use the hook process root"
-  assert_contains "$out" "$payload" "codex hook must pass the original payload to the guard"
+  assert_contains "$out" "park=$expected_root/bin/fm-codex-stop-park.sh" "codex hook must use the hook process root"
+  assert_contains "$out" "timeout=86400" "codex hook must give the park its actual native timeout"
+  assert_contains "$out" "$payload" "codex hook must pass the original payload to the park"
   pass ".codex/hooks.json: Stop hook uses hook process root when payload cwd is outside"
 }
 
@@ -976,27 +977,27 @@ test_codex_hook_ignores_nested_git_root_guard() {
   git -C "$nested" commit -q --allow-empty -m init
   mkdir -p "$nested/bin" "$nested/.codex"
   : > "$nested/AGENTS.md"
-  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fm-turnend-guard.sh"}]}]}}\n' > "$nested/.codex/hooks.json"
-  cat > "$nested/bin/fm-turnend-guard.sh" <<'EOF'
+  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fm-codex-stop-park.sh"}]}]}}\n' > "$nested/.codex/hooks.json"
+  cat > "$nested/bin/fm-codex-stop-park.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'nested guard executed\n'
+printf 'nested park executed\n'
 exit 99
 EOF
-  chmod +x "$nested/bin/fm-turnend-guard.sh"
-  cat > "$dir/bin/fm-turnend-guard.sh" <<'EOF'
+  chmod +x "$nested/bin/fm-codex-stop-park.sh"
+  cat > "$dir/bin/fm-codex-stop-park.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'guard=%s\n' "$0"
+printf 'park=%s\n' "$0"
 cat
 EOF
-  chmod +x "$dir/bin/fm-turnend-guard.sh"
+  chmod +x "$dir/bin/fm-codex-stop-park.sh"
   subdir="$nested/deep/path"
   mkdir -p "$subdir"
   payload=$(jq -cn --arg cwd "$subdir" '{cwd:$cwd,stop_hook_active:false}')
   out=$(printf '%s' "$payload" | (cd "$dir" && bash -c "$command") 2>&1); status=$?
-  expect_code 0 "$status" "codex hook must not execute a nested project guard"
-  assert_contains "$out" "guard=$expected_root/bin/fm-turnend-guard.sh" "codex hook must keep using the outer firstmate guard"
-  assert_not_contains "$out" "nested guard executed" "codex hook must not execute nested project code"
-  pass ".codex/hooks.json: Stop hook ignores nested git root guard scripts"
+  expect_code 0 "$status" "codex hook must not execute a nested project park"
+  assert_contains "$out" "park=$expected_root/bin/fm-codex-stop-park.sh" "codex hook must keep using the outer firstmate park"
+  assert_not_contains "$out" "nested park executed" "codex hook must not execute nested project code"
+  pass ".codex/hooks.json: Stop hook ignores nested git root park scripts"
 }
 
 test_opencode_plugin_anchors_guard_to_worktree() {
