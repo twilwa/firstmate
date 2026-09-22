@@ -365,8 +365,10 @@ test_no_mistakes_dod_wording() {
 
   # The --yes ban is a fleet-wide prohibition, not a preference, and it must not
   # claim an enforcement the tool does not provide: this is instruction only.
-  assert_grep "NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`; ask-user gates must return to firstmate as \`needs-decision\`." "$brief" \
-    "no-mistakes DOD must state the --yes ban and route ask-user gates to firstmate"
+  assert_grep "NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide." "$brief" \
+    "no-mistakes DOD must state the --yes ban as a prohibition"
+  assert_grep "Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding." "$brief" \
+    "no-mistakes DOD must route ask-user gates back to firstmate as needs-decision"
   assert_grep "answering your own ask-user finding is a hard rule violation" "$brief" \
     "no-mistakes DOD must say why --yes is banned"
   assert_no_grep "Avoid \`--yes\`" "$brief" \
