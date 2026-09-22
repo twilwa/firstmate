@@ -11,7 +11,7 @@
 # discretion - the helm is taken before the model's first turn, whatever the
 # first turn is.
 #
-# Usage: fm-sessionstart-run.sh [--source <source>] [--harness <name>] [--pi-prerequisite]
+# Usage: fm-sessionstart-run.sh [--source <source>] [--codex-native] [--pi-prerequisite]
 #   --source  The harness's own session-open source. When omitted, the source is
 #             read from a Claude/Codex-shaped JSON hook payload on stdin
 #             (the `source` field). An unreadable or unrecognized source is
@@ -22,9 +22,9 @@
 #             exits 3 so provider preflight can distinguish it from an eligible
 #             native attempt that settled without output. Every ordinary hook
 #             invocation retains the always-zero compatibility contract below.
-#   --harness  Verified native adapter identity for hook hosts whose detached
-#              command process has no harness ancestry. The wrapper validates
-#              it and passes it to fm-session-start.sh for this invocation only.
+#   --codex-native
+#             Marks the tracked Codex SessionStart adapter, whose detached hook
+#             command has no Codex process in its ancestry.
 #
 # Source routing (see docs/sessionstart-nudge.md for the per-harness names):
 #   startup, new            full digest - this process has not taken the helm
@@ -63,7 +63,7 @@ COMPLETION_FILE="$STATE/.session-start-complete"
 . "$SCRIPT_DIR/fm-hook-host-lib.sh"
 
 SOURCE=
-HARNESS=
+CODEX_NATIVE=0
 PI_PREREQUISITE=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -74,20 +74,11 @@ while [ $# -gt 0 ]; do
       if [ $# -ge 2 ]; then shift 2; else shift; fi
       ;;
     --source=*) SOURCE=${1#--source=}; shift ;;
-    --harness)
-      HARNESS=${2:-}
-      if [ $# -ge 2 ]; then shift 2; else shift; fi
-      ;;
-    --harness=*) HARNESS=${1#--harness=}; shift ;;
+    --codex-native) CODEX_NATIVE=1; shift ;;
     --pi-prerequisite) PI_PREREQUISITE=1; shift ;;
     *) shift ;;
   esac
 done
-
-case "$HARNESS" in
-  ''|claude|codex|opencode|pi|pi-signed|grok|cursor|omp) ;;
-  *) HARNESS=unknown ;;
-esac
 
 stand_down() {
   if [ "$PI_PREREQUISITE" = 1 ]; then
@@ -147,13 +138,13 @@ case "$SOURCE" in
     ;;
   clear|compact)
     if session_start_completed; then
-      FM_SESSION_START_HARNESS="$HARNESS" "$SCRIPT_DIR/fm-session-start.sh" --reemit --source "$SOURCE" || true
+      FM_SESSION_START_CODEX_NATIVE="$CODEX_NATIVE" "$SCRIPT_DIR/fm-session-start.sh" --reemit --source "$SOURCE" || true
     else
-      FM_SESSION_START_HARNESS="$HARNESS" "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
+      FM_SESSION_START_CODEX_NATIVE="$CODEX_NATIVE" "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
     fi
     ;;
   *)
-    FM_SESSION_START_HARNESS="$HARNESS" "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
+    FM_SESSION_START_CODEX_NATIVE="$CODEX_NATIVE" "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
     ;;
 esac
 exit 0

@@ -1012,32 +1012,48 @@ test_run_unknown_source_takes_the_helm() {
   pass "run wrapper: an unrecognized or absent source takes the helm rather than skipping it"
 }
 
-test_run_explicit_harness_survives_detached_detection_and_compaction() {
-  local root="$TMP_ROOT/run-explicit-harness" out status=0
+test_run_native_codex_identity_survives_detached_detection_and_compaction() {
+  local root="$TMP_ROOT/run-explicit-harness" command out payload status=0
   make_run_primary "$root"
   cp -R "$ROOT/bin/." "$root/bin/"
-  mkdir -p "$root/docs"
+  mkdir -p "$root/docs" "$root/.codex"
   cp -R "$ROOT/docs/supervision-protocols" "$root/docs/"
+  cp "$ROOT/.codex/hooks.json" "$root/.codex/hooks.json"
   cat > "$root/bin/fm-harness.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'unknown\n'
 SH
   chmod +x "$root/bin/fm-harness.sh"
 
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" PATH="$RUN_PATH" \
-    "$root/bin/fm-sessionstart-run.sh" --source startup --harness codex </dev/null) || status=$?
+  command=$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$root/.codex/hooks.json")
+  payload='{"hook_event_name":"SessionStart","session_id":"codex-test","source":"startup"}'
+  out=$(printf '%s' "$payload" | (cd "$root" && env -u CLAUDECODE -u PI_CODING_AGENT \
+    -u FM_PI_HARNESS -u GROK_AGENT FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
+    FM_HOME="$root" PATH="$RUN_PATH" bash -c "$command")) || status=$?
   expect_code 0 "$status" "run wrapper explicit Codex harness"
   assert_contains "$out" "primary harness: codex" "the explicit native identity was lost when detached detection returned unknown"
   assert_contains "$out" "Mode: Codex Stop-hook-owned park." "the detached hook host rendered the wrong supervision protocol"
 
   status=0
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" PATH="$RUN_PATH" \
-    "$root/bin/fm-sessionstart-run.sh" --source compact --harness codex </dev/null) || status=$?
+  payload='{"hook_event_name":"SessionStart","session_id":"codex-test","source":"compact"}'
+  out=$(printf '%s' "$payload" | (cd "$root" && env -u CLAUDECODE -u PI_CODING_AGENT \
+    -u FM_PI_HARNESS -u GROK_AGENT FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
+    FM_HOME="$root" PATH="$RUN_PATH" bash -c "$command")) || status=$?
   expect_code 0 "$status" "run wrapper explicit Codex compact"
   assert_contains "$out" "$REEMIT_BANNER$root" "compact did not use the completed-start re-emit path"
   assert_contains "$out" "primary harness: codex" "compact lost the explicit native identity"
+
+  cat > "$root/bin/fm-harness.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'pi\n'
+SH
+  chmod +x "$root/bin/fm-harness.sh"
+  status=0
+  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" PATH="$RUN_PATH" \
+    "$root/bin/fm-sessionstart-run.sh" --source startup </dev/null) || status=$?
+  expect_code 0 "$status" "run wrapper ordinary detected harness"
+  assert_contains "$out" "primary harness: pi" "ordinary harness detection was overridden outside the Codex adapter"
   pass "run wrapper: a detached native hook keeps Codex identity across startup and compaction"
 }
 
@@ -1095,7 +1111,7 @@ test_run_clear_rejects_previous_owner_completion
 test_run_resume_delegates_to_the_nudge
 test_run_reads_source_from_the_hook_payload
 test_run_unknown_source_takes_the_helm
-test_run_explicit_harness_survives_detached_detection_and_compaction
+test_run_native_codex_identity_survives_detached_detection_and_compaction
 test_run_gate_and_scope_are_silent
 test_run_reports_a_failed_session_start_as_digest_text
 test_pi_startup_classifies_cli_continuations

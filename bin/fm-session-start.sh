@@ -330,12 +330,12 @@ if [ -z "${FM_SESSION_START_STAGE_FILE:-}" ]; then
   exit 0
 fi
 
-PRIMARY_HARNESS=${FM_SESSION_START_HARNESS:-}
-unset FM_SESSION_START_HARNESS
-case "$PRIMARY_HARNESS" in
-  claude|codex|opencode|pi|pi-signed|grok|cursor|omp) ;;
-  *) PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown) ;;
-esac
+if [ "${FM_SESSION_START_CODEX_NATIVE:-0}" = 1 ]; then
+  PRIMARY_HARNESS=codex
+else
+  PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
+fi
+unset FM_SESSION_START_CODEX_NATIVE
 
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"

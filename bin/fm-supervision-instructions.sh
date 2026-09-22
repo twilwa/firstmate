@@ -88,9 +88,6 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$HARNESS" ]; then
-  HARNESS=${FM_PRIMARY_HARNESS_OVERRIDE:-}
-fi
-if [ -z "$HARNESS" ]; then
   HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 fi
 
