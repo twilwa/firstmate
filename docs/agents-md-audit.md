@@ -4,6 +4,7 @@ This audit inventories the blank-line-delimited paragraphs and contiguous list g
 The byte column counts each group's content including its terminating newline but excludes the blank separator between groups, so the rows do not sum to the file total.
 Headings are listed separately so every baseline group has a stable identifier.
 The planned replacement is approximately 33,000 bytes, a reduction of about 61 percent; the implementation should report the measured result rather than treating that projection as a quota.
+Stage 2 measured 33,212 bytes, 52,321 bytes and 61.2 percent below the baseline.
 
 Disposition meanings are exact: keep always-loaded, prune as derivable from code or docs, prune as duplicated elsewhere, or transpose to a named skill.
 When a group mixes always-loaded safety with conditional procedure, the disposition names the destination and the evidence column identifies the safety stub that remains in `AGENTS.md`.
