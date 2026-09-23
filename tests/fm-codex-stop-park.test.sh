@@ -146,6 +146,60 @@ test_away_mode_stands_down() {
   pass "Codex park: away and quiet mode retain daemon ownership"
 }
 
+test_stuck_owner_lock_reports_visible_failure() {
+  local dir="$TMP_ROOT/stuck-owner-lock" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  mkdir "$dir/state/.codex-park-owner.lock"
+  write_arm_actionable "$dir"
+  out=$(FM_CODEX_PARK_LOCK_ATTEMPTS=1 run_park "$dir" false 2>&1) || status=$?
+  expect_code 0 "$status" "stuck owner-lock Codex park"
+  assert_contains "$out" "WATCHER PARK FAILED" "stuck owner lock ended required supervision silently"
+  assert_contains "$out" "owner lock could not be acquired" "stuck owner-lock diagnostic lost its cause"
+  assert_absent "$dir/state/arm-ran" "stuck owner-lock park armed without publishing ownership"
+  pass "Codex park: a stuck owner lock fails visibly before arming"
+}
+
+test_owner_publication_failure_reports_visible_failure() {
+  local dir="$TMP_ROOT/owner-publication" fake_bin="$TMP_ROOT/owner-publication-bin" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  write_arm_actionable "$dir"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/mv" <<'SH'
+#!/usr/bin/env bash
+case "${*: -1}" in
+  */.codex-park-owner) exit 1 ;;
+esac
+exec /bin/mv "$@"
+SH
+  chmod +x "$fake_bin/mv"
+  out=$(PATH="$fake_bin:$PATH" run_park "$dir" false 2>&1) || status=$?
+  expect_code 0 "$status" "owner-publication Codex park"
+  assert_contains "$out" "WATCHER PARK FAILED" "owner publication failure ended required supervision silently"
+  assert_contains "$out" "owner record could not be published" "owner-publication diagnostic lost its cause"
+  assert_absent "$dir/state/arm-ran" "owner-publication failure armed without an owner record"
+  pass "Codex park: owner publication failure remains visible"
+}
+
+test_delivery_lock_failure_reports_visible_failure() {
+  local dir="$TMP_ROOT/delivery-lock" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir "$FM_HOME/state/.codex-park-owner.lock"
+cp "$FM_HOME/state/.lock" "$FM_HOME/state/.codex-park-owner.lock/pid"
+printf 'signal: delivery-lock.status\n'
+SH
+  chmod +x "$dir/bin/fm-watch-arm.sh"
+  out=$(FM_CODEX_PARK_LOCK_ATTEMPTS=1 run_park "$dir" false 2>&1) || status=$?
+  expect_code 0 "$status" "delivery-lock Codex park"
+  assert_contains "$out" "WATCHER PARK FAILED" "delivery-lock failure discarded an actionable wake silently"
+  assert_contains "$out" "actionable-wake delivery lock" "delivery-lock diagnostic lost its cause"
+  pass "Codex park: actionable-wake delivery lock failure remains visible"
+}
+
 test_failure_episode_survives_active_stop_and_stays_bounded() {
   local dir="$TMP_ROOT/failure" out status=0
   make_primary "$dir"
@@ -486,6 +540,9 @@ test_actionable_wake_resumes_through_same_hook
 test_stop_active_does_not_suppress_real_wake
 test_park_waits_in_hook_until_event
 test_away_mode_stands_down
+test_stuck_owner_lock_reports_visible_failure
+test_owner_publication_failure_reports_visible_failure
+test_delivery_lock_failure_reports_visible_failure
 test_failure_episode_survives_active_stop_and_stays_bounded
 test_replacement_session_gets_its_own_failure_episode
 test_real_wake_resets_failure_episode

@@ -108,10 +108,24 @@ current_session_still_ours() {
   fm_session_lock_owned_by_self "$STATE"
 }
 
+visible_park_failure() { # <reason> [require-sequence]
+  local reason=$1 require_sequence=${2:-0}
+  if ! current_session_still_ours || [ -e "$STATE/.afk" ] \
+    || ! fm_supervision_needed "$STATE" "$GRACE"; then
+    exit 0
+  fi
+  if [ "$require_sequence" -eq 1 ] && ! park_still_ours; then
+    exit 0
+  fi
+  printf '{"systemMessage":"FIRSTMATE CODEX WATCHER PARK FAILED: %s; this Stop cannot safely maintain watcher supervision."}\n' "$reason"
+  exit 0
+}
+
 emit_continuation() { # <kind> <body>
   local kind=$1 body=$2 encoded
   fm_operational_input_encode "$kind" "$body" encoded || exit 0
-  lock_acquire_bounded "$OWNER_LOCK" || exit 0
+  lock_acquire_bounded "$OWNER_LOCK" \
+    || visible_park_failure "the actionable-wake delivery lock could not be acquired" 1
   if ! park_still_ours || ! current_session_still_ours || [ -e "$STATE/.afk" ]; then
     fm_lock_release "$OWNER_LOCK"
     exit 0
@@ -173,7 +187,7 @@ OWNER_ID=$(cat "$STATE/.lock" 2>/dev/null || true)
 case "$OWNER_ID" in ''|*[!0-9]*) exit 0 ;; esac
 
 PARK_SEQ=
-claim_park || exit 0
+claim_park || visible_park_failure "the park owner lock could not be acquired or its owner record could not be published"
 
 if [ -e "$STATE/.afk" ]; then
   rm -f "$FAILURE_FILE" 2>/dev/null || true
