@@ -190,12 +190,13 @@ fi
 
 ARM_OUT=$(mktemp "$STATE/.codex-park-output.XXXXXX") || ARM_OUT=
 ARM_PID=
+PRESERVE_ARM_ON_EXIT=0
 PARK_STARTED_AT=$(date +%s)
 RENEW=0
 # Invoked indirectly by the EXIT trap below.
 # shellcheck disable=SC2329
 cleanup() {
-  if [ -n "$ARM_PID" ]; then
+  if [ -n "$ARM_PID" ] && [ "$PRESERVE_ARM_ON_EXIT" -ne 1 ]; then
     kill "$ARM_PID" 2>/dev/null || true
     wait "$ARM_PID" 2>/dev/null || true
   fi
@@ -214,7 +215,18 @@ fi
 ARM_PID=$!
 
 while kill -0 "$ARM_PID" 2>/dev/null; do
-  if ! park_still_ours || ! current_session_still_ours || [ -e "$STATE/.afk" ]; then
+  if ! park_still_ours; then
+    # A newer eligible Stop attaches its own arm wrapper to this watcher's
+    # singleton. Keep our wrapper alive so its TERM cleanup cannot tear that
+    # shared watcher down underneath the successor. A no-work, away, or
+    # replacement-session Stop still retires this arm normally.
+    if current_session_still_ours && [ ! -e "$STATE/.afk" ] \
+      && fm_supervision_needed "$STATE" "$GRACE"; then
+      PRESERVE_ARM_ON_EXIT=1
+    fi
+    exit 0
+  fi
+  if ! current_session_still_ours || [ -e "$STATE/.afk" ]; then
     exit 0
   fi
   if [ $(( $(date +%s) - PARK_STARTED_AT )) -ge "$RENEW_SECONDS" ]; then
@@ -232,6 +244,19 @@ ARM_PID=
 [ -e "$STATE/.afk" ] && { rm -f "$FAILURE_FILE" 2>/dev/null || true; exit 0; }
 park_still_ours || exit 0
 current_session_still_ours || exit 0
+
+if [ -n "$ARM_OUT" ] && grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$ARM_OUT" 2>/dev/null; then
+  WAKE=$(grep -E '^(signal:|stale:|check:|heartbeat)' "$ARM_OUT" 2>/dev/null | head -8)
+  failure_episode_reset || true
+  emit_continuation watcher "firstmate watcher wake - one supervision event needs a handling turn now.
+$WAKE
+
+Run bin/fm-wake-drain.sh first, handle the wake, then run its exact WAKE_ACK_REQUIRED --ack-through command. Until that acknowledgement, interruption leaves the wake durable for idempotent re-handling. This Stop hook owns watcher continuity: when the handling turn ends, the next needed cycle parks automatically."
+fi
+
+# A terminal one-shot source may retire its last supervision registration as it
+# prints the actionable wake above. Inspect that output before treating the
+# resulting no-work state as a clean close, or the durable event has no callback.
 if ! fm_supervision_needed "$STATE" "$GRACE"; then
   failure_episode_reset || true
   exit 0
@@ -242,15 +267,6 @@ if [ "$RENEW" -eq 1 ]; then
   emit_continuation turn-end-guard "FIRSTMATE CODEX WATCHER PARK RENEWAL - the synchronous Stop hook reached its bounded renewal interval before the native hook timeout.
 
 No watcher event is implied. Let this continuation end normally after checking for queued wakes; the next Stop automatically establishes a fresh watcher park. Do not launch bin/fm-watch-arm.sh from the model."
-fi
-
-if [ -n "$ARM_OUT" ] && grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$ARM_OUT" 2>/dev/null; then
-  WAKE=$(grep -E '^(signal:|stale:|check:|heartbeat)' "$ARM_OUT" 2>/dev/null | head -8)
-  failure_episode_reset || true
-  emit_continuation watcher "firstmate watcher wake - one supervision event needs a handling turn now.
-$WAKE
-
-Run bin/fm-wake-drain.sh first, handle the wake, then run its exact WAKE_ACK_REQUIRED --ack-through command. Until that acknowledgement, interruption leaves the wake durable for idempotent re-handling. This Stop hook owns watcher continuity: when the handling turn ends, the next needed cycle parks automatically."
 fi
 
 # A non-actionable arm close is a continuity failure even if a leftover beacon

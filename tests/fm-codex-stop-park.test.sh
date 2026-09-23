@@ -296,6 +296,135 @@ SH
   pass "Codex park: a newer Stop supersedes the older park without a duplicate wake"
 }
 
+test_superseded_park_preserves_shared_watcher_for_successor() {
+  local dir="$TMP_ROOT/supersede-shared" out1="$TMP_ROOT/supersede-shared-1.out"
+  local out2="$TMP_ROOT/supersede-shared-2.out" result="$TMP_ROOT/supersede-shared-result" payload
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+watcher=
+if [ -s "$FM_HOME/state/shared-watcher-pid" ]; then
+  watcher=$(cat "$FM_HOME/state/shared-watcher-pid")
+fi
+if [ -z "$watcher" ] || ! kill -0 "$watcher" 2>/dev/null; then
+  (
+    while [ ! -e "$FM_HOME/state/trigger" ]; do sleep 0.1; done
+  ) &
+  watcher=$!
+  printf '%s\n' "$watcher" > "$FM_HOME/state/shared-watcher-pid"
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$watcher"
+  on_term() {
+    trap - TERM
+    kill -TERM "$watcher" 2>/dev/null || true
+    wait "$watcher" 2>/dev/null || true
+    exit 143
+  }
+  trap on_term TERM
+  wait "$watcher"
+  trap - TERM
+else
+  printf 'watcher: attached pid=%s (beacon 0s)\n' "$watcher"
+  while kill -0 "$watcher" 2>/dev/null; do sleep 0.1; done
+fi
+if [ -e "$FM_HOME/state/trigger" ]; then
+  printf 'signal: shared-watcher.status\n'
+else
+  printf 'watcher: FAILED - shared watcher was torn down during handoff\n'
+  exit 1
+fi
+SH
+  chmod +x "$dir/bin/fm-watch-arm.sh"
+  payload='{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":false}'
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
+  FM_HOME="$dir" PAYLOAD="$payload" OUT1="$out1" OUT2="$out2" RESULT="$result" \
+    FM_CODEX_PARK_POLL=1 "$FAKE_CODEX" -c '
+      printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh" > "$OUT1" 2>&1 &
+      first=$!
+      i=0
+      while [ ! -s "$FM_HOME/state/shared-watcher-pid" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+      printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh" > "$OUT2" 2>&1 &
+      second=$!
+      i=0
+      while ! grep -q "watcher: attached" "$FM_HOME/state/.codex-park-output."* 2>/dev/null \
+        && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+      : > "$FM_HOME/state/trigger"
+      rc1=0; wait "$first" || rc1=$?
+      rc2=0; wait "$second" || rc2=$?
+      printf "%s %s\n" "$rc1" "$rc2" > "$RESULT"
+    '
+  [ "$(cat "$result")" = "0 2" ] \
+    || fail "shared-watcher handoff returned unexpected statuses: $(cat "$result")"
+  [ ! -s "$out1" ] || fail "superseded shared-watcher park emitted a continuation: $(cat "$out1")"
+  assert_contains "$(cat "$out2")" "signal: shared-watcher.status" \
+    "the superseded park killed the watcher before its successor received the wake"
+  pass "Codex park: supersession preserves the shared watcher until the successor receives its wake"
+}
+
+test_no_work_supersession_retires_old_arm() {
+  local dir="$TMP_ROOT/supersede-no-work" out1="$TMP_ROOT/supersede-no-work-1.out"
+  local out2="$TMP_ROOT/supersede-no-work-2.out" result="$TMP_ROOT/supersede-no-work-result" payload
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  write_arm_wait_for_trigger "$dir"
+  payload='{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":false}'
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
+  FM_HOME="$dir" PAYLOAD="$payload" OUT1="$out1" OUT2="$out2" RESULT="$result" \
+    FM_CODEX_PARK_POLL=1 "$FAKE_CODEX" -c '
+      printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh" > "$OUT1" 2>&1 &
+      first=$!
+      i=0
+      while [ ! -s "$FM_HOME/state/arm-pid" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+      arm=$(cat "$FM_HOME/state/arm-pid")
+      rm -f "$FM_HOME/state/task.meta"
+      printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh" > "$OUT2" 2>&1
+      rc2=$?
+      rc1=0; wait "$first" || rc1=$?
+      alive=0; kill -0 "$arm" 2>/dev/null && alive=1
+      printf "%s %s %s\n" "$rc1" "$rc2" "$alive" > "$RESULT"
+    '
+  [ "$(cat "$result")" = "0 0 0" ] \
+    || fail "no-work supersession did not retire the old arm: $(cat "$result")"
+  [ ! -s "$out1" ] && [ ! -s "$out2" ] \
+    || fail "no-work supersession emitted an unexpected continuation"
+  pass "Codex park: a no-work overlapping Stop retires the superseded arm"
+}
+
+test_terminal_wake_precedes_no_work_stand_down() {
+  local dir="$TMP_ROOT/terminal-wake" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+rm -f "$FM_HOME/state/task.meta"
+printf 'check: process-event terminal-result\n'
+SH
+  chmod +x "$dir/bin/fm-watch-arm.sh"
+  out=$(run_park "$dir" false 2>&1) || status=$?
+  expect_code 2 "$status" "terminal one-shot Codex park"
+  assert_contains "$out" "check: process-event terminal-result" \
+    "terminal one-shot wake was discarded after its source retired"
+  pass "Codex park: a terminal one-shot wake is delivered before no-work stand-down"
+}
+
+test_nonactionable_close_after_work_retires_ends_cleanly() {
+  local dir="$TMP_ROOT/retired-no-wake" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+rm -f "$FM_HOME/state/task.meta"
+printf 'watcher: attached pid=%s (beacon 0s)\n' "$$"
+SH
+  chmod +x "$dir/bin/fm-watch-arm.sh"
+  out=$(run_park "$dir" false 2>&1) || status=$?
+  expect_code 0 "$status" "retired no-wake Codex park"
+  [ -z "$out" ] || fail "retired no-wake park reported a false failure: $out"
+  pass "Codex park: a nonactionable close after work retires ends cleanly"
+}
+
 test_live_foreign_owner_is_not_replaced() {
   local dir="$TMP_ROOT/foreign" payload out status=0 owner
   make_primary "$dir"
@@ -363,6 +492,10 @@ test_real_wake_resets_failure_episode
 test_beacons_do_not_mask_a_failed_park
 test_quiet_park_renews_before_native_timeout
 test_newer_stop_supersedes_older_park
+test_superseded_park_preserves_shared_watcher_for_successor
+test_no_work_supersession_retires_old_arm
+test_terminal_wake_precedes_no_work_stand_down
+test_nonactionable_close_after_work_retires_ends_cleanly
 test_live_foreign_owner_is_not_replaced
 test_worker_worktree_is_exempt
 test_cancellation_retires_arm_child
