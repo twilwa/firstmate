@@ -13,7 +13,7 @@ metadata:
 
 Use this reference before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a persistent secondmate, and before editing `data/secondmates.md`.
 
-Keep the always-inline routing rules in `AGENTS.md` authoritative: route by natural-language `scope:`, local-only projects stay with the main firstmate, and secondmates are idle by default.
+Keep the always-inline routing rules in `AGENTS.md` authoritative: route by natural-language `scope:`, a local-only project's landing authority stays with the primary that seeded its bound copy, and secondmates are idle by default.
 
 ## Routing table
 
@@ -155,9 +155,28 @@ Run `bin/fm-home-seed.sh validate` when checking registry integrity; its header 
 Seeding is transactional.
 If validation, cloning, no-mistakes initialization, or registry update fails, generated briefs, new homes, new project clones, and registry edits are rolled back.
 
-Secondmate project lists may include `no-mistakes` and `direct-PR` projects only.
-`local-only` projects stay with the main firstmate.
+Secondmate project lists may include `no-mistakes`, `direct-PR`, and `local-only` projects.
 For `no-mistakes` projects, seeding initializes only projects newly cloned into a secondmate home and refuses to mutate a preexisting clone that is not already initialized.
+
+### Local-only project custody
+
+A `local-only` project has no forge, so a secondmate home receives an independent local clone of it rather than a route to one.
+`bin/fm-home-seed.sh` makes that clone from this home's own clone of the project, pinned to its current default-branch commit; its header owns the exact clone, remote, and refusal mechanics.
+The seeded clone carries no origin, no publication remote, no borrowed object storage, and no no-mistakes initialization, and `bin/fm-fleet-sync.sh` keeps skipping it.
+A remote whole-home route still refuses a local-only project, because `bin/fm-remote-home-seed.sh` provisions only what it can transport by origin.
+The seed records the provenance as a durable binding under the secondmate home's `data/local-only-bindings/`, and that binding is what makes the clone a bound copy: the child keeps custody of its task, branch, worktree, and endpoint, but never of the landing.
+Reseeding accepts a preexisting local-only clone only when it still has no remote and its binding still names this parent; an unbound clone is refused rather than adopted.
+
+Landing stays with the primary that seeded the copy.
+The child publishes an immutable head-pinned offer with `bin/fm-local-handoff.sh offer <task-id>`, which carries the commit as a git bundle instead of a push.
+The primary lands that exact offer through the ordinary local landing guard, `bin/fm-merge-local.sh <landing-id> --offer <file> --expect-head <sha>`, where `<landing-id>` is a parent-owned backlog item held for the captain under the usual `bin/fm-captain-hold.sh` approval.
+No worker record is created or invented for the child, and a head that moved after approval needs its own approval.
+The primary alone fast-forwards its local default branch, then publishes a durable landing receipt back into the child home.
+
+Only that receipt permits the child task's ordinary teardown, and `bin/fm-teardown.sh` re-proves that the receipt's commit is still contained in the primary's default branch before accepting it.
+A merge inside the child clone, or a branch pushed anywhere, is not that proof and does not substitute for it.
+When a landing succeeds but its receipt cannot be published, the work is landed and safe: re-run the idempotent `bin/fm-local-handoff.sh receipt <offer-file>` before tearing anything down.
+Missing or stale identities, dirty or diverged work, a changed head, a changed route, a failed receipt, and an interrupted seed transaction all refuse and preserve the work.
 
 Worker allocation follows [fm-spawn.sh](../../../bin/fm-spawn.sh)'s clone-custody guard and explicit Treehouse root contract, including for independent secondmate project clones that share the primary's origin.
 New allocations override ambient Treehouse root configuration; existing tasks keep their recorded worktrees and guarded return path.
@@ -210,7 +229,7 @@ It is idempotent; an item already in the secondmate backlog is skipped.
 After a successful move it warns for any moved key that still owes a public relay reply bound to `main/<key>`, because that binding no longer names the home owning the work; rebind the commitment to `secondmate:<id>` through the `fmx-respond` promised-final procedure, which owns those commands.
 That same rule governs routing generally: a Relay-linked request whose work goes to a secondmate cannot use the home-local mention link at all and needs a promised-final commitment bound to that secondmate's home.
 It refuses any destination that is not a genuine seeded firstmate home with safe operational directories and a matching `.fm-secondmate-home` marker, so a move can never land in a project.
-Do not hand off `local-only` items.
+A `local-only` item follows the same queued-only rule as any other, and handing it off never moves its landing authority away from the primary that seeded the bound copy.
 
 ## Recovery
 

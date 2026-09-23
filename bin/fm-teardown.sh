@@ -297,6 +297,8 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-nm-run-lib.sh
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
+# shellcheck source=bin/fm-local-handoff-lib.sh
+. "$SCRIPT_DIR/fm-local-handoff-lib.sh"
 if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
   echo "error: invalid teardown request" >&2
   exit 2
@@ -1462,7 +1464,11 @@ backlog_done_args() {
       ;;
     *)
       if [ "$MODE" = local-only ]; then
-        BACKLOG_DONE_ARGS=(--note "local main")
+        if task_clone_is_bound_local_only; then
+          BACKLOG_DONE_ARGS=(--note "parent local main")
+        else
+          BACKLOG_DONE_ARGS=(--note "local main")
+        fi
       elif [ -n "$PR_URL" ]; then
         BACKLOG_DONE_ARGS=(--pr "$PR_URL")
       fi
@@ -1711,6 +1717,45 @@ teardown_treehouse_return() {
   return 1
 }
 
+# Is this task's project a BOUND local-only clone, i.e. a child copy this home
+# was seeded with rather than the project's own home? Its work can only be
+# landed by the parent, so "landed" means something different here.
+task_clone_is_bound_local_only() {
+  [ "$MODE" = local-only ] || return 1
+  [ -n "$PROJ" ] || return 1
+  fm_local_handoff_binding_present "$FM_HOME" "$(basename "$PROJ")"
+}
+
+# The complete landed test for a bound local-only task: the parent published a
+# durable receipt for this task's exact offered head, and that head is STILL
+# contained in the parent clone's own default branch right now. A merge in this
+# copy proves nothing, because this copy is not where the work lands, and a
+# pushed branch proves nothing either, because a bound clone has no remote to
+# push to that anyone lands from.
+validate_bound_local_only_landed() {
+  local offer_file receipt_file blob offered worktree_head
+  offer_file=$(fm_local_handoff_offer_path "$STATE" "$ID")
+  if ! fm_local_handoff_offer_load "$offer_file"; then
+    echo "REFUSED: $ID works in a bound local-only copy but has published no landing offer: $FM_LOCAL_HANDOFF_ERROR" >&2
+    echo "Publish it with bin/fm-local-handoff.sh offer $ID and have the parent land it, or get the captain's explicit OK to discard, then --force." >&2
+    return 1
+  fi
+  blob=$FM_LOCAL_HANDOFF_RECORD
+  offered=$(fm_local_handoff_field "$blob" head)
+  worktree_head=$(git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
+  if [ -n "$worktree_head" ] && [ "$worktree_head" != "$offered" ]; then
+    echo "REFUSED: $ID has committed work at $worktree_head after the $offered its parent was offered." >&2
+    echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
+    return 1
+  fi
+  receipt_file=$(fm_local_handoff_receipt_path "$STATE" "$ID")
+  if ! fm_local_handoff_receipt_proves "$receipt_file" "$blob"; then
+    echo "REFUSED: $ID has no durable proof that $offered reached the parent's default branch: $FM_LOCAL_HANDOFF_ERROR" >&2
+    echo "Have the parent land the offer at $offer_file, then retry; or get the captain's explicit OK to discard, then --force." >&2
+    return 1
+  fi
+}
+
 validate_worktree_teardown_safety() {
   local dirty_raw dirty unpushed_raw unpushed DEFAULT unmerged_raw unmerged branch
   [ -d "$WT" ] || return 0
@@ -1728,6 +1773,20 @@ validate_worktree_teardown_safety() {
     return 1
   fi
   dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
+
+  # Deliberately ahead of, and independent of, the remote-state questions
+  # below: a bound local-only copy is judged only by the parent's receipt, so
+  # having pushed somewhere must not skip the check.
+  if task_clone_is_bound_local_only; then
+    if [ -n "$dirty" ]; then
+      echo "REFUSED: worktree $WT has uncommitted changes." >&2
+      echo "uncommitted changes present" >&2
+      echo "Commit them (or get the captain's explicit OK to discard, then --force)." >&2
+      return 1
+    fi
+    validate_bound_local_only_landed || return 1
+    return 0
+  fi
 
   if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
