@@ -20,8 +20,8 @@ The nudge tier remains the floor for harnesses that cannot carry hook stdout int
 
 `bin/fm-sessionstart-run.sh` is the single owner of what a session-open source means, so no harness matcher string has to encode that policy.
 It takes `--source <name>` when the adapter knows the source natively, and otherwise reads the `source` field from a Claude/Codex-shaped JSON hook payload on stdin.
-The tracked Codex adapter passes `--codex-native` because its detached hook command has lost the Codex process from its ancestry.
-That one-hop signal selects the Codex session-start supervision block for the full digest and for a `clear` or `compact` re-emit, then `bin/fm-session-start.sh` unsets it.
+The tracked Codex adapter passes `--codex-native` only to select the Codex session-start supervision block for the full digest and for a `clear` or `compact` re-emit, then `bin/fm-session-start.sh` unsets it.
+Session-lock acquisition and later Stop-hook ownership still require the established verified Codex process ancestry.
 
 | Source | Action | Why |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ A lock another session holds and a truncated digest therefore surface as digest 
 | Harness | Tier | Tracked transport | Current compatibility |
 | --- | --- | --- | --- |
 | Claude | Run | `.claude/settings.json` registers one unmatched `SessionStart` hook, invoked through `CLAUDE_PROJECT_DIR` with a 180s timeout; the wrapper reads `source` from the hook payload. | Native stdout context injection is supported. |
-| Codex exec | Run | `.codex/hooks.json` anchors to the hook process working directory, verifies a Firstmate-shaped hook-bearing root, and pipes the hook payload into the wrapper with `--codex-native` and a 180s timeout. | Native stdout context injection is supported under `codex exec`; the explicit identity keeps a detached hook host from rendering the `unknown` supervision block. |
+| Codex exec | Run | `.codex/hooks.json` anchors to the hook process working directory, verifies a Firstmate-shaped hook-bearing root, and pipes the hook payload into the wrapper with `--codex-native` and a 180s timeout. | Native stdout context injection is supported under `codex exec`; the rendering selector does not grant session-lock authority, which remains derived from verified Codex ancestry. |
 | Codex interactive TUI | Uncovered | None. | Codex 0.146.0 does not fire the tracked project `SessionStart` hook in its interactive TUI; Firstmate ships no global hook, has no tracked compaction or re-emit channel, and does not claim instruction-refresh delivery for this surface. |
 | Pi / pi-signed | Run | `.pi/extensions/fm-primary-turnend-guard.ts` maps `session_start` reasons `startup`, `new`, `resume`, and `fork` onto wrapper sources, refines a Pi-reported `startup` to `resume` only when a continuation, resume-selection, or explicit-session flag accompanies a session header older than the current process, maps a fork flag to `fork`, and handles `session_compact` as the compaction equivalent; setup-created entries such as `--name` are not restoration evidence. | Each mapped session generation starts one native prerequisite, and `before_agent_start` awaits its matching result and returns one persistent context message before the first provider call; Pi's `reload` reason is deliberately unmapped, as it always was. |
 | OpenCode | Nudge | `.opencode/plugins/fm-primary-sessionstart-nudge.js` listens for `session.created`, runs once per session id, and calls `client.session.promptAsync` only when the wrapper prints a nudge. | Interactive TUI delivery is supported; headless `opencode run` is intentionally fail-open because the process can exit before the queued turn. That early exit is also why OpenCode cannot use the run tier. |

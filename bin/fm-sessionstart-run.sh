@@ -23,8 +23,8 @@
 #             native attempt that settled without output. Every ordinary hook
 #             invocation retains the always-zero compatibility contract below.
 #   --codex-native
-#             Marks the tracked Codex SessionStart adapter, whose detached hook
-#             command has no Codex process in its ancestry.
+#             Selects Codex rendering for the tracked native adapter. Session
+#             lock authority still comes only from verified process ancestry.
 #
 # Source routing (see docs/sessionstart-nudge.md for the per-harness names):
 #   startup, new            full digest - this process has not taken the helm

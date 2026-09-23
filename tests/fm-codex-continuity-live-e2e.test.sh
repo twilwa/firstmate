@@ -77,7 +77,6 @@ PROMPT='Run exactly `bin/fm-watch-checkpoint.sh --seconds 1` as one foreground s
 
 (
   cd "$PROJECT" || exit 1
-  printf '%s\n' "$$" > "$HOME_DIR/state/.lock"
   FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$PROJECT" codex exec \
     --dangerously-bypass-hook-trust \
     --dangerously-bypass-approvals-and-sandbox \
@@ -99,6 +98,8 @@ grep -F 'WAKE_HANDLED' "$TRANSCRIPT" >/dev/null \
 
 jq -e 'select(.hook_event_name == "SessionStart" and .source == "startup")' "$HOOK_LOG" >/dev/null \
   || fail "installed Codex did not fire native SessionStart"
+[ -s "$HOME_DIR/state/.lock" ] \
+  || fail "native SessionStart did not acquire the empty-state session lock"
 jq -e 'select(.hook_event_name == "PreToolUse" and .tool_name == "Bash" and (.tool_input.command | contains("fm-watch-checkpoint.sh --seconds 1")))' "$HOOK_LOG" >/dev/null \
   || fail "installed Codex did not match the foreground exec as Bash"
 jq -e 'select(.hook_event_name == "Stop" and .stop_hook_active == false)' "$HOOK_LOG" >/dev/null \

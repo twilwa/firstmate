@@ -1012,8 +1012,8 @@ test_run_unknown_source_takes_the_helm() {
   pass "run wrapper: an unrecognized or absent source takes the helm rather than skipping it"
 }
 
-test_run_native_codex_identity_survives_detached_detection_and_compaction() {
-  local root="$TMP_ROOT/run-explicit-harness" command out payload status=0
+test_run_native_codex_acquires_and_preserves_ancestry_ownership() {
+  local root="$TMP_ROOT/run-explicit-harness" command stop_command out payload status=0 owner
   make_run_primary "$root"
   cp -R "$ROOT/bin/." "$root/bin/"
   mkdir -p "$root/docs" "$root/.codex"
@@ -1026,13 +1026,36 @@ SH
   chmod +x "$root/bin/fm-harness.sh"
 
   command=$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$root/.codex/hooks.json")
+  assert_absent "$root/state/.lock" "native Codex fixture unexpectedly began with a session lock"
   payload='{"hook_event_name":"SessionStart","session_id":"codex-test","source":"startup"}'
   out=$(printf '%s' "$payload" | (cd "$root" && env -u CLAUDECODE -u PI_CODING_AGENT \
     -u FM_PI_HARNESS -u GROK_AGENT FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
     FM_HOME="$root" PATH="$RUN_PATH" bash -c "$command")) || status=$?
   expect_code 0 "$status" "run wrapper explicit Codex harness"
   assert_contains "$out" "primary harness: codex" "the explicit native identity was lost when detached detection returned unknown"
-  assert_contains "$out" "Mode: Codex Stop-hook-owned park." "the detached hook host rendered the wrong supervision protocol"
+  assert_contains "$out" "Mode: Codex Stop-hook-owned park." "the native hook rendered the wrong supervision protocol"
+  assert_present "$root/state/.lock" "native Codex SessionStart did not acquire an empty-state lock"
+  owner=$(cat "$root/state/.lock")
+  kill -0 "$owner" 2>/dev/null || fail "native Codex SessionStart recorded a dead lock owner"
+
+  cat > "$root/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'signal: native-sessionstart-owner.status\n'
+SH
+  chmod +x "$root/bin/fm-watch-arm.sh"
+  : > "$root/state/task.meta"
+  stop_command=$(jq -r '.hooks.Stop[0].hooks[0].command' "$root/.codex/hooks.json")
+  payload='{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":false}'
+  status=0
+  out=$(printf '%s' "$payload" | (cd "$root" && env -u CLAUDECODE -u PI_CODING_AGENT \
+    -u FM_PI_HARNESS -u GROK_AGENT FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
+    FM_HOME="$root" PATH="$RUN_PATH" bash -c "$stop_command") 2>&1) || status=$?
+  expect_code 2 "$status" "native Codex Stop after SessionStart"
+  assert_contains "$out" "signal: native-sessionstart-owner.status" \
+    "later native Stop did not verify the SessionStart lock as its own"
+  [ "$(cat "$root/state/.lock")" = "$owner" ] \
+    || fail "native Codex Stop replaced the SessionStart lock owner"
+  rm -f "$root/state/task.meta"
 
   status=0
   payload='{"hook_event_name":"SessionStart","session_id":"codex-test","source":"compact"}'
@@ -1054,7 +1077,7 @@ SH
     "$root/bin/fm-sessionstart-run.sh" --source startup </dev/null) || status=$?
   expect_code 0 "$status" "run wrapper ordinary detected harness"
   assert_contains "$out" "primary harness: pi" "ordinary harness detection was overridden outside the Codex adapter"
-  pass "run wrapper: a detached native hook keeps Codex identity across startup and compaction"
+  pass "run wrapper: native Codex acquires and preserves ancestry-owned supervision"
 }
 
 test_run_gate_and_scope_are_silent() {
@@ -1111,7 +1134,7 @@ test_run_clear_rejects_previous_owner_completion
 test_run_resume_delegates_to_the_nudge
 test_run_reads_source_from_the_hook_payload
 test_run_unknown_source_takes_the_helm
-test_run_native_codex_identity_survives_detached_detection_and_compaction
+test_run_native_codex_acquires_and_preserves_ancestry_ownership
 test_run_gate_and_scope_are_silent
 test_run_reports_a_failed_session_start_as_digest_text
 test_pi_startup_classifies_cli_continuations
