@@ -17,7 +17,7 @@ When this session owns supervision and away mode is not active:
 6. Away and quiet mode transfer watcher ownership to their daemon.
    The Stop park stands down while `state/.afk` exists.
 7. If the hook reports `WATCHER PARK FAILED`, inspect its registration, session-lock ownership, and watcher startup failure before ending the turn.
-   The park owns a bounded failure episode independently of `stop_hook_active`, then emits a visible exhaustion diagnostic instead of silently extending the loop.
+   The park owns a bounded failure episode independently of `stop_hook_active`, binds that episode to the current verified session-lock owner so a replacement session receives its own budget, then emits a visible exhaustion diagnostic instead of silently extending the loop.
 
 The synchronous park is the callback.
 A fresh watcher heartbeat without the park proves only recent liveness and never makes ending the turn safe.
