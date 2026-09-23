@@ -263,6 +263,40 @@ fm_local_handoff_write_record() {  # <path> <line>...
   fi
 }
 
+# Publish a record that must NOT already exist. The hard link fails with EEXIST
+# instead of replacing, which is what makes a published approval immutable: two
+# overlapping requests cannot overwrite each other, and a request still in
+# flight when the captain answered cannot replace the record that answer was
+# recorded against. FM_LOCAL_HANDOFF_RECORD_EXISTS distinguishes the lost race
+# from a write that failed for any other reason.
+FM_LOCAL_HANDOFF_RECORD_EXISTS=0
+fm_local_handoff_write_new_record() {  # <path> <line>...
+  local path=$1 tmp dir
+  shift
+  FM_LOCAL_HANDOFF_RECORD_EXISTS=0
+  dir=$(dirname "$path")
+  mkdir -p "$dir" || { FM_LOCAL_HANDOFF_ERROR="cannot create record directory: $dir"; return 1; }
+  tmp="$path.tmp.$$"
+  rm -f -- "$tmp" 2>/dev/null || true
+  if ! printf '%s\n' "$@" > "$tmp"; then
+    FM_LOCAL_HANDOFF_ERROR="cannot write record: $path"
+    rm -f -- "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  if ! ln -- "$tmp" "$path" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    if [ -e "$path" ] || [ -L "$path" ]; then
+      # shellcheck disable=SC2034 # Read by sourcing callers after this refusal.
+      FM_LOCAL_HANDOFF_RECORD_EXISTS=1
+      FM_LOCAL_HANDOFF_ERROR="a record already exists: $path"
+    else
+      FM_LOCAL_HANDOFF_ERROR="cannot publish record: $path"
+    fi
+    return 1
+  fi
+  rm -f -- "$tmp" 2>/dev/null || true
+}
+
 # --- typed loaders ----------------------------------------------------------
 
 fm_local_handoff_binding_load() {  # <child-home> <project>
@@ -377,13 +411,13 @@ fm_local_handoff_landing_load() {  # <parent-data-dir> <landing-id>
   FM_LOCAL_HANDOFF_RECORD=$blob
 }
 
-# Publish a landing record. Both writers - the pin taken while the row is held
-# and the landed mark written after the fast-forward - go through here, so the
-# approval's identity and the landing's evidence can never disagree.
-fm_local_handoff_landing_publish() {
-  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at>
-  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 state=$6 landed_at=$7
-  fm_local_handoff_write_record "$(fm_local_handoff_landing_path "$data" "$landing_id")" \
+# The lines of one landing record, in schema order. The pin and the landed mark
+# are the same record in two states, so both writers below build it here and
+# the approval's identity can never disagree with the landing's evidence.
+fm_local_handoff_landing_lines() {
+  # <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at>
+  local blob=$1 landing_id=$2 offer_file=$3 parent_project=$4 state=$5 landed_at=$6
+  printf '%s\n' \
     "schema=$FM_LOCAL_HANDOFF_LANDING_SCHEMA" \
     "landing_id=$landing_id" \
     "secondmate=$(fm_local_handoff_field "$blob" secondmate)" \
@@ -396,6 +430,71 @@ fm_local_handoff_landing_publish() {
     "offer=$offer_file" \
     "state=$state" \
     "landed_at=$landed_at"
+}
+
+# Write a landing record that may already exist. This is the landing owner's
+# own transition - pinned to landed, or the idempotent recovery that repeats
+# it - and never the path that takes an approval.
+fm_local_handoff_landing_publish() {
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 state=$6 landed_at=$7 lines
+  lines=$(fm_local_handoff_landing_lines "$blob" "$landing_id" "$offer_file" \
+    "$parent_project" "$state" "$landed_at") || return 1
+  local IFS=$'\n' rc
+  set -f
+  # shellcheck disable=SC2086 # Deliberate split of the record into its lines.
+  fm_local_handoff_write_record "$(fm_local_handoff_landing_path "$data" "$landing_id")" $lines
+  rc=$?
+  set +f
+  return "$rc"
+}
+
+# Take an approval: publish the pin only if this landing has no record at all.
+# A published approval is immutable, so this never replaces one - a different
+# offer takes its own landing record, and a request that lost the race learns
+# it lost through FM_LOCAL_HANDOFF_RECORD_EXISTS instead of overwriting the
+# record the captain is answering.
+fm_local_handoff_landing_pin() {
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 lines rc
+  lines=$(fm_local_handoff_landing_lines "$blob" "$landing_id" "$offer_file" \
+    "$parent_project" pinned 0) || return 1
+  local IFS=$'\n'
+  set -f
+  # shellcheck disable=SC2086 # Deliberate word split on the record's own lines.
+  fm_local_handoff_write_new_record "$(fm_local_handoff_landing_path "$data" "$landing_id")" $lines
+  rc=$?
+  set +f
+  return "$rc"
+}
+
+# Withdraw a pin this same call published, and only that. The publish-then-verify
+# refusal in bin/fm-local-handoff.sh uses it when the captain's answer overtook
+# the request: the bytes on disk must still be exactly the ones that call wrote,
+# so a record any other writer has since touched is preserved and reported
+# rather than removed.
+fm_local_handoff_landing_withdraw() {
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 path lines current
+  path=$(fm_local_handoff_landing_path "$data" "$landing_id")
+  lines=$(fm_local_handoff_landing_lines "$blob" "$landing_id" "$offer_file" \
+    "$parent_project" pinned 0) || return 1
+  if [ -L "$path" ] || [ ! -f "$path" ]; then
+    FM_LOCAL_HANDOFF_ERROR="the pin at $path is no longer this request's own record"
+    return 1
+  fi
+  current=$(cat -- "$path" 2>/dev/null) || {
+    FM_LOCAL_HANDOFF_ERROR="the pin at $path could not be re-read"
+    return 1
+  }
+  if [ "$current" != "$lines" ]; then
+    FM_LOCAL_HANDOFF_ERROR="the pin at $path changed after this request published it"
+    return 1
+  fi
+  rm -f -- "$path" || {
+    FM_LOCAL_HANDOFF_ERROR="the pin at $path could not be withdrawn"
+    return 1
+  }
 }
 
 # The captain releases an approval for one exact offer, so anything that has

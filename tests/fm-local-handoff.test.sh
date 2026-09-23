@@ -123,7 +123,10 @@ prepare_landing_row() {  # <landing-id>
   FX_LANDING_RECORD="$FX_MAIN/data/local-only-landings/$FX_LANDING.landing"
   command -v tasks-axi >/dev/null 2>&1 || return 1
   cp "$ROOT/.tasks.toml" "$FX_MAIN/.tasks.toml"
-  printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$FX_MAIN/data/backlog.md"
+  # Keep rows a case already filed: an approval is immutable, so a second head
+  # needs a second landing row beside the first, not a rewritten backlog.
+  [ -f "$FX_MAIN/data/backlog.md" ] \
+    || printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$FX_MAIN/data/backlog.md"
   (cd "$FX_MAIN" && tasks-axi add "$FX_LANDING" "Land the child's offered work" \
     --kind ship --start) >/dev/null 2>&1 || return 1
   hold_landing_row
@@ -170,6 +173,61 @@ forge_receipt() {  # <parent-project> [landing-id]
     printf 'landing_id=%s\n' "$landing"
     printf 'landed_at=%s\n' "$(date +%s)"
   } > "$receipt"
+}
+
+# FIXTURE INSTRUMENTATION ONLY: a wrapper placed ahead of the real ln on the
+# primary home's PATH. It freezes exactly one landing-record publication, on
+# whichever side of the real link a case names, so a second command can be
+# driven through that window on purpose. Nothing in the product reads these
+# variables, and every other ln is passed straight through.
+FX_RACE_AT=
+FX_RACE_GO=
+install_pin_pause_shim() {  # <name> <before|after>
+  local name=$1 when=$2 real
+  real=$(command -v ln) || fail "this host has no ln to wrap"
+  FX_RACE_AT="$TMP_ROOT/$name.race-at"
+  FX_RACE_GO="$TMP_ROOT/$name.race-go"
+  export FX_RACE_WHEN=$when FX_RACE_AT FX_RACE_GO
+  rm -f "$FX_RACE_AT" "$FX_RACE_GO"
+  mkdir -p "$FX_MAIN/fakebin"
+  cat > "$FX_MAIN/fakebin/ln" <<SHIM
+#!/usr/bin/env bash
+# FIXTURE INSTRUMENTATION ONLY (tests/fm-local-handoff.test.sh).
+dest=\${@: -1}
+if [ "\${dest%.landing}" = "\$dest" ] || [ -e "\$FX_RACE_GO" ]; then
+  exec $real "\$@"
+fi
+if [ "\$FX_RACE_WHEN" = after ]; then
+  $real "\$@"
+  rc=\$?
+  : > "\$FX_RACE_AT"
+  while [ ! -e "\$FX_RACE_GO" ]; do sleep 0.05; done
+  exit "\$rc"
+fi
+: > "\$FX_RACE_AT"
+while [ ! -e "\$FX_RACE_GO" ]; do sleep 0.05; done
+exec $real "\$@"
+SHIM
+  chmod 0755 "$FX_MAIN/fakebin/ln"
+}
+
+# Bounded wait for a fixture signal, so a signal that never arrives fails the
+# case instead of hanging the suite.
+wait_for_path() {  # <path> <what> [tries]
+  local path=$1 what=$2 tries=${3:-300}
+  while [ "$tries" -gt 0 ]; do
+    [ ! -e "$path" ] || return 0
+    sleep 0.05
+    tries=$((tries - 1))
+  done
+  fail "$what did not happen within the bounded wait"
+}
+
+# The captain's own hand path in a manual-backend home: the backlog row is
+# released straight through the backlog tool, without the per-task control
+# lock bin/fm-captain-hold.sh takes for its own answer.
+unhold_landing_row_directly() {
+  (cd "$FX_MAIN" && tasks-axi unhold "$FX_LANDING") >/dev/null 2>&1
 }
 
 test_seed_binds_the_local_only_clone() {
@@ -464,10 +522,21 @@ test_a_released_approval_covers_only_the_head_it_pinned() {
   assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
     "a refused landing published a receipt"
 
-  # The recorded way forward is a fresh hold and a fresh pin, not an edit.
-  hold_landing_row || fail "re-holding the landing row for the new head failed"
+  # The recorded way forward is a second landing row with its own pin, because
+  # the first record is the durable approval of the first head and is never
+  # rewritten to name another one.
+  status=0
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a pinned approval was repointed at a later head"
+  assert_grep 'a published pin is never replaced' "$err" \
+    "the refusal did not say the pinned approval stands"
+  assert_equals "$first" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "a refused re-pin changed the record the captain answered"
+
+  prepare_landing_row land-app-2 || fail "filing a second landing row failed"
   approve_current_offer
-  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$second" \
+  run_home "$FX_MAIN" "$MERGE" land-app-2 --offer "$FX_OFFER" --expect-head "$second" \
     >/dev/null 2>"$err" || fail "a freshly approved head failed to land"$'\n'"$(cat "$err")"
   assert_equals "$second" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "the freshly approved head did not land"
@@ -805,6 +874,7 @@ test_damaged_records_fail_closed() {
   if prepare_landing_row land-app; then
     approve_current_offer
     # A landing record damaged after the pin is no weaker an approval either.
+    cp "$FX_LANDING_RECORD" "$TMP_ROOT/damaged-records.landing"
     printf 'extra=1\n' >> "$FX_LANDING_RECORD"
     status=0
     run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
@@ -812,8 +882,15 @@ test_damaged_records_fail_closed() {
     expect_code 1 "$status" "a landing accepted a landing record carrying an unknown key"
     assert_grep 'unknown key extra' "$err" \
       "the refusal did not name the unknown key in the landing record"
-    hold_landing_row || fail "re-holding the landing row failed"
-    approve_current_offer
+
+    # Nor is a damaged approval something a new pin may write over.
+    status=0
+    run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+      >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "a damaged approval was replaced by a fresh pin"
+    assert_grep 'unknown key extra' "$err" \
+      "the refusal did not name the damaged record it refused to replace"
+    cp "$TMP_ROOT/damaged-records.landing" "$FX_LANDING_RECORD"
 
     run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
       || fail "the delegated landing failed after the damaged records were restored"
@@ -867,6 +944,162 @@ test_a_held_landing_row_blocks_the_delegated_landing() {
   pass "a landing record still held for the captain blocks the delegated landing"
 }
 
+# A published pin is the captain's approval of one exact head, so two requests
+# that overlap on the same landing row cannot trade places: the one that
+# publishes first owns the row, and the other learns that rather than writing
+# over it.
+test_overlapping_requests_never_replace_a_pin() {
+  local first second err_a err_b out_b pin_a pin_b status_b
+  make_bound_fixture overlapping-pins
+  commit_child_work 'first offered change'
+  first=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (overlapping pins)"; return 0; }
+  err_a="$TMP_ROOT/overlapping-pins.a.err"
+  err_b="$TMP_ROOT/overlapping-pins.b.err"
+  out_b="$TMP_ROOT/overlapping-pins.b.out"
+
+  install_pin_pause_shim overlapping-pins before
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >/dev/null 2>"$err_a" &
+  pin_a=$!
+  wait_for_path "$FX_RACE_AT" "the first request reaching its publication"
+
+  # The child moves on while that request is frozen, so the second request
+  # carries a genuinely different head into the same window.
+  commit_child_work 'change offered while the first pin was in flight'
+  second=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  assert_not_equals "$first" "$second" "the second offer did not move the head"
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "republishing the moved head failed"
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >"$out_b" 2>"$err_b" &
+  pin_b=$!
+  kill -0 "$pin_b" 2>/dev/null \
+    || fail "the second request did not overlap the first one's publication"
+
+  : > "$FX_RACE_GO"
+  wait "$pin_a" || fail "the frozen request failed"$'\n'"$(cat "$err_a")"
+  status_b=0
+  wait "$pin_b" || status_b=$?
+  expect_code 1 "$status_b" "an overlapping request replaced a published pin"
+  assert_grep 'a published pin is never replaced' "$err_b" \
+    "the losing request did not report the pin that already owns the row"
+  assert_no_grep "$second" "$FX_LANDING_RECORD" \
+    "the losing request wrote its own head into the published pin"
+  assert_equals "$first" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "the published pin lost the head it was written for"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the published pin did not survive the overlapping request"
+  pass "overlapping requests cannot replace a published pin"
+}
+
+# The window the review reproduced: a captain answer recorded between a
+# request's own check and its publication. The request holds the landing's
+# control lock across both, which is the same lock the answer takes, so the
+# answer cannot land inside that window at all.
+test_a_captains_answer_waits_for_a_pin_in_flight() {
+  local head err out pin released rel status
+  make_bound_fixture pin-before-answer
+  commit_child_work 'change awaiting approval'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (answer during pin)"; return 0; }
+  err="$TMP_ROOT/pin-before-answer.err"
+  released="$TMP_ROOT/pin-before-answer.answered"
+
+  install_pin_pause_shim pin-before-answer before
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >/dev/null 2>"$err" &
+  pin=$!
+  wait_for_path "$FX_RACE_AT" "the request reaching its publication"
+
+  # The captain answers through the ordinary wrapper while the pin is frozen.
+  ( release_landing_row; : > "$released" ) &
+  rel=$!
+  status=60
+  while [ "$status" -gt 0 ]; do
+    assert_absent "$released" \
+      "the captain's answer was recorded while a pin for that row was still in flight"
+    sleep 0.05
+    status=$((status - 1))
+  done
+
+  : > "$FX_RACE_GO"
+  wait "$pin" || fail "the frozen request failed"$'\n'"$(cat "$err")"
+  wait "$rel" || fail "the captain's answer never completed"
+  wait_for_path "$released" "the captain's answer completing after the pin"
+  assert_equals "$head" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "the pin did not record the head it was written for"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the pin did not survive the answer that followed it"
+
+  # Re-running the same request is the interrupted-request recovery path: the
+  # identity is unchanged, so it repeats the record rather than refusing.
+  out=$(run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER") \
+    || fail "re-running the identical request refused its own record"
+  assert_contains "$out" "unchanged=1" "the repeated request was not reported as unchanged"
+  assert_contains "$out" "head=$head" "the repeated request reported another head"
+
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || fail "the approved head failed to land"$'\n'"$(cat "$err")"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the approved head did not reach the primary's default branch"
+  pass "a captain's answer cannot be recorded inside a pin's publication window"
+}
+
+# An answer recorded outside that lock, straight through the backlog tool, is
+# still possible. The request re-reads the row after publishing, withdraws its
+# own record byte for byte, and an overlapping landing waits for that withdraw
+# rather than consuming a pin no live answer covers.
+test_a_pin_is_withdrawn_when_its_row_is_released_underneath_it() {
+  local head err land_err pin land status land_status
+  make_bound_fixture pin-overtaken
+  commit_child_work 'change awaiting approval'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (overtaken pin)"; return 0; }
+  err="$TMP_ROOT/pin-overtaken.err"
+  land_err="$TMP_ROOT/pin-overtaken.land.err"
+
+  install_pin_pause_shim pin-overtaken after
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >/dev/null 2>"$err" &
+  pin=$!
+  wait_for_path "$FX_RACE_AT" "the request publishing its record"
+  assert_present "$FX_LANDING_RECORD" "the frozen request published no record to withdraw"
+  unhold_landing_row_directly || fail "releasing the row outside the wrapper failed"
+
+  # A landing started inside the same window must not consume that record.
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$land_err" &
+  land=$!
+  : > "$FX_RACE_GO"
+  status=0
+  wait "$pin" || status=$?
+  expect_code 1 "$status" "a pin survived the release that overtook it"
+  assert_grep 'stopped being held while this offer was being pinned' "$err" \
+    "the refusal did not name the answer that overtook the pin"
+  assert_absent "$FX_LANDING_RECORD" "the overtaken pin was left behind as an approval"
+
+  land_status=0
+  wait "$land" || land_status=$?
+  expect_code 1 "$land_status" "a landing consumed a pin that was being withdrawn"
+  assert_grep 'record is missing or not an ordinary file' "$land_err" \
+    "the landing did not refuse for the withdrawn record"
+  assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
+    "a refused landing published a receipt"
+  assert_not_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "an overtaken pin still moved the primary's default branch"
+  pass "a pin whose row is released underneath it is withdrawn, not inherited"
+}
+
 test_seed_binds_the_local_only_clone
 test_seed_refuses_an_unbound_or_published_local_only_clone
 test_child_home_cannot_land_its_own_bound_clone
@@ -883,3 +1116,6 @@ test_a_substituted_parent_clone_proves_nothing
 test_the_receipt_gate_survives_a_missing_worktree
 test_damaged_records_fail_closed
 test_a_held_landing_row_blocks_the_delegated_landing
+test_overlapping_requests_never_replace_a_pin
+test_a_captains_answer_waits_for_a_pin_in_flight
+test_a_pin_is_withdrawn_when_its_row_is_released_underneath_it

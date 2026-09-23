@@ -19,9 +19,16 @@
 #       the captain. Pins that row's pending approval to this offer's exact
 #       commit and identity in a parent-owned landing record, so the release
 #       the captain then records can never be inherited by a later head: a
-#       changed offer needs a fresh hold and a fresh pin. It grants nothing on
-#       its own - bin/fm-captain-hold.sh remains the only approval owner - and
-#       refuses an already landed pin rather than rewriting that evidence.
+#       changed offer needs its own landing row and its own pin. It grants
+#       nothing on its own - bin/fm-captain-hold.sh remains the only approval
+#       owner. A published pin is immutable: re-running with the same identity
+#       repeats itself, while a different offer, an already landed record, or a
+#       record it cannot read all refuse instead of replacing it. The pin is
+#       published only if this landing has no record at all, then the hold is
+#       re-read and a pin the captain's answer overtook is withdrawn, all under
+#       the landing's own control lock that bin/fm-merge-local.sh takes, so no
+#       landing can consume and no second request can overwrite a pin that is
+#       still being taken.
 #
 #   fm-local-handoff.sh receipt <offer-file> --landing <landing-id>
 #       Run in the PRIMARY home. Re-proves that the offered head is contained
@@ -52,6 +59,11 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 . "$SCRIPT_DIR/fm-local-handoff-lib.sh"
 # shellcheck source=bin/fm-secondmate-parent-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
+# The fleet's existing lock owner. `request` takes the same per-landing control
+# lock bin/fm-merge-local.sh holds, so taking a pin and consuming one are
+# serialized by the lock that already guards this landing.
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 SUB_HOME_MARKER=.fm-secondmate-home
 SUB_HOME_PARENT_MARKER=.fm-secondmate-parent
@@ -247,8 +259,40 @@ parent_side_offer_checks() {  # <offer-blob>
   PARENT_PROJECT="$PARENT_PROJECTS/$project"
 }
 
+# Is the landing row still open for the captain? Exit 0 is held; every other
+# answer, including "cannot tell", refuses, so the caller states what it is
+# refusing rather than guessing.
+request_hold_status() {  # <landing-id>
+  local landing_id=$1 status=0
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-captain-hold.sh" open "$landing_id" --distinguish-absent || status=$?
+  printf '%s\n' "$status"
+}
+
+# The one place a published pin is read by `request`. A pin is immutable, so
+# the only outcome that is not a refusal is repeating the identity already
+# pinned, which lets an interrupted request be re-run safely.
+request_report_existing() {  # <landing-id> <existing-blob> <offer-blob>
+  local landing_id=$1 existing=$2 offer=$3
+  if [ "$(fm_local_handoff_field "$existing" state)" = landed ]; then
+    die "landing $landing_id already records $(fm_local_handoff_field "$existing" head) as landed; pin further work to its own landing record"
+  fi
+  fm_local_handoff_landing_matches_offer "$existing" "$offer" "$PARENT_HOME" "$PARENT_PROJECT" \
+    || die "$FM_LOCAL_HANDOFF_ERROR; a published pin is never replaced, so this offer needs its own landing record"
+  printf 'landing=%s\n' "$(fm_local_handoff_landing_path "$DATA" "$landing_id")"
+  printf 'head=%s\n' "$(fm_local_handoff_field "$existing" head)"
+  printf 'state=%s\n' "$(fm_local_handoff_field "$existing" state)"
+  printf 'unchanged=1\n'
+}
+
+REQUEST_LOCK=
+request_lock_release() {
+  [ -z "$REQUEST_LOCK" ] || fm_lock_release "$REQUEST_LOCK" || true
+  REQUEST_LOCK=
+}
+
 command_request() {  # <landing-id> <offer-file>
-  local landing_id=$1 offer_file=$2 blob project head existing hold_status=0 landing_path
+  local landing_id=$1 offer_file=$2 blob project head hold_status landing_path
 
   fm_local_handoff_valid_slug "$landing_id" \
     || die "landing id must be a privacy-safe slug: $landing_id"
@@ -261,21 +305,32 @@ command_request() {  # <landing-id> <offer-file>
   head=$(fm_local_handoff_field "$blob" head)
   fm_local_handoff_project_still_local_only "$SCRIPT_DIR" "$FM_HOME" "$DATA" "$project" \
     || die "$FM_LOCAL_HANDOFF_ERROR"
+  landing_path=$(fm_local_handoff_landing_path "$DATA" "$landing_id")
 
-  # A record that already recorded a landing is the parent's durable evidence
-  # of it, so it is never re-pinned: further work takes its own landing record.
-  if fm_local_handoff_landing_load "$DATA" "$landing_id"; then
-    existing=$FM_LOCAL_HANDOFF_RECORD
-    if [ "$(fm_local_handoff_field "$existing" state)" = landed ]; then
-      die "landing $landing_id already records $(fm_local_handoff_field "$existing" head) as landed; pin further work to its own landing record"
-    fi
+  # Everything below happens under the landing's own control lock, the same one
+  # bin/fm-merge-local.sh holds for this id. That is what makes publishing the
+  # pin and re-reading the hold one step to every other actor: no landing can
+  # consume a pin that is still being verified, and no second request can be
+  # between its own read and its own publication at the same time.
+  trap request_lock_release EXIT
+  REQUEST_LOCK="$STATE/.control-$landing_id.lock"
+  if ! fm_lock_acquire_wait_bounded "$REQUEST_LOCK" 60; then
+    REQUEST_LOCK=
+    die "landing $landing_id is busy in another command; pin the offer again once that one finishes"
+  fi
+
+  # A record that already exists is the durable approval or the durable
+  # evidence of a landing, and this path never replaces either.
+  if [ -e "$landing_path" ] || [ -L "$landing_path" ]; then
+    fm_local_handoff_landing_load "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
+    request_report_existing "$landing_id" "$FM_LOCAL_HANDOFF_RECORD" "$blob"
+    return 0
   fi
 
   # The approval itself stays where it has always lived. This only binds the
   # pending call to one exact commit, so it must run while that call is still
   # open; an absent or already released row refuses.
-  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    "$SCRIPT_DIR/fm-captain-hold.sh" open "$landing_id" --distinguish-absent || hold_status=$?
+  hold_status=$(request_hold_status "$landing_id")
   case "$hold_status" in
     0) ;;
     1)
@@ -289,9 +344,26 @@ command_request() {  # <landing-id> <offer-file>
       ;;
   esac
 
-  fm_local_handoff_landing_publish "$DATA" "$blob" "$landing_id" "$offer_file" \
-    "$PARENT_PROJECT" pinned 0 || die "$FM_LOCAL_HANDOFF_ERROR"
-  landing_path=$(fm_local_handoff_landing_path "$DATA" "$landing_id")
+  if ! fm_local_handoff_landing_pin "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT"; then
+    if [ "$FM_LOCAL_HANDOFF_RECORD_EXISTS" = 1 ]; then
+      fm_local_handoff_landing_load "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
+      request_report_existing "$landing_id" "$FM_LOCAL_HANDOFF_RECORD" "$blob"
+      return 0
+    fi
+    die "$FM_LOCAL_HANDOFF_ERROR"
+  fi
+
+  # Re-read the hold now that the pin is durable. A release recorded before
+  # this point answered a call this pin was not part of, so the pin is
+  # withdrawn and nothing inherits that answer; a release recorded after it
+  # genuinely post-dates a durable approval.
+  hold_status=$(request_hold_status "$landing_id")
+  if [ "$hold_status" != 0 ]; then
+    fm_local_handoff_landing_withdraw "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT" \
+      || die "the captain's landing row $landing_id stopped being held while this offer was being pinned, and $FM_LOCAL_HANDOFF_ERROR; reconcile that record by hand before landing anything"
+    die "the captain's landing row $landing_id stopped being held while this offer was being pinned, so the pin was withdrawn; this offer needs its own held landing row"
+  fi
+
   printf 'landing=%s\n' "$landing_path"
   printf 'head=%s\n' "$head"
   printf 'state=pinned\n'

@@ -170,7 +170,10 @@ Reseeding accepts a preexisting local-only clone only when it still has no remot
 Landing stays with the primary that seeded the copy.
 The child publishes an immutable head-pinned offer with `bin/fm-local-handoff.sh offer <task-id>`, which carries the commit as a git bundle instead of a push.
 The primary pins that exact offer to the pending approval with `bin/fm-local-handoff.sh request <landing-id> --offer <file>`, accepted only while `<landing-id>`, a parent-owned backlog item, is still held for the captain under the usual `bin/fm-captain-hold.sh` approval.
-That parent-owned landing record is what stops a release recorded for one head from being inherited by a later one, so a head that moved after approval needs a fresh hold and a fresh pin.
+That pin is published create-only, so a published landing record is never replaced: re-running the identical request repeats that record, while an offer carrying another head refuses.
+The request holds the landing's own control lock across its captain-row check, its publication, and its re-read of that row, which is the lock the captain's answer and the landing itself already take.
+An answer recorded outside that lock withdraws the pin it overtook, byte for byte, instead of leaving an approval that no answer covers.
+That parent-owned landing record is what stops a release recorded for one head from being inherited by a later one, so a head that moved after approval needs its own landing row, held and pinned afresh.
 The primary then lands the pinned offer through the ordinary local landing guard, `bin/fm-merge-local.sh <landing-id> --offer <file> --expect-head <sha>`, which refuses an absent, already landed, or mismatched landing record, an absent captain row, and a project no longer registered `local-only`.
 No worker record is created or invented for the child.
 The primary alone fast-forwards its local default branch, then completes its own landing record and publishes a durable landing receipt back into the child home.
