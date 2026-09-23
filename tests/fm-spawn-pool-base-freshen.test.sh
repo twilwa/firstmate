@@ -743,6 +743,164 @@ test_pool_slot_claim_follows_the_spawn_outcome() {
   pass "a Treehouse slot claim names the launched task, refuses when unclaimable, and is dropped by a locked abort"
 }
 
+test_foreign_clone_never_reaches_refresh_or_launch() {
+  local rec id out status harness owner foreign before claim_before candidate foreign_slot
+  # The gate is structural and shared by every worker adapter. These stubs
+  # satisfy executable discovery only; no vendor process or credentials run.
+  for harness in claude codex opencode pi pi-signed grok kimi cursor gemini muse rovo omp agy; do
+    id="pool-foreign-$harness"
+    rec=$(make_case "foreign-$harness" "$id")
+    read_case_record "$rec"
+    owner=$PROJECT_DIR
+    lay_out_as_pool_slot
+    foreign="$CASE_DIR/independent-clone"
+    git clone --quiet "file://$CASE_DIR/origin.git" "$foreign"
+    PROJECT_DIR=$foreign
+    printf 'task=previous-task\nhome=/preserved-owner\n' > "$SLOT_CLAIM"
+    claim_before=$(cat "$SLOT_CLAIM")
+    before=$(git -C "$POOL_DIR" reflog)
+    fm_fake_exit0 "$FAKEBIN_DIR" pi pi-signed kimi cursor-agent muse rovo omp agy
+    fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+    mkdir -p "$CASE_DIR/xdg-config/muse"
+    printf '{"api_key":"fixture-only"}\n' > "$CASE_DIR/xdg-config/muse/auth.json"
+
+    out=$(XDG_CONFIG_HOME="$CASE_DIR/xdg-config" XDG_DATA_HOME="$CASE_DIR/xdg-data" \
+      FM_FAKE_LAUNCH_LOG="$CASE_DIR/launch" run_spawn "$id" --scout --harness "$harness")
+    status=$?
+    [ "$status" -ne 0 ] || fail "$harness accepted another clone's worktree"
+    assert_contains "$out" 'does not belong to the spawning project' \
+      "$harness failed before reaching the common-dir custody guard: $out"
+    [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$INITIAL_SHA" ] \
+      || fail "$harness refreshed the foreign slot"
+    [ "$(git -C "$POOL_DIR" reflog)" = "$before" ] || fail "$harness changed the foreign reflog"
+    [ ! -e "$owner/.git/FETCH_HEAD" ] || fail "$harness fetched the foreign clone"
+    [ "$(cat "$SLOT_CLAIM")" = "$claim_before" ] || fail "$harness replaced another task's claim"
+    [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "$harness published foreign task custody"
+    [ ! -e "$HOME_DIR/state/$id.busy-state" ] || fail "$harness armed busy hooks"
+    [ ! -s "$CASE_DIR/launch" ] || fail "$harness sent a worker launch"
+    [ ! -e "$HOME_DIR/user-home/.claude.json" ] || fail "$harness registered foreign trust"
+    [ ! -e "$HOME_DIR/user-home/.kimi-code/fm-turn-end.sh" ] || fail "$harness installed a global hook"
+    pass "$harness refuses another same-origin clone's slot before refresh, claims, hooks or launch"
+  done
+
+  foreign_slot=$POOL_DIR
+  ln -s "$foreign_slot" "$CASE_DIR/foreign-alias"
+  mkdir "$foreign_slot/subdir"
+  for candidate in "$CASE_DIR/foreign-alias" "$foreign_slot/subdir"; do
+    POOL_DIR=$candidate
+    out=$(run_spawn "$id" --scout --harness codex)
+    status=$?
+    [ "$status" -ne 0 ] || fail "spawn accepted foreign alias/subdirectory: $candidate"
+    assert_contains "$out" 'did not enter an isolated worktree' 'foreign alias/subdirectory lost refusal diagnostic'
+    [ "$(git -C "$foreign_slot" reflog)" = "$before" ] || fail 'alias/subdirectory changed foreign HEAD'
+    [ ! -e "$owner/.git/FETCH_HEAD" ] || fail 'alias/subdirectory fetched the foreign clone'
+    [ "$(cat "$SLOT_CLAIM")" = "$claim_before" ] || fail 'alias/subdirectory replaced foreign custody'
+    [ ! -e "$HOME_DIR/state/$id.meta" ] || fail 'alias/subdirectory published task metadata'
+  done
+  pass 'foreign linked aliases and subdirectories refuse without mutation'
+
+  # A foreign primary is not a linked worktree even though it is distinct
+  # from both the requesting project and that project's primary checkout.
+  POOL_DIR=$owner
+  out=$(run_spawn "$id" --scout --harness codex)
+  status=$?
+  [ "$status" -ne 0 ] || fail 'spawn accepted a foreign primary'
+  assert_contains "$out" "repository's primary checkout" "foreign primary refusal lost its cause"
+  [ ! -e "$owner/.git/FETCH_HEAD" ] || fail 'spawn refreshed the foreign primary'
+  pass 'a foreign primary also refuses before refresh'
+}
+
+test_allocation_root_uses_canonical_clone_custody() {
+  local rec id out status primary linked command root input
+  id='pool-root-quoted'
+  rec=$(make_originless_case "root with spaces and ' quote" "$id")
+  read_case_record "$rec"
+  primary=$PROJECT_DIR
+  linked="$CASE_DIR/linked project"
+  git -C "$primary" worktree add --quiet --detach "$linked" HEAD
+  ln -s "$linked" "$CASE_DIR/linked-alias"
+  root=$(cd "$primary/.git" && pwd -P)/firstmate-treehouse
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+  cat > "$FAKEBIN_DIR/treehouse" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$FM_TEST_TREEHOUSE_ARGS"
+SH
+  chmod +x "$FAKEBIN_DIR/treehouse"
+  for input in "$primary" "$linked" "$CASE_DIR/linked-alias"; do
+    PROJECT_DIR=$input
+    rm -f "$CASE_DIR/pane-log"
+    out=$(FM_FAKE_PANE_LOG="$CASE_DIR/pane-log" run_spawn "$id" --scout)
+    status=$?
+    expect_code 0 "$status" "origin-less canonical clone should launch: $out"
+    command=$(grep '^treehouse ' "$CASE_DIR/pane-log")
+    [ -n "$command" ] || fail 'spawn did not send a Treehouse allocation command'
+    FM_TEST_TREEHOUSE_ARGS="$CASE_DIR/args" PATH="$FAKEBIN_DIR:$PATH" \
+      bash -c "$command" || fail 'allocation command did not survive shell quoting'
+    printf '%s\n' --root "$root" get > "$CASE_DIR/expected-args"
+    cmp -s "$CASE_DIR/expected-args" "$CASE_DIR/args" \
+      || fail "allocation did not address the canonical clone pool: $(cat "$CASE_DIR/args")"
+    [ ! -e "$primary/.git/FETCH_HEAD" ] || fail 'origin-less clone fetched'
+  done
+  pass 'new allocations quote one canonical root for primary, linked and symlinked origin-less inputs'
+}
+
+test_legacy_relaunch_preserves_work_and_refuses_foreign_custody() {
+  local rec id out status before
+  id='pool-legacy-relaunch'
+  rec=$(make_originless_case legacy-relaunch "$id")
+  read_case_record "$rec"
+  lay_out_as_pool_slot
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+  out=$(run_spawn "$id" --scout)
+  status=$?
+  expect_code 0 "$status" "legacy slot fixture did not launch: $out"
+  printf 'committed task work\n' > "$POOL_DIR/task.txt"
+  git -C "$POOL_DIR" add task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm task-work
+  printf 'unfinished task work\n' >> "$POOL_DIR/task.txt"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  cp "$SLOT_CLAIM" "$CASE_DIR/claim-before"
+  mv "$FAKEBIN_DIR/tmux" "$FAKEBIN_DIR/tmux-spawn"
+  cat > "$FAKEBIN_DIR/tmux" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *'#{pane_current_command}'*) printf 'bash\n'; exit 0 ;;
+esac
+if [ "${1:-}" = list-windows ]; then printf 'fm-pool-legacy-relaunch\n'; exit 0; fi
+exec "$(dirname "$0")/tmux-spawn" "$@"
+SH
+  chmod +x "$FAKEBIN_DIR/tmux"
+  out=$(FM_FAKE_PANE_LOG="$CASE_DIR/relaunch-pane" \
+    fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" "$id" --relaunch --harness codex)
+  status=$?
+  expect_code 0 "$status" "legacy copy should relaunch unchanged: $out"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] || fail 'relaunch reset legacy task work'
+  assert_grep 'unfinished task work' "$POOL_DIR/task.txt" 'relaunch discarded unfinished work'
+  assert_no_grep 'treehouse ' "$CASE_DIR/relaunch-pane" 'relaunch allocated another slot'
+  cmp -s "$SLOT_CLAIM" "$CASE_DIR/claim-before" || fail 'relaunch changed slot ownership'
+  [ ! -e "$PROJECT_DIR/.git/FETCH_HEAD" ] || fail 'relaunch refreshed legacy work'
+
+  git clone --quiet "$PROJECT_DIR" "$CASE_DIR/foreign"
+  awk -v project="$CASE_DIR/foreign" '/^project=/ { print "project=" project; next } { print }' \
+    "$HOME_DIR/state/$id.meta" > "$CASE_DIR/meta-foreign"
+  cp "$CASE_DIR/meta-foreign" "$HOME_DIR/state/$id.meta"
+  # This Codex fixture has no native busy source. Refusal must not arm one.
+  [ ! -e "$HOME_DIR/state/$id.busy-state" ] || fail 'fixture unexpectedly armed busy state'
+  out=$(fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" "$id" --relaunch --harness codex)
+  status=$?
+  [ "$status" -ne 0 ] || fail 'relaunch adopted a foreign recorded copy'
+  assert_contains "$out" 'does not belong to the spawning project' 'relaunch lost the custody refusal'
+  cmp -s "$HOME_DIR/state/$id.meta" "$CASE_DIR/meta-foreign" || fail 'refused relaunch rewrote metadata'
+  [ ! -e "$HOME_DIR/state/$id.busy-state" ] || fail 'refused relaunch armed busy wiring'
+  cmp -s "$SLOT_CLAIM" "$CASE_DIR/claim-before" || fail 'refused relaunch cleared prior custody'
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] || fail 'refused relaunch reset recorded work'
+  assert_grep 'unfinished task work' "$POOL_DIR/task.txt" 'refused relaunch discarded recorded work'
+  pass 'legacy relaunch preserves committed and unfinished work and refuses mismatched recorded custody'
+}
+
+test_legacy_relaunch_preserves_work_and_refuses_foreign_custody
+test_foreign_clone_never_reaches_refresh_or_launch
+test_allocation_root_uses_canonical_clone_custody
 test_remote_seeded_home_spawns_from_treehouse_pool
 test_pool_slot_claim_follows_the_spawn_outcome
 test_linked_spawning_home_rejects_primary_before_refresh
