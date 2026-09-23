@@ -1,0 +1,25 @@
+# Treehouse under test: v2.3.0
+🌳 Setting up worktree...
+🌳 Leased worktree at /tmp/fm-treehouse-clone-custody.eWnjwT/legacy pool/.treehouse/repo-faa10a/1/repo. Run 'treehouse return /tmp/fm-treehouse-clone-custody.eWnjwT/legacy pool/.treehouse/repo-faa10a/1/repo' to release it.
+🌳 Worktree returned to pool.
+mise by @jdx – installing 1 tool
+mise █████████████░░░ 0/1 · 3.0s
+  node@24.21.0  extracting  3.0s
+mise node@24.21.0 v24.21.0
+mise node@24.21.0 11.19.0
+mise ✓ node@24.21.0  3.5s  node-v24.21.0-linux-x64.tar.gz
+mise ████████████████ 1/1 · installed 1 tool in 3.5s
+trusted: /tmp/fm-treehouse-clone-custody.eWnjwT/primary/repo/.git/firstmate-treehouse/.treehouse/repo-faa10a/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.eWnjwT/primary/repo
+ok - real Treehouse spawn custody-a owns its clone and passes unchanged trust
+trusted: /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo/.git/firstmate-treehouse/.treehouse/repo-faa10a/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo
+ok - real Treehouse spawn custody-b owns its clone and passes unchanged trust
+trusted: /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo/.git/firstmate-treehouse/.treehouse/repo-faa10a/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo
+ok - real Treehouse spawn custody-linked owns its clone and passes unchanged trust
+🌳 Setting up worktree...
+🌳 Leased worktree at /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo/.git/firstmate-treehouse/.treehouse/repo-faa10a/1/repo. Run 'treehouse return /tmp/fm-treehouse-clone-custody.eWnjwT/secondmate with ' quote/repo/.git/firstmate-treehouse/.treehouse/repo-faa10a/1/repo' to release it.
+🌳 Worktree returned to pool.
+ok - real allocations and exact returns preserve the existing pool and its unlanded work
+# all fm-treehouse-clone-custody tests passed
