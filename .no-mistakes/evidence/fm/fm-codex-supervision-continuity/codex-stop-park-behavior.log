@@ -1,0 +1,15 @@
+ok - Codex park: no supervision need ends silently without arming
+ok - Codex park: an actionable watcher close exits 2 through the same Stop hook
+ok - Codex park: stop_hook_active bounds repair loops but never suppresses a real wake
+ok - Codex park: the synchronous Stop hook stays attached until its watcher event
+ok - Codex park: away and quiet mode retain daemon ownership
+ok - Codex park: failures after an active Stop retry deterministically to a visible finite bound
+ok - Codex park: a replacement session receives its own bounded failure episode
+ok - Codex park: a delivered real wake resets the bounded failure episode
+ok - Codex park: neither a fresh nor stale beacon masks a missing callback
+ok - Codex park: a quiet watcher renews its callback before the native hook timeout
+ok - Codex park: a newer Stop supersedes the older park without a duplicate wake
+ok - Codex park: a foreign live session owner is preserved
+ok - Codex park: an unmarked worker-only worktree remains exempt
+ok - Codex park: user cancellation retires the tracked arm child
+# all fm-codex-stop-park tests passed

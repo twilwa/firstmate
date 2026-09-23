@@ -1,0 +1,7 @@
+ok - quiet checkpoint exits 124 with a clean checkpoint line and no live lock
+ok - checkpoint timeout during watcher initialization releases its owned lock
+ok - recovery-marker initialization failure retains stale lock evidence
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 2010947.1790122239.By4bAb
+ok - checkpoint passes through a real watcher wake and leaves the queue for drain
+ok - checkpoint preserves watcher environment for registered custom checks
+ok - checkpoint rejects an existing watcher singleton as unowned
