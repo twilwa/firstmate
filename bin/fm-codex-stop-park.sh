@@ -192,6 +192,8 @@ ARM_OUT=$(mktemp "$STATE/.codex-park-output.XXXXXX") || ARM_OUT=
 ARM_PID=
 PARK_STARTED_AT=$(date +%s)
 RENEW=0
+# Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2329
 cleanup() {
   if [ -n "$ARM_PID" ]; then
     kill "$ARM_PID" 2>/dev/null || true
