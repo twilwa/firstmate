@@ -41,6 +41,7 @@ make_primary() {
 run_park() { # <dir> <stop-active>
   local dir=$1 active=$2 payload
   payload=$(printf '{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":%s}' "$active")
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   FM_HOME="$dir" PAYLOAD="$payload" FM_CODEX_PARK_POLL=1 "$FAKE_CODEX" -c '
     printf "%s\n" "$$" > "$FM_HOME/state/.lock"
     printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh"
@@ -150,6 +151,7 @@ test_failure_episode_survives_active_stop_and_stays_bounded() {
   make_primary "$dir"
   : > "$dir/state/task.meta"
   write_arm_failure "$dir"
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
     printf "%s\n" "$$" > "$FM_HOME/state/.lock"
     for attempt in 1 2 3 4; do
@@ -175,6 +177,7 @@ test_replacement_session_gets_its_own_failure_episode() {
   make_primary "$dir"
   : > "$dir/state/task.meta"
   write_arm_failure "$dir"
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   first_out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
     printf "%s\n" "$$" > "$FM_HOME/state/.lock"
     for _ in 1 2 3 4; do
@@ -194,6 +197,7 @@ test_real_wake_resets_failure_episode() {
   make_primary "$dir"
   : > "$dir/state/task.meta"
   write_arm_failure "$dir"
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   out=$(FM_HOME="$dir" "$FAKE_CODEX" -c '
     printf "%s\n" "$$" > "$FM_HOME/state/.lock"
     payload="{\"hook_event_name\":\"Stop\",\"session_id\":\"codex-test\",\"stop_hook_active\":true}"
@@ -269,6 +273,7 @@ printf 'signal: superseded.status\n'
 SH
   chmod +x "$dir/bin/fm-watch-arm.sh"
   payload='{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":false}'
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   FM_HOME="$dir" PAYLOAD="$payload" OUT1="$out1" OUT2="$out2" RESULT="$result" \
     FM_CODEX_PARK_POLL=1 "$FAKE_CODEX" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
@@ -300,6 +305,7 @@ test_live_foreign_owner_is_not_replaced() {
   owner=$!
   printf '%s\n' "$owner" > "$dir/state/.lock"
   payload='{"hook_event_name":"Stop","session_id":"foreign","stop_hook_active":false}'
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
   out=$(FM_HOME="$dir" PAYLOAD="$payload" "$FAKE_CODEX" -c '
     printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh"
   ' 2>&1) || status=$?
