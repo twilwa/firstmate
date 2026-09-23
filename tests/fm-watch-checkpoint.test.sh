@@ -6,6 +6,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 CHECKPOINT="$ROOT/bin/fm-watch-checkpoint.sh"
+WATCH="$ROOT/bin/fm-watch.sh"
 TMP_ROOT=$(fm_test_tmproot fm-watch-checkpoint)
 
 make_home() {
@@ -57,6 +58,34 @@ test_timeout_during_watcher_initialization_releases_lock() {
   assert_absent "$home/state/.watch.lock/pid" \
     "watch lock survived timeout during post-claim initialization"
   pass "checkpoint timeout during watcher initialization releases its owned lock"
+}
+
+test_recovery_marker_failure_retains_stale_lock_evidence() {
+  local home fakebin out err status=0 real_mktemp
+  home=$(make_home recovery-marker-failure)
+  fakebin="$home/fakebin"
+  out="$home/out.txt"
+  err="$home/err.txt"
+  real_mktemp=$(command -v mktemp)
+  mkdir -p "$fakebin"
+  printf 'announced:downtime:fixture\n' > "$home/state/.watcher-down"
+  cat > "$fakebin/mktemp" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  *.watcher-down.tmp.*) exit 1 ;;
+esac
+exec "$REAL_MKTEMP" "$@"
+SH
+  chmod 0700 "$fakebin/mktemp"
+
+  PATH="$fakebin:$PATH" REAL_MKTEMP="$real_mktemp" FM_HOME="$home" \
+    FM_CHECK_INTERVAL=999999 "$WATCH" >"$out" 2>"$err" || status=$?
+  expect_code 1 "$status" "recovery-marker failure watcher exit"
+  assert_contains "$(cat "$err")" "retaining stale lock evidence" \
+    "recovery-marker failure did not report retained evidence"
+  [ -s "$home/state/.watch.lock/pid" ] \
+    || fail "recovery-marker failure discarded stale lock evidence"
+  pass "recovery-marker initialization failure retains stale lock evidence"
 }
 
 test_signal_passes_through_and_exits_zero() {
@@ -114,6 +143,7 @@ test_existing_singleton_watcher_is_not_success() {
 
 test_quiet_checkpoint_exits_124_cleanly
 test_timeout_during_watcher_initialization_releases_lock
+test_recovery_marker_failure_retains_stale_lock_evidence
 test_signal_passes_through_and_exits_zero
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
