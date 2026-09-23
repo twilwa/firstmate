@@ -169,13 +169,16 @@ Reseeding accepts a preexisting local-only clone only when it still has no remot
 
 Landing stays with the primary that seeded the copy.
 The child publishes an immutable head-pinned offer with `bin/fm-local-handoff.sh offer <task-id>`, which carries the commit as a git bundle instead of a push.
-The primary lands that exact offer through the ordinary local landing guard, `bin/fm-merge-local.sh <landing-id> --offer <file> --expect-head <sha>`, where `<landing-id>` is a parent-owned backlog item held for the captain under the usual `bin/fm-captain-hold.sh` approval.
-No worker record is created or invented for the child, and a head that moved after approval needs its own approval.
-The primary alone fast-forwards its local default branch, then publishes a durable landing receipt back into the child home.
+The primary pins that exact offer to the pending approval with `bin/fm-local-handoff.sh request <landing-id> --offer <file>`, accepted only while `<landing-id>`, a parent-owned backlog item, is still held for the captain under the usual `bin/fm-captain-hold.sh` approval.
+That parent-owned landing record is what stops a release recorded for one head from being inherited by a later one, so a head that moved after approval needs a fresh hold and a fresh pin.
+The primary then lands the pinned offer through the ordinary local landing guard, `bin/fm-merge-local.sh <landing-id> --offer <file> --expect-head <sha>`, which refuses an absent, already landed, or mismatched landing record, an absent captain row, and a project no longer registered `local-only`.
+No worker record is created or invented for the child.
+The primary alone fast-forwards its local default branch, then completes its own landing record and publishes a durable landing receipt back into the child home.
 
 Only that receipt permits the child task's ordinary teardown, and `bin/fm-teardown.sh` re-proves that the receipt's commit is still contained in the primary's default branch before accepting it.
+It derives which repository to ask from the child's own seeded parent route and project binding and from the parent's matching landing record, never from the receipt's own words, and it asks that question even when the child's worktree is already gone.
 A merge inside the child clone, or a branch pushed anywhere, is not that proof and does not substitute for it.
-When a landing succeeds but its receipt cannot be published, the work is landed and safe: re-run the idempotent `bin/fm-local-handoff.sh receipt <offer-file>` before tearing anything down.
+When a landing succeeds but its receipt or landing record cannot be completed, the work is landed and safe: re-run the idempotent `bin/fm-local-handoff.sh receipt <offer-file> --landing <landing-id>` before tearing anything down.
 Missing or stale identities, dirty or diverged work, a changed head, a changed route, a failed receipt, and an interrupted seed transaction all refuse and preserve the work.
 
 Worker allocation follows [fm-spawn.sh](../../../bin/fm-spawn.sh)'s clone-custody guard and explicit Treehouse root contract, including for independent secondmate project clones that share the primary's origin.

@@ -111,6 +111,67 @@ record_field() {  # <file> <key>
   grep "^$2=" "$1" | head -1 | cut -d= -f2-
 }
 
+# The approval owner for every delegated landing is a real captain-held
+# backlog row in the primary home, so these cases drive the actual
+# bin/fm-captain-hold.sh lifecycle instead of simulating one. Reports 1 when
+# this host's tasks-axi cannot host the row, so a case can skip that half
+# rather than assert against a capability it does not have.
+FX_LANDING=
+FX_LANDING_RECORD=
+prepare_landing_row() {  # <landing-id>
+  FX_LANDING=$1
+  FX_LANDING_RECORD="$FX_MAIN/data/local-only-landings/$FX_LANDING.landing"
+  command -v tasks-axi >/dev/null 2>&1 || return 1
+  cp "$ROOT/.tasks.toml" "$FX_MAIN/.tasks.toml"
+  printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$FX_MAIN/data/backlog.md"
+  (cd "$FX_MAIN" && tasks-axi add "$FX_LANDING" "Land the child's offered work" \
+    --kind ship --start) >/dev/null 2>&1 || return 1
+  hold_landing_row
+}
+
+hold_landing_row() {
+  run_home "$FX_MAIN" "$ROOT/bin/fm-captain-hold.sh" hold "$FX_LANDING" \
+    --reason "captain approval for the child landing" >/dev/null 2>&1
+}
+
+# The captain's recorded words release the call through the one answer intake;
+# nothing in this custody parses that prose.
+release_landing_row() {
+  local words="$TMP_ROOT/$FX_LANDING.decision"
+  printf 'Land the offered head.\n' > "$words"
+  run_home "$FX_MAIN" "$ROOT/bin/fm-captain-hold.sh" answer "$FX_LANDING" \
+    --decision-file "$words" --release >/dev/null 2>&1
+}
+
+# The whole approval path: pin the child's current offer while the row is still
+# held, then record the captain's release of that exact pinned call.
+approve_current_offer() {
+  run_home "$FX_MAIN" "$HANDOFF" request "$FX_LANDING" --offer "$FX_OFFER" >/dev/null \
+    || fail "pinning the offer to the held landing row failed"
+  release_landing_row || fail "releasing the landing row failed"
+}
+
+# Write a landing receipt by hand, which is exactly what a compromised or
+# confused child could do. Nothing in the product writes a receipt this way;
+# only the primary's own landing does.
+forge_receipt() {  # <parent-project> [landing-id]
+  local parent_project=$1 landing=${2:-land-app} receipt
+  receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
+  {
+    printf 'schema=fm-local-receipt.v1\n'
+    printf 'secondmate=%s\n' "$(record_field "$FX_OFFER" secondmate)"
+    printf 'parent_home=%s\n' "$(record_field "$FX_OFFER" parent_home)"
+    printf 'parent_project=%s\n' "$parent_project"
+    printf 'project=%s\n' "$(record_field "$FX_OFFER" project)"
+    printf 'task=%s\n' "$FX_TASK"
+    printf 'spawn_gen=%s\n' "$(record_field "$FX_OFFER" spawn_gen)"
+    printf 'head=%s\n' "$(record_field "$FX_OFFER" head)"
+    printf 'default_branch=main\n'
+    printf 'landing_id=%s\n' "$landing"
+    printf 'landed_at=%s\n' "$(date +%s)"
+  } > "$receipt"
+}
+
 test_seed_binds_the_local_only_clone() {
   local binding parent_head child_head
   make_bound_fixture seed-binds
@@ -209,6 +270,26 @@ test_offer_pins_the_head_and_republishes_unchanged() {
     || fail "republishing an unchanged offer failed"
   assert_contains "$out" "unchanged=1" "an unchanged republication was not reported as such"
 
+  # "unchanged" is a claim about the whole custody the offer names, not about
+  # the head alone: a record that disagrees about any part of it is replaced.
+  sed -i.bak 's#^parent_home=.*#parent_home=/nonexistent/other-home#' "$FX_OFFER"
+  rm -f "$FX_OFFER.bak"
+  out=$(run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK") \
+    || fail "republishing an offer that named another parent home failed"
+  assert_not_contains "$out" "unchanged=1" \
+    "an offer naming a different parent home was reported as unchanged"
+  assert_equals "$(cd "$FX_MAIN" && pwd -P)" "$(record_field "$FX_OFFER" parent_home)" \
+    "republication did not restore the offer's real parent home"
+
+  # The bundle carries the commit, so an offer without it is not unchanged
+  # either; the parent would have nothing to import.
+  rm -f "$FX_OFFER.bundle"
+  out=$(run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK") \
+    || fail "republishing an offer whose bundle had gone missing failed"
+  assert_not_contains "$out" "unchanged=1" \
+    "an offer whose bundle was gone was reported as unchanged"
+  assert_present "$FX_OFFER.bundle" "republication did not restore the offer bundle"
+
   commit_child_work 'second change'
   moved=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
   out=$(run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK") \
@@ -234,6 +315,9 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
   head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (delegated landing)"; return 0; }
+  approve_current_offer
   before=$(git -C "$FX_MAIN/projects/app" rev-parse HEAD)
 
   out=$(run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" 2>&1) \
@@ -248,6 +332,16 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
   assert_equals "" "$(git -C "$FX_MAIN/projects/app" remote)" \
     "the landing added a remote to the primary clone"
 
+  # The parent keeps its own record of what it landed, independent of anything
+  # in the child home.
+  assert_present "$FX_LANDING_RECORD" "the landing wrote no parent-owned landing record"
+  assert_equals fm-local-landing.v1 "$(record_field "$FX_LANDING_RECORD" schema)" \
+    "the landing record does not carry its versioned schema"
+  assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the landing record was not completed after the fast-forward"
+  assert_equals "$head" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "the landing record pins a different head than the one that landed"
+
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   assert_present "$receipt" "the landing published no receipt in the child home"
   assert_contains "$out" "receipt=$receipt" "the landing did not report the receipt it wrote"
@@ -259,6 +353,8 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
     "the receipt does not bind the task incarnation"
   assert_equals main "$(record_field "$receipt" default_branch)" \
     "the receipt does not name the branch the work landed on"
+  assert_equals land-app "$(record_field "$receipt" landing_id)" \
+    "the receipt does not name the parent record that authorized the landing"
 
   out=$(run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK") \
     || fail "verifying a genuine receipt failed"
@@ -286,6 +382,20 @@ test_delegated_landing_refuses_an_unpinned_or_stale_approval() {
     --expect-head 0000000000000000000000000000000000000000 >/dev/null 2>"$err" || status=$?
   expect_code 1 "$status" "a landing accepted an approval pinned to another commit"
   assert_grep 'not the approved' "$err" "the refusal did not name the approval mismatch"
+
+  # A valid offer and a matching --expect-head are not an approval. Without the
+  # parent's own landing record there is nothing an approval was pinned to, so
+  # the landing must refuse rather than treat the request itself as authority.
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a landing ran with no parent-owned landing record"
+  assert_grep 'local-only-landings/land-app.landing' "$err" \
+    "the refusal did not name the missing landing record"
+  assert_grep 'bin/fm-local-handoff.sh request land-app' "$err" \
+    "the refusal did not name the command that pins an approved offer"
+  assert_equals "" "$(git -C "$FX_MAIN/projects/app" for-each-ref refs/fm-local-handoff)" \
+    "a landing refused before its approval imported the offered commit anyway"
 
   # A parent-owned landing record is never a worker record, so an id that
   # already names a task in this home refuses rather than borrowing it.
@@ -325,6 +435,144 @@ test_delegated_landing_refuses_an_unpinned_or_stale_approval() {
   pass "a delegated landing refuses an unpinned, colliding, moved, or superseded approval"
 }
 
+# The pin exists so that one recorded release covers exactly one commit. A
+# child that keeps working after the captain answered must not inherit it.
+test_a_released_approval_covers_only_the_head_it_pinned() {
+  local first second err status
+  make_bound_fixture reused-approval
+  commit_child_work 'first approved change'
+  first=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (reused approval)"; return 0; }
+  approve_current_offer
+  err="$TMP_ROOT/reused-approval.err"
+
+  commit_child_work 'work after the captain answered'
+  second=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "republishing the moved head failed"
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$second" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a released approval landed a head it never named"
+  assert_grep "pins head $first" "$err" \
+    "the refusal did not name the commit the approval was pinned to"
+  assert_not_equals "$second" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "a stale approval still moved the primary's default branch"
+  assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
+    "a refused landing published a receipt"
+
+  # The recorded way forward is a fresh hold and a fresh pin, not an edit.
+  hold_landing_row || fail "re-holding the landing row for the new head failed"
+  approve_current_offer
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$second" \
+    >/dev/null 2>"$err" || fail "a freshly approved head failed to land"$'\n'"$(cat "$err")"
+  assert_equals "$second" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the freshly approved head did not land"
+  pass "a released approval lands only the exact head it was pinned to"
+}
+
+# Pinning is not approving: it binds a pending captain call to one commit, so
+# it is accepted only while that call is genuinely open.
+test_pinning_an_offer_needs_an_open_captain_call() {
+  local err status landing
+  make_bound_fixture request-gate
+  commit_child_work 'change awaiting approval'
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  err="$TMP_ROOT/request-gate.err"
+  landing="$FX_MAIN/data/local-only-landings/land-app.landing"
+
+  status=0
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "an offer was pinned to a landing row this home does not have"
+  assert_grep 'no landing row land-app' "$err" "the refusal did not name the missing row"
+  assert_absent "$landing" "a refused pin wrote a landing record anyway"
+
+  if prepare_landing_row land-app; then
+    release_landing_row || fail "releasing the landing row failed"
+    status=0
+    run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
+      >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "an offer was pinned to a call the captain had already answered"
+    assert_grep 'is not held for the captain' "$err" \
+      "the refusal did not name the closed captain call"
+    assert_absent "$landing" "a refused pin wrote a landing record anyway"
+  else
+    echo "skip: tasks-axi cannot host the landing row (released-row pin)"
+  fi
+  pass "an offer can only be pinned while its captain call is still open"
+}
+
+# A refused landing must leave the primary clone exactly as it found it,
+# including the private ref the bundle import created.
+test_a_refused_landing_leaves_no_imported_ref() {
+  local head err status
+  make_bound_fixture non-fast-forward
+  commit_child_work 'offered change'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (non-fast-forward)"; return 0; }
+  approve_current_offer
+  err="$TMP_ROOT/non-fast-forward.err"
+
+  # The primary moved on independently, so the offered head is no longer a
+  # fast-forward of its default branch.
+  printf 'primary side\n' > "$FX_MAIN/projects/app/primary.txt"
+  git -C "$FX_MAIN/projects/app" add primary.txt
+  git -C "$FX_MAIN/projects/app" -c user.name='Firstmate Tests' \
+    -c user.email='tests@example.invalid' commit -qm 'primary side'
+
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a diverged offer was landed anyway"
+  assert_grep 'not a fast-forward' "$err" "the refusal did not name the divergence"
+  assert_equals "" "$(git -C "$FX_MAIN/projects/app" for-each-ref refs/fm-local-handoff)" \
+    "a refused landing left the offered commit in a private import ref"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "a refused landing recorded itself as landed"
+  assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
+    "a refused landing published a receipt"
+  pass "a refused landing imports nothing durable into the primary clone"
+}
+
+# Local-only custody is the reason this path exists, so a project that is no
+# longer registered local-only has left it.
+test_landing_refuses_a_project_moved_off_local_only() {
+  local head err status before
+  make_bound_fixture mode-changed
+  commit_child_work 'offered change'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (changed delivery mode)"; return 0; }
+  approve_current_offer
+  err="$TMP_ROOT/mode-changed.err"
+  before=$(git -C "$FX_MAIN/projects/app" rev-parse main)
+
+  printf '%s\n' '- app [no-mistakes] - app project (added 2026-06-22)' \
+    > "$FX_MAIN/data/projects.md"
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a landing ran for a project that had left local-only custody"
+  assert_grep 'not local-only' "$err" "the refusal did not name the changed delivery route"
+  assert_equals "$before" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "a refused landing moved the primary's default branch"
+  assert_equals "" "$(git -C "$FX_MAIN/projects/app" for-each-ref refs/fm-local-handoff)" \
+    "a refused landing left the offered commit in a private import ref"
+  assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
+    "a refused landing published a receipt"
+  pass "a landing refuses a project that is no longer registered local-only"
+}
+
 test_receipt_recovery_is_idempotent_and_proves_the_landing() {
   local head receipt out err status=0
   make_bound_fixture receipt-recovery
@@ -334,8 +582,12 @@ test_receipt_recovery_is_idempotent_and_proves_the_landing() {
     || fail "publishing the landing offer failed"
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   err="$TMP_ROOT/receipt-recovery.err"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (receipt recovery)"; return 0; }
+  approve_current_offer
 
-  run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" >/dev/null 2>"$err" || status=$?
+  run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app \
+    >/dev/null 2>"$err" || status=$?
   expect_code 1 "$status" "receipt recovery wrote a receipt for work that never landed"
   assert_grep 'is not present in' "$err" \
     "the refusal did not name the commit the primary never received"
@@ -346,27 +598,32 @@ test_receipt_recovery_is_idempotent_and_proves_the_landing() {
   git -C "$FX_MAIN/projects/app" fetch --no-tags --quiet "$FX_OFFER.bundle" \
     "refs/heads/fm/$FX_TASK:refs/fm-local-handoff-test/imported"
   status=0
-  run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" >/dev/null 2>"$err" || status=$?
+  run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app \
+    >/dev/null 2>"$err" || status=$?
   expect_code 1 "$status" "receipt recovery accepted a commit that was merely present"
   assert_grep 'is not contained in main' "$err" \
     "the refusal did not name the missing containment proof"
   assert_absent "$receipt" "a refused recovery left a receipt behind"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "a refused recovery recorded a landing that never happened"
   git -C "$FX_MAIN/projects/app" update-ref -d refs/fm-local-handoff-test/imported
 
   run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null \
     || fail "the delegated landing failed"
   # A landing whose receipt publication was interrupted leaves exactly this.
   rm -f "$receipt"
-  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER") \
+  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app) \
     || fail "receipt recovery failed after a genuine landing"
   assert_contains "$out" "receipt=$receipt" "recovery did not report the receipt it wrote"
   assert_equals "$head" "$(record_field "$receipt" head)" "the recovered receipt names another head"
 
-  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER") \
+  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app) \
     || fail "repeating receipt recovery failed"
   assert_contains "$out" "unchanged=1" "a repeated recovery was not reported as unchanged"
   assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "a repeated recovery landed the work a second time"
+  assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
+    "recovery did not complete the parent's own landing record"
   pass "receipt recovery proves the landing from the repository and repeats safely"
 }
 
@@ -391,6 +648,9 @@ test_teardown_requires_the_parent_receipt() {
   assert_grep "no durable proof that $head reached the parent's default branch" "$err" \
     "the refusal did not name the missing landing proof"
 
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (teardown gate)"; return 0; }
+  approve_current_offer
   run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
     || fail "the delegated landing failed"
 
@@ -408,6 +668,87 @@ test_teardown_requires_the_parent_receipt() {
     || fail "cleanup refused a task the parent had genuinely landed"$'\n'"$out"
   assert_absent "$FX_CHILD/state/$FX_TASK.meta" "cleanup left the task record behind"
   pass "cleanup of a bound local-only task needs the parent's durable receipt"
+}
+
+# A receipt is evidence, never authority. Which clone the work had to reach is
+# the child's own binding's fact, so a receipt that names some other repository
+# - including this copy, where a child-local merge really did happen - proves
+# nothing and must not open the cleanup gate.
+test_a_substituted_parent_clone_proves_nothing() {
+  local head err status
+  make_bound_fixture forged-parent
+  commit_child_work 'work merged only here'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  git -C "$FX_CLONE" merge --ff-only "fm/$FX_TASK" >/dev/null \
+    || fail "could not merge the child's branch inside its own copy"
+  assert_equals "$head" "$(git -C "$FX_CLONE" rev-parse main)" \
+    "the child-local merge did not happen, so this case proves nothing"
+  err="$TMP_ROOT/forged-parent.err"
+
+  forge_receipt "$FX_CLONE"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "cleanup accepted a receipt naming the child's own copy"
+  assert_grep 'as the primary clone' "$err" \
+    "the refusal did not name the substituted clone"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+
+  status=0
+  run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "verification accepted a receipt naming the child's own copy"
+  assert_grep 'as the primary clone' "$err" \
+    "the refusal did not name the substituted clone"
+
+  # Naming the real parent clone is not enough either: the parent's own
+  # landing record is what the child cannot write for itself.
+  forge_receipt "$(cd "$FX_MAIN/projects/app" && pwd -P)"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "cleanup accepted a receipt the parent never backed with a record"
+  assert_grep 'local-only-landings/land-app.landing' "$err" \
+    "the refusal did not name the missing parent-owned landing record"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+  pass "a receipt naming another clone, or no parent record, opens nothing"
+}
+
+# A worktree that is already gone answers none of the git questions cleanup
+# normally asks, but it is not evidence that the parent landed the work.
+test_the_receipt_gate_survives_a_missing_worktree() {
+  local head err status out
+  make_bound_fixture absent-worktree
+  commit_child_work 'work to land'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  err="$TMP_ROOT/absent-worktree.err"
+
+  rm -rf "$FX_WT"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "cleanup reported success for unlanded work whose worktree was gone"
+  assert_grep "no durable proof that $head reached the parent's default branch" "$err" \
+    "the refusal did not name the missing landing proof"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (absent worktree)"; return 0; }
+  approve_current_offer
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
+    || fail "the delegated landing failed"
+  out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
+    || fail "cleanup refused landed work whose worktree was already gone"$'\n'"$out"
+  assert_absent "$FX_CHILD/state/$FX_TASK.meta" "cleanup left the task record behind"
+
+  # The parent's evidence of what it landed outlives the child task entirely.
+  assert_present "$FX_LANDING_RECORD" "retiring the child task removed the parent's landing record"
+  assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the retained landing record no longer records the landing"
+  assert_equals "$head" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "the retained landing record no longer names the landed head"
+  pass "an absent worktree still faces the receipt gate, and the parent's record outlives the child"
 }
 
 # One damaged record must never be read as a weaker version of a good one.
@@ -461,39 +802,55 @@ test_damaged_records_fail_closed() {
   assert_equals "$default_before" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "a refused landing moved the primary's default branch"
 
-  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
-    || fail "the delegated landing failed after the damaged offers were restored"
-  receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
-  sed -i.bak "s/^head=.*/head=$default_before/" "$receipt"
-  rm -f "$receipt.bak"
-  status=0
-  run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK" >/dev/null 2>"$err" || status=$?
-  expect_code 1 "$status" "verification accepted a receipt edited to name another commit"
-  assert_grep "but the offer says $head" "$err" \
-    "the refusal did not name the receipt's disagreement with the offer"
-  pass "damaged offer and receipt records refuse instead of landing or proving anything"
+  if prepare_landing_row land-app; then
+    approve_current_offer
+    # A landing record damaged after the pin is no weaker an approval either.
+    printf 'extra=1\n' >> "$FX_LANDING_RECORD"
+    status=0
+    run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+      >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "a landing accepted a landing record carrying an unknown key"
+    assert_grep 'unknown key extra' "$err" \
+      "the refusal did not name the unknown key in the landing record"
+    hold_landing_row || fail "re-holding the landing row failed"
+    approve_current_offer
+
+    run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
+      || fail "the delegated landing failed after the damaged records were restored"
+    receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
+    sed -i.bak "s/^head=.*/head=$default_before/" "$receipt"
+    rm -f "$receipt.bak"
+    status=0
+    run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "verification accepted a receipt edited to name another commit"
+    assert_grep "but the offer says $head" "$err" \
+      "the refusal did not name the receipt's disagreement with the offer"
+  else
+    echo "skip: tasks-axi cannot host the landing row (damaged landing record and receipt)"
+  fi
+  pass "damaged offer, landing, and receipt records refuse instead of landing or proving anything"
 }
 
 # The delegated landing's authority is the parent-owned landing row, read
 # through the same captain-hold check every local landing runs.
 test_a_held_landing_row_blocks_the_delegated_landing() {
-  local head err status
-  command -v tasks-axi >/dev/null 2>&1 \
-    || { echo "skip: tasks-axi not found (held landing row)"; return 0; }
+  local head out err status
   make_bound_fixture held-landing
   commit_child_work 'change awaiting approval'
   head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (held landing row)"; return 0; }
 
-  cp "$ROOT/.tasks.toml" "$FX_MAIN/.tasks.toml"
-  printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$FX_MAIN/data/backlog.md"
-  (cd "$FX_MAIN" && tasks-axi add land-app "Land the child's offered work" --kind ship --start) \
-    >/dev/null || { echo "skip: this tasks-axi cannot host the landing row"; return 0; }
-  PATH="$FX_MAIN/fakebin:$PATH" FM_HOME="$FX_MAIN" FM_STATE_OVERRIDE="$FX_MAIN/state" \
-    FM_DATA_OVERRIDE="$FX_MAIN/data" FM_CONFIG_OVERRIDE="$FX_MAIN/config" \
-    "$ROOT/bin/fm-captain-hold.sh" hold land-app --reason "captain approval for the child landing" \
-    >/dev/null || { echo "skip: this tasks-axi cannot hold the landing row"; return 0; }
+  out=$(run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER") \
+    || fail "pinning an offer to the held landing row failed"
+  assert_contains "$out" "state=pinned" "the pin did not report the record it wrote"
+  assert_contains "$out" "head=$head" "the pin did not report the commit it bound"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the landing record was not left pinned and unlanded"
+  assert_equals "$head" "$(record_field "$FX_LANDING_RECORD" head)" \
+    "the landing record pinned another commit"
 
   err="$TMP_ROOT/held-landing.err"
   status=0
@@ -503,6 +860,8 @@ test_a_held_landing_row_blocks_the_delegated_landing() {
   assert_grep 'still held for the captain' "$err" "the refusal did not name the open captain call"
   assert_absent "$FX_CHILD/state/$FX_TASK.local-receipt" \
     "a refused landing published a receipt"
+  assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+    "a refused landing recorded itself as landed"
   assert_not_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "a held landing still moved the primary's default branch"
   pass "a landing record still held for the captain blocks the delegated landing"
@@ -514,7 +873,13 @@ test_child_home_cannot_land_its_own_bound_clone
 test_offer_pins_the_head_and_republishes_unchanged
 test_delegated_landing_fast_forwards_and_publishes_a_receipt
 test_delegated_landing_refuses_an_unpinned_or_stale_approval
+test_a_released_approval_covers_only_the_head_it_pinned
+test_pinning_an_offer_needs_an_open_captain_call
+test_a_refused_landing_leaves_no_imported_ref
+test_landing_refuses_a_project_moved_off_local_only
 test_receipt_recovery_is_idempotent_and_proves_the_landing
 test_teardown_requires_the_parent_receipt
+test_a_substituted_parent_clone_proves_nothing
+test_the_receipt_gate_survives_a_missing_worktree
 test_damaged_records_fail_closed
 test_a_held_landing_row_blocks_the_delegated_landing

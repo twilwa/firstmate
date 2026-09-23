@@ -19,13 +19,26 @@
 #     exactly that head. Immutable: a changed head needs a NEW offer, so an
 #     approval pinned to the old head can never carry over.
 #
+#   fm-local-landing.v1       <parent-home>/data/local-only-landings/<id>.landing
+#     landing_id secondmate parent_home parent_project project task spawn_gen
+#     head offer state landed_at
+#     Written by bin/fm-local-handoff.sh request in the PRIMARY home while the
+#     landing row <id> is still held for the captain, so the approval the
+#     captain then releases is durably bound to ONE exact offered commit. The
+#     guarded landing refuses an absent record, a record pinned to another head
+#     or identity, and a landing row that is absent rather than released, then
+#     marks the record `state=landed`. That landed record is the parent's own
+#     evidence of the landing and outlives the child task.
+#
 #   fm-local-receipt.v1       <child-home>/state/<task>.local-receipt
 #     secondmate parent_home parent_project project task spawn_gen head
-#     default_branch landed_at
+#     default_branch landing_id landed_at
 #     Written by the PRIMARY after its guarded fast-forward. It is durable
-#     evidence, never authority on its own: every consumer re-proves that
-#     `head` is contained in the primary's own default branch before trusting
-#     it, so a forged or copied receipt buys nothing.
+#     evidence, never authority on its own: every consumer re-derives the
+#     primary clone from the child's own seeded parent route and project
+#     binding, re-reads the parent's landing record, and re-proves that `head`
+#     is contained in that clone's default branch, so a forged or copied
+#     receipt - including one naming the child's own clone - buys nothing.
 #
 # Identity is the whole point of these records, so parsing fails closed on a
 # symlink, a NUL byte, a duplicate key, an unknown key, a missing required
@@ -45,11 +58,13 @@ FM_LOCAL_HANDOFF_RECORD=
 
 FM_LOCAL_HANDOFF_BINDING_SCHEMA=fm-local-only-binding.v1
 FM_LOCAL_HANDOFF_OFFER_SCHEMA=fm-local-offer.v1
+FM_LOCAL_HANDOFF_LANDING_SCHEMA=fm-local-landing.v1
 FM_LOCAL_HANDOFF_RECEIPT_SCHEMA=fm-local-receipt.v1
 
 FM_LOCAL_HANDOFF_BINDING_KEYS='project parent_home parent_project seed_commit seed_branch created'
 FM_LOCAL_HANDOFF_OFFER_KEYS='secondmate child_home parent_home project child_project task spawn_gen branch head bundle created'
-FM_LOCAL_HANDOFF_RECEIPT_KEYS='secondmate parent_home parent_project project task spawn_gen head default_branch landed_at'
+FM_LOCAL_HANDOFF_LANDING_KEYS='landing_id secondmate parent_home parent_project project task spawn_gen head offer state landed_at'
+FM_LOCAL_HANDOFF_RECEIPT_KEYS='secondmate parent_home parent_project project task spawn_gen head default_branch landing_id landed_at'
 
 # Child identity and registry routing have owners already; the identity proof
 # below reads them through those owners rather than re-parsing either format.
@@ -120,6 +135,18 @@ fm_local_handoff_bundle_path() {  # <child-state-dir> <task>
 
 fm_local_handoff_receipt_path() {  # <child-state-dir> <task>
   printf '%s/%s.local-receipt\n' "${1%/}" "$2"
+}
+
+# The parent's landing records sit beside its other durable fleet records. The
+# child side resolves this directory from the parent home its own seeded route
+# marker names, never from a path a record nominated, so a parent running with
+# its data directory pointed elsewhere refuses rather than being believed.
+fm_local_handoff_landing_dir() {  # <parent-data-dir>
+  printf '%s\n' "${1%/}/local-only-landings"
+}
+
+fm_local_handoff_landing_path() {  # <parent-data-dir> <landing-id>
+  printf '%s/%s.landing\n' "$(fm_local_handoff_landing_dir "$1")" "$2"
 }
 
 # --- record read/write ------------------------------------------------------
@@ -319,6 +346,81 @@ fm_local_handoff_receipt_load() {  # <receipt-file>
   FM_LOCAL_HANDOFF_RECORD=$blob
 }
 
+fm_local_handoff_landing_load() {  # <parent-data-dir> <landing-id>
+  local data=$1 landing_id=$2 path blob state
+  path=$(fm_local_handoff_landing_path "$data" "$landing_id")
+  fm_local_handoff_record_load "$path" "$FM_LOCAL_HANDOFF_LANDING_SCHEMA" \
+    "$FM_LOCAL_HANDOFF_LANDING_KEYS" "$FM_LOCAL_HANDOFF_LANDING_KEYS" || return 1
+  blob=$FM_LOCAL_HANDOFF_RECORD
+  if [ "$(fm_local_handoff_field "$blob" landing_id)" != "$landing_id" ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing record at $path names a different landing"
+    return 1
+  fi
+  if ! fm_local_handoff_valid_sha "$(fm_local_handoff_field "$blob" head)"; then
+    FM_LOCAL_HANDOFF_ERROR="landing record at $path has a malformed head"
+    return 1
+  fi
+  if ! fm_local_handoff_valid_abs "$(fm_local_handoff_field "$blob" parent_home)" \
+    || ! fm_local_handoff_valid_abs "$(fm_local_handoff_field "$blob" parent_project)" \
+    || ! fm_local_handoff_valid_abs "$(fm_local_handoff_field "$blob" offer)"; then
+    FM_LOCAL_HANDOFF_ERROR="landing record at $path has a malformed path"
+    return 1
+  fi
+  state=$(fm_local_handoff_field "$blob" state)
+  case "$state" in
+    pinned|landed) ;;
+    *)
+      FM_LOCAL_HANDOFF_ERROR="landing record at $path is in unknown state $state"
+      return 1
+      ;;
+  esac
+  FM_LOCAL_HANDOFF_RECORD=$blob
+}
+
+# Publish a landing record. Both writers - the pin taken while the row is held
+# and the landed mark written after the fast-forward - go through here, so the
+# approval's identity and the landing's evidence can never disagree.
+fm_local_handoff_landing_publish() {
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 state=$6 landed_at=$7
+  fm_local_handoff_write_record "$(fm_local_handoff_landing_path "$data" "$landing_id")" \
+    "schema=$FM_LOCAL_HANDOFF_LANDING_SCHEMA" \
+    "landing_id=$landing_id" \
+    "secondmate=$(fm_local_handoff_field "$blob" secondmate)" \
+    "parent_home=$(fm_local_handoff_field "$blob" parent_home)" \
+    "parent_project=$parent_project" \
+    "project=$(fm_local_handoff_field "$blob" project)" \
+    "task=$(fm_local_handoff_field "$blob" task)" \
+    "spawn_gen=$(fm_local_handoff_field "$blob" spawn_gen)" \
+    "head=$(fm_local_handoff_field "$blob" head)" \
+    "offer=$offer_file" \
+    "state=$state" \
+    "landed_at=$landed_at"
+}
+
+# The captain releases an approval for one exact offer, so anything that has
+# changed since the pin - the commit, the task, its incarnation, the
+# secondmate, the project, or the parent clone - means the released approval
+# named something else. Refuse rather than let a later head inherit it.
+fm_local_handoff_landing_matches_offer() {
+  # <landing-blob> <offer-blob> <parent-home> <parent-project>
+  local landing=$1 offer=$2 parent_home=$3 parent_project=$4 key pinned offered id
+  id=$(fm_local_handoff_field "$landing" landing_id)
+  for key in secondmate project task spawn_gen head; do
+    pinned=$(fm_local_handoff_field "$landing" "$key")
+    offered=$(fm_local_handoff_field "$offer" "$key")
+    if [ "$pinned" != "$offered" ]; then
+      FM_LOCAL_HANDOFF_ERROR="landing record $id pins $key $pinned, but this offer is $offered; a changed offer needs its own approval"
+      return 1
+    fi
+  done
+  if [ "$(fm_local_handoff_field "$landing" parent_home)" != "$parent_home" ] \
+    || [ "$(fm_local_handoff_field "$landing" parent_project)" != "$parent_project" ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing record $id was pinned for a different parent clone"
+    return 1
+  fi
+}
+
 # --- shared checks ----------------------------------------------------------
 
 # The single owner of "which branch is this clone's default": origin/HEAD when
@@ -339,6 +441,47 @@ fm_local_handoff_default_branch() {  # <repo>
     fi
   done
   return 1
+}
+
+# Where does this checkout keep its objects and refs? A linked worktree
+# reports its parent clone, which is exactly what the sameness test below
+# needs.
+fm_local_handoff__git_common_dir() {  # <repo>
+  local repo=$1 dir
+  [ -d "$repo" ] || return 1
+  dir=$(git -C "$repo" rev-parse --git-common-dir 2>/dev/null) || return 1
+  [ -n "$dir" ] || return 1
+  case "$dir" in
+    /*) ;;
+    *) dir="$repo/$dir" ;;
+  esac
+  ( cd "$dir" 2>/dev/null && pwd -P ) || return 1
+}
+
+# Are these two paths the same repository? A receipt whose "primary clone" is
+# the child's own copy would otherwise let a child-local merge prove its own
+# landing, so the landed proof refuses that case outright.
+fm_local_handoff_same_repository() {  # <repo-a> <repo-b>
+  local a b
+  a=$(fm_local_handoff__git_common_dir "$1") || return 1
+  b=$(fm_local_handoff__git_common_dir "$2") || return 1
+  [ "$a" = "$b" ]
+}
+
+# The registered delivery posture is the parent's own fact and can change after
+# a seed. The pin and the landing both re-read it through the registry owner
+# rather than trusting a binding written earlier, so a project the captain
+# moved off local-only refuses instead of landing under custody it no longer
+# has.
+fm_local_handoff_project_still_local_only() {  # <bin-dir> <parent-home> <parent-data-dir> <project>
+  local bin_dir=$1 home=$2 data=$3 project=$4 mode
+  FM_LOCAL_HANDOFF_ERROR=
+  mode=$(FM_HOME="$home" FM_DATA_OVERRIDE="$data" \
+    "$bin_dir/fm-project-mode.sh" "$project" 2>/dev/null | awk 'NR==1{print $1}') || mode=
+  if [ "$mode" != local-only ]; then
+    FM_LOCAL_HANDOFF_ERROR="project $project is registered ${mode:-unreadable} in $home, not local-only; its local-only custody ended when that changed"
+    return 1
+  fi
 }
 
 # The one containment proof every receipt consumer must re-run: is <head>
@@ -373,12 +516,20 @@ fm_local_handoff_head_in_default() {  # <repo> <head> [expected-default-branch]
   fi
 }
 
-# Validate a receipt against the offer it must answer, then re-prove
-# containment in the primary clone the receipt names. This is the complete
-# "may the child task be torn down" test; a child-local merge or a pushed
-# remote never reaches it.
-fm_local_handoff_receipt_proves() {  # <receipt-file> <offer-blob>
-  local receipt_file=$1 offer_blob=$2 receipt_blob key offer_value receipt_value
+# The complete "has this child task's work actually landed" test, and the only
+# thing that opens ordinary teardown for a bound local-only task.
+#
+# Nothing the child home could rewrite in its own favour is allowed to name
+# the repository the proof runs against: the seeded parent route marker names
+# the parent home, that home's project binding names the parent clone, and the
+# parent's own landing record proves the landing. The receipt is compared
+# against all three and then re-proved against the parent repository itself,
+# so a forged receipt, a copied one, or one pointing at the child's own clone
+# after a child-local merge all refuse.
+fm_local_handoff_landed_proof() {  # <child-home> <offer-blob> <receipt-file> <child-project>
+  local child_home=$1 offer_blob=$2 receipt_file=$3 child_project=$4
+  local receipt_blob binding_blob landing_blob key offer_value receipt_value
+  local route_home parent_project project landing_id
 
   fm_local_handoff_receipt_load "$receipt_file" || return 1
   receipt_blob=$FM_LOCAL_HANDOFF_RECORD
@@ -390,8 +541,52 @@ fm_local_handoff_receipt_proves() {  # <receipt-file> <offer-blob>
       return 1
     fi
   done
+  project=$(fm_local_handoff_field "$receipt_blob" project)
+
+  if ! fm_secondmate_parent_record_parse "${child_home%/}/.fm-secondmate-parent"; then
+    FM_LOCAL_HANDOFF_ERROR="this home has no readable parent binding, so nothing can prove where its work landed"
+    return 1
+  fi
+  if [ "$FM_SECONDMATE_PARENT_ROUTE" != local ]; then
+    FM_LOCAL_HANDOFF_ERROR="local-only custody requires a local parent route; this home is route $FM_SECONDMATE_PARENT_ROUTE"
+    return 1
+  fi
+  route_home=$FM_SECONDMATE_PARENT_HOME
+  if [ "$(fm_local_handoff_field "$receipt_blob" parent_home)" != "$route_home" ]; then
+    FM_LOCAL_HANDOFF_ERROR="receipt names parent home $(fm_local_handoff_field "$receipt_blob" parent_home), but this home is routed to $route_home"
+    return 1
+  fi
+
+  # The parent clone is the binding's fact, not the receipt's claim.
+  fm_local_handoff_binding_load "$child_home" "$project" || return 1
+  binding_blob=$FM_LOCAL_HANDOFF_RECORD
+  if [ "$(fm_local_handoff_field "$binding_blob" parent_home)" != "$route_home" ]; then
+    FM_LOCAL_HANDOFF_ERROR="project $project is bound to a parent home this home is no longer routed to"
+    return 1
+  fi
+  parent_project=$(fm_local_handoff_field "$binding_blob" parent_project)
+  if [ "$(fm_local_handoff_field "$receipt_blob" parent_project)" != "$parent_project" ]; then
+    FM_LOCAL_HANDOFF_ERROR="receipt names $(fm_local_handoff_field "$receipt_blob" parent_project) as the primary clone, but $project is bound to $parent_project"
+    return 1
+  fi
+  if [ -n "$child_project" ] && fm_local_handoff_same_repository "$parent_project" "$child_project"; then
+    FM_LOCAL_HANDOFF_ERROR="the bound parent clone $parent_project is this task's own copy, so nothing here can prove the work reached the parent"
+    return 1
+  fi
+
+  # The parent's own landing record is the evidence the child cannot write.
+  landing_id=$(fm_local_handoff_field "$receipt_blob" landing_id)
+  fm_local_handoff_landing_load "${route_home%/}/data" "$landing_id" || return 1
+  landing_blob=$FM_LOCAL_HANDOFF_RECORD
+  if [ "$(fm_local_handoff_field "$landing_blob" state)" != landed ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing record $landing_id in $route_home is still $(fm_local_handoff_field "$landing_blob" state), so the parent has not recorded this landing"
+    return 1
+  fi
+  fm_local_handoff_landing_matches_offer "$landing_blob" "$offer_blob" \
+    "$route_home" "$parent_project" || return 1
+
   fm_local_handoff_head_in_default \
-    "$(fm_local_handoff_field "$receipt_blob" parent_project)" \
+    "$parent_project" \
     "$(fm_local_handoff_field "$receipt_blob" head)" \
     "$(fm_local_handoff_field "$receipt_blob" default_branch)" || return 1
   FM_LOCAL_HANDOFF_RECORD=$receipt_blob
@@ -529,8 +724,8 @@ fm_local_handoff_offer_identity_proves() {
 
 # Publish the landing receipt for <offer-blob> into the child home. Shared by
 # the guarded landing and its recovery retry so both write the same identity.
-fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project>
-  local blob=$1 parent_project=$2 child_home task default
+fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-id>
+  local blob=$1 parent_project=$2 landing_id=$3 child_home task default
   child_home=$(fm_local_handoff_field "$blob" child_home)
   task=$(fm_local_handoff_field "$blob" task)
   if ! default=$(fm_local_handoff_default_branch "$parent_project"); then
@@ -548,5 +743,6 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project>
     "spawn_gen=$(fm_local_handoff_field "$blob" spawn_gen)" \
     "head=$(fm_local_handoff_field "$blob" head)" \
     "default_branch=$default" \
+    "landing_id=$landing_id" \
     "landed_at=$(date +%s)"
 }

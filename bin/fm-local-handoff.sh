@@ -14,12 +14,22 @@
 #       head publishes a NEW offer, so an approval pinned to the old head
 #       cannot carry over.
 #
-#   fm-local-handoff.sh receipt <offer-file>
+#   fm-local-handoff.sh request <landing-id> --offer <offer-file>
+#       Run in the PRIMARY home while the landing row <landing-id> is HELD for
+#       the captain. Pins that row's pending approval to this offer's exact
+#       commit and identity in a parent-owned landing record, so the release
+#       the captain then records can never be inherited by a later head: a
+#       changed offer needs a fresh hold and a fresh pin. It grants nothing on
+#       its own - bin/fm-captain-hold.sh remains the only approval owner - and
+#       refuses an already landed pin rather than rewriting that evidence.
+#
+#   fm-local-handoff.sh receipt <offer-file> --landing <landing-id>
 #       Run in the PRIMARY home. Re-proves that the offered head is contained
-#       in the primary clone's default branch, then publishes (or confirms)
-#       the landing receipt in the child home. This is the idempotent recovery
-#       path for a fast-forward that landed but whose receipt publication
-#       failed; it NEVER merges anything, so a retry cannot land a second time.
+#       in the primary clone's default branch, completes the parent's own
+#       landing record, then publishes (or confirms) the landing receipt in the
+#       child home. This is the idempotent recovery path for a fast-forward
+#       that landed but whose evidence publication failed; it NEVER merges
+#       anything, so a retry cannot land a second time.
 #
 #   fm-local-handoff.sh verify-receipt <child-home> <task-id>
 #       Read-only. Exit 0 only when a receipt exists, matches the task's offer
@@ -47,7 +57,7 @@ SUB_HOME_MARKER=.fm-secondmate-home
 SUB_HOME_PARENT_MARKER=.fm-secondmate-parent
 
 usage() {
-  sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -88,6 +98,22 @@ child_identity() {  # <home>
     || die "local-only custody requires a local parent route; $home is route $FM_SECONDMATE_PARENT_ROUTE"
   CHILD_SECONDMATE=$id
   CHILD_PARENT_HOME=$FM_SECONDMATE_PARENT_HOME
+}
+
+# Does an existing offer record describe exactly this publication? Every field
+# the offer pins is compared, because "unchanged" is what tells the operator no
+# new approval is needed; a record that differs anywhere is a different offer.
+offer_identity_unchanged() {
+  # <existing-blob> <secondmate> <child-home> <parent-home> <project>
+  # <child-project> <task> <spawn-gen> <branch> <head> <bundle>
+  local blob=$1
+  shift
+  local keys='secondmate child_home parent_home project child_project task spawn_gen branch head bundle'
+  local key
+  for key in $keys; do
+    [ "$(fm_local_handoff_field "$blob" "$key")" = "$1" ] || return 1
+    shift
+  done
 }
 
 command_offer() {  # <task-id>
@@ -144,16 +170,18 @@ command_offer() {  # <task-id>
   offer_path=$(fm_local_handoff_offer_path "$STATE" "$id")
   bundle=$(fm_local_handoff_bundle_path "$STATE" "$id")
 
-  # An existing offer for a DIFFERENT head is replaced wholesale rather than
-  # edited, so the stale head and its bundle can never be mixed with the new
-  # identity. A parent approval pinned to the old head then refuses on head
-  # mismatch, which is the intended outcome.
+  # An existing offer that does not match this publication in EVERY identity
+  # field is replaced wholesale rather than edited, so a stale head, a stale
+  # parent, or a stale clone path can never be mixed with the new identity and
+  # then reported as unchanged. A parent approval pinned to the old record then
+  # refuses on the mismatch, which is the intended outcome.
   if [ -e "$offer_path" ]; then
     if fm_local_handoff_offer_load "$offer_path"; then
       existing_blob=$FM_LOCAL_HANDOFF_RECORD
-      if [ "$(fm_local_handoff_field "$existing_blob" head)" = "$head" ] \
-        && [ "$(fm_local_handoff_field "$existing_blob" spawn_gen)" = "$spawn_gen" ] \
-        && [ -f "$bundle" ]; then
+      if [ -f "$bundle" ] \
+        && offer_identity_unchanged "$existing_blob" \
+          "$secondmate" "$home" "$parent_home" "$project" "$child_project" \
+          "$id" "$spawn_gen" "$branch" "$head" "$bundle"; then
         printf 'offer=%s\n' "$offer_path"
         printf 'head=%s\n' "$head"
         printf 'unchanged=1\n'
@@ -188,39 +216,135 @@ command_offer() {  # <task-id>
   printf 'head=%s\n' "$head"
 }
 
-command_receipt() {  # <offer-file>
-  local offer_file=$1 blob head parent_home parent_project child_home task existing
+# An absolute path for a record that must name one exact file, resolved
+# without following the file itself into a different identity.
+absolute_file() {  # <path>
+  local path=$1 dir
+  case "$path" in
+    /*) printf '%s\n' "$path"; return 0 ;;
+  esac
+  dir=$(cd "$(dirname "$path")" 2>/dev/null && pwd -P) || die "cannot resolve the directory of $path"
+  printf '%s/%s\n' "$dir" "$(basename "$path")"
+}
+
+# Every parent-side command proves the same things about an offer before it
+# writes anything: the offer's identity still holds on both sides, this home is
+# the project's primary rather than another bound copy, and the project is
+# still registered local-only. Reports the project through PARENT_PROJECT.
+PARENT_HOME=
+PARENT_PROJECTS=
+PARENT_PROJECT=
+parent_side_offer_checks() {  # <offer-blob>
+  local blob=$1 project
+  PARENT_HOME=$(resolved_path "$FM_HOME")
+  PARENT_PROJECTS=$(resolved_path "$PROJECTS")
+  fm_local_handoff_offer_identity_proves "$blob" "$PARENT_HOME" "$DATA" "$PARENT_PROJECTS" \
+    || die "$FM_LOCAL_HANDOFF_ERROR"
+  project=$(fm_local_handoff_field "$blob" project)
+  if fm_local_handoff_binding_present "$PARENT_HOME" "$project"; then
+    die "this home's clone of $project is itself a bound local-only copy; only the home that seeded it lands its work"
+  fi
+  PARENT_PROJECT="$PARENT_PROJECTS/$project"
+}
+
+command_request() {  # <landing-id> <offer-file>
+  local landing_id=$1 offer_file=$2 blob project head existing hold_status=0 landing_path
+
+  fm_local_handoff_valid_slug "$landing_id" \
+    || die "landing id must be a privacy-safe slug: $landing_id"
+  [ -n "$offer_file" ] || die "request needs the offer file it pins"
+  fm_local_handoff_offer_load "$offer_file" || die "$FM_LOCAL_HANDOFF_ERROR"
+  blob=$FM_LOCAL_HANDOFF_RECORD
+  offer_file=$(absolute_file "$offer_file")
+  parent_side_offer_checks "$blob"
+  project=$(fm_local_handoff_field "$blob" project)
+  head=$(fm_local_handoff_field "$blob" head)
+  fm_local_handoff_project_still_local_only "$SCRIPT_DIR" "$FM_HOME" "$DATA" "$project" \
+    || die "$FM_LOCAL_HANDOFF_ERROR"
+
+  # A record that already recorded a landing is the parent's durable evidence
+  # of it, so it is never re-pinned: further work takes its own landing record.
+  if fm_local_handoff_landing_load "$DATA" "$landing_id"; then
+    existing=$FM_LOCAL_HANDOFF_RECORD
+    if [ "$(fm_local_handoff_field "$existing" state)" = landed ]; then
+      die "landing $landing_id already records $(fm_local_handoff_field "$existing" head) as landed; pin further work to its own landing record"
+    fi
+  fi
+
+  # The approval itself stays where it has always lived. This only binds the
+  # pending call to one exact commit, so it must run while that call is still
+  # open; an absent or already released row refuses.
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-captain-hold.sh" open "$landing_id" --distinguish-absent || hold_status=$?
+  case "$hold_status" in
+    0) ;;
+    1)
+      die "landing row $landing_id is not held for the captain; hold it with bin/fm-captain-hold.sh hold $landing_id --reason '<why>' before pinning an offer to it"
+      ;;
+    3)
+      die "this home has no landing row $landing_id; file it and hold it for the captain before pinning an offer to it"
+      ;;
+    *)
+      die "could not determine whether landing row $landing_id is held for the captain; refusing to pin an approval"
+      ;;
+  esac
+
+  fm_local_handoff_landing_publish "$DATA" "$blob" "$landing_id" "$offer_file" \
+    "$PARENT_PROJECT" pinned 0 || die "$FM_LOCAL_HANDOFF_ERROR"
+  landing_path=$(fm_local_handoff_landing_path "$DATA" "$landing_id")
+  printf 'landing=%s\n' "$landing_path"
+  printf 'head=%s\n' "$head"
+  printf 'state=pinned\n'
+}
+
+command_receipt() {  # <offer-file> <landing-id>
+  local offer_file=$1 landing_id=$2 blob head child_home child_project task existing landing
 
   [ -n "$offer_file" ] || die "receipt needs the offer file to answer"
+  fm_local_handoff_valid_slug "$landing_id" \
+    || die "landing id must be a privacy-safe slug: $landing_id"
   fm_local_handoff_offer_load "$offer_file" || die "$FM_LOCAL_HANDOFF_ERROR"
   blob=$FM_LOCAL_HANDOFF_RECORD
 
-  parent_home=$(resolved_path "$FM_HOME")
-  # The same proof the guarded landing runs, so a recovery retry can never
-  # accept an offer the landing itself would have refused.
-  fm_local_handoff_offer_identity_proves "$blob" "$parent_home" "$DATA" "$(resolved_path "$PROJECTS")" \
-    || die "$FM_LOCAL_HANDOFF_ERROR"
+  # The same identity proof the guarded landing runs, so a recovery retry can
+  # never accept an offer the landing itself would have refused. The project's
+  # registered posture is deliberately NOT re-read here: this path records a
+  # landing that already happened rather than authorizing one, and a registry
+  # change afterwards must not strand the child's evidence.
+  parent_side_offer_checks "$blob"
 
   head=$(fm_local_handoff_field "$blob" head)
   child_home=$(fm_local_handoff_field "$blob" child_home)
+  child_project=$(fm_local_handoff_field "$blob" child_project)
   task=$(fm_local_handoff_field "$blob" task)
-  parent_project="$(resolved_path "$PROJECTS")/$(fm_local_handoff_field "$blob" project)"
+
+  fm_local_handoff_landing_load "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
+  landing=$FM_LOCAL_HANDOFF_RECORD
+  fm_local_handoff_landing_matches_offer "$landing" "$blob" "$PARENT_HOME" "$PARENT_PROJECT" \
+    || die "$FM_LOCAL_HANDOFF_ERROR"
 
   # Recovery proves the landing from the repository, never from the request:
   # if the fast-forward did not actually happen, this refuses instead of
-  # writing a receipt that would later authorize discarding live work.
-  fm_local_handoff_head_in_default "$parent_project" "$head" \
+  # writing evidence that would later authorize discarding live work.
+  fm_local_handoff_head_in_default "$PARENT_PROJECT" "$head" \
     || die "$FM_LOCAL_HANDOFF_ERROR"
+
+  if [ "$(fm_local_handoff_field "$landing" state)" != landed ]; then
+    fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
+      "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
+      || die "$FM_LOCAL_HANDOFF_ERROR"
+  fi
 
   existing=$(fm_local_handoff_receipt_path "${child_home%/}/state" "$task")
   if [ -e "$existing" ]; then
-    if fm_local_handoff_receipt_proves "$existing" "$blob"; then
+    if fm_local_handoff_landed_proof "$child_home" "$blob" "$existing" "$child_project"; then
       printf 'receipt=%s\n' "$existing"
       printf 'unchanged=1\n'
       return 0
     fi
   fi
-  fm_local_handoff_publish_receipt "$blob" "$parent_project" || die "$FM_LOCAL_HANDOFF_ERROR"
+  fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
+    || die "$FM_LOCAL_HANDOFF_ERROR"
   printf 'receipt=%s\n' "$existing"
 }
 
@@ -232,7 +356,8 @@ command_verify_receipt() {  # <child-home> <task-id>
   fm_local_handoff_offer_load "$offer_file" || die "$FM_LOCAL_HANDOFF_ERROR"
   blob=$FM_LOCAL_HANDOFF_RECORD
   receipt_file=$(fm_local_handoff_receipt_path "$child_home/state" "$id")
-  fm_local_handoff_receipt_proves "$receipt_file" "$blob" || die "$FM_LOCAL_HANDOFF_ERROR"
+  fm_local_handoff_landed_proof "$child_home" "$blob" "$receipt_file" \
+    "$(fm_local_handoff_field "$blob" child_project)" || die "$FM_LOCAL_HANDOFF_ERROR"
   printf 'landed=%s\n' "$(fm_local_handoff_field "$blob" head)"
 }
 
@@ -241,9 +366,13 @@ case "${1:-}" in
     [ "$#" -eq 2 ] || { usage >&2; exit 2; }
     command_offer "$2"
     ;;
+  request)
+    [ "$#" -eq 4 ] && [ "$3" = --offer ] || { usage >&2; exit 2; }
+    command_request "$2" "$4"
+    ;;
   receipt)
-    [ "$#" -eq 2 ] || { usage >&2; exit 2; }
-    command_receipt "$2"
+    [ "$#" -eq 4 ] && [ "$3" = --landing ] || { usage >&2; exit 2; }
+    command_receipt "$2" "$4"
     ;;
   verify-receipt)
     [ "$#" -eq 3 ] || { usage >&2; exit 2; }

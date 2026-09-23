@@ -1742,14 +1742,18 @@ validate_bound_local_only_landed() {
   fi
   blob=$FM_LOCAL_HANDOFF_RECORD
   offered=$(fm_local_handoff_field "$blob" head)
-  worktree_head=$(git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
+  worktree_head=
+  if [ -d "$WT" ]; then
+    worktree_head=$(git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
+  fi
   if [ -n "$worktree_head" ] && [ "$worktree_head" != "$offered" ]; then
     echo "REFUSED: $ID has committed work at $worktree_head after the $offered its parent was offered." >&2
     echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
   receipt_file=$(fm_local_handoff_receipt_path "$STATE" "$ID")
-  if ! fm_local_handoff_receipt_proves "$receipt_file" "$blob"; then
+  if ! fm_local_handoff_landed_proof "$FM_HOME" "$blob" "$receipt_file" \
+    "$(fm_local_handoff_field "$blob" child_project)"; then
     echo "REFUSED: $ID has no durable proof that $offered reached the parent's default branch: $FM_LOCAL_HANDOFF_ERROR" >&2
     echo "Have the parent land the offer at $offer_file, then retry; or get the captain's explicit OK to discard, then --force." >&2
     return 1
@@ -1758,11 +1762,20 @@ validate_bound_local_only_landed() {
 
 validate_worktree_teardown_safety() {
   local dirty_raw dirty unpushed_raw unpushed DEFAULT unmerged_raw unmerged branch
-  [ -d "$WT" ] || return 0
   [ "$FORCE" != "--force" ] || return 0
   case "$KIND" in
     secondmate|scout) return 0 ;;
   esac
+  if [ ! -d "$WT" ]; then
+    # A worktree that is already gone answers none of the git questions below,
+    # so they are skipped. A bound local-only copy is different: its landed
+    # test is asked of the parent's durable records rather than of this
+    # worktree, so a missing directory must not be read as proof that the work
+    # reached the parent's default branch.
+    task_clone_is_bound_local_only || return 0
+    validate_bound_local_only_landed || return 1
+    return 0
+  fi
 
   if ! dirty_raw=$(git -C "$WT" status --porcelain 2>/dev/null); then
     if worktree_safety_blocked_by_lock "uncommitted changes"; then
@@ -3333,7 +3346,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] &&
   ORCA_PATH_MATCH_VERIFIED=1
 fi
 
-if teardown_owns_worktree && [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
+if teardown_owns_worktree && { [ -d "$WT" ] || task_clone_is_bound_local_only; } && [ "$FORCE" != "--force" ]; then
   if validate_worktree_teardown_safety; then
     :
   else

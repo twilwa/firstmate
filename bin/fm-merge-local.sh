@@ -23,9 +23,10 @@
 #   fm-merge-local.sh <landing-id> --offer <offer-file> --expect-head <sha>
 #       Land the pinned offer a local-only secondmate child published for one of
 #       its tasks. This is the same guard, not a second landing system: the
-#       authority is still a captain-held backlog row, here the parent-owned
-#       <landing-id> landing record, and the pinned <sha> is the exact head that
-#       approval named. No worker record is read, written, or invented for the
+#       authority is still a captain-held backlog row, here the row named by
+#       <landing-id>, whose parent-owned landing record must already pin this
+#       exact offer through bin/fm-local-handoff.sh request, and the pinned
+#       <sha> is the exact head that approval named. No worker record is read, written, or invented for the
 #       child; its identity comes from its own offer, re-proved against both
 #       homes' live records under this home's lock. The offered commit arrives
 #       through the offer's git bundle into a private import ref - never a
@@ -144,6 +145,7 @@ PARENT_HOME=$(cd "$FM_HOME" && pwd -P)
 [ -d "$PROJECTS" ] || { echo "error: projects directory $PROJECTS is not present" >&2; exit 1; }
 PROJECTS_ABS=$(cd "$PROJECTS" && pwd -P)
 OFFER_BLOB=
+LANDING_BLOB=
 IMPORT_REF=
 if [ "$DELEGATED" -eq 1 ]; then
   fm_local_handoff_valid_sha "$EXPECT_HEAD" || { echo "error: --expect-head must be a full commit id" >&2; exit 1; }
@@ -168,6 +170,32 @@ if [ "$DELEGATED" -eq 1 ]; then
   # the primary for anything, so it may not accept a delegated landing either.
   if fm_local_handoff_binding_present "$PARENT_HOME" "$PROJECT_NAME"; then
     echo "error: this home's clone of $PROJECT_NAME is itself a bound local-only copy; only the home that seeded it lands its work" >&2
+    exit 1
+  fi
+  # The project's registered delivery posture is re-read here rather than
+  # trusted from seed time: a project moved off local-only is landed through
+  # its forge path, and a bundle import into it would be a route change the
+  # captain never approved.
+  if ! fm_local_handoff_project_still_local_only "$SCRIPT_DIR" "$FM_HOME" "$DATA" "$PROJECT_NAME"; then
+    echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2
+    exit 1
+  fi
+  # The approval itself is the captain-held row $ID checked below. This is the
+  # parent-owned record that binds that one pending call to this exact offer,
+  # written by bin/fm-local-handoff.sh request while the row was still held, so
+  # a release recorded for one head can never be inherited by a later one.
+  if ! fm_local_handoff_landing_load "$DATA" "$ID"; then
+    echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2
+    echo "Pin the approved offer with bin/fm-local-handoff.sh request $ID --offer $OFFER_FILE while the row is still held." >&2
+    exit 1
+  fi
+  LANDING_BLOB=$FM_LOCAL_HANDOFF_RECORD
+  if [ "$(fm_local_handoff_field "$LANDING_BLOB" state)" = landed ]; then
+    echo "error: landing record $ID already recorded $(fm_local_handoff_field "$LANDING_BLOB" head) as landed; further work needs its own held row and its own pinned offer" >&2
+    exit 1
+  fi
+  if ! fm_local_handoff_landing_matches_offer "$LANDING_BLOB" "$OFFER_BLOB" "$PARENT_HOME" "$PROJ"; then
+    echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2
     exit 1
   fi
 else
@@ -225,6 +253,7 @@ fi
 
 # Clean fast-forward only: DEFAULT must be an ancestor of BRANCH.
 if ! git -C "$PROJ" merge-base --is-ancestor "$DEFAULT" "$MERGE_TARGET"; then
+  [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
   echo "REFUSED: $BRANCH is not a fast-forward of $DEFAULT (it has diverged)." >&2
   echo "Have the crewmate rebase $BRANCH onto $DEFAULT, then retry." >&2
   exit 1
@@ -239,8 +268,16 @@ case "$hold_status" in
     echo "error: task $ID is still held for the captain; release it before merging" >&2
     exit 1
     ;;
-  1|3) ;;
+  1) ;;
+  3)
+    if [ "$DELEGATED" -eq 1 ]; then
+      [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
+      echo "error: this home has no landing row $ID; a delegated landing is authorized only by the captain-held row its landing record was pinned to" >&2
+      exit 1
+    fi
+    ;;
   *)
+    [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
     echo "error: could not determine whether task $ID is still held for the captain; refusing to merge" >&2
     exit 1
     ;;
@@ -263,11 +300,18 @@ if [ "$DELEGATED" -eq 1 ]; then
   # directory. It deliberately takes no lock in that home, because this path
   # already holds this home's landing lock and waiting on another home's lock
   # from here is what would deadlock the fleet.
-  if ! fm_local_handoff_publish_receipt "$OFFER_BLOB" "$PROJ"; then
+  landing_failure=
+  if ! fm_local_handoff_landing_publish "$DATA" "$LANDING_BLOB" "$ID" \
+    "$(fm_local_handoff_field "$LANDING_BLOB" offer)" "$PROJ" landed "$(date +%s)"; then
+    landing_failure="its landing record could not be completed"
+  elif ! fm_local_handoff_publish_receipt "$OFFER_BLOB" "$PROJ" "$ID"; then
+    landing_failure="its landing receipt could not be published"
+  fi
+  if [ -n "$landing_failure" ]; then
     fm_lock_release "$MERGE_CONTROL_LOCK" || true
     MERGE_CONTROL_LOCK=
-    echo "error: $CHILD_TASK landed in $DEFAULT ($before -> $after) but its landing receipt could not be published: $FM_LOCAL_HANDOFF_ERROR" >&2
-    echo "The work is landed and nothing is lost. Finish acknowledging it with bin/fm-local-handoff.sh receipt $OFFER_FILE, which is safe to repeat, and do not tear the child task down until it succeeds." >&2
+    echo "error: $CHILD_TASK landed in $DEFAULT ($before -> $after) but $landing_failure: $FM_LOCAL_HANDOFF_ERROR" >&2
+    echo "The work is landed and nothing is lost. Finish acknowledging it with bin/fm-local-handoff.sh receipt $OFFER_FILE --landing $ID, which is safe to repeat, and do not tear the child task down until it succeeds." >&2
     exit 1
   fi
   fm_lock_release "$MERGE_CONTROL_LOCK" || true
