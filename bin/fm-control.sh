@@ -871,6 +871,18 @@ do_relaunch() {
   require_state_verified_backend relaunch
   resolve_relaunch_profile
 
+  case "$(fm_meta_get "$META" pi_discovery)" in
+    '') ;;
+    disabled)
+      case "$TARGET_HARNESS" in
+        pi|pi-signed) ;;
+        *) die "task $ID records pi_discovery=disabled and cannot relaunch on incompatible harness '$TARGET_HARNESS'" ;;
+      esac
+      [ "$KIND" != secondmate ] || die "task $ID records pi_discovery=disabled, which is only supported for ship and scout tasks"
+      ;;
+    *) die "task $ID has an unknown recorded Pi discovery posture; refusing relaunch" ;;
+  esac
+
   case "$KIND" in
     ship|scout)
       RELAUNCH_BRIEF="$DATA/$ID/brief.md"

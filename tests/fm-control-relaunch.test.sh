@@ -781,6 +781,36 @@ test_relaunch_onto_an_unverified_harness_is_refused() {
   pass "fm-control relaunch: refuses to relaunch onto an adapter with no verified mechanics"
 }
 
+test_pi_discovery_posture_survives_relaunch() {
+  local dir out rc
+  dir=$(new_case pi-discovery rl8p)
+  add_ship_task "$dir" rl8p pi
+  printf '%s\n' 'pi_discovery=disabled' >> "$dir/home/state/rl8p.meta"
+  printf 'pi' > "$dir/fake/command"
+  printf 'pi' > "$dir/fake/becomes"
+  out=$(run_control "$dir" rl8p relaunch --note "continue with task tools only"); rc=$?
+  expect_code 0 "$rc" "same-harness Pi relaunch should preserve discovery posture"$'\n'"$out"
+  assert_grep 'pi_discovery=disabled' "$dir/home/state/rl8p.meta" "relaunch erased the Pi discovery posture"
+  assert_grep '--no-extensions --no-skills --no-prompt-templates --no-themes -e ' "$dir/fake/literal" \
+    "relaunch dropped the Pi no-discovery launch flags or explicit supervision extension"
+  pass "fm-control relaunch preserves the recorded Pi discovery posture and supervision extension"
+}
+
+test_pi_discovery_rejects_incompatible_relaunch_before_stop() {
+  local dir out rc
+  dir=$(new_case pi-discovery-switch rl8q)
+  add_ship_task "$dir" rl8q pi
+  printf '%s\n' 'pi_discovery=disabled' >> "$dir/home/state/rl8q.meta"
+  printf 'pi' > "$dir/fake/command"
+  printf 'pi' > "$dir/fake/becomes"
+  out=$(run_control "$dir" rl8q relaunch --harness codex --note "switch adapter"); rc=$?
+  expect_code 1 "$rc" "an incompatible Pi discovery harness switch should refuse"$'\n'"$out"
+  assert_contains "$out" "pi_discovery=disabled" "refusal did not identify the persisted selection"
+  [ "$(cat "$dir/fake/command")" = pi ] || fail "incompatible target must refuse before stopping the running Pi"
+  assert_no_grep 'encode launch-brief' "$dir/fake/literal" "incompatible target must not launch a replacement"
+  pass "fm-control refuses an incompatible Pi discovery relaunch before stopping the worker"
+}
+
 test_prior_harness_turnend_registry_entry_is_cleared() {
   local dir auth
   dir=$(new_case grokauth rl9)
@@ -2214,6 +2244,8 @@ test_same_harness_relaunch_keeps_the_profile_axes
 test_native_ultra_relaunch_preserves_profile_and_rejects_before_stop
 test_explicit_model_wins_over_the_recorded_one
 test_relaunch_onto_an_unverified_harness_is_refused
+test_pi_discovery_posture_survives_relaunch
+test_pi_discovery_rejects_incompatible_relaunch_before_stop
 test_prior_harness_turnend_registry_entry_is_cleared
 test_wiring_removal_failure_refuses_before_replacement_arm
 test_turnend_auth_paths_are_owned_by_the_control_adapter

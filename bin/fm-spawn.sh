@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--pi-no-discovery]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--pi-no-discovery]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
@@ -67,6 +67,12 @@
 #   from that harness's launch rather than guessed. Ultra is the explicit
 #   exception: bin/fm-harness.sh validate-native-effort owns its model scope;
 #   supported Pi launches receive --codex-effort ultra, never --thinking ultra.
+#   --pi-no-discovery is a per-task opt-in for Pi and Pi-signed ship/scout launches.
+#   It disables Pi's automatic extension, skill, prompt-template, and theme discovery
+#   with the installed CLI's --no-extensions, --no-skills, --no-prompt-templates,
+#   and --no-themes flags, while preserving Firstmate's explicit -e supervision
+#   extension. The selection is stored in state/<task-id>.meta and follows relaunch;
+#   an incompatible harness is refused.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then
@@ -235,7 +241,8 @@
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
 #   Each pair re-execs this script in single-task mode, so the single path stays the only
-#   source of truth; shared --scout/--harness/--model/--effort/--backend/--mode/--yolo
+#   source of truth; shared --scout/--harness/--model/--effort/--backend/--mode/--yolo/
+#   --pi-no-discovery
 #   applies to every pair. A ship batch therefore carries one delivery contract, and each
 #   pair still checks it against its own brief; a batch spanning modes is two invocations.
 #   If config/crew-dispatch.json exists, shared --harness is required for crewmate
@@ -559,6 +566,8 @@ BACKEND_SET=0
 MODE_SET=0
 YOLO_SET=0
 TRACEPARENT_SET=0
+PI_NO_DISCOVERY_SET=0
+PI_NO_DISCOVERY=0
 RELAUNCH=0
 POS=()
 want_value=
@@ -652,6 +661,10 @@ for a in "$@"; do
     TRACEPARENT_ARG=${a#--traceparent=}
     TRACEPARENT_SET=1
     ;;
+  --pi-no-discovery)
+    PI_NO_DISCOVERY_SET=1
+    PI_NO_DISCOVERY=1
+    ;;
   *) POS+=("$a") ;;
   esac
 done
@@ -700,6 +713,10 @@ if [ "$TRACEPARENT_SET" -eq 1 ]; then
     exit 1
   }
 fi
+if [ "$PI_NO_DISCOVERY_SET" -eq 1 ] && [ "$KIND" = secondmate ]; then
+  echo "error: --pi-no-discovery applies to ship and scout tasks, not secondmates" >&2
+  exit 1
+fi
 case "$EFFORT" in
 '' | low | medium | high | xhigh | max | ultra) ;;
 *)
@@ -727,6 +744,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
   [ "$YOLO_SET" -eq 0 ] || {
     echo "error: --relaunch reuses the task's recorded yolo posture; --yolo cannot override it" >&2
+    exit 1
+  }
+  [ "$PI_NO_DISCOVERY_SET" -eq 0 ] || {
+    echo "error: --relaunch reuses the task's recorded Pi discovery posture; --pi-no-discovery cannot override metadata" >&2
     exit 1
   }
 else
@@ -1333,6 +1354,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   # spanning several modes is two invocations rather than a silent mixed dispatch.
   [ "$MODE_SET" -eq 0 ] || shared_args+=(--mode "$MODE")
   [ "$YOLO_SET" -eq 0 ] || shared_args+=(--yolo "$YOLO")
+  [ "$PI_NO_DISCOVERY_SET" -eq 0 ] || shared_args+=(--pi-no-discovery)
   for pair in "${POS[@]}"; do
     case "$pair" in
     *=*) : ;;
@@ -1562,6 +1584,11 @@ if [ "$RELAUNCH" -eq 1 ]; then
     exit 1
   }
   fm_backend_validate_task_endpoint "$RELAUNCH_META" "$ID" || exit 1
+  case "$(fm_meta_get "$RELAUNCH_META" pi_discovery)" in
+  '') ;;
+  disabled) PI_NO_DISCOVERY=1 ;;
+  *) echo "error: task $ID has an unknown recorded Pi discovery posture; refusing relaunch" >&2; exit 1 ;;
+  esac
   BACKEND=$FM_BACKEND_VALIDATED_BACKEND
   RELAUNCH_TARGET=$FM_BACKEND_VALIDATED_TARGET
   fm_backend_validate_spawn "$BACKEND" || exit 1
@@ -1867,7 +1894,7 @@ launch_template() {
     ;;
   opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
-    printf '%s' '__PIBIN____PITUIMODE__'
+    printf '%s' '__PIBIN____PITUIMODE____PIDISCOVERY__'
     if [ "$kind" = secondmate ]; then
       printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
@@ -2084,6 +2111,16 @@ case "$ARG3" in
   ;;
 esac
 
+case "$HARNESS" in
+pi | pi-signed) ;;
+*)
+  [ "$PI_NO_DISCOVERY" -eq 0 ] || {
+    echo "error: --pi-no-discovery requires harness pi or pi-signed (got '$HARNESS')" >&2
+    exit 1
+  }
+  ;;
+esac
+
 # muse, gemini, and agy are verified as CREWMATE/SCOUT adapters only. A secondmate is
 # a firstmate instance, so it needs a primary supervision protocol.
 # gemini has none: docs/supervision-protocols/ carries no gemini wake protocol
@@ -2121,6 +2158,11 @@ pi | pi-signed)
     PI_TUI_MODE=' --tui-mode regular'
   fi
   LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
+  PI_DISCOVERY_FLAGS=
+  if [ "$PI_NO_DISCOVERY" -eq 1 ]; then
+    PI_DISCOVERY_FLAGS=' --no-extensions --no-skills --no-prompt-templates --no-themes'
+  fi
+  LAUNCH=${LAUNCH//__PIDISCOVERY__/$PI_DISCOVERY_FLAGS}
   LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH"
   ;;
 cursor)
@@ -4430,7 +4472,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent pi_discovery backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -4450,6 +4492,7 @@ preserve_relaunch_meta() {
   echo "effort=${EFFORT:-default}"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  [ "$PI_NO_DISCOVERY" -eq 0 ] || echo "pi_discovery=disabled"
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;

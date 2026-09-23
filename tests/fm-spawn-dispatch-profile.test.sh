@@ -723,11 +723,71 @@ test_pi_threads_model_and_max_effort() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
     "pi launch did not force the regular TUI while threading the requested model and max thinking level"
+  assert_not_contains "$launch" '--no-extensions' "default Pi launch changed its extension discovery behavior"
   assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
     "pi launch still exports the removed Calm input-reroute binding"
   assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
     "pi launch lost the canonical typed launch-brief envelope"
   pass "pi receives --model and --thinking max profile flags"
+}
+
+test_pi_no_discovery_is_explicit_and_persisted() {
+  local rec id out status launch
+  id=profile-pi-no-discovery-z8e
+  rec=$(make_spawn_case profile-pi-no-discovery pi "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --pi-no-discovery)
+  status=$?
+  expect_code 0 "$status" "Pi no-discovery spawn should succeed"
+  assert_grep 'pi_discovery=disabled' "$HOME_DIR/state/$id.meta" "metadata lost the opt-in discovery posture"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" '--no-extensions --no-skills --no-prompt-templates --no-themes -e ' \
+    "Pi no-discovery launch did not disable product discovery before loading supervision"
+  assert_contains "$launch" "-e '$HOME_DIR/state/$id.pi-ext.ts'" "Pi no-discovery launch dropped its explicit supervision extension"
+  assert_present "$HOME_DIR/state/$id.busy-gen" "Pi no-discovery launch did not arm busy supervision"
+  pass "Pi no-discovery opt-in disables product discovery and records the posture with explicit supervision intact"
+}
+
+test_pi_no_discovery_rejects_incompatible_harness_before_launch() {
+  local rec id out status
+  id=profile-pi-no-discovery-refused-z8f
+  rec=$(make_spawn_case profile-pi-no-discovery-refused codex "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --pi-no-discovery)
+  status=$?
+  expect_code 1 "$status" "incompatible harness should reject Pi no-discovery"
+  assert_contains "$out" '--pi-no-discovery requires harness pi or pi-signed' "refusal did not name the allowed harnesses"
+  [ ! -s "$LAUNCH_LOG" ] || fail "incompatible harness must launch nothing"
+  assert_absent "$HOME_DIR/state/$id.meta" "incompatible harness refusal must precede metadata publication"
+  pass "Pi no-discovery is refused for an incompatible harness before creating the task"
+}
+
+test_pi_no_discovery_supports_signed_and_scout_launches() {
+  local rec id out status launch
+  id=profile-pi-signed-no-discovery-z8g
+  rec=$(make_spawn_case profile-pi-signed-no-discovery pi-signed "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --pi-no-discovery)
+  status=$?
+  expect_code 0 "$status" "pi-signed no-discovery spawn should succeed: $out"
+  assert_grep 'pi_discovery=disabled' "$HOME_DIR/state/$id.meta" "pi-signed metadata lost the opt-in discovery posture"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--no-extensions --no-skills --no-prompt-templates --no-themes -e '$HOME_DIR/state/$id.pi-ext.ts'" \
+    "pi-signed no-discovery launch lost suppression flags or explicit supervision"
+
+  id=profile-pi-scout-no-discovery-z8h
+  rec=$(make_spawn_case profile-pi-scout-no-discovery pi "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout --pi-no-discovery)
+  status=$?
+  expect_code 0 "$status" "Pi scout no-discovery spawn should succeed: $out"
+  assert_grep 'pi_discovery=disabled' "$HOME_DIR/state/$id.meta" "Pi scout metadata lost the opt-in discovery posture"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--no-extensions --no-skills --no-prompt-templates --no-themes -e '$HOME_DIR/state/$id.pi-ext.ts'" \
+    "Pi scout no-discovery launch lost suppression flags or explicit supervision"
+  pass "Pi no-discovery supports signed and scout launches"
 }
 
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity() {
@@ -867,6 +927,26 @@ test_batch_forwards_shared_profile_flags() {
   assert_meta_profile "$HOME_DIR/state/$id1.meta" codex gpt-5 high
   assert_meta_profile "$HOME_DIR/state/$id2.meta" codex gpt-5 high
   pass "batch dispatch forwards shared --harness, --model, and --effort to every pair"
+}
+
+test_batch_forwards_pi_discovery_opt_in() {
+  local rec id1 id2 id out status launch
+  id1=profile-batch-pi-a-z11
+  id2=profile-batch-pi-b-z12
+  rec=$(make_spawn_case profile-batch-pi pi "$id1" "$id2")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id1=$PROJ_DIR" "$id2=$PROJ_DIR" --pi-no-discovery)
+  status=$?
+  expect_code 0 "$status" "Pi no-discovery batch spawn should succeed"
+  for id in "$id1" "$id2"; do
+    assert_grep 'pi_discovery=disabled' "$HOME_DIR/state/$id.meta" "batch metadata lost the Pi discovery posture for $id"
+  done
+  launch=$(cat "$LAUNCH_LOG")
+  [ "$(printf '%s\n' "$launch" | grep -F -c -- '--no-extensions --no-skills --no-prompt-templates --no-themes -e ')" -eq 2 ] \
+    || fail "batch did not pass Pi no-discovery flags and explicit supervision to both launches"
+  pass "batch dispatch forwards Pi no-discovery to every task"
 }
 
 test_claude_forwards_firstmate_config_dir_when_set() {
@@ -1466,11 +1546,15 @@ test_native_effort_validator_keeps_axes_separate
 test_native_pi_ultra_is_explicit_and_model_scoped
 test_batch_preserves_native_ultra
 test_pi_threads_model_and_max_effort
+test_pi_no_discovery_is_explicit_and_persisted
+test_pi_no_discovery_rejects_incompatible_harness_before_launch
+test_pi_no_discovery_supports_signed_and_scout_launches
 test_pi_tui_mode_probe_is_safe_for_old_and_new_pi
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
+test_batch_forwards_pi_discovery_opt_in
 test_claude_forwards_firstmate_config_dir_when_set
 test_claude_omits_config_dir_prefix_when_unset
 test_claude_permission_mode_bypass_matches_absent_launch
