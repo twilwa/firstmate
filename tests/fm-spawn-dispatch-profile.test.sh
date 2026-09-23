@@ -764,6 +764,22 @@ test_pi_no_discovery_rejects_incompatible_harness_before_launch() {
   pass "Pi no-discovery is refused for an incompatible harness before creating the task"
 }
 
+test_pi_no_discovery_rejects_raw_pi_launch_before_launch() {
+  local rec id out status
+  id=profile-pi-no-discovery-raw-refused-z8i
+  rec=$(make_spawn_case profile-pi-no-discovery-raw-refused pi "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    'pi --offline' --pi-no-discovery)
+  status=$?
+  expect_code 1 "$status" "raw Pi launch should reject no-discovery"
+  assert_contains "$out" 'canonical --harness pi or pi-signed' "raw Pi refusal was not actionable"
+  [ ! -s "$LAUNCH_LOG" ] || fail "raw Pi no-discovery refusal must launch nothing"
+  assert_absent "$HOME_DIR/state/$id.meta" "raw Pi no-discovery refusal must precede metadata publication"
+  pass "Pi no-discovery refuses raw launches that cannot receive canonical discovery flags"
+}
+
 test_pi_no_discovery_supports_signed_and_scout_launches() {
   local rec id out status launch
   id=profile-pi-signed-no-discovery-z8g
@@ -1548,6 +1564,7 @@ test_batch_preserves_native_ultra
 test_pi_threads_model_and_max_effort
 test_pi_no_discovery_is_explicit_and_persisted
 test_pi_no_discovery_rejects_incompatible_harness_before_launch
+test_pi_no_discovery_rejects_raw_pi_launch_before_launch
 test_pi_no_discovery_supports_signed_and_scout_launches
 test_pi_tui_mode_probe_is_safe_for_old_and_new_pi
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity

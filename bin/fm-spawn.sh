@@ -2112,7 +2112,12 @@ case "$ARG3" in
 esac
 
 case "$HARNESS" in
-pi | pi-signed) ;;
+pi | pi-signed)
+  [ "$PI_NO_DISCOVERY" -eq 0 ] || [ "$RAW_LAUNCH" -eq 0 ] || {
+    echo "error: --pi-no-discovery requires the canonical --harness pi or pi-signed launch so its discovery flags cannot be omitted" >&2
+    exit 1
+  }
+  ;;
 *)
   [ "$PI_NO_DISCOVERY" -eq 0 ] || {
     echo "error: --pi-no-discovery requires harness pi or pi-signed (got '$HARNESS')" >&2
