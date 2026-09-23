@@ -178,8 +178,10 @@ forge_receipt() {  # <parent-project> [landing-id]
 # FIXTURE INSTRUMENTATION ONLY: a wrapper placed ahead of the real ln on the
 # primary home's PATH. It freezes exactly one landing-record publication, on
 # whichever side of the real link a case names, so a second command can be
-# driven through that window on purpose. Nothing in the product reads these
-# variables, and every other ln is passed straight through.
+# driven through that window on purpose. Its signal file carries the pid of
+# the process publishing that record, which is what lets a case name the lock
+# holder it expects. Nothing in the product reads these variables, and every
+# other ln is passed straight through.
 FX_RACE_AT=
 FX_RACE_GO=
 install_pin_pause_shim() {  # <name> <before|after>
@@ -193,6 +195,14 @@ install_pin_pause_shim() {  # <name> <before|after>
   cat > "$FX_MAIN/fakebin/ln" <<SHIM
 #!/usr/bin/env bash
 # FIXTURE INSTRUMENTATION ONLY (tests/fm-local-handoff.test.sh).
+# The wait ends with the case that installed this wrapper, so a case that
+# fails inside its own window leaves nothing frozen behind it.
+wait_for_go() {
+  while [ ! -e "\$FX_RACE_GO" ]; do
+    kill -0 $$ 2>/dev/null || exit 1
+    sleep 0.05
+  done
+}
 dest=\${@: -1}
 if [ "\${dest%.landing}" = "\$dest" ] || [ -e "\$FX_RACE_GO" ]; then
   exec $real "\$@"
@@ -200,12 +210,12 @@ fi
 if [ "\$FX_RACE_WHEN" = after ]; then
   $real "\$@"
   rc=\$?
-  : > "\$FX_RACE_AT"
-  while [ ! -e "\$FX_RACE_GO" ]; do sleep 0.05; done
+  printf '%s\n' "\$PPID" > "\$FX_RACE_AT.tmp" && mv "\$FX_RACE_AT.tmp" "\$FX_RACE_AT"
+  wait_for_go
   exit "\$rc"
 fi
-: > "\$FX_RACE_AT"
-while [ ! -e "\$FX_RACE_GO" ]; do sleep 0.05; done
+printf '%s\n' "\$PPID" > "\$FX_RACE_AT.tmp" && mv "\$FX_RACE_AT.tmp" "\$FX_RACE_AT"
+wait_for_go
 exec $real "\$@"
 SHIM
   chmod 0755 "$FX_MAIN/fakebin/ln"
@@ -221,6 +231,21 @@ wait_for_path() {  # <path> <what> [tries]
     tries=$((tries - 1))
   done
   fail "$what did not happen within the bounded wait"
+}
+
+# True when the process holding a lock is the process that is publishing the
+# pin, or one of its ancestors, which is what distinguishes a command waiting
+# on that lock from one that is merely slow.
+lock_holder_is_the_publisher() {  # <lock-owner-pid> <publishing-pid>
+  local owner=$1 pid=$2 hops=64
+  case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+  while [ "$hops" -gt 0 ]; do
+    case "$pid" in ''|*[!0-9]*|0|1) return 1 ;; esac
+    [ "$pid" != "$owner" ] || return 0
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+    hops=$((hops - 1))
+  done
+  return 1
 }
 
 # The captain's own hand path in a manual-backend home: the backlog row is
@@ -1001,38 +1026,71 @@ test_overlapping_requests_never_replace_a_pin() {
 # control lock across both, which is the same lock the answer takes, so the
 # answer cannot land inside that window at all.
 test_a_captains_answer_waits_for_a_pin_in_flight() {
-  local head err out pin released rel status
+  local head err out pin released rel started baseline tries publisher owner
   make_bound_fixture pin-before-answer
   commit_child_work 'change awaiting approval'
   head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
-  prepare_landing_row land-app \
+  prepare_landing_row land-baseline \
     || { echo "skip: tasks-axi cannot host the landing row (answer during pin)"; return 0; }
   err="$TMP_ROOT/pin-before-answer.err"
   released="$TMP_ROOT/pin-before-answer.answered"
+
+  # What an uncontended answer costs on this host, measured with the same
+  # command on its own row. An answer that has simply not finished yet proves
+  # nothing, so the window below stays open for longer than that measurement
+  # rather than for a constant a slow host can outlast on its own.
+  started=$SECONDS
+  release_landing_row || fail "the uncontended baseline answer failed"
+  baseline=$((SECONDS - started))
+  prepare_landing_row land-app || fail "filing the pinned landing row failed"
 
   install_pin_pause_shim pin-before-answer before
   run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
     >/dev/null 2>"$err" &
   pin=$!
   wait_for_path "$FX_RACE_AT" "the request reaching its publication"
+  publisher=$(cat "$FX_RACE_AT" 2>/dev/null || true)
 
   # The captain answers through the ordinary wrapper while the pin is frozen.
   ( release_landing_row; : > "$released" ) &
   rel=$!
-  status=60
-  while [ "$status" -gt 0 ]; do
+
+  # What that answer is waiting for, stated positively rather than inferred
+  # from an absence: the landing's own control lock is held by the very
+  # process that is publishing the pin. A request that took no such lock
+  # leaves this lock unheld or owned by the answer itself, so this assertion,
+  # not a timer, is what fails when the serialization is removed.
+  owner=$(cat "$FX_MAIN/state/.control-land-app.lock/pid" 2>/dev/null || true)
+  lock_holder_is_the_publisher "$owner" "$publisher" \
+    || fail "the landing's control lock was held by '$owner', not by the request publishing the pin"
+
+  # The same conclusion measured independently: the answer stays unrecorded
+  # for longer than an uncontended one costs on this host.
+  tries=$(( (baseline + 1) * 20 ))
+  while [ "$tries" -gt 0 ]; do
     assert_absent "$released" \
       "the captain's answer was recorded while a pin for that row was still in flight"
     sleep 0.05
-    status=$((status - 1))
+    tries=$((tries - 1))
   done
 
+  # The boundary itself: the answer is still alive, its row still reads held,
+  # and its completion is still absent at the instant the pin is let go.
+  kill -0 "$rel" 2>/dev/null \
+    || fail "the captain's answer was no longer running, so this window proved nothing"
+  run_home "$FX_MAIN" "$ROOT/bin/fm-captain-hold.sh" open land-app >/dev/null 2>&1 \
+    || fail "the landing row stopped reading as held while its own pin was in flight"
+  assert_absent "$released" \
+    "the captain's answer completed before the pin it overlapped was published"
   : > "$FX_RACE_GO"
   wait "$pin" || fail "the frozen request failed"$'\n'"$(cat "$err")"
   wait "$rel" || fail "the captain's answer never completed"
   wait_for_path "$released" "the captain's answer completing after the pin"
+  if run_home "$FX_MAIN" "$ROOT/bin/fm-captain-hold.sh" open land-app >/dev/null 2>&1; then
+    fail "the answer that completed after the pin never took effect on its row"
+  fi
   assert_equals "$head" "$(record_field "$FX_LANDING_RECORD" head)" \
     "the pin did not record the head it was written for"
   assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
