@@ -30,7 +30,7 @@ Only `answer` with the captain's words or an evidence-backed `reconcile close` m
 Never close anything the captain owns without recording what he actually said: `bin/fm-captain-hold.sh answer` writes his exact words into the task and closes a question-shaped call, while `--release` frees a captain-gated work item to proceed.
 A merge approval uses that existing release path because approval permits the merge to proceed; cleanup closes the work only after it lands and records what shipped.
 Closing a held row at merge approval instead records completion before landing, so the backlog claims completion before the work actually ships.
-When the answer changes what a task must build, follow `AGENTS.md` section 7's Validate contract to preserve the captain's words in the brief and steer the worker.
+When the answer changes what a task must build, load `task-delivery` and follow its Validate contract to preserve the captain's words in the brief and steer the worker.
 When the captain says "later", that is an answer too: give the keyed-answer intake its `defer` close mode and a YYYY-MM-DD date, or use `answer --defer-until <date>` for a direct answer, so the captain's exact words are recorded before the existing `tasks-axi hold --until` gate leaves the item dated and held on the same call, with its original age basis intact.
 A recorded-answer defer date must be strictly later than today's UTC date; past and same-day dates are refused before the captain's words are recorded, while bare `hold --until` remains the calendar-only scheduling primitive.
 A defer without a date is refused rather than assigned a default.

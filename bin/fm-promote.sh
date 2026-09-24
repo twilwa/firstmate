@@ -22,12 +22,14 @@
 # never passes the provenance gate as the ask (bin/fm-dod-lib.sh).
 # A scout records no delivery posture, so promotion is where this task's delivery
 # contract is decided: --mode, --yolo, and the ship branch resolved from
-# --branch-prefix are written into the meta alongside the kind= flip. Firstmate resolves all three at promotion time, having just
-# read the scout's report (AGENTS.md section 7); data/projects.md holds the
-# captain's standing posture as context, and this script never looks that posture
-# up. The registry IS read for one thing only: the project's forge binding, which
-# is a project fact rather than a per-task decision, so promotion takes it from
-# there instead of asking firstmate to remember it.
+# --branch-prefix are written into the meta alongside the kind= flip. Firstmate
+# resolves the per-task values at promotion time after reading the scout's report;
+# task-intake owns mode, yolo, and branch-prefix selection, while task-delivery
+# owns promotion. data/projects.md holds the captain's standing posture as
+# context, and this script never looks that posture up. The registry IS read for
+# one thing only: the project's forge binding, which is a project fact rather
+# than a per-task decision, so promotion takes it from there instead of asking
+# firstmate to remember it.
 # no-mistakes-prod-only is a registry policy rather than a task mode and is refused.
 # There is no --forge flag here: the binding comes from the registry, and for a
 # task record naming no project it is none. bin/fm-brief.sh takes --forge instead
