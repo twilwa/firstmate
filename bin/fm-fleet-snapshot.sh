@@ -1993,7 +1993,6 @@ if [ "$OUTPUT_MODE" = contribution-input ]; then
   contribution_tasks=$(contribution_tasks_json) || { echo "fm-fleet-snapshot: contribution task read failed" >&2; exit 1; }
   JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
     || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
-  trap 'rm -f -- "$JSON_TRANSPORT_DIR/backlog.json" "$JSON_TRANSPORT_DIR/contribution-tasks.json" 2>/dev/null || true; rmdir -- "$JSON_TRANSPORT_DIR" 2>/dev/null || true' EXIT
   printf '%s\n' "$BACKLOG_JSON" > "$JSON_TRANSPORT_DIR/backlog.json" \
     || { echo "fm-fleet-snapshot: temporary backlog file write failed" >&2; exit 1; }
   printf '%s\n' "$contribution_tasks" > "$JSON_TRANSPORT_DIR/contribution-tasks.json" \
