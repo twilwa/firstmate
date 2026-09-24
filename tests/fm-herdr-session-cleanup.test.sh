@@ -353,6 +353,7 @@ done
 exec "$FM_TEST_REAL_GREP" "$@"
 SH
   chmod +x "$FAKEBIN/grep"
+  # shellcheck disable=SC2329 # invoked indirectly by the fake herdr workspace list.
   fixture_workspaces() {
     local n=1
     printf '['
