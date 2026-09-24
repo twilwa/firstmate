@@ -1,0 +1,30 @@
+# Redacted structural extract of fm-session-start.sh stdout (201699 bytes, 2444 lines); full digest contained private home content and was not retained.
+## Section headers (line: name)
+6:LOCK
+10:BOOTSTRAP
+17:WAKE QUEUE
+133:READ-ONCE CONTRACT
+157:FLEET STATE
+1834:AFK
+1839:NETWORK CHECKS
+1845:CONTEXT
+1886:ABSENT
+2438:NEXT STEP
+## LOCK
+lock acquired: harness pid 4190286
+## NETWORK CHECKS section
+NETWORK CHECKS
+================================================================================
+completed off the startup path in 11s: GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, inactive terminal-outcome reconciliation, and home-summary publication.
+(silent - no problems found)
+
+================================================================================
+## ●-banner lines (watcher-down is expected in a scratch home; a STARTUP TRUNCATED banner would appear here)
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  59 task(s) in flight, but no watcher has a fresh beacon (last beat: 696s ago, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 'Argument list too long' occurrences: 0

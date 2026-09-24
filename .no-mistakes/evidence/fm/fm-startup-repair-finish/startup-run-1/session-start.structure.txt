@@ -1,0 +1,24 @@
+# Redacted structural extract of fm-session-start.sh stdout (200815 bytes, 2437 lines); full digest contained private home content and was not retained.
+## Section headers (line: name)
+6:LOCK
+10:BOOTSTRAP
+17:WAKE QUEUE
+126:READ-ONCE CONTRACT
+150:FLEET STATE
+1827:AFK
+1832:NETWORK CHECKS
+1838:CONTEXT
+1879:ABSENT
+2431:NEXT STEP
+## LOCK
+lock acquired: harness pid 4190286
+## NETWORK CHECKS section
+NETWORK CHECKS
+================================================================================
+completed off the startup path in 10s: GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, inactive terminal-outcome reconciliation, and home-summary publication.
+(silent - no problems found)
+
+================================================================================
+## ●-banner lines (watcher-down is expected in a scratch home; a STARTUP TRUNCATED banner would appear here)
+(none)
+## 'Argument list too long' occurrences: 0

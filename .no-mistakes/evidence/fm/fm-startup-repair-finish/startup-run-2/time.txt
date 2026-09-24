@@ -1,0 +1,2 @@
+wall_seconds=90.31 user_seconds=18.63 sys_seconds=72.60
+exit=0

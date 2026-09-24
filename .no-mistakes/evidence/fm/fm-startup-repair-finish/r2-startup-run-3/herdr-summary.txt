@@ -1,0 +1,12 @@
+leftover .herdr-cleanup-locks.* records: 0
+herdr verbs (guard log):
+    202 BLOCKED pane get
+    151 SYNTH status --json
+     68 BLOCKED pane read
+      2   
+      1 status --json --session
+      1 pane get w7B:p2
+      1 pane get w60:p2
+      1 SYNTH SYNTH status
+      1 BLOCKED workspace list
+      1 BLOCKED SYNTH status

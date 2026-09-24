@@ -1,0 +1,39 @@
+# Redacted structural extract of fm-session-start.sh stdout (201710 bytes, 2445 lines) at de84116
+## Section headers (line: name)
+6:LOCK
+10:BOOTSTRAP
+17:WAKE QUEUE
+133:READ-ONCE CONTRACT
+157:FLEET STATE
+1835:AFK
+1840:NETWORK CHECKS
+1846:CONTEXT
+1887:ABSENT
+2439:NEXT STEP
+## LOCK
+lock acquired: harness pid 2115395
+## NETWORK CHECKS section
+NETWORK CHECKS
+================================================================================
+completed off the startup path in 10s: GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, inactive terminal-outcome reconciliation, and home-summary publication.
+(silent - no problems found)
+
+================================================================================
+## projection cleanup diagnostics
+count=1
+      1 projection cleanup: session 'default' workspace discovery failed
+## '●  STARTUP TRUNCATED' banner lines: 0
+## all ●-banner lines:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  59 task(s) in flight, but no watcher has a fresh beacon (last beat: 343s ago, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 'Argument list too long' occurrences (stdout+stderr): 0
+## stderr bytes: 0
+## final lines
+
+The digest above is complete for this session start. The READ-ONCE CONTRACT
+section near the top of it governs what may still be read from disk.

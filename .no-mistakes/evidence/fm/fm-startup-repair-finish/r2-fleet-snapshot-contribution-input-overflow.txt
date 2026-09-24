@@ -1,0 +1,14 @@
+## scratch home: copy of primary data/backlog.md (104332 bytes), 59 task metas
+
+## BASE 9284978: bin/fm-fleet-snapshot.sh --contribution-input
+exit=0
+stderr: <scratch>/base/bin/fm-fleet-snapshot.sh: line 1994: /usr/bin/jq: Argument list too long
+stdout_bytes=0
+leftover fm-fleet-snapshot.* entries in TMPDIR after exit: 0
+
+## TARGET de84116: bin/fm-fleet-snapshot.sh --contribution-input
+exit=0
+stderr: 
+stdout_bytes=254885
+{"backlog_type":"object","backlog_json_bytes":200404,"tasks_count":59,"tasks_json_bytes":6478}
+leftover fm-fleet-snapshot.* entries in TMPDIR after exit: 0

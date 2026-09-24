@@ -1,0 +1,4 @@
+fm-herdr-session-cleanup exit=1
+fm-startup-network exit=0
+fm-contributions exit=0
+fm-session-start exit=0
