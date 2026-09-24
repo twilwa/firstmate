@@ -450,22 +450,22 @@ TASK_TEXT=$(mktemp) || die "mktemp failed"
 # Send Jev only the task-specific sections parsed by the shared brief-heading library.
 # A brief with neither section goes whole. Ship delivery mode is deliberately not sent.
 brief_kind() {
-  if grep -qxF 'This is a SCOUT task: the deliverable is a written report, not a PR.' "$BRIEF"; then
+  if grep -qxF 'This is a SCOUT task: the deliverable is a written report, not a PR.' "$BRIEF_SNAPSHOT"; then
     printf 'Brief kind: scout (report only)\n\n'
   fi
 }
 task_sections() {
   local heading
   for heading in "## Captain's intent" "## Firstmate spec"; do
-    fm_brief_task_heading_present "$BRIEF" "$heading" || continue
-    printf '%s\n%s\n\n' "$heading" "$(fm_brief_task_heading_body "$BRIEF" "$heading")"
+    fm_brief_task_heading_present "$BRIEF_SNAPSHOT" "$heading" || continue
+    printf '%s\n%s\n\n' "$heading" "$(fm_brief_task_heading_body "$BRIEF_SNAPSHOT" "$heading")"
   done
 }
 SECTIONS=$(task_sections)
 if [ -n "$SECTIONS" ]; then
   { brief_kind; printf '%s\n' "$SECTIONS"; } > "$TASK_TEXT" || die "could not read brief: $BRIEF"
 else
-  cp "$BRIEF" "$TASK_TEXT" || die "could not read brief: $BRIEF"
+  cp "$BRIEF_SNAPSHOT" "$TASK_TEXT" || die "could not read brief snapshot: $BRIEF"
 fi
 LAT_MS=null
 command -v curl >/dev/null 2>&1 || emit_error "curl not installed"

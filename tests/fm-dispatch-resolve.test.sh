@@ -632,6 +632,70 @@ TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_equals "$(cat "$BRIEF")" "$(jq -r .state.task.brief "$LOG/body")" "a brief with neither heading is sent whole"
 pass "only the brief's task sections and scout tag reach the model, with a whole-brief fallback"
 
+# --- the resolver request and receipt use one immutable brief snapshot ---------
+REAL_CP=$(command -v cp)
+export REAL_CP
+cat > "$FAKEBIN/cp" <<'SH'
+#!/usr/bin/env bash
+set -u
+"$REAL_CP" "$@"
+rc=$?
+if [ "$rc" -eq 0 ] && [ "${1:-}" = "${FAKE_CP_MUTATE_SOURCE:-}" ]; then
+  cat > "$1" <<'MD'
+# Task
+## Captain's intent
+Mutated after snapshot.
+## Firstmate spec
+Mutated spec.
+# Definition of done
+MD
+fi
+exit "$rc"
+SH
+chmod +x "$FAKEBIN/cp"
+
+SNAPSHOT_SECTION_BRIEF="$TMP_ROOT/snapshot-section-brief.md"
+cat > "$SNAPSHOT_SECTION_BRIEF" <<'MD'
+# Task
+## Captain's intent
+Original intent from snapshot.
+
+## Firstmate spec
+Original Firstmate spec from snapshot.
+
+# Definition of done
+This is a SCOUT task: the deliverable is a written report, not a PR.
+MD
+SNAPSHOT_SECTION_HASH=$(test_sha256 "$SNAPSHOT_SECTION_BRIEF")
+reset_log
+write_response "$RESPONSE" rule_4 0.9
+TYPESAFE_API_KEY=$KEY FAKE_CP_MUTATE_SOURCE="$SNAPSHOT_SECTION_BRIEF" run code out err "$SNAPSHOT_SECTION_BRIEF"
+expect_code 0 "$code" "a brief changed after its snapshot still resolves"
+sent=$(jq -r .state.task.brief "$LOG/body")
+assert_equals $'Brief kind: scout (report only)\n\n## Captain\'s intent\nOriginal intent from snapshot.\n\n## Firstmate spec\nOriginal Firstmate spec from snapshot.' "$sent" "the request uses snapshot sections and scout classification"
+assert_contains "$(cat "$SNAPSHOT_SECTION_BRIEF")" 'Mutated after snapshot.' "the test changes the original brief after the snapshot copy"
+section_receipt=$(jq -sr '[.[] | select(.receipt_type == "resolution")] | last' "$RECEIPTS")
+assert_equals "$SNAPSHOT_SECTION_HASH" "$(jq -r .brief_sha256 <<<"$section_receipt")" "the receipt hashes the exact section content sent to the model"
+
+WHOLE_BRIEF="$TMP_ROOT/snapshot-whole-brief.md"
+cat > "$WHOLE_BRIEF" <<'MD'
+# Task
+No recognized task subsections.
+This complete brief must be sent as-is.
+MD
+WHOLE_EXPECTED=$(cat "$WHOLE_BRIEF")
+WHOLE_BRIEF_HASH=$(test_sha256 "$WHOLE_BRIEF")
+reset_log
+write_response "$RESPONSE" rule_4 0.9
+TYPESAFE_API_KEY=$KEY FAKE_CP_MUTATE_SOURCE="$WHOLE_BRIEF" run code out err "$WHOLE_BRIEF"
+expect_code 0 "$code" "the whole-brief fallback uses the original snapshot"
+sent=$(jq -r .state.task.brief "$LOG/body")
+assert_equals "$WHOLE_EXPECTED" "$sent" "the whole-brief fallback copies the immutable snapshot"
+assert_contains "$(cat "$WHOLE_BRIEF")" 'Mutated after snapshot.' "the fallback test changes the original brief after the snapshot copy"
+whole_receipt=$(jq -sr '[.[] | select(.receipt_type == "resolution")] | last' "$RECEIPTS")
+assert_equals "$WHOLE_BRIEF_HASH" "$(jq -r .brief_sha256 <<<"$whole_receipt")" "the fallback receipt hashes the exact whole brief sent"
+pass "receipt hashes bind to the immutable brief bytes used by section and whole-brief requests"
+
 # --- escalate: captain approval ------------------------------------------------
 reset_log
 write_response "$RESPONSE" rule_3 0.95
