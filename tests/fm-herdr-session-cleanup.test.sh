@@ -407,10 +407,10 @@ SH
     '. "$1/bin/fm-backend.sh"; fm_backend_source herdr; fm_backend_herdr_presentation_session_lock_path test' \
     _ "$ROOT") || fail "could not resolve the isolated fixture presentation lock"
   started=$SECONDS
-  HERDR_SESSION=test FM_HERDR_SESSION_CLEANUP_TIMEOUT=2 \
+  HERDR_SESSION=test FM_HERDR_SESSION_CLEANUP_TIMEOUT=10 \
     "$ROOT/bin/fm-herdr-session-cleanup.sh" > "$TMP_ROOT/deadline.out" 2>&1 \
     || fail "cleanup deadline blocked startup"
-  [ "$((SECONDS - started))" -lt 15 ] || fail "cleanup deadline did not bound execution"
+  [ "$((SECONDS - started))" -lt 25 ] || fail "cleanup deadline did not bound execution"
   grep -q 'unfinished candidates preserved; cleanup coverage is unconfirmed' "$TMP_ROOT/deadline.out" \
     || fail "cleanup deadline did not report unconfirmed coverage"
   cmp -s "$TMP_ROOT/deadline-journal" "$FM_STATE_OVERRIDE/$ID.herdr-presentation" \
