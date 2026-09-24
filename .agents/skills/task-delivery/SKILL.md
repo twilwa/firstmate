@@ -2,7 +2,7 @@
 name: task-delivery
 description: >-
   Agent-only procedure for validating, reviewing, landing, cleaning up, and promoting Firstmate ship and scout work.
-  Load before starting or steering validation, on validation or delivery milestones, after a ship or scout reports done, before any merge or local landing, before teardown or intentional custom-check creation or retirement, and before scout promotion.
+  Load before starting or steering validation, on validation or delivery milestones, after a ship or scout reports done, before any merge or local landing, before teardown or scout promotion, whenever the captain adds or changes an ask mid-task (including before validation), and before writing, registering, changing, or retiring a custom `state/<id>.check.sh`.
 user-invocable: false
 metadata:
   internal: true
