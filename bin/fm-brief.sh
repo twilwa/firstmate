@@ -39,7 +39,7 @@
 #   identify this repo. Briefs made without it carry a loud declaration so an
 #   omitted contract cannot be silent.
 # For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
-# resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
+# resolves it per task at intake (the task-intake skill); data/projects.md holds the
 # captain's standing posture as context, and this script never reads it:
 #   no-mistakes  implement -> /no-mistakes pipeline -> PR -> configured merge authority
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
