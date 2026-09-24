@@ -186,6 +186,9 @@ fi
 OWNER_ID=$(cat "$STATE/.lock" 2>/dev/null || true)
 case "$OWNER_ID" in ''|*[!0-9]*) exit 0 ;; esac
 
+[ -w "$STATE" ] \
+  || visible_park_failure "the state directory is not writable, so park ownership cannot be published"
+
 PARK_SEQ=
 claim_park || visible_park_failure "the park owner lock could not be acquired or its owner record could not be published"
 

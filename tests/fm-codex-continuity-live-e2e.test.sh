@@ -10,6 +10,10 @@ fm_live_gate opt-in FM_CODEX_LIVE_E2E codex
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if [ "${FM_CODEX_ADVERSARIAL_LIVE_E2E:-0}" = 1 ]; then
+  exec "$ROOT/tests/fm-codex-continuity-adversarial-live.sh"
+fi
+
 fail() {
   printf 'not ok - %s\n' "$1" >&2
   exit 1

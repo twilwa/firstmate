@@ -182,6 +182,31 @@ SH
   pass "Codex park: owner publication failure remains visible"
 }
 
+test_unwritable_state_reports_visible_failure_without_lock_recursion() {
+  local dir="$TMP_ROOT/unwritable-state" out status=0
+  make_primary "$dir"
+  : > "$dir/state/task.meta"
+  write_arm_actionable "$dir"
+  # Establish the real session owner before removing directory write access;
+  # the Stop hook must then refuse before the lock primitive tries a steal lock.
+  # shellcheck disable=SC2016 # The child shell expands the single-quoted program.
+  out=$(FM_HOME="$dir" PAYLOAD='{"hook_event_name":"Stop","session_id":"codex-test","stop_hook_active":false}' \
+    timeout 5 "$FAKE_CODEX" -c '
+      printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      chmod 0555 "$FM_HOME/state"
+      status=0
+      printf "%s" "$PAYLOAD" | "$FM_HOME/bin/fm-codex-stop-park.sh" 2>&1 || status=$?
+      chmod 0755 "$FM_HOME/state"
+      exit "$status"
+    ' 2>&1) || status=$?
+  chmod 0755 "$dir/state"
+  expect_code 0 "$status" "unwritable-state Codex park"
+  assert_contains "$out" "state directory is not writable" \
+    "unwritable state did not produce a bounded visible refusal"
+  assert_absent "$dir/state/arm-ran" "unwritable-state park armed without publishing ownership"
+  pass "Codex park: an unwritable state directory fails visibly without recursive lock acquisition"
+}
+
 test_delivery_lock_failure_reports_visible_failure() {
   local dir="$TMP_ROOT/delivery-lock" out status=0
   make_primary "$dir"
@@ -542,6 +567,7 @@ test_park_waits_in_hook_until_event
 test_away_mode_stands_down
 test_stuck_owner_lock_reports_visible_failure
 test_owner_publication_failure_reports_visible_failure
+test_unwritable_state_reports_visible_failure_without_lock_recursion
 test_delivery_lock_failure_reports_visible_failure
 test_failure_episode_survives_active_stop_and_stays_bounded
 test_replacement_session_gets_its_own_failure_episode

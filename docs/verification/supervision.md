@@ -473,12 +473,12 @@ fm-claude-stop-autoarm: ok
 ## Watcher continuity
 
 The cross-harness evidence combines the 2026-07-17 live pass with Claude's replacement Stop-owned path revalidated on 2026-07-24, all against isolated project and home state.
-The Codex row was refreshed separately on 2026-09-22 against the installed 0.155.1 hook engine.
+The Codex row was refreshed on 2026-09-22 against 0.155.1, then again on 2026-09-24 against the installed 0.156.1 hook engine.
 No credential material was copied into a fixture.
 
 ```text
 Claude Code 2.1.219
-codex-cli 0.155.1
+codex-cli 0.156.1
 OpenCode 1.17.18
 Pi 0.80.10
 grok 0.2.103 (89c3d36fb6f1) [stable]
@@ -487,18 +487,28 @@ grok 0.2.103 (89c3d36fb6f1) [stable]
 | Harness | Exact opt-in command | Observed guarantee |
 | --- | --- | --- |
 | Claude | `FM_CLAUDE_LIVE_E2E=1 tests/fm-claude-stop-autoarm-live-e2e.test.sh` | Session start reclaimed a stale owner before two Stop-owned cycles, and a competing live owner prevented arm, rewake, epoch write, or lock replacement. |
-| Codex | `FM_CODEX_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-codex-continuity-live-e2e.test.sh` | Native SessionStart and `Bash` matching fired, the quiet checkpoint expired, both Stop states arrived, and the synchronous Stop hook returned a real watcher event to the same turn without a model-issued arm. Codex 0.155.1, 2026-09-22. |
+| Codex | `FM_CODEX_LIVE_E2E=1 FM_CODEX_ADVERSARIAL_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-codex-continuity-live-e2e.test.sh` | Native Stop callbacks kept separate replacement-session budgets, reset a failure episode after a delivered wake, renewed a quiet park, returned one real watcher event to the same turn, cleaned a post-claim timeout, and refused an unwritable state directory without lock recursion. Codex 0.156.1, 2026-09-24. |
 | OpenCode | `FM_OPENCODE_LIVE_E2E=1 tests/fm-opencode-primary-live-e2e.test.sh` | A verified successor existed before prompt handling, with no model re-arm or turn-end fallback. |
 | Pi | `FM_PI_LIVE_E2E=1 tests/fm-pi-primary-live-e2e.test.sh` | One initial tool call led to extension-owned successors and clean child retirement on exit. |
 | omp | `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` | One initial `fm_watch_arm_omp` invocation (the openai-codex model reaches extension tools through omp's `xd://` virtual-file bridge, a `write` to `xd://fm_watch_arm_omp`, counted as the same invocation) started a live watcher; an actionable close spawned a ledger-linked successor and woke main exactly once; the lab is reaped by path, and omp 18.1.11 did not exit within 30s of its rpc stdin closing, recorded as a note. omp 18.1.11, 2026-09-05. |
 | Grok | `FM_GROK_LIVE_E2E=1 tests/fm-grok-continuity-live-e2e.test.sh` | Native task completion surfaced the actionable close and the cycle ledger recorded `reason=actionable-signal`. |
 
-The refreshed Codex command produced:
+The 0.155.1 baseline command produced:
 
 ```text
 ok - codex-cli 0.155.1 native SessionStart and Bash matching fired; quiet expiry reached Stop, the synchronous hook parked a real watcher, and its event resumed the same turn through both Stop states
 FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=72235
 ```
+
+The 0.156.1 adversarial campaign used five native `codex exec` invocations with subscription auth and isolated homes.
+Two replacement sessions passed their ownership and wake-reset checks.
+A quiet renewal reached the parent turn, and the final invocation returned one real watcher event to the same turn, where the model drained and acknowledged the durable event.
+That invocation also proved post-claim timeout cleanup and the bounded unwritable-state refusal.
+
+The campaign did not pass its recovery-marker assertion.
+The marker callback renewed before the injected `mktemp` fault became observable, so this run does not count as native recovery-marker-failure coverage.
+`tests/fm-watch-checkpoint.test.sh` remains the deterministic portable proof that a recovery-marker failure retains stale lock evidence.
+The live driver keeps that assertion mandatory for a future fresh campaign and uses a longer marker-only renewal interval to avoid the observed timing race.
 
 Pi 0.81.1 repeated the continuity and clean-exit lifecycle on 2026-07-23 after the Calm presentation changes.
 
