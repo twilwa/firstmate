@@ -1,0 +1,4 @@
+fm-herdr-lab: fleet-state tripwire requires exactly one running default session
+{"id":"cli:workspace:create","error":{"code":"server_not_running","message":"no herdr server is running at /home/firstmate/.config/herdr/sessions/fm-lab-fm-herdr-session-3378152-22403/herdr.sock; run `herdr session attach fm-lab-fm-herdr-session-3378152-22403` to start or attach it"}}
+not ok - could not create focus anchor
+fm-herdr-lab: missing fleet-state tripwire for 'fm-lab-fm-herdr-session-3378152-22403'; refusing destructive calls

@@ -1,0 +1,15 @@
+## backlog.md: 148845 bytes, 72 queued rows (single argv string limit is 131072 bytes)
+
+$ (base b42d4fa) bin/fm-fleet-snapshot.sh --contribution-input
+exit=0
+/tmp/fm-live-snapshot.gguR2k/base/bin/fm-fleet-snapshot.sh: line 1994: /usr/bin/jq: Argument list too long
+stdout bytes=0
+
+$ (target 5fae598) bin/fm-fleet-snapshot.sh --contribution-input | jq summary
+exit=0
+{"backlog_records":72,"first_id":"large-001","last_id":"large-072","tasks_type":"array"}
+
+$ TMPDIR=<isolated empty dir> (target) bin/fm-fleet-snapshot.sh --contribution-input; ls <dir>
+exit=0; isolated TMPDIR empty afterwards (transport dir removed by the EXIT trap)
+
+Note: the base run printed "Argument list too long" and still exited 0 with EMPTY stdout, which was the silent failure.

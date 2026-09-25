@@ -1,0 +1,72 @@
+### S1: home with no herdr journals (tmux home) returns without starting a worker
+$ bin/fm-herdr-session-cleanup.sh   (state dir read-only, no journals)
+exit=0 elapsed=102ms stdout+stderr bytes(non-trace)=0
+  herdr invocations: 0
+  fm_run_timed / mktemp / --_worker in trace: 1 (the only match is the wrapper argument test `[ "" = --_worker ]`; no mktemp and no fm_run_timed call)
+  last traced wrapper lines:
+    + fm_herdr_cleanup_has_work
+    + return 1
+    + exit 0
+
+### S2: responsive worker hung in a Herdr read is bounded; locks released
+$ FM_HERDR_SESSION_CLEANUP_TIMEOUT=2 bin/fm-herdr-session-cleanup.sh
+exit=0 elapsed=3s
+  stderr| warning: herdr session-start projection cleanup: 2s deadline reached; unfinished candidates preserved; cleanup coverage is unconfirmed
+  journal unchanged: yes
+  task lock present: no
+  presentation lock present: no
+  leftover lock-record files: 0
+  herdr-shim| workspace list --session test
+  herdr-shim| session list --json --session test
+  herdr-shim| api snapshot --session test
+  herdr-shim| snapshot reached; task-lock owner=3417631 presentation-lock owner=3417631
+  fresh process acquired+released .spawn-task.lock: OK
+  fresh process acquired+released order-d899239896e0211e16c6eab1c71e6626.lock: OK
+
+### S3: stuck worker (SIGSTOPped, ignores TERM) is hard-killed; parent reclaims its recorded locks
+$ FM_HERDR_SESSION_CLEANUP_TIMEOUT=2 bin/fm-herdr-session-cleanup.sh
+exit=0 elapsed=3s
+  stderr| warning: herdr session-start projection cleanup: 2s deadline reached; unfinished candidates preserved; cleanup coverage is unconfirmed
+  journal unchanged: yes
+  task lock present: no
+  presentation lock present: no
+  leftover lock-record files: 0
+  herdr-shim| workspace list --session test
+  herdr-shim| session list --json --session test
+  herdr-shim| api snapshot --session test
+  herdr-shim| snapshot reached; task-lock owner=3418331 presentation-lock owner=3418331
+  fresh process acquired+released .spawn-task.lock: OK
+  fresh process acquired+released order-fa7d1d5ce20286ae071eb0ac19c4c439.lock: OK
+
+### S4 (adversarial): after the worker stalls, a different live process owns the presentation lock; recovery must not steal it
+  foreign live holder pid=3419726
+$ FM_HERDR_SESSION_CLEANUP_TIMEOUT=2 bin/fm-herdr-session-cleanup.sh
+exit=0 elapsed=3s
+  stderr| warning: herdr session-start projection cleanup: task timed out; its presentation lock could not be reclaimed safely
+  stderr| warning: herdr session-start projection cleanup: 2s deadline reached; unfinished candidates preserved; cleanup coverage is unconfirmed
+  journal unchanged: yes
+  task lock present: no
+  presentation lock present: YES (pid 3419726)
+  leftover lock-record files: 0
+  herdr-shim| workspace list --session test
+  herdr-shim| session list --json --session test
+  herdr-shim| api snapshot --session test
+  herdr-shim| snapshot reached; task-lock owner=3419936 presentation-lock owner=3419936
+  fresh process acquired+released .spawn-task.lock: OK
+  foreign holder still alive: yes; presentation lock pid file=3419726
+
+### S5: generous deadline: a candidate that finishes leaves no lock record and no timeout warning
+$ FM_HERDR_SESSION_CLEANUP_TIMEOUT=30 bin/fm-herdr-session-cleanup.sh
+exit=0 elapsed=1s
+  stderr| warning: herdr session-start projection cleanup: task preserved because its locked candidate snapshot was ambiguous
+  journal unchanged: yes
+  task lock present: no
+  presentation lock present: no
+  leftover lock-record files: 0
+  herdr-shim| workspace list --session test
+  herdr-shim| session list --json --session test
+  herdr-shim| api snapshot --session test
+  herdr-shim| snapshot reached; task-lock owner=3421784 presentation-lock owner=3421784
+### Base b42d4fa, same hanging-Herdr home as S2, FM_HERDR_SESSION_CLEANUP_TIMEOUT=2 (ignored at base)
+warning: herdr session-start projection cleanup: task preserved because its locked candidate snapshot was ambiguous
+exit=0 elapsed=21s (blocked for the whole Herdr hang; no deadline, no coverage warning)
