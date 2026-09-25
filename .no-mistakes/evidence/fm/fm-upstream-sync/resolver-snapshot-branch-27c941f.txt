@@ -1,0 +1,109 @@
+=== section-scout-brief ===
+--- original brief (sha256 2e1ffbee9d3171d67063b7d85db963492bfec40fd9f92356a6c9625a1b91f632) ---
+# Task
+## Captain's intent
+Fix the pager off-by-one.
+
+## Firstmate spec
+Root cause is <= on line 40.
+
+# Definition of done
+This is a SCOUT task: the deliverable is a written report, not a PR.
+
+--- resolver stdout (brief rewritten mid-run) ---
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 14   tokens: 1/1
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.9
+  probabilities: rule_1=0.96 default=0.04
+  note: rule matched
+  candidate: claude:sonnet  provider=claude  scope=all_models  remaining=79%  spendPriority=0.5  runway=through_reset  -> eligible
+  profile: --harness 'claude' --model 'sonnet' --effort 'high'
+exit=0
+--- brief on disk after run (sha256 92832ef47ab83252c4dcbd9209044910d6f5ef37872bb23a9c3da82851659157) ---
+# Task
+## Captain's intent
+MUTATED WHILE RESOLVING.
+## Firstmate spec
+MUTATED SPEC.
+--- state.task.brief sent to typesafe.ai ---
+Brief kind: scout (report only)
+
+## Captain's intent
+Fix the pager off-by-one.
+
+## Firstmate spec
+Root cause is <= on line 40.
+
+--- resolution receipt ---
+{
+  "brief_path": "/tmp/tmp.JMWu7grBJx/section-scout-brief.md",
+  "brief_sha256": "2e1ffbee9d3171d67063b7d85db963492bfec40fd9f92356a6c9625a1b91f632",
+  "status": "clear",
+  "chosen_profile": {
+    "harness": "claude",
+    "model": "sonnet",
+    "effort": "high"
+  },
+  "request_id": "req-live-1"
+}
+CHECK receipt.brief_sha256 == sha256(original bytes): PASS
+CHECK request free of mutated bytes: PASS
+--- --record-dispatch against the edited brief (must refuse to join) ---
+dispatch-resolve: no dispatch receipt (no resolution receipt carries this brief's current content hash; it may have been edited after the resolve)
+exit=0
+--- --record-dispatch after restoring original bytes (must join) ---
+exit=0
+{"receipt_type":"dispatch","brief_sha256":"2e1ffbee9d3171d67063b7d85db963492bfec40fd9f92356a6c9625a1b91f632","dispatched_profile":{"harness":"claude","model":"sonnet"}}
+
+=== whole-brief-fallback ===
+--- original brief (sha256 20bdd604a026230219712341b355faf8a3d123c6b984a0f9167a020da675490f) ---
+# Task
+No recognized subsections here.
+Send this whole brief verbatim.
+
+--- resolver stdout (brief rewritten mid-run) ---
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 15   tokens: 1/1
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.9
+  probabilities: rule_1=0.96 default=0.04
+  note: rule matched
+  candidate: claude:sonnet  provider=claude  scope=all_models  remaining=79%  spendPriority=0.5  runway=through_reset  -> eligible
+  profile: --harness 'claude' --model 'sonnet' --effort 'high'
+exit=0
+--- brief on disk after run (sha256 92832ef47ab83252c4dcbd9209044910d6f5ef37872bb23a9c3da82851659157) ---
+# Task
+## Captain's intent
+MUTATED WHILE RESOLVING.
+## Firstmate spec
+MUTATED SPEC.
+--- state.task.brief sent to typesafe.ai ---
+# Task
+No recognized subsections here.
+Send this whole brief verbatim.
+
+--- resolution receipt ---
+{
+  "brief_path": "/tmp/tmp.JMWu7grBJx/whole-brief-fallback.md",
+  "brief_sha256": "20bdd604a026230219712341b355faf8a3d123c6b984a0f9167a020da675490f",
+  "status": "clear",
+  "chosen_profile": {
+    "harness": "claude",
+    "model": "sonnet",
+    "effort": "high"
+  },
+  "request_id": "req-live-1"
+}
+CHECK receipt.brief_sha256 == sha256(original bytes): PASS
+CHECK request free of mutated bytes: PASS
+--- --record-dispatch against the edited brief (must refuse to join) ---
+dispatch-resolve: no dispatch receipt (no resolution receipt carries this brief's current content hash; it may have been edited after the resolve)
+exit=0
+--- --record-dispatch after restoring original bytes (must join) ---
+exit=0
+{"receipt_type":"dispatch","brief_sha256":"20bdd604a026230219712341b355faf8a3d123c6b984a0f9167a020da675490f","dispatched_profile":{"harness":"claude","model":"sonnet"}}
+
+=== key-absent opt-in gate ===
+dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and /tmp/tmp.JMWu7grBJx/home/.env)
+exit=0 network_call=no
