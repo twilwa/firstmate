@@ -395,6 +395,8 @@ test_no_mistakes_dod_wording() {
   # claim an enforcement the tool does not provide: this is instruction only.
   assert_grep "NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide." "$brief" \
     "no-mistakes DOD must state the --yes ban as a prohibition"
+  assert_grep "Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding." "$brief" \
+    "no-mistakes DOD must route ask-user gates back to firstmate as needs-decision"
   assert_grep "answering your own ask-user finding is a hard rule violation" "$brief" \
     "no-mistakes DOD must say why --yes is banned"
   assert_no_grep "Avoid \`--yes\`" "$brief" \
@@ -569,7 +571,7 @@ test_herdr_lab_omission_is_loud_for_ship_and_scout() {
   pass "fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible"
 }
 
-# Regression (issue #2575): AGENTS.md section 11 and this script's own help tell
+# Regression (issue #2575): the task-intake skill and this script's own help tell
 # firstmate to fill `{TASK}` and `{FIRSTMATE_SPEC}`. The unguarded Herdr gate used
 # to quote `{TASK}` in its own prose, so that documented global replace spliced
 # the whole task body into the middle of the gate's sentence - silently

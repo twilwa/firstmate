@@ -60,6 +60,24 @@ make_case() {
   printf '%s\n' "$case_dir"
 }
 
+write_review_policy() {
+  local case_dir=$1 handoff_policy=$2
+  mkdir -p "$case_dir/.github"
+  printf '{"require_reviewed_head_handoff":%s,"ledger_directory":"pr-review-ledger"}\n' "$handoff_policy" \
+    > "$case_dir/.github/firstmate-review-policy.json"
+}
+
+# Args: case_dir pr_number merge_decision_json
+write_review_ledger() {
+  local case_dir=$1 number=$2 decision=$3
+  mkdir -p "$case_dir/home/data/pr-review-ledger"
+  jq -n --arg url "https://github.com/example/repo/pull/$number" --argjson decision "$decision" '{
+    schema:"firstmate-pr-review-ledger.v1",task:"task-x1",url:$url,
+    current_head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    generations:[{head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",merge_decision:$decision}]
+  }' > "$case_dir/home/data/pr-review-ledger/github--example--repo--$number.json"
+}
+
 # Live GitHub JSON for the pre-merge verify, plus gh-axi for the
 # post-merge fallback view. Merge itself is `gh pr merge --match-head-commit`.
 # Args: case_dir head_sha
@@ -381,8 +399,15 @@ glab_merge_line() {
 }
 
 run_pr_merge() {
-  local case_dir=$1 rc; shift
-  FM_ROOT_OVERRIDE="$ROOT" \
+  local case_dir=$1 rc reviewed_head; shift
+  if [ "${FM_PR_REVIEW_EXPECTED_HEAD+x}" = x ]; then
+    reviewed_head=$FM_PR_REVIEW_EXPECTED_HEAD
+  elif [ "${2:-}" != "${2#https://github.com/}" ] && [ -s "$case_dir/github-head" ]; then
+    reviewed_head=$(cat "$case_dir/github-head")
+  else
+    reviewed_head=
+  fi
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-$ROOT}" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
@@ -404,6 +429,7 @@ run_pr_merge() {
   FM_TEST_AWAY_MUTATE_RC="$case_dir/away-mutate-rc" \
   FM_TEST_AWAY_WORDS_AT_MERGE="$case_dir/away-words-at-merge" \
   FM_TEST_REAL_MV="$REAL_MV" \
+  FM_PR_REVIEW_EXPECTED_HEAD="$reviewed_head" \
   FM_TEST_GLAB_LOG="$case_dir/glab.log" \
   FM_TEST_GLAB_JSON="$case_dir/mr.json" \
   HOME="${FM_TEST_USER_HOME:-$case_dir/user-home}" \
@@ -453,6 +479,131 @@ test_verified_merge_records_pr_and_head() {
     "records-before-merge: pr_head= was not recorded"
   assert_logged_gh_merge "$case_dir" 9 example/repo --squash
   pass "fm-pr-merge records pr= and pr_head= for a verified GitHub merge"
+}
+
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false() {
+  local case_dir rc policy
+  for policy in absent false; do
+    case_dir=$(make_case "github-no-handoff-$policy")
+    mkdir -p "$case_dir/wt"
+    add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    if [ "$policy" = false ]; then
+      write_review_policy "$case_dir" false
+    fi
+
+    set +e
+    FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+      run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+        > "$case_dir/stdout" 2> "$case_dir/stderr"
+    rc=$?
+    set -e
+
+    expect_code 0 "$rc" "github-no-handoff-$policy: an unconfigured handoff must not block merging"
+    assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  done
+  pass "direct GitHub merges allow an absent or false reviewed-head handoff policy"
+}
+
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in() {
+  local case_dir rc
+  case_dir=$(make_case github-requires-review-handoff)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" true
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-requires-review-handoff: policy opt-in must require the handoff"
+  assert_grep 'GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true' \
+    "$case_dir/stderr" "github-requires-review-handoff: refusal did not name the policy requirement"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "github-requires-review-handoff: the unreviewed PR was recorded"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-requires-review-handoff: gh ran without review coverage"
+  pass "direct GitHub merges require the handoff only when the repository policy opts in"
+}
+
+test_direct_github_merge_rejects_invalid_review_handoff_policy() {
+  local case_dir rc
+  case_dir=$(make_case github-invalid-review-policy)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" '"true"'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-invalid-review-policy: handoff policy must be boolean"
+  assert_grep 'require_reviewed_head_handoff must be boolean' "$case_dir/stderr" \
+    "github-invalid-review-policy: invalid handoff policy was not named"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-invalid-review-policy: gh ran with malformed policy"
+  pass "direct GitHub merge refuses a malformed reviewed-head policy"
+}
+
+test_direct_github_merge_refuses_unreleased_review_ledger_hold() {
+  local case_dir rc
+  case_dir=$(make_case github-review-ledger-hold)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" false
+  write_review_ledger "$case_dir" 90 \
+    '{"decision":"hold","reason":"captain must approve the spend"}'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-review-ledger-hold: a held PR must not merge directly"
+  assert_grep 'the review ledger holds this pull request: captain must approve the spend' \
+    "$case_dir/stderr" "github-review-ledger-hold: refusal did not name the hold"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "github-review-ledger-hold: the held PR was recorded"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-review-ledger-hold: gh ran for a held PR"
+
+  write_review_ledger "$case_dir" 90 null
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "github-review-ledger-hold: a released hold must not block merging"
+  assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  pass "direct GitHub merge refuses an unreleased review-ledger hold and proceeds once released"
+}
+
+test_reviewed_head_handoff_refuses_a_later_push() {
+  local case_dir rc live reviewed
+  case_dir=$(make_case reviewed-head-race)
+  mkdir -p "$case_dir/wt"
+  live=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  reviewed=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  add_gh_mocks "$case_dir" "$live"
+
+  set +e
+  FM_PR_REVIEW_EXPECTED_HEAD="$reviewed" run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "reviewed-head-race: a push after ledger verification must refuse"
+  assert_grep "live head $live does not equal ledger-reviewed head $reviewed" "$case_dir/stderr" \
+    "reviewed-head-race: refusal did not name both exact heads"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "reviewed-head-race: the forge merge ran for an unreviewed head"
+  pass "fm-pr-merge refuses when its live head differs from the ledger-reviewed handoff"
 }
 
 # The forge call is the point of no return: once gh-axi has merged, nothing this
@@ -2159,6 +2310,11 @@ test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
 test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in
+test_direct_github_merge_rejects_invalid_review_handoff_policy
+test_direct_github_merge_refuses_unreleased_review_ledger_hold
+test_reviewed_head_handoff_refuses_a_later_push
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_github_open_unqueued_outcome_refuses

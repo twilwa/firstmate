@@ -769,6 +769,95 @@ test_build_refuses_a_nondecision_reconcile_value() {
   pass "build reserves reconcile across non-decision cards"
 }
 
+test_build_refuses_duplicate_option_values_within_one_card() {
+  local home data board out rc
+  home=$(make_home duplicate-option-value)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  jq '.captains_call[0].options += [
+    { "value":"later", "label":"Revisit in October", "until":"2026-10-01" },
+    { "value":"later", "label":"Revisit next year", "until":"2027-10-01" }
+  ]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a card repeating an option value was accepted"
+  assert_contains "$out" "later" "the refusal did not name the duplicated option value"
+  assert_absent "$board" "a card repeating an option value still produced a board"
+
+  jq '.captains_call[0].options[-1].value = "much-later"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "distinct option values carrying their own dates were refused"
+  extract_payload "$board" | jq -e '
+    [.captains_call[0].options[]
+      | select(.value == "later" or .value == "much-later")
+      | .until]
+    | sort == ["2026-10-01", "2027-10-01"]
+  ' >/dev/null || fail "the built board lost a distinct option date"
+  pass "build refuses duplicate option values and accepts distinct ones"
+}
+
+test_build_refuses_duplicate_option_values_across_card_types() {
+  local home data rc out
+  home=$(make_home duplicate-option-value-merge)
+  data="$home/payload.json"
+  write_valid_payload "$data"
+  jq '.captains_call[1].options += [{ "value":"hold", "label":"Wait for review" }]' \
+    "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a merge card repeating an option value was accepted"
+  assert_contains "$out" "hold" "the refusal did not name the duplicated merge option value"
+  assert_absent "$home/.lavish/bearings-board.html" "a refused merge card still produced a board"
+  pass "build requires unique option values on non-decision cards too"
+}
+
+test_build_accepts_an_optional_option_date() {
+  local home data board out rc before after
+  home=$(make_home defer-option)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  jq '.captains_call[0].options += [{
+    "value":"later",
+    "label":"Revisit in October",
+    "hint":"Return after launch",
+    "until":"2026-10-01"
+  }]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "an option carrying its own date was refused"
+  extract_payload "$board" | jq -e '
+    .captains_call[0].options[]
+    | select(.value == "later")
+    | .until == "2026-10-01"
+  ' >/dev/null || fail "the built board lost the option's date"
+  before=$(cksum < "$board")
+
+  jq '.captains_call[0].options[-1].until = "2026-02-30"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "an impossible option date was accepted"
+  after=$(cksum < "$board")
+  [ "$after" = "$before" ] || fail "a refused option date replaced the existing board"
+
+  jq '.captains_call[0].options[-1].until = "next October"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "an unparseable option date was accepted"
+  pass "build accepts an optional option date and refuses one that is not a calendar day"
+}
+
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
@@ -787,3 +876,6 @@ test_build_fails_when_reconcile_cannot_establish_a_listener
 test_every_decision_card_carries_the_reconcile_choice
 test_build_refuses_a_payload_that_occupies_the_reconcile_value
 test_build_refuses_a_nondecision_reconcile_value
+test_build_refuses_duplicate_option_values_within_one_card
+test_build_refuses_duplicate_option_values_across_card_types
+test_build_accepts_an_optional_option_date

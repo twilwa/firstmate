@@ -40,8 +40,8 @@
 #     captain_actionable means "waiting on the captain now" and is exactly
 #     hold_bucket == "live".
 #     hold_age_days is the hold's age when computable, else null.
-#     Aging is a projection safety net only: the durable deferral remains
-#     re-holding with --until.
+#     Aging is a projection safety net only: the durable deferral is the
+#     recorded `answer --defer-until` (the keyed intake's `defer` mode).
 #     Renderers keep every non-live bucket out of the default Captain's Call,
 #     project it as a Charted Next gate stating why, and disclose it in
 #     omitted[]; --all-decisions reveals every captain hold available within the
@@ -282,7 +282,8 @@ never from hold reason or body prose: "blocked", "dated", "aged", or "live".
 An undated hold ages once its hold-set timestamp is at least
 FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old (default 14; 0 ages every hold with a
 non-negative computed age); legacy holds without a stamp fall back to their
-since date, and re-holding with --until remains the durable deferral.
+since date, and the recorded answer --defer-until (the keyed intake's defer
+mode) remains the durable deferral.
 EOF
 }
 
@@ -1991,8 +1992,17 @@ contribution_tasks_json() {
 if [ "$OUTPUT_MODE" = contribution-input ]; then
   # Reuse the canonical backlog parser, without observing workers or other homes.
   contribution_tasks=$(contribution_tasks_json) || { echo "fm-fleet-snapshot: contribution task read failed" >&2; exit 1; }
-  jq -n --argjson backlog "$BACKLOG_JSON" --argjson tasks "$contribution_tasks" '{backlog:$backlog,tasks:$tasks}'
-  exit 0
+  JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
+    || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }
+  printf '%s\n' "$BACKLOG_JSON" > "$JSON_TRANSPORT_DIR/backlog.json" \
+    || { echo "fm-fleet-snapshot: temporary backlog file write failed" >&2; exit 1; }
+  printf '%s\n' "$contribution_tasks" > "$JSON_TRANSPORT_DIR/contribution-tasks.json" \
+    || { echo "fm-fleet-snapshot: temporary contribution task file write failed" >&2; exit 1; }
+  jq -n --slurpfile backlog "$JSON_TRANSPORT_DIR/backlog.json" \
+    --slurpfile tasks "$JSON_TRANSPORT_DIR/contribution-tasks.json" \
+    '{backlog:$backlog[0],tasks:$tasks[0]}'
+  jq_rc=$?
+  exit "$jq_rc"
 fi
 prefetch_task_current_states || { echo "fm-fleet-snapshot: task observation failed" >&2; exit 1; }
 TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }

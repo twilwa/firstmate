@@ -135,7 +135,9 @@ run_pr_merge() {  # <home> <id> <url>
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
-    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" "$ROOT/bin/fm-pr-merge.sh" "$@"
+    FM_TEST_GH_AXI_LOG="$home/gh-axi.log" \
+    FM_PR_REVIEW_EXPECTED_HEAD=1111111111111111111111111111111111111111 \
+    "$ROOT/bin/fm-pr-merge.sh" "$@"
 }
 
 wait_for_test_file() {  # <path> <pid>
@@ -1151,11 +1153,199 @@ EOF
   pass "a deferred captain call leaves the live Captain's Call until its date and stays answerable"
 }
 
+# The keyed intake records "later" as an answer before dating the same captain
+# hold. The date is mandatory and belongs to the recorded decision, so the same
+# words carried back with a new date are a new answer rather than a refusal.
+# A deferral continues one call, so it never restarts that call's age.
+test_keyed_defer_records_answer_and_dates_the_hold() {
+  local home out show records FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
+  home=$(make_home keyed-defer)
+  FM_CAPTAIN_HOLD_NOW=2026-06-01T12:00:00Z run_captain "$home" hold sample-keyed-defer \
+    --title "Revisit the sample plan" \
+    --reason "captain timing choice pending" --repo sample >/dev/null \
+    || fail "could not register the keyed defer fixture"
+
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a dated defer: $out"
+  assert_contains "$out" "deferred: sample-keyed-defer until 2026-10-01" \
+    "the keyed intake did not report the dated defer as a deferral"
+  assert_contains "$out" "answers: closed=0 deferred=1 skipped=0" \
+    "a still-open deferred call was counted as a closure"
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  assert_contains "$show" "state: queued" "the defer completed the captain-held task"
+  assert_contains "$show" "held: yes" "the defer released the captain-held task"
+  assert_contains "$show" "hold_until: 2026-10-01" "the defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "the defer recorded the wrong outcome"
+  assert_contains "$show" "Deferred until: 2026-10-01" "the resolution lost its date"
+  assert_contains "$show" "Answer: later" "the defer lost the captain's exact answer"
+  assert_contains "$show" "Answer as shown to the captain: Revisit in October" \
+    "the defer lost the option label shown to the captain"
+  assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
+    "deferring a live captain hold restarted the call's age"
+
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "an exact dated defer replay was not idempotent: $out"
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
+  [ "$records" = 1 ] || fail "a defer replay duplicated the resolution record: $show"
+
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-11-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "repeating later with a new date was refused as a drifted replay: $out"
+  assert_contains "$out" "deferred: sample-keyed-defer until 2026-11-01" \
+    "the re-dated deferral was not reported"
+  show=$(tasks_in "$home" show sample-keyed-defer --full)
+  assert_contains "$show" "hold_until: 2026-11-01" "a repeated later did not carry its new date"
+  assert_contains "$show" "hold_reason: captain timing choice pending" \
+    "a repeated deferral rewrote the gate text the call was held under"
+  assert_contains "$show" "Deferred until: 2026-11-01" "the re-dated deferral lost its date"
+  records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
+  [ "$records" = 2 ] || fail "a re-dated deferral did not record its own answer: $show"
+  assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
+    "a repeated deferral restarted the call's age"
+
+  # The other branch of the same act: tasks-axi reports a date-expired hold as
+  # no longer held, and deferring it must keep the same age basis as a live one.
+  FM_CAPTAIN_HOLD_NOW=2026-06-02T12:00:00Z run_captain "$home" hold sample-expired-defer \
+    --title "Revisit the expired plan" \
+    --reason "captain expired timing pending" --repo sample --until 2020-01-01 >/dev/null \
+    || fail "could not register the expired defer fixture"
+  show=$(tasks_in "$home" show sample-expired-defer --full)
+  assert_contains "$show" "held: no" "precondition: the elapsed date still reports as held"
+  assert_contains "$show" "hold_reason: captain expired timing pending" \
+    "precondition: the elapsed date gate dropped the hold reason"
+  out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a defer on an expired hold: $out"
+  show=$(tasks_in "$home" show sample-expired-defer --full)
+  assert_contains "$show" "held: yes" "deferring an expired hold did not re-date it"
+  assert_contains "$show" "hold_until: 2026-10-01" "the expired hold lost its new date"
+  assert_contains "$show" "hold_reason: captain expired timing pending" \
+    "deferring an expired hold rewrote the gate text the call was held under"
+  assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
+    "deferring an expired captain hold restarted the call's age"
+
+  # Legacy captain holds can predate the hold-set stamp. Deferral preserves
+  # that absence instead of rejecting the already-durable answer afterward.
+  tasks_in "$home" add sample-stampless-defer "Revisit a legacy call" --repo sample >/dev/null
+  tasks_in "$home" hold sample-stampless-defer --reason "legacy captain timing pending" \
+    --kind captain >/dev/null || fail "could not create the stampless defer fixture"
+  out=$(printf 'sample-stampless-defer\tlater\tRevisit in December\tdefer\t2026-12-01\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused a legacy stampless hold: $out"
+  show=$(tasks_in "$home" show sample-stampless-defer --full)
+  assert_contains "$show" "hold_until: 2026-12-01" "the stampless hold lost its defer date"
+  assert_contains "$show" "Resolution mode: deferred" "the stampless hold lost its answer"
+  assert_not_contains "$show" "Captain hold set:" \
+    "deferring a stampless legacy hold invented a new age basis"
+
+  run_captain "$home" hold sample-missing-defer-date --title "Revisit without a date" \
+    --reason "captain timing choice pending" --repo sample >/dev/null
+  printf 'later\n' > "$home/later.txt"
+  if run_captain "$home" answer sample-missing-defer-date \
+    --decision-file "$home/later.txt" --defer-until \
+      > "$home/missing-direct-date.out" 2> "$home/missing-direct-date.err"; then
+    fail "the direct answer path treated a missing defer date as completion"
+  fi
+  if printf 'sample-missing-defer-date\tlater\tLater\tdefer\n' \
+    | run_captain "$home" answers --source "captain chat" \
+      > "$home/missing-date.out" 2> "$home/missing-date.err"; then
+    fail "the keyed intake invented a missing defer date"
+  fi
+  assert_grep "defer close mode requires a YYYY-MM-DD date" "$home/missing-date.out" \
+    "the missing-date refusal did not name the required field"
+  show=$(tasks_in "$home" show sample-missing-defer-date --full)
+  assert_not_contains "$show" "Resolution mode:" \
+    "a missing defer date recorded an answer before refusing"
+  pass "a keyed defer records the answer, dates the hold, and never restarts the call's age"
+}
+
+# Defer writes use the same strict boundary as the snapshot projection: the
+# date must be later than today's UTC calendar date. Direct and keyed intake
+# refusals leave the serialized task state byte-identical; tomorrow succeeds.
+test_direct_and_keyed_defer_dates_must_be_future() {
+  local home before out show rc FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
+  home=$(make_home future-defer-boundary)
+  run_captain "$home" hold sample-direct-future --title "Direct future boundary" \
+    --reason "captain direct future choice pending" --repo sample >/dev/null \
+    || fail "could not register the direct future-boundary fixture"
+  run_captain "$home" hold sample-keyed-future --title "Keyed future boundary" \
+    --reason "captain keyed future choice pending" --repo sample >/dev/null \
+    || fail "could not register the keyed future-boundary fixture"
+  printf 'later, after the boundary\n' > "$home/future.txt"
+
+  before="$home/direct-before.md"
+  cp "$home/data/backlog.md" "$before"
+  if run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-19 > "$home/direct-past.out" 2> "$home/direct-past.err"; then
+    fail "the direct answer path accepted a past defer date"
+  fi
+  assert_grep "date 2026-09-19 must be later than UTC today 2026-09-20" \
+    "$home/direct-past.err" "the direct past-date refusal lost its boundary"
+  assert_grep "nothing was recorded" "$home/direct-past.err" \
+    "the direct past-date refusal did not state its durable outcome"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the direct past-date refusal changed the recorded task state"
+  if run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-20 > "$home/direct-today.out" 2> "$home/direct-today.err"; then
+    fail "the direct answer path accepted today's defer date"
+  fi
+  assert_grep "date 2026-09-20 must be later than UTC today 2026-09-20" \
+    "$home/direct-today.err" "the direct same-day refusal lost its boundary"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the direct same-day refusal changed the recorded task state"
+  run_captain "$home" answer sample-direct-future --decision-file "$home/future.txt" \
+    --defer-until 2026-09-21 >/dev/null \
+    || fail "the direct answer path refused tomorrow's defer date"
+  show=$(tasks_in "$home" show sample-direct-future --full)
+  assert_contains "$show" "hold_until: 2026-09-21" \
+    "the direct tomorrow defer lost its date"
+
+  before="$home/keyed-before.md"
+  cp "$home/data/backlog.md" "$before"
+  set +e
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-19\n' \
+    | run_captain "$home" answers --source "captain chat")
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "the keyed intake accepted a past defer date"
+  assert_contains "$out" "defer date 2026-09-19 must be later than UTC today 2026-09-20; nothing was recorded" \
+    "the keyed past-date refusal lost its boundary or durable outcome"
+  assert_contains "$out" "answers: closed=0 deferred=0 skipped=1" \
+    "the keyed past-date refusal changed skipped semantics"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the keyed past-date refusal changed the recorded task state"
+  set +e
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-20\n' \
+    | run_captain "$home" answers --source "captain chat")
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "the keyed intake accepted today's defer date"
+  assert_contains "$out" "defer date 2026-09-20 must be later than UTC today 2026-09-20; nothing was recorded" \
+    "the keyed same-day refusal lost its boundary or durable outcome"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the keyed same-day refusal changed the recorded task state"
+  out=$(printf 'sample-keyed-future\tlater\tLater\tdefer\t2026-09-21\n' \
+    | run_captain "$home" answers --source "captain chat") \
+    || fail "the keyed intake refused tomorrow's defer date: $out"
+  assert_contains "$out" "deferred: sample-keyed-future until 2026-09-21" \
+    "the keyed tomorrow defer was not accepted"
+  show=$(tasks_in "$home" show sample-keyed-future --full)
+  assert_contains "$show" "hold_until: 2026-09-21" \
+    "the keyed tomorrow defer lost its date"
+  pass "direct and keyed defer writes refuse past and same-day dates without mutation, then accept tomorrow"
+}
+
 # The recorded-answer guard survives an out-of-band close: a bare tasks-axi done
 # fails verify until answer records the captain's word, and an ordinary finished
 # task can never be dressed up as an answered captain call.
 test_out_of_band_close_is_recordable() {
-  local home id show
+  local home id show FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home out-of-band)
   id=sample-fullrun-review
   mkdir -p "$home/data/$id"
@@ -1167,11 +1357,20 @@ test_out_of_band_close_is_recordable() {
   run_captain "$home" hold sample-submission-call --title "Choose the sample submission" \
     --reason "captain submission choice pending" --repo sample --origin "$id" >/dev/null \
     || fail "could not register the captain-held task"
-  run_captain "$home" complete "$id" sample-submission-call >/dev/null \
+  run_captain "$home" hold sample-deferred-close-call --title "Choose the deferred sample" \
+    --reason "captain deferred close pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not register the deferred close fixture"
+  run_captain "$home" complete "$id" sample-submission-call sample-deferred-close-call >/dev/null \
     || fail "completion failed before the out-of-band close"
+
+  printf 'Later, after the sample window.\n' > "$home/deferred.txt"
+  run_captain "$home" answer sample-deferred-close-call --decision-file "$home/deferred.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "could not defer the close fixture"
 
   tasks_in "$home" "done" sample-submission-call >/dev/null \
     || fail "could not reproduce the direct out-of-band close"
+  tasks_in "$home" "done" sample-deferred-close-call >/dev/null \
+    || fail "could not close the deferred call out of band"
   if run_captain "$home" verify "$id" > "$home/broken-verify.out" 2> "$home/broken-verify.err"; then
     fail "verification passed a captain call closed with no recorded answer"
   fi
@@ -1188,8 +1387,23 @@ test_out_of_band_close_is_recordable() {
   assert_contains "$show" "Resolution mode: repaired" "the retroactive record did not name its path"
   assert_contains "$show" "Declined: do not submit the sample full run upstream." \
     "the retroactive record lost the captain decision text"
+  if run_captain "$home" verify "$id" > "$home/deferred-verify.out" 2> "$home/deferred-verify.err"; then
+    fail "a deferred record hid the still-unrecorded out-of-band close"
+  fi
+
+  printf 'Proceed with the sample after all.\n' > "$home/final-deferred.txt"
+  run_captain "$home" answer sample-deferred-close-call \
+    --decision-file "$home/final-deferred.txt" >/dev/null \
+    || fail "answer could not repair an out-of-band close over a deferred record"
+  show=$(tasks_in "$home" show sample-deferred-close-call --full)
+  assert_contains "$show" "Resolution mode: repaired" \
+    "the close over a deferred record did not receive a terminal repair"
+  assert_contains "$show" "Resolution mode: deferred" \
+    "repairing the later close discarded the earlier deferral"
+  assert_contains "$show" "Proceed with the sample after all." \
+    "the repaired close lost the captain's final words"
   run_captain "$home" verify "$id" >/dev/null \
-    || fail "the recorded answer did not satisfy the completion gate"
+    || fail "the repaired terminal answers did not satisfy the completion gate"
   run_captain "$home" answer sample-submission-call --decision-file "$home/submission.txt" >/dev/null \
     || fail "identical retroactive retry was not idempotent"
   printf 'A different answer entirely.\n' > "$home/drifted.txt"
@@ -1372,7 +1586,8 @@ EOF
 # closes a distinct parent decision and a retry never duplicates a line. A main
 # home publishes nothing anywhere.
 test_secondmate_home_publishes_holds_and_answers() {
-  local parent mate fakebin channel decision out
+  local parent mate fakebin channel decision out FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   parent=$(make_home parent-channel)
   mate="$TMP_ROOT/channel-mate-home"
   mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects"
@@ -1450,6 +1665,21 @@ EOF
     || fail "idempotent batch answer retry failed"
   [ "$(grep -c 'resolved \[key=captain-hold-batch-call-1\]' "$channel")" = 1 ] \
     || fail "batch retry did not restore exactly one parent resolution: $(cat "$channel")"
+
+  run_captain "$mate" hold defer-call --title "Choose the defer timing" \
+    --reason "timing choice pending" --repo sample >/dev/null \
+    || fail "defer hold failed"
+  assert_grep 'needs-decision [key=captain-hold-defer-call-1]: captain hold defer-call: timing choice pending' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "the defer fixture's hold did not reach the parent channel"
+  printf 'later\n' > "$decision"
+  run_captain "$mate" answer defer-call --decision-file "$decision" \
+    --defer-until 2026-10-01 >/dev/null || fail "mate defer answer failed"
+  assert_grep 'resolved [key=captain-hold-defer-call-1]: captain hold defer-call: deferred until 2026-10-01' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "the deferral did not publish its resolved line"
+  # The question the captain just postponed must not reappear on the parent as a
+  # live decision, so a deferral publishes no fresh needs-decision of its own.
+  [ "$(grep -c 'needs-decision \[key=captain-hold-defer-call' "$channel")" = 1 ] \
+    || fail "a deferral re-announced the postponed question: $(cat "$channel")"
 
   run_captain "$parent" hold main-call --title "Choose the main release" \
     --reason "main choice pending" --repo sample >/dev/null || fail "main hold failed"
@@ -1537,7 +1767,8 @@ test_secondmate_reconcile_publishes_before_request_retirement() {
 # answer time, a card-declared release mode frees held work, freeform prose can
 # forge nothing, and a replayed capture is idempotent.
 test_bound_channel_answers_close_at_answer_time() {
-  local home id sid artifact result out show rc
+  local home id sid artifact result out show rc FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home channel-answer-closure)
   id=sample-eval-proposal
   mkdir -p "$home/data/$id"
@@ -1558,6 +1789,8 @@ test_bound_channel_answers_close_at_answer_time() {
     --reason "captain re-check pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-bare-reconcile --title "Captain call: bare reconcile" \
     --reason "captain bare re-check pending" --repo sample --origin "$id" >/dev/null
+  run_captain "$home" hold sample-deferred-call --title "Captain call: revisit later" \
+    --reason "captain timing choice pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-old-shape --title "Captain call: old board shape" \
     --reason "captain old board pending" --repo sample --origin "$id" >/dev/null
   run_captain "$home" hold sample-old-reconcile --title "Captain call: old bare reconcile" \
@@ -1570,7 +1803,7 @@ test_bound_channel_answers_close_at_answer_time() {
   run_captain "$home" complete "$id" \
     sample-membership-call sample-headline-call sample-forged-call sample-invalid-close-call \
     sample-source-reconcile sample-bare-reconcile sample-old-shape sample-old-reconcile \
-    sample-old-reconcile-note sample-gated-work >/dev/null \
+    sample-old-reconcile-note sample-gated-work sample-deferred-call >/dev/null \
     || fail "completion failed for the deck's inventoried calls"
 
   artifact="$home/data/$id/review.html"
@@ -1591,11 +1824,12 @@ session:
   status: feedback
   session_ended: true
   ended_by: user
-prompts[13]{uid,prompt,selector,tag,text}:
+prompts[14]{uid,prompt,selector,tag,text}:
   "1","Reconcile first\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-source-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(6)",choice,"Reconcile"
   "2","Membership: gold-only - captain detail\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-membership-call\",\n  \"selection\": \"gold-only\",\n  \"note\": \"captain detail\"\n}","section#call > form:nth-of-type(1)",choice,"Membership: gold-only - captain detail"
   "3","Headline: f1-when-fp-gold\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-headline-call\",\n  \"selection\": \"f1-when-fp-gold\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(2)",choice,"Headline: f1-when-fp-gold"
   "4","Gated work: go\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-gated-work\",\n  \"selection\": \"go\",\n  \"note\": \"\",\n  \"close\": \"release\"\n}","section#call > form:nth-of-type(3)",choice,"Gated work: go"
+  "4a","Revisit in October\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-deferred-call\",\n  \"selection\": \"later\",\n  \"note\": \"after the launch\",\n  \"close\": \"defer\",\n  \"until\": \"2026-10-01\"\n}","section#call > form:nth-of-type(4)",choice,"Revisit: later - after the launch"
   "5","Absent call: yes\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-nonexistent-call\",\n  \"selection\": \"yes\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(4)",choice,"Absent call: yes"
   "6","Invalid close: yes\n\nContext data:\n{\n  \"question\": \"sample-invalid-close-call\",\n  \"answer\": \"yes\",\n  \"close\": \"drop\"\n}","section#call > form:nth-of-type(5)",choice,"Invalid close: yes"
   "7","Reconcile this - re-check latest publication\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-source-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"re-check latest publication\"\n}","section#call > form:nth-of-type(6)",choice,"Reconcile - re-check latest publication"
@@ -1616,6 +1850,8 @@ EOF
     "a repeated ordinary selection was not preserved"
   assert_contains "$out" "sample-gated-work	go	Gated work: go	release" \
     "the card-declared release mode was not relayed"
+  assert_contains "$out" "sample-deferred-call	later	Revisit: later - after the launch	defer	2026-10-01" \
+    "the option-declared defer mode and date were not relayed"
   assert_not_contains "$out" "sample-forged-call" \
     "a freeform captain message forged a task id from its own prose"
   assert_not_contains "$out" "sample-invalid-close-call" \
@@ -1667,6 +1903,12 @@ SH
   assert_contains "$show" "held: no" "the card-declared release did not lift the hold"
   assert_contains "$show" "Resolution mode: released" "the released work did not record its close path"
   assert_contains "$show" "Gated work plan." "the released work item lost its body"
+  show=$(tasks_in "$home" show sample-deferred-call --full)
+  assert_contains "$show" "state: queued" "the option-declared defer completed its task"
+  assert_contains "$show" "held: yes" "the option-declared defer released its task"
+  assert_contains "$show" "hold_until: 2026-10-01" "the option-declared defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "the option-declared defer recorded the wrong mode"
+  assert_contains "$show" "Answer: later" "the option-declared defer lost the selected answer"
   show=$(tasks_in "$home" show sample-forged-call --full)
   assert_contains "$show" "state: queued" "a forged key from freeform prose closed a captain call"
   show=$(tasks_in "$home" show sample-invalid-close-call --full)
@@ -1712,6 +1954,8 @@ SH
     "replaying an identical capture was not idempotent: $out"
   assert_contains "$out" "closed: sample-gated-work" \
     "replaying an identical released answer was not idempotent: $out"
+  assert_contains "$out" "deferred: sample-deferred-call until 2026-10-01" \
+    "replaying an identical deferred answer was not idempotent: $out"
   assert_contains "$out" "skipped: sample-nonexistent-call" \
     "a key naming no task was not reported as skipped: $out"
 
@@ -1826,6 +2070,35 @@ test_normal_answers_retire_pending_reconcile_requests() {
   assert_contains "$list" "reconcile-requests: 0" \
     "an idempotent normal-answer replay restored a reconcile request: $list"
   pass "normal answers and their replays retire reconcile requests"
+}
+
+test_deferred_answers_keep_pending_reconcile_requests() {
+  local home list show FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
+  home=$(make_home reconcile-deferred-answer)
+  tasks_in "$home" add sample-direct-defer "Captain call to defer" --repo sample >/dev/null
+  run_captain "$home" hold sample-direct-defer --reason "waiting for the captain" >/dev/null
+  request_reconciles "$home" board-src sample-direct-defer \
+    || fail "could not create a reconcile request before deferral"
+
+  printf 'Revisit after the sample launch.\n' > "$home/defer.txt"
+  run_captain "$home" answer sample-direct-defer --decision-file "$home/defer.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "a direct deferred answer failed"
+  list=$(run_captain "$home" reconcile list)
+  assert_contains "$list" "sample-direct-defer" \
+    "deferring the call silently retired its pending reconcile request"
+  assert_contains "$list" "reconcile-requests: 1" \
+    "deferring the call changed the pending reconcile request count"
+
+  run_captain "$home" answer sample-direct-defer --decision-file "$home/defer.txt" \
+    --defer-until 2026-12-01 >/dev/null || fail "a deferred-answer replay failed"
+  list=$(run_captain "$home" reconcile list)
+  assert_contains "$list" "reconcile-requests: 1" \
+    "a deferred-answer replay retired the pending reconcile request"
+  show=$(tasks_in "$home" show sample-direct-defer --full)
+  [ "$(printf '%s\n' "$show" | grep -c 'Resolution mode: deferred')" -eq 1 ] \
+    || fail "a deferred replay duplicated its resolution record"
+  pass "deferred answers and their replays keep pending reconcile requests"
 }
 
 # The two verification outcomes, and the honesty of the record each writes.
@@ -2285,7 +2558,8 @@ SH
 # The intake is channel-agnostic, so chat must reach it the same way a captured
 # review does - for a task-id key, and for a legacy composed identity.
 test_chat_channel_feeds_the_same_keyed_answer_intake() {
-  local home id fb show list
+  local home id fb show list before real_date date_counter FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
+  export FM_CAPTAIN_HOLD_NOW
   home=$(make_home chat-channel)
   id=sample-chat-review
   mkdir -p "$home/data/$id"
@@ -2303,8 +2577,24 @@ test_chat_channel_feeds_the_same_keyed_answer_intake() {
   run_captain "$home" hold sample-chat-reconcile --title "Reconcile from chat" \
     --reason "captain chat reconcile pending" --repo sample >/dev/null \
     || fail "could not register the chat reconcile call"
+  run_captain "$home" hold sample-chat-defer --title "Revisit from chat" \
+    --reason "captain chat timing pending" --repo sample >/dev/null \
+    || fail "could not register the chat defer call"
+  run_captain "$home" hold sample-chat-empty-equals --title "Reject an empty equals defer date" \
+    --reason "captain empty equals defer pending" --repo sample >/dev/null \
+    || fail "could not register the empty-equals chat defer call"
+  run_captain "$home" hold sample-chat-empty-space --title "Reject an empty spaced defer date" \
+    --reason "captain empty spaced defer pending" --repo sample >/dev/null \
+    || fail "could not register the empty-space chat defer call"
+  run_captain "$home" hold sample-chat-defer-recovery --title "Recover a chat deferral" \
+    --reason "captain defer recovery pending" --repo sample >/dev/null \
+    || fail "could not register the chat defer recovery call"
+  run_captain "$home" hold sample-chat-midnight-defer --title "Defer across UTC midnight" \
+    --reason "captain midnight timing pending" --repo sample >/dev/null \
+    || fail "could not register the midnight chat defer call"
   run_captain "$home" complete "$id" "$id-decision-chat-choice" sample-chat-followup \
-    sample-chat-reconcile >/dev/null \
+    sample-chat-reconcile sample-chat-defer sample-chat-empty-equals \
+    sample-chat-empty-space sample-chat-defer-recovery sample-chat-midnight-defer >/dev/null \
     || fail "completion failed for the chat calls"
   grep -F 'captain-held [key=chat-choice]' "$home/state/$id.status" >/dev/null \
     || fail "precondition: completion did not transfer the decision to its durable owner"
@@ -2339,6 +2629,56 @@ SH
   chmod +x "$fb/tmux"
 
   : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-31 "later on an impossible date" \
+      > "$home/invalid-chat-date.out" 2> "$home/invalid-chat-date.err"; then
+    fail "the chat preflight accepted an impossible calendar date"
+  fi
+  [ ! -s "$home/send.log" ] || fail "the invalid defer date was sent before being refused"
+  show=$(tasks_in "$home" show sample-chat-defer --full)
+  assert_not_contains "$show" "Resolution mode:" \
+    "the invalid chat date reached the keyed-answer intake"
+
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-empty-equals \
+      --defer-until= "later with no equals date" \
+      > "$home/empty-equals.out" 2> "$home/empty-equals.err"; then
+    fail "the chat preflight accepted an empty --defer-until= value"
+  fi
+  assert_grep "requires a YYYY-MM-DD date" "$home/empty-equals.err" \
+    "the empty equals defer date did not explain its refusal"
+  [ ! -s "$home/send.log" ] || fail "the empty equals defer date was delivered before refusal"
+  show=$(tasks_in "$home" show sample-chat-empty-equals --full)
+  assert_contains "$show" "state: queued" "an empty equals defer value closed the captain call"
+  assert_contains "$show" "held: yes" "an empty equals defer value released the captain call"
+  assert_not_contains "$show" "Resolution mode:" \
+    "an empty equals defer value reached the keyed-answer intake"
+
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-empty-space \
+      --defer-until "" "later with no spaced date" \
+      > "$home/empty-space.out" 2> "$home/empty-space.err"; then
+    fail "the chat preflight accepted an empty --defer-until value"
+  fi
+  assert_grep "requires a YYYY-MM-DD date" "$home/empty-space.err" \
+    "the empty spaced defer date did not explain its refusal"
+  [ ! -s "$home/send.log" ] || fail "the empty spaced defer date was delivered before refusal"
+  show=$(tasks_in "$home" show sample-chat-empty-space --full)
+  assert_contains "$show" "state: queued" "an empty spaced defer value closed the captain call"
+  assert_contains "$show" "held: yes" "an empty spaced defer value released the captain call"
+  assert_not_contains "$show" "Resolution mode:" \
+    "an empty spaced defer value reached the keyed-answer intake"
+
+  : > "$home/send.log"
   env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
@@ -2363,6 +2703,122 @@ SH
   assert_contains "$show" "Resolution mode: answered" "the chat-answered call did not record its close path"
   assert_contains "$show" "Answer: take the second option" "the chat-answered call lost the captain answer"
   assert_contains "$show" "answer sent to $id" "the chat-answered call lost its channel provenance"
+
+  before="$home/chat-defer-before.md"
+  cp "$home/data/backlog.md" "$before"
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-19 "later, after the release" \
+      > "$home/chat-past.out" 2> "$home/chat-past.err"; then
+    fail "the chat preflight accepted a past defer date"
+  fi
+  assert_grep "date 2026-09-19 must be later than UTC today 2026-09-20" \
+    "$home/chat-past.err" "the chat past-date refusal lost its boundary"
+  assert_grep "nothing was recorded or sent" "$home/chat-past.err" \
+    "the chat past-date refusal did not state its durable and delivery outcome"
+  [ ! -s "$home/send.log" ] || fail "the chat past-date refusal delivered the answer"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the chat past-date refusal changed the recorded task state"
+  if env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2026-09-20 "later, after the release" \
+      > "$home/chat-today.out" 2> "$home/chat-today.err"; then
+    fail "the chat preflight accepted today's defer date"
+  fi
+  assert_grep "date 2026-09-20 must be later than UTC today 2026-09-20" \
+    "$home/chat-today.err" "the chat same-day refusal lost its boundary"
+  [ ! -s "$home/send.log" ] || fail "the chat same-day refusal delivered the answer"
+  cmp -s "$before" "$home/data/backlog.md" \
+    || fail "the chat same-day refusal changed the recorded task state"
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer \
+      --defer-until 2099-09-21 "later, after the release" >/dev/null 2>&1 \
+    || fail "a future dated defer was refused by the chat channel"
+  show=$(tasks_in "$home" show sample-chat-defer --full)
+  assert_contains "$show" "state: queued" "a chat defer completed the task"
+  assert_contains "$show" "held: yes" "a chat defer released the task"
+  assert_contains "$show" "hold_until: 2099-09-21" "a chat defer lost its date"
+  assert_contains "$show" "Resolution mode: deferred" "a chat defer recorded the wrong mode"
+  assert_contains "$show" "Answer: later, after the release" \
+    "a chat defer lost the captain's words"
+
+  # Preflight and post-delivery intake must share one UTC boundary. Simulate a
+  # send accepted just before midnight whose delivered answer is recorded just
+  # after it: independently reading today would reject the already-sent words.
+  real_date=$(command -v date)
+  date_counter="$home/date-counter"
+  cat > "$fb/date" <<'SH'
+#!/usr/bin/env bash
+if [ "$#" = 2 ] && [ "$1" = -u ] && [ "$2" = +%Y-%m-%d ]; then
+  if [ -e "$FM_FAKE_DATE_COUNTER" ]; then
+    printf '2026-09-21\n'
+  else
+    : > "$FM_FAKE_DATE_COUNTER"
+    printf '2026-09-20\n'
+  fi
+  exit 0
+fi
+exec "$REAL_DATE" "$@"
+SH
+  chmod +x "$fb/date"
+  : > "$home/send.log"
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 FM_CAPTAIN_HOLD_NOW= \
+    REAL_DATE="$real_date" FM_FAKE_DATE_COUNTER="$date_counter" \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-midnight-defer \
+      --defer-until 2026-09-21 "later, across midnight" >/dev/null 2>&1 \
+    || fail "a defer accepted before UTC midnight was rejected after delivery"
+  rm -f -- "$fb/date"
+  show=$(tasks_in "$home" show sample-chat-midnight-defer --full)
+  assert_contains "$show" "Resolution mode: deferred" \
+    "the midnight-crossing defer was delivered without recording its answer"
+  assert_contains "$show" "Deferred until: 2026-09-21" \
+    "the midnight-crossing defer lost its accepted date"
+
+  cat > "$home/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = hold ] && [ "${2:-}" = sample-chat-defer-recovery ] \
+  && [ ! -e "$FM_HOME/defer-recovery-failed-once" ]; then
+  : > "$FM_HOME/defer-recovery-failed-once"
+  exit 92
+fi
+exec "${REAL_TASKS_AXI:?}" "$@"
+SH
+  chmod +x "$home/fakebin/tasks-axi"
+  : > "$home/send.log"
+  if env PATH="$fb:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_SEND_LOG="$home/send.log" FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-send.sh" "$id" --resolve-key sample-chat-defer-recovery \
+      --defer-until 2026-11-15 "later, after recovery" \
+      > "$home/defer-recovery.out" 2> "$home/defer-recovery.err"; then
+    fail "a forced post-record defer failure reported success"
+  fi
+  assert_grep "fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until 2026-11-15" \
+    "$home/defer-recovery.err" "the recovery guidance would turn a deferral into a close"
+  assert_grep "do not resend the answer" "$home/defer-recovery.err" \
+    "the defer recovery guidance lost the resend warning"
+  show=$(tasks_in "$home" show sample-chat-defer-recovery --full)
+  assert_contains "$show" "Resolution mode: deferred" \
+    "the forced defer failure did not occur after recording the answer"
+  assert_contains "$show" "Answer: later, after recovery" \
+    "the forced defer failure lost the captain's recorded words"
+  printf 'later, after recovery\n' > "$home/defer-recovery.txt"
+  run_captain "$home" answer sample-chat-defer-recovery \
+    --decision-file "$home/defer-recovery.txt" --defer-until 2026-11-15 >/dev/null \
+    || fail "the defer-preserving recovery command did not finish the interrupted answer"
+  show=$(tasks_in "$home" show sample-chat-defer-recovery --full)
+  assert_contains "$show" "hold_until: 2026-11-15" \
+    "the defer-preserving recovery command lost its date"
 
   : > "$home/send.log"
   set +e
@@ -4036,6 +4492,8 @@ test_release_frees_held_work
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
 test_deferral_leaves_captains_call_until_due
+test_keyed_defer_records_answer_and_dates_the_hold
+test_direct_and_keyed_defer_dates_must_be_future
 test_out_of_band_close_is_recordable
 test_visual_review_uses_shared_completion_owner
 test_none_inventory_and_resolved_prose_do_not_create_holds
@@ -4046,6 +4504,7 @@ test_secondmate_reconcile_publishes_before_request_retirement
 test_bound_channel_answers_close_at_answer_time
 test_reconcile_never_closes_through_the_keyed_answer_intake
 test_normal_answers_retire_pending_reconcile_requests
+test_deferred_answers_keep_pending_reconcile_requests
 test_reconcile_closes_with_evidence_or_keeps_the_call_open
 test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold
