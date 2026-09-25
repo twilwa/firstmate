@@ -1,0 +1,10 @@
+Targeted existing tests (target 5e8c2af unless noted):
+  tests/fm-dispatch-resolve.test.sh: exit=0
+  tests/fm-send-strict.test.sh: exit=0
+  tests/fm-send-resolve-key.test.sh: exit=0
+  tests/fm-pr-review.test.sh: exit=0
+  tests/fm-bearings-board-render.test.sh: exit=0
+  tests/fm-pr-merge.test.sh: exit=1
+  fm-dispatch-resolve snapshot case: ok - receipt hashes bind to the immutable brief bytes used by section and whole-brief requests
+  fm-pr-merge on base 3377aa61: not ok - github-zero-exit-queue-required: refusal did not name the concrete observed state ; exit=1
+  fm-pr-merge on target, isolated rerun: not ok - github-zero-exit-queue-required: refusal did not name the concrete observed state ; exit=1

@@ -1,0 +1,37 @@
+$ sha256sum scout-brief.md
+9a0d24033fc65fe89daa48a127fff7f8deb2891dfd0e018c1a234aeabcbf368f  /tmp/fm-resolve-live/scout-brief.md
+$ FM_HOME=<private> TYPESAFE_API_KEY=<test> bin/fm-dispatch-resolve.sh scout-brief.md --project pager   (real quota-axi --json, api.typesafe.ai routed to local stand-in)
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 22   tokens: 400/20
+  rule: rule_2 (Research that produces a written report only.)   confidence: 0.85
+  probabilities: rule_1=0.05 rule_2=0.9 default=0.05
+  note: rule matched
+  candidate: claude:opus  provider=claude  scope=all_models  remaining=76%  spendPriority=-0.2269  runway=projected_exhaustion  -> eligible
+  profile: --harness 'claude' --model 'opus' --effort 'high'
+exit=0
+
+--- request body state.task.brief received by the API endpoint ---
+Brief kind: scout (report only)
+
+## Captain's intent
+Survey how the pager handles page boundaries and report findings.
+
+## Firstmate spec
+Read pager.sh and the tests; no code changes.
+
+--- Authorization header seen by endpoint: Bearer <test key>
+
+--- last resolution receipt ---
+{
+  "brief_path": "/tmp/fm-resolve-live/scout-brief.md",
+  "brief_sha256": "9a0d24033fc65fe89daa48a127fff7f8deb2891dfd0e018c1a234aeabcbf368f",
+  "request_id": "local-req-1",
+  "requested_model": "jev-1.13.0",
+  "status": "clear",
+  "chosen_profile": {
+    "harness": "claude",
+    "model": "opus",
+    "effort": "high"
+  }
+}

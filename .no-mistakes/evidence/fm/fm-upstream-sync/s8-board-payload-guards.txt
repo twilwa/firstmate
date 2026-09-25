@@ -1,0 +1,7 @@
+--- adversarial: duplicate option value within one card ---
+fm-bearings-board: board data repeats the option value later (card sample-open-call); each option value must be unique within its card: /tmp/fm-board-live/home/dup.json
+exit=1
+--- adversarial: option until is not a real calendar day ---
+fm-bearings-board: board data does not satisfy fm-bearings-board.v1: /tmp/fm-board-live/home/baddate.json
+exit=1
+board file still carries the previously built valid deck: 1 match(es)

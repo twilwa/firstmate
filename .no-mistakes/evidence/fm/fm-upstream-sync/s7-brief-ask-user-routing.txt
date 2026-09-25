@@ -1,0 +1,35 @@
+$ FM_HOME=<private> bin/fm-brief.sh live-nm-task sample --mode no-mistakes
+scaffolded: data/live-nm-task/brief.md
+
+--- generated brief: no-mistakes gate rules (excerpt around --yes ban) ---
+28-3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+29-4. Report status by appending one line:
+30-   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-brief-live/home/state/live-nm-task.status' && { [ ! -e '/tmp/fm-brief-live/home/config/fleet-ledger' ] || '/home/firstmate/firstmate/data/fm-upstream-sync/isolated-opus-gate-20260924/worktrees/4b3a4933e99a/01M3AXS1P9DYJMV9W08H5Q01AY/bin/fm-fleet-ledger.sh' appended '/tmp/fm-brief-live/home/config' '/tmp/fm-brief-live/home/state/live-nm-task.status' >/dev/null 2>&1 || true; }`
+31:   States: working, needs-decision, blocked, paused, done, failed.
+32-   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+33-   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+34-   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+35:   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+36-   firstmate reads your pane for that.
+37-   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+38-   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+--
+45-   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+46-5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+47-6. If a decision belongs above the implementation worker (product choices, destructive actions),
+48:   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+49-   For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to `/tmp/fm-brief-live/home/data/live-nm-task/nm-<run>-findings.txt`, then report the gate with
+50:   `needs-decision [at=<epoch>] [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=/tmp/fm-brief-live/home/data/live-nm-task/nm-<run>-findings.txt`
+51-   naming every ask-user finding id from that gate. The status line only points at the file; it never restates or summarizes a finding's content.
+52-   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+53-   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+--
+108-- ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
+109-  Firstmate applies `ask-user-authority` and obtains any required captain decision.
+110-  When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+111:- NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.
+112-  It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
+113:  Ask-user gates must return to firstmate as `needs-decision`; the worker never answers its own finding.
+114-
+115-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), read the PR back from the forge and confirm it is not a draft (`gh pr view <url> --json isDraft` must print false); if it is a draft, mark it ready with `gh-axi pr ready`.
+116-A draft cannot be merged, so a done report on one leaves the merge unasked.

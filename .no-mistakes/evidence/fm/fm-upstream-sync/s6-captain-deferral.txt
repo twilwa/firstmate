@@ -1,0 +1,54 @@
+tasks-axi (temp prefix, PATH-only): 0.2.6; UTC today: 2026-09-25
+$ fm-captain-hold.sh hold sample-route --reason 'captain must pick a route' --title 'Decide the sample route' --repo sample
+sample-route
+exit=0
+
+--- adversarial: same-day and past defer dates ---
+$ printf 'sample-route\tlater\tRevisit\tdefer\t2026-09-25\n' | fm-captain-hold.sh answers --source live-test
+skipped: sample-route (defer date 2026-09-25 must be later than UTC today 2026-09-25; nothing was recorded)
+answers: closed=0 deferred=0 skipped=1
+exit=1
+$ ... defer 2026-01-01
+skipped: sample-route (defer date 2026-01-01 must be later than UTC today 2026-09-25; nothing was recorded)
+answers: closed=0 deferred=0 skipped=1
+exit=1
+$ ... defer 2026-13-40 (not a calendar day)
+skipped: sample-route (invalid defer date 2026-13-40)
+answers: closed=0 deferred=0 skipped=1
+exit=1
+resolution blocks recorded so far: 0
+
+--- happy path: future defer date ---
+$ printf 'sample-route\tlater\tRevisit in November\tdefer\t2026-11-02\n' | fm-captain-hold.sh answers --source live-test
+deferred: sample-route until 2026-11-02
+answers: closed=0 deferred=1 skipped=0
+exit=0
+
+$ tasks-axi show sample-route
+task:
+  id: sample-route
+  title: Decide the sample route
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: captain must pick a route
+  hold_kind: captain
+  hold_until: 2026-11-02
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: 2026-09-25
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-09-25T00:52:07Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: 2a56ae6dce78de02171df6bdd0216932b6a21b5eb6cd227a2df91efa8aef47a7\nResolution mode: deferred\nDeferred until: 2026-11-02\n\nCaptain decision:\nCaptain answered this call through live-test.\nTask: sample-route\nAnswer: later\nAnswer as shown to the captain: Revisit in November"
+
+$ fm-captain-hold.sh open sample-route
+exit=0
+
+--- redelivery of the exact same deferral (idempotent) ---
+deferred: sample-route until 2026-11-02
+answers: closed=0 deferred=1 skipped=0
+exit=0
+resolution blocks after redelivery: 1

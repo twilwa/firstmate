@@ -1,0 +1,31 @@
+sha256(v1 ORIGINAL)=cb9100fdc54ccad232b2bd5f8efa1df95a29afa7dce74302d2a03f875d53fadb
+sha256(v2 SWAPPED)=eea18f3032fed443b6ab54ba46f340b3211f9478414cc592231166c4cfcf6019
+Brief path is a FIFO: the first open returns v1 bytes, every later open returns v2 bytes.
+=== target 5e8c2af (BRIEF_SNAPSHOT is sole source) ===
+  status: clear
+  rule: rule_1 (A simple bug fix with a stated root cause.)   confidence: 0.85
+request state.task.brief:
+  | ## Captain's intent
+  | ORIGINAL intent: fix the pager off-by-one.
+  | 
+  | ## Firstmate spec
+  | ORIGINAL spec: change <= to < on line 40.
+  | 
+receipt brief_sha256 = sha256(v1 ORIGINAL)
+=== pre-fix 2a50958^ (re-reads the live brief path) ===
+  status: clear
+  rule: rule_2 (Research that produces a written report only.)   confidence: 0.85
+request state.task.brief:
+  | # Task
+  | ## Captain's intent
+  | SWAPPED intent: rewrite the whole pager.
+  | 
+  | ## Firstmate spec
+  | SWAPPED spec: new architecture.
+  | 
+  | # Definition of done
+  | This is a SCOUT task: the deliverable is a written report, not a PR.
+  | 
+receipt brief_sha256 = sha256(v1 ORIGINAL)
+
+Interpretation: on the target, the request body and the receipt brief_sha256 both come from the ORIGINAL bytes (the first and only read of the brief path). On the pre-fix parent 2a50958^, the request carried the SWAPPED brief (and a different rule, rule_2) while the receipt still hashed the ORIGINAL bytes: receipt and request disagreed.

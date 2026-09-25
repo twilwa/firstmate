@@ -1,0 +1,22 @@
+=== S2 whole-brief fallback ===
+$ sha256sum whole-brief.md
+04e355978dac54bfa111ab6a5200535f45346ff4668f70d6ee93e7fc134c1a39
+dispatch-resolve:
+  status: clear
+  model: jev-1.13.0   latency_ms: 25   tokens: 400/20
+--- request brief equals file bytes? ---
+cmp: EOF on /tmp/fm-resolve-live/whole-brief.md after byte 122, line 3
+receipt brief_sha256: 04e355978dac54bfa111ab6a5200535f45346ff4668f70d6ee93e7fc134c1a39
+
+=== S3 dispatch receipt joins only the exact resolved bytes ===
+$ bin/fm-dispatch-resolve.sh --record-dispatch whole-brief.md --harness claude --model sonnet --effort high
+exit=0
+{"brief_sha256":"04e355978dac54bfa111ab6a5200535f45346ff4668f70d6ee93e7fc134c1a39","request_id":"local-req-2","chosen_profile":{"harness":"claude","model":"sonnet","effort":"high"},"dispatched_profile":{"harness":"claude","model":"sonnet","effort":"high"}}
+$ echo 'edited after resolve' >> whole-brief.md; bin/fm-dispatch-resolve.sh --record-dispatch whole-brief.md --harness claude
+dispatch-resolve: no dispatch receipt (no resolution receipt carries this brief's current content hash; it may have been edited after the resolve)
+exit=0
+dispatch receipts before=1 after=1
+
+--- S2 byte check (jq -j, no added newline): sha256 of request state.task.brief ---
+04e355978dac54bfa111ab6a5200535f45346ff4668f70d6ee93e7fc134c1a39
+(receipt brief_sha256 above: 04e355978dac54bfa111ab6a5200535f45346ff4668f70d6ee93e7fc134c1a39)

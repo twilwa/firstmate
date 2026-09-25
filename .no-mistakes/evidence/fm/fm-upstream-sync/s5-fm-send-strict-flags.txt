@@ -1,0 +1,26 @@
+Private tmux server (TMUX_TMPDIR=/tmp/fm-send-live/tmux), private FM_HOME, task lane-live in window labsess:fm-lane-live
+
+$ bin/fm-send.sh lane-live --resolve-keys k1 hello
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=3
+inbox records: 0
+
+$ bin/fm-send.sh lane-live --bogus hello
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=3
+inbox records: 0
+
+$ bin/fm-send.sh lane-live --resolve-key=k1 --fire-and-forgot id1 hi
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=3
+inbox records: 0
+
+$ bin/fm-send.sh lane-live 'please rebase onto main'
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=3
+inbox records: 0
+--- tmux pane received (doorbell) ---
+
+$ bin/fm-send.sh lane-live --key Enter
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=3
