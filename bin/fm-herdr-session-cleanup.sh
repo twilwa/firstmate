@@ -320,7 +320,9 @@ fm_herdr_cleanup_one() ( # <session> <workspace> <title> <home-real>
   # fm_lock_release verifies this process owns each path, so unconditional cleanup
   # closes the signal window before the held flags could be set.
   trap '[ -z "$presentation_lock" ] || fm_lock_release "$presentation_lock" || true
-    [ -z "$task_lock" ] || fm_lock_release "$task_lock" || true' EXIT
+    [ -z "$task_lock" ] || fm_lock_release "$task_lock" || true
+    [ -z "$FM_HERDR_CLEANUP_LOCK_RECORD" ] || [ -L "$FM_HERDR_CLEANUP_LOCK_RECORD" ] ||
+      [ ! -f "$FM_HERDR_CLEANUP_LOCK_RECORD" ] || { : > "$FM_HERDR_CLEANUP_LOCK_RECORD"; } 2>/dev/null || true' EXIT
   trap 'exit 143' TERM
   trap 'exit 130' INT
   trap 'exit 129' HUP

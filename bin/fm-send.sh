@@ -550,7 +550,7 @@ while :; do
     ;;
   --key) break ;;
   --*)
-    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent." >&2
+    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --defer-until, --fire-and-forget, and --key. Nothing was sent." >&2
     exit 1
     ;;
   *) break ;;

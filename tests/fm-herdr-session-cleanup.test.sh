@@ -256,6 +256,15 @@ fm_herdr_session_cleanup >/dev/null 2>&1
 [ "$(wc -l < "$CLOSE_LOG" | tr -d ' ')" = 1 ] || fail "repeat cleanup closed again"
 pass "successful cleanup is idempotent on repeat"
 
+reset_fixture
+finished_record="$TMP_ROOT/finished-lock-record"
+: > "$finished_record"
+FM_HERDR_CLEANUP_LOCK_RECORD="$finished_record" fm_herdr_session_cleanup >/dev/null 2>&1
+[ "$(wc -l < "$CLOSE_LOG" | tr -d ' ')" = 1 ] || fail "recorded cleanup did not close exactly once"
+[ ! -s "$finished_record" ] || fail "a finished candidate left its released locks in the deadline record"
+rm -f "$finished_record"
+pass "a finished candidate clears its deadline lock record after releasing both locks"
+
 reset_fixture; printf '%s\n' '└ malformed p:AbCdEfGhIjKlMnOpQrStUv' > "$FIXTURE_DIR/title"; assert_preserved "malformed title"
 reset_fixture; printf '%s\n' '└ missing-token' > "$FIXTURE_DIR/title"; assert_preserved "missing token"
 reset_fixture; printf 'version=1\ntask_id=%s\nprojection_id=short\n' "$ID" > "$FM_STATE_OVERRIDE/$ID.herdr-presentation"; assert_preserved "malformed journal"

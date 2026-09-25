@@ -338,6 +338,19 @@ assert_equals '' "$err" "--project alongside --record-dispatch reports no failur
 assert_equals "$((project_join_before + 1))" "$(jq -s '[.[] | select(.receipt_type == "dispatch")] | length' "$RECEIPTS")" "--project alongside --record-dispatch records the dispatch"
 pass "the documented resolve invocation form still joins when reused after the spawn"
 
+# --- a torn receipt line does not poison later joins --------------------------
+cp "$RECEIPTS" "$TMP_ROOT/receipts-before-torn-line"
+printf '{"receipt_type":"resolution","brief_sha' >> "$RECEIPTS"
+TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$BRIEF" --harness claude
+assert_equals '' "$err" "a join after a torn receipt line still lands"
+TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$BRIEF" --harness claude --model sonnet
+assert_equals '' "$err" "a join after a dispatch glued onto a torn line still lands"
+torn_dispatch=$(jq -Rnc '[inputs | fromjson? | objects | select(.receipt_type == "dispatch")] | last' "$RECEIPTS")
+assert_equals "$(jq -sr --arg sha "$brief_hash" '[.[] | select(.receipt_type == "resolution" and .brief_sha256 == $sha)] | last | .resolution_id' "$TMP_ROOT/receipts-before-torn-line")" "$(jq -r .resolution_id <<<"$torn_dispatch")" "the join past a torn line still reaches its resolution"
+assert_equals '{"harness":"claude","model":"sonnet"}' "$(jq -c .dispatched_profile <<<"$torn_dispatch")" "the join past a torn line records the later dispatch"
+cp "$TMP_ROOT/receipts-before-torn-line" "$RECEIPTS"
+pass "a torn receipt line is skipped instead of failing every later join"
+
 # --- a blocked receipt cannot delay the resolver block ------------------------
 reset_log
 write_response "$RESPONSE" rule_4 0.9

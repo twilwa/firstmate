@@ -241,8 +241,9 @@ record_actual_dispatch() {
     join_failed "this home has no resolution receipts yet"
     return 1
   fi
-  base=$(jq -sc --arg brief_sha "$BRIEF_SHA256" '
-    [.[] | select(.receipt_type == "resolution" and .brief_sha256 == $brief_sha)]
+  base=$(jq -Rnc --arg brief_sha "$BRIEF_SHA256" '
+    [inputs | fromjson? | objects
+      | select(.receipt_type == "resolution" and .brief_sha256 == $brief_sha)]
     | last // empty' "$RECEIPTS" 2>/dev/null) || base=''
   if [ -z "$base" ]; then
     receipt_lock_release || true
