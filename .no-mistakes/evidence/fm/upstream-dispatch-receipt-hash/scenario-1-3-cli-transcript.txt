@@ -1,0 +1,53 @@
+$ FM_HOME=<lab-home> TYPESAFE_API_KEY=lab-fake-key bin/fm-dispatch-resolve.sh scout-brief.md --project pager
+--- brief on disk ---
+# Task
+## Captain's intent
+Find why the pager skips one page per call.
+
+## Firstmate spec
+Root cause is the `<=` on line 40 of pager.sh; report only.
+
+# Definition of done
+This is a SCOUT task: the deliverable is a written report, not a PR.
+--- CLI stdout ---
+dispatch-resolve:
+  status: clear
+  model: jev-local-fake   latency_ms: 34   tokens: 1/1
+  rule: rule_4 (A simple bug fix with a stated root cause.)   confidence: 0.9
+  probabilities: rule_1=0.01 rule_2=0.01 rule_3=0.01 rule_4=0.96 default=0.01
+  note: rule matched
+  note: 1 eligible candidate(s) unranked (kimi)
+  candidate: claude:sonnet  provider=claude  scope=all_models  remaining=79%  spendPriority=-0.4627  runway=projected_exhaustion  -> eligible
+  candidate: cursor:cursor-grok-4.6-medium  provider=cursor  scope=all_models  remaining=91%  spendPriority=0.7597  runway=through_reset  -> eligible
+  candidate: kimi:kimi-code/k3  provider=kimi  -> eligible, unranked: provider kimi unmeasured (unknown): disclosed uncertainty
+  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+exit=0
+--- requests received by the local Jev endpoint: 1 ---
+--- task.brief as received over HTTP ---
+Brief kind: scout (report only)
+
+## Captain's intent
+Find why the pager skips one page per call.
+
+## Firstmate spec
+Root cause is the `<=` on line 40 of pager.sh; report only.
+
+--- leftover temp files in the run TMPDIR (brief snapshot cleaned up) ---
+0
+
+$ FM_HOME=<lab-home> TYPESAFE_API_KEY=lab-fake-key bin/fm-dispatch-resolve.sh whole-brief.md --project pager
+--- brief on disk ---
+# Task
+Fix the off-by-one in the pager: root cause is the <= on line 40.
+--- CLI stdout (status/profile) ---
+  status: clear
+  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+exit=0
+--- task.brief as received over HTTP ---
+# Task
+Fix the off-by-one in the pager: root cause is the <= on line 40.
+
+--- byte-identical to the brief on disk? ---
+identical
+--- leftover temp files ---
+0

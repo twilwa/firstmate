@@ -1,0 +1,13 @@
+$ TYPESAFE_API_KEY=lab-fake-key bin/fm-dispatch-resolve.sh missing-brief.md
+error: brief file not readable: /tmp/fm-resolve-lab.gOqOaP/missing-brief.md
+exit=2 requests=0 tmp-leftovers=0
+
+$ TYPESAFE_API_KEY=lab-fake-key bin/fm-dispatch-resolve.sh ro-brief.md   # brief is mode 0400
+  status: clear
+  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'
+exit=0 requests=1 tmp-leftovers=0
+brief still mode 400, content unchanged: yes
+
+$ bin/fm-dispatch-resolve.sh scout-brief.md   # no TYPESAFE_API_KEY anywhere
+dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and /tmp/fm-resolve-lab.gOqOaP/home/.env)
+exit=0 requests=0 tmp-leftovers=0

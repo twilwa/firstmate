@@ -1,0 +1,39 @@
+Concurrent-rewrite race: writer.sh atomically swaps race-brief.md between ALPHA (scout, ALPHA intent/spec) and BETA (ship, BETA intent/spec)
+while the resolver CLI runs against it; every request is captured by the local Jev HTTP endpoint and classified.
+A consistent request is all-ALPHA (scout tag + ALPHA intent + ALPHA spec) or all-BETA; anything else mixes two brief versions.
+
+== base 756f64e bin/fm-dispatch-resolve.sh ==
+  mixed request example #1 (tag=0 alphaIntent=1 alphaSpec=1 betaIntent=0 betaSpec=0):
+    | ## Captain's intent
+    | ALPHA intent.
+    | 
+    | ## Firstmate spec
+    | ALPHA spec.
+  mixed request example #2 (tag=1 alphaIntent=0 alphaSpec=1 betaIntent=1 betaSpec=0):
+    | Brief kind: scout (report only)
+    | 
+    | ## Captain's intent
+    | BETA intent.
+    | 
+    | ## Firstmate spec
+    | ALPHA spec.
+  mixed request example #3 (tag=0 alphaIntent=0 alphaSpec=1 betaIntent=1 betaSpec=0):
+    | ## Captain's intent
+    | BETA intent.
+    | 
+    | ## Firstmate spec
+    | ALPHA spec.
+base: runs=300 consistent-ALPHA=50 consistent-BETA=39 MIXED=211 no-request=0
+
+== target 44e9e62 bin/fm-dispatch-resolve.sh ==
+target: runs=300 consistent-ALPHA=155 consistent-BETA=143 MIXED=0 no-request=2
+
+== follow-up: target resolver, 400 + 800 more race runs with output logged on any non-clear run ==
+400 runs: 0 failures.
+800 runs: 1 failure:
+  run 507 rc=2:
+  cp: skipping file '/tmp/fm-resolve-lab.gOqOaP/race-brief.md', as it was replaced while being copied
+  error: could not snapshot brief file: /tmp/fm-resolve-lab.gOqOaP/race-brief.md
+Observation: when the brief path is atomically replaced during the snapshot copy, GNU cp refuses it and the resolver
+fails closed (exit 2, clear message, no request sent) rather than sending a mixed brief. ~3 of 1500 target runs under a
+tight-loop rewriter; 0 of 1500 target requests mixed brief versions.
