@@ -51,7 +51,8 @@
 #   error     -> API, network, response, or quota-axi failure; decide as today
 #   Every outcome exits 0 so an intake is never blocked by this tool.
 #   A keyed run appends one best-effort resolution receipt to
-#   $FM_HOME/state/dispatch-receipts.jsonl after the block above is printed.
+#   dispatch-receipts.jsonl in the state directory ($FM_STATE_OVERRIDE, else
+#   $FM_HOME/state) after the block above is printed.
 #   On clear only, once fm-spawn has accepted the dispatched profile, a
 #   separate --record-dispatch run appends a second receipt joined to the
 #   latest resolution for the same brief content hash, and names on stderr
