@@ -341,7 +341,8 @@ pass "the documented resolve invocation form still joins when reused after the s
 # --- a blocked receipt cannot delay the resolver block ------------------------
 reset_log
 write_response "$RESPONSE" rule_4 0.9
-ln -s "$$" "$HOME_DIR/state/.dispatch-receipts.lock"
+mkdir "$HOME_DIR/state/.dispatch-receipts.lock"
+printf '%s\n' "$$" > "$HOME_DIR/state/.dispatch-receipts.lock/pid"
 blocked_before=$(jq -s 'length' "$RECEIPTS")
 ORDERING_OUT="$TMP_ROOT/ordering-stdout"
 : > "$ORDERING_OUT"
@@ -358,7 +359,7 @@ expect_code 0 "$?" "a receipt blocked behind a live lock exits 0"
 assert_equals 'yes' "$stdout_arrived" "the resolver block is readable while the receipt path is still blocked on the lock"
 assert_contains "$(cat "$ORDERING_OUT")" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'" "the blocked run still prints its whole block"
 assert_equals "$blocked_before" "$(jq -s 'length' "$RECEIPTS")" "a receipt that never gets the lock is dropped, not retried into the output path"
-rm -f "$HOME_DIR/state/.dispatch-receipts.lock"
+rm -rf "$HOME_DIR/state/.dispatch-receipts.lock"
 pass "the receipt path is behind the resolver block it must never delay"
 
 # --- a lock left by a dead owner does not stall receipts forever ---------------
@@ -366,13 +367,30 @@ reset_log
 write_response "$RESPONSE" rule_4 0.9
 DEAD_PID=$(bash -c 'echo $$')
 while kill -0 "$DEAD_PID" 2>/dev/null; do DEAD_PID=$((DEAD_PID + 1)); done
-ln -s "$DEAD_PID" "$HOME_DIR/state/.dispatch-receipts.lock"
+mkdir "$HOME_DIR/state/.dispatch-receipts.lock"
+printf '%s\n' "$DEAD_PID" > "$HOME_DIR/state/.dispatch-receipts.lock/pid"
 stalled_before=$(jq -s 'length' "$RECEIPTS")
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 expect_code 0 "$code" "a stale lock leaves the resolver exit 0"
 assert_equals "$((stalled_before + 1))" "$(jq -s 'length' "$RECEIPTS")" "a lock owned by a dead process is broken and the receipt is written"
-assert_equals 'absent' "$([ -L "$HOME_DIR/state/.dispatch-receipts.lock" ] && echo present || echo absent)" "the resolver releases the lock it recovered"
+assert_equals 'absent' "$([ -e "$HOME_DIR/state/.dispatch-receipts.lock" ] || [ -L "$HOME_DIR/state/.dispatch-receipts.lock" ] && echo present || echo absent)" "the resolver releases the lock it recovered"
 pass "receipt writes recover from a lock whose owner died"
+
+# --- FM_STATE_OVERRIDE relocates the receipts and their lock -------------------
+OVERRIDE_STATE="$TMP_ROOT/override-state"
+reset_log
+write_response "$RESPONSE" rule_4 0.9
+home_before=$(jq -s 'length' "$RECEIPTS")
+TYPESAFE_API_KEY=$KEY FM_STATE_OVERRIDE="$OVERRIDE_STATE" run code out err "$BRIEF"
+expect_code 0 "$code" "a relocated state directory leaves the resolver exit 0"
+assert_equals '' "$err" "a relocated state directory still writes its receipt"
+assert_equals '1' "$(jq -s '[.[] | select(.receipt_type == "resolution")] | length' "$OVERRIDE_STATE/dispatch-receipts.jsonl")" "the resolution receipt lands in FM_STATE_OVERRIDE"
+TYPESAFE_API_KEY=$KEY FM_STATE_OVERRIDE="$OVERRIDE_STATE" run code out err --record-dispatch "$BRIEF" --harness cursor --model cursor-grok-4.6-medium
+assert_equals '' "$err" "the join finds the resolution in FM_STATE_OVERRIDE"
+assert_equals '1' "$(jq -s '[.[] | select(.receipt_type == "dispatch")] | length' "$OVERRIDE_STATE/dispatch-receipts.jsonl")" "the dispatch receipt lands in FM_STATE_OVERRIDE"
+assert_equals "$home_before" "$(jq -s 'length' "$RECEIPTS")" "the home's own receipts are untouched by a relocated run"
+assert_equals 'absent' "$([ -e "$OVERRIDE_STATE/.dispatch-receipts.lock" ] || [ -L "$OVERRIDE_STATE/.dispatch-receipts.lock" ] && echo present || echo absent)" "the relocated lock is released"
+pass "receipts and their lock follow FM_STATE_OVERRIDE"
 
 # --- rules are snapshotted and line output is injection-safe -------------------
 MUTATED_RULES="$TMP_ROOT/mutated-rules.json"

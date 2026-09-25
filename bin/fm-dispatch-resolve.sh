@@ -101,8 +101,9 @@ TS_TIMEOUT=5
 DEFAULT_WHEN="No listed rule applies to this task."
 RESOLVE_LOCK_ATTEMPTS=7
 DISPATCH_LOCK_ATTEMPTS=21
-RECEIPTS="$FM_HOME/state/dispatch-receipts.jsonl"
-RECEIPT_LOCK="$FM_HOME/state/.dispatch-receipts.lock"
+STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+RECEIPTS="$STATE/dispatch-receipts.jsonl"
+RECEIPT_LOCK="$STATE/.dispatch-receipts.lock"
 
 RULES='' BRIEF_SNAPSHOT='' RESP_FILE='' RESP_HEADERS='' QUOTA='' TASK_TEXT=''
 RULES_SHA256='' BRIEF_SHA256='' REQUEST_ID=''
@@ -116,9 +117,7 @@ cleanup() {
   [ -z "$RESP_HEADERS" ] || rm -f -- "$RESP_HEADERS"
   [ -z "$QUOTA" ] || rm -f -- "$QUOTA"
   [ -z "$TASK_TEXT" ] || rm -f -- "$TASK_TEXT"
-  if [ "$RECEIPT_LOCK_HELD" -eq 1 ]; then
-    rm -f -- "$RECEIPT_LOCK" 2>/dev/null || true
-  fi
+  receipt_lock_release || true
 }
 trap cleanup EXIT
 
@@ -143,18 +142,17 @@ sha256_text() { # <text>
 }
 
 receipt_lock_acquire() { # <attempt-budget>
-  local budget=$1 attempt=0 owner
-  mkdir -p "$FM_HOME/state" 2>/dev/null || return 1
+  local budget=$1 attempt=0
+  mkdir -p "$STATE" 2>/dev/null || return 1
+  if ! command -v fm_lock_try_acquire >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$SCRIPT_DIR/fm-wake-lib.sh" 2>/dev/null || return 1
+  fi
   while [ "$attempt" -lt "$budget" ]; do
-    if ln -s "$$" "$RECEIPT_LOCK" 2>/dev/null; then
+    if fm_lock_try_acquire "$RECEIPT_LOCK" 2>/dev/null; then
       RECEIPT_LOCK_HELD=1
       return 0
     fi
-    owner=$(readlink "$RECEIPT_LOCK" 2>/dev/null) || owner=''
-    case "$owner" in
-      ''|*[!0-9]*) : ;;
-      *) kill -0 "$owner" 2>/dev/null || rm -f -- "$RECEIPT_LOCK" 2>/dev/null || true ;;
-    esac
     attempt=$((attempt + 1))
     sleep 0.005
   done
@@ -163,7 +161,7 @@ receipt_lock_acquire() { # <attempt-budget>
 
 receipt_lock_release() {
   [ "$RECEIPT_LOCK_HELD" -eq 1 ] || return 0
-  rm -f -- "$RECEIPT_LOCK" 2>/dev/null || return 1
+  fm_lock_release "$RECEIPT_LOCK" 2>/dev/null || return 1
   RECEIPT_LOCK_HELD=0
 }
 

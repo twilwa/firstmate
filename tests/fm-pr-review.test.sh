@@ -416,22 +416,37 @@ SH
   pass 'unreported required checks remain pending instead of satisfying readiness'
 }
 
-test_migrated_assessment_rows_are_durable_fixtures() {
-  local fixture count held nulls
-  count=0; held=0; nulls=0
-  for fixture in "$ROOT"/tests/fixtures/pr-review-ledger/*.json; do
-    jq -e '.schema == "firstmate-pr-review-ledger.v1" and
-      (.url | startswith("https://github.com/")) and
-      (.current_head == .generations[-1].head)' "$fixture" >/dev/null \
-      || fail "migrated assessment fixture is invalid: $fixture"
-    count=$((count + 1))
-    [ "$(jq -r '.generations[-1].merge_decision.decision' "$fixture")" != hold ] || held=$((held + 1))
-    nulls=$((nulls + $(jq '[.generations[-1].review_items[] | select(.disposition == null)] | length' "$fixture")))
-  done
-  [ "$count" -eq 5 ] || fail 'the five initial assessments were not all migrated into fixtures'
-  [ "$held" -eq 5 ] || fail 'an imported held PR lost its real hold decision and reason'
-  [ "$nulls" -gt 0 ] || fail 'imported undispositioned findings were defaulted instead of staying null'
-  pass 'five initial assessments remain durable fixtures with honest null dispositions and hold decisions'
+test_imported_ledgers_keep_holds_and_null_dispositions_blocking() {
+  local fixtures="$ROOT/tests/fixtures/pr-review-ledger" snap path err status
+  snap="$TMP_ROOT/imported-ledger.json"; err="$TMP_ROOT/imported-ledger.err"
+  snapshot "$snap" "$HEAD_A" '[]' "$(jq -c '[.[0]]' <<<"$COMMENTS")" "$GREEN" "$LOW_FILES"
+  path=$(ledger)
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"; mkdir -p "$HOME_DIR/data/pr-review-ledger"
+  cp "$fixtures/held.json" "$path"
+  status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>"$err" || status=$?
+  [ "$status" -ne 0 ] || fail 'an imported hold did not block readiness'
+  grep -Fq 'pull request is held: synthetic hold awaiting a captain decision' "$err" \
+    || fail 'readiness did not name the imported hold reason'
+  status=0; FM_TEST_NOW_EPOCH=2000 review merge-decision "$URL" --snapshot "$snap" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'merge-decision recorded a merge over an imported hold'
+  [ "$(jq -r '.generations[-1].merge_decision | "\(.decision)|\(.reason)"' "$path")" = 'hold|synthetic hold awaiting a captain decision' ] \
+    || fail 'merge-decision replaced the imported hold'
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"; mkdir -p "$HOME_DIR/data/pr-review-ledger"
+  cp "$fixtures/undispositioned.json" "$path"
+  status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>"$err" || status=$?
+  [ "$status" -ne 0 ] || fail 'an imported null disposition did not block readiness'
+  grep -Fq 'lacks a disposition with evidence' "$err" \
+    || fail 'readiness did not name the undispositioned imported finding'
+  ! grep -Fq 'pull request is held' "$err" || fail 'an unheld imported ledger was reported as held'
+  status=0; FM_TEST_NOW_EPOCH=2000 review merge-decision "$URL" --snapshot "$snap" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'merge-decision recorded a merge over an undispositioned imported finding'
+  [ "$(jq -r '.generations[-1].merge_decision' "$path")" = null ] \
+    || fail 'merge-decision recorded a decision over an undispositioned imported finding'
+  [ "$(jq -r '.generations[-1].review_items[] | select(.id == "10") | .disposition' "$path")" = null ] \
+    || fail 'an imported null disposition was defaulted'
+  pass 'imported ledgers keep holds and null dispositions blocking ready and merge-decision'
 }
 
 test_human_hold_survives_head_change_until_evidenced_release() {
@@ -835,7 +850,7 @@ test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_bound_final_disposition_excludes_only_its_exact_post
 test_live_collector_keeps_unreported_required_checks_pending
-test_migrated_assessment_rows_are_durable_fixtures
+test_imported_ledgers_keep_holds_and_null_dispositions_blocking
 test_human_hold_survives_head_change_until_evidenced_release
 test_merge_forwards_guarded_options_to_the_merge_parser
 test_merge_rejects_a_task_that_does_not_own_the_ledger

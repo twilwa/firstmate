@@ -157,7 +157,7 @@ It drives the same refusal with a dangling symlink at that path, asserting the r
 The suite asserts that shape rather than a fixed append count - each concurrent run either appends its record or reports the drop, with no third outcome, and the file stays valid JSONL with no partial or interleaved line.
 
 The held-lock fixture is the contention case both the bound above and the contended row are measured under, and the suite holds the lock the same way in `tests/fm-dispatch-resolve.test.sh` ("a blocked receipt cannot delay the resolver block").
-A live process creates `state/.dispatch-receipts.lock` as a symlink to its own PID before the resolve starts and removes it only after the resolve has exited, so the owner is demonstrably alive for the whole run and the resolver spends its entire `RESOLVE_LOCK_ATTEMPTS` budget before dropping the record.
+A live process creates `state/.dispatch-receipts.lock` as a lock directory whose `pid` file names its own PID, in the shared `bin/fm-wake-lib.sh` lock format, before the resolve starts and removes it only after the resolve has exited, so the owner is demonstrably alive for the whole run and the resolver spends its entire `RESOLVE_LOCK_ATTEMPTS` budget before dropping the record.
 Measurement is the same split as the idle case: the timer records the moment the first stdout byte is readable and the moment the process exits, and receipt work is the difference, so the fixture changes what the receipt path does and nothing about how it is timed.
 
 An `error` receipt records the run's `reason` verbatim, and an HTTP failure reason carries up to 200 bytes of the remote response body - the same bytes the block already printed to stdout - so a receipts file can hold remote text durably; it is neither trimmed nor redacted.
@@ -204,7 +204,7 @@ split() { # prints "<ms to the first stdout byte> <ms to exit>"
 }
 s=0; e=0; for _ in $(seq 20); do read -r x y < <(split); s=$((s+x)); e=$((e+y)); done
 echo "idle:      stdout $((s/20)) ms, exit $((e/20)) ms, receipt $(( (e-s)/20 )) ms after the block"
-ln -s $$ "$H/state/.dispatch-receipts.lock"; read -r x y < <(split); rm -f "$H/state/.dispatch-receipts.lock"
+mkdir "$H/state/.dispatch-receipts.lock"; echo $$ > "$H/state/.dispatch-receipts.lock/pid"; read -r x y < <(split); rm -rf "$H/state/.dispatch-receipts.lock"
 echo "locked:    stdout $x ms, exit $y ms, receipt $((y-x)) ms after the block, then dropped"
 t0=$(date +%s%N); for _ in $(seq 20); do sha256sum "$H/brief.md" "$H/config/crew-dispatch.json" >/dev/null; done
 echo "hashes:    $(( ($(date +%s%N)-t0)/1000000/20 )) ms before the block"
