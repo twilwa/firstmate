@@ -628,6 +628,7 @@ On `clear` the same loss is additionally detectable later, when the `--record-di
 It does cost the resolver's own process lifetime after the block, and that cost is bounded rather than incidental: receipt work stays at or under a 100 ms median on an idle home and at or under 200 ms under the held-lock fixture, both measured in [`verification/dispatch-resolve.md`](verification/dispatch-resolve.md).
 Those two figures are the accepted governing bound for the receipt path, adopted in place of any looser few-milliseconds reading, so a run that exceeds them is a regression to fix here rather than a cost to renegotiate.
 A `--record-dispatch` run that cannot land its join instead names the reason on one stderr line and still exits 0, so an absent dispatch receipt is never mistaken for an agreeing one; the file is append-only and unbounded, and the home's `state/` directory is gitignored.
+A line torn by a failed append, such as on a full disk, is skipped by the join rather than failing every later one, and the next append starts on its own line so the torn fragment never swallows it.
 Both paths append only to a regular file at that exact path: a `state/dispatch-receipts.jsonl` that is a symlink, live or dangling, is refused rather than followed, so relocating the receipts elsewhere by symlink drops every record instead of writing through it.
 
 The resolver and bootstrap copy an environment-provided key into a non-exported private variable and unset `TYPESAFE_API_KEY` before launching child processes, so the secret is absent from child environments.

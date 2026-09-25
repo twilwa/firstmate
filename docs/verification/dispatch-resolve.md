@@ -162,7 +162,7 @@ Measurement is the same split as the idle case: the timer records the moment the
 
 An `error` receipt records the run's `reason` verbatim, and an HTTP failure reason carries up to 200 bytes of the remote response body - the same bytes the block already printed to stdout - so a receipts file can hold remote text durably; it is neither trimmed nor redacted.
 
-The receipts file is append-only and unbounded, so the `jq -s` slurp the join holds the lock across grows with a home's history.
+The receipts file is append-only and unbounded, so the whole-file read the join holds the lock across grows with a home's history.
 It grows slowly: an end-to-end `--record-dispatch` run cost 81 ms at 100 records (28 KiB), 98 ms at 500 (141 KiB), 106 ms at 1,500 (426 KiB), and 122 ms at 5,000 (1,424 KiB).
 Whether a home that old wants pruning or rotation is out of scope for this change and has no owner yet.
 
