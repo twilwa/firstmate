@@ -4109,12 +4109,8 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # A foreign clone may have the same remote URL and thus the same default
     # Treehouse pool name. Refuse it even when the pane's isolated-path check
     # passed: that check proves isolation, not this home's Git ownership.
-    project_common=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
-    slot_common=$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 1
-    project_common=$(cd "$project_common" && pwd -P) || exit 1
-    slot_common=$(cd "$slot_common" && pwd -P) || exit 1
-    if [ "$slot_common" != "$project_common" ]; then
-      echo "error: Treehouse pool slot $WT is linked to a different project clone ($slot_common, expected $project_common); refusing to launch a worker outside project $PROJ_ABS; inspect window $T" >&2
+    if ! fm_same_git_common_dir "$PROJ_ABS" "$WT"; then
+      echo "error: Treehouse pool slot $WT is not linked to project clone $PROJ_ABS; refusing to launch a worker outside that project; inspect window $T" >&2
       exit 1
     fi
   fi

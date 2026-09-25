@@ -1255,21 +1255,28 @@ fm_treehouse_project_lock_path() {  # <project-dir>
   printf '%s/.treehouse-project-%s.lock\n' "$root/state" "$hash"
 }
 
+# True when both checkouts resolve to the same physical Git common directory,
+# i.e. the worktree is linked to this project clone and not another clone.
+fm_same_git_common_dir() {  # <project-dir> <worktree>
+  local project_common slot_common
+  project_common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  slot_common=$(git -C "$2" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  project_common=$(CDPATH='' cd -- "$project_common" 2>/dev/null && pwd -P) || return 1
+  slot_common=$(CDPATH='' cd -- "$slot_common" 2>/dev/null && pwd -P) || return 1
+  [ "$project_common" = "$slot_common" ]
+}
+
 # A Treehouse slot has the managed pool's fixed <pool>/<slot>/<repo> layout.
 # Require both its pool state and the same Git common directory as the recorded
 # project; an ordinary linked worktree is not evidence that Treehouse owns it.
 fm_treehouse_pool_slot() {  # <project-dir> <worktree>
-  local project=$1 worktree=$2 slot pool state project_common slot_common
+  local project=$1 worktree=$2 slot pool state
   [ -d "$project" ] && [ -d "$worktree" ] || return 1
   slot=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || return 1
   pool=$(dirname "$(dirname "$slot")")
   state="$pool/treehouse-state.json"
   [ -f "$state" ] && [ ! -L "$state" ] || return 1
-  project_common=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  slot_common=$(git -C "$slot" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  project_common=$(CDPATH='' cd -- "$project_common" 2>/dev/null && pwd -P) || return 1
-  slot_common=$(CDPATH='' cd -- "$slot_common" 2>/dev/null && pwd -P) || return 1
-  [ "$project_common" = "$slot_common" ]
+  fm_same_git_common_dir "$project" "$slot"
 }
 
 # Slot-owner claim: which task a Treehouse pool slot currently belongs to.
