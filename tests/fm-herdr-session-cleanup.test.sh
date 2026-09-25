@@ -451,6 +451,7 @@ SH
 
   zombie_parent=''
   zombie_reap="$TMP_ROOT/reap-zombie-owner"
+  # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap below.
   reap_zombie_owner() {
     if [ -n "$zombie_parent" ]; then
       [ -z "${zombie_owner:-}" ] || kill -KILL "$zombie_owner" 2>/dev/null || true
