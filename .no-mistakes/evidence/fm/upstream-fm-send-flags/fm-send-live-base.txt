@@ -1,0 +1,111 @@
+=== [base] S1 unknown flag before message
+$ fm-send.sh lane-live --not-a-real-flag some text
+exit=0
+inbox .msg records: before=0 after=1
+pane fm-lane-live (cat -A, $ = Enter received):
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+pane fm-sm-live: (nothing typed)
+
+=== [base] S2 unknown --flag=value form
+$ fm-send.sh lane-live --bogus=1 hello
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=1 after=2
+pane fm-lane-live (cat -A, $ = Enter received):
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+pane fm-sm-live: (nothing typed)
+
+=== [base] S3 ordinary text steer still delivers
+$ fm-send.sh lane-live hello\ captain
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=2 after=3
+pane fm-lane-live (cat -A, $ = Enter received):
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+pane fm-sm-live: (nothing typed)
+
+=== [base] S4 single-dash message still sends
+$ fm-send.sh lane-live -1\ means\ failure
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=3 after=4
+pane fm-lane-live (cat -A, $ = Enter received):
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+  | : Firstmate instruction waiting: list '/tmp/fmsend-live.8689/home-base/state/lane-live.inbox'/*.msg and, in nu
+pane fm-sm-live: (nothing typed)
+
+=== [base] S5 --key Enter still delivers
+$ fm-send.sh lane-live --key Enter
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=4 after=4
+pane fm-lane-live (cat -A, $ = Enter received):
+  | $
+pane fm-sm-live: (nothing typed)
+
+=== [base] S6 --key with trailing flag
+$ fm-send.sh lane-live --key Enter --not-a-real-flag
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=4 after=4
+pane fm-lane-live (cat -A, $ = Enter received):
+  | $
+pane fm-sm-live: (nothing typed)
+
+=== [base] S7 --key with trailing plain word
+$ fm-send.sh lane-live --key Enter stray
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=4 after=4
+pane fm-lane-live (cat -A, $ = Enter received):
+  | $
+pane fm-sm-live: (nothing typed)
+
+=== [base] S8 --key then --fire-and-forget (reverse order)
+$ fm-send.sh sm-live --key Enter --fire-and-forget 0123456789abcdef
+exit=0
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+inbox .msg records: before=4 after=4
+pane fm-lane-live: (nothing typed)
+pane fm-sm-live (cat -A, $ = Enter received):
+  | $
+
+=== [base] S9 --fire-and-forget then --key (original order)
+$ fm-send.sh sm-live --fire-and-forget 0123456789abcdef --key Enter
+exit=1
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+stderr| error: --fire-and-forget cannot accompany --key
+inbox .msg records: before=4 after=4
+pane fm-lane-live: (nothing typed)
+pane fm-sm-live: (nothing typed)
+
+=== [base] S10 --resolve-key with --key cross-check
+$ fm-send.sh lane-live --resolve-key k --key Enter
+exit=1
+stderr| WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+stderr| error: --resolve-key cannot accompany --key; answering a decision requires a text answer
+inbox .msg records: before=4 after=4
+pane fm-lane-live: (nothing typed)
+pane fm-sm-live: (nothing typed)
+
+=== [base] inbox records on disk:
+--- state/lane-live.inbox/001.msg
+  schema=fm-task-inbox.v1
+  at=2026-09-25T05:06:03Z
+  --
+  --not-a-real-flag some text--- state/lane-live.inbox/002.msg
+  schema=fm-task-inbox.v1
+  at=2026-09-25T05:06:07Z
+  --
+  --bogus=1 hello--- state/lane-live.inbox/003.msg
+  schema=fm-task-inbox.v1
+  at=2026-09-25T05:06:10Z
+  --
+  hello captain--- state/lane-live.inbox/004.msg
+  schema=fm-task-inbox.v1
+  at=2026-09-25T05:06:13Z
+  --
+  -1 means failure

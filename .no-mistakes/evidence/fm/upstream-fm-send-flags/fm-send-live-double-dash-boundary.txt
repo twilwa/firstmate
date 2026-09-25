@@ -1,0 +1,20 @@
+=== [target] $ fm-send.sh lane-live --force\ is\ needed\ on\ that\ push
+exit=1
+stderr| error: unknown flag '--force is needed on that push'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+=== [target] $ fm-send.sh lane-live -- literal\ text
+exit=1
+stderr| error: unknown flag '--'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent.
+=== [target] $ fm-send.sh lane-live use\ --\ to\ end\ options
+exit=0
+records:
+  001.msg: use -- to end options
+=== [base] $ fm-send.sh lane-live --force\ is\ needed\ on\ that\ push
+exit=0
+=== [base] $ fm-send.sh lane-live -- literal\ text
+exit=0
+=== [base] $ fm-send.sh lane-live use\ --\ to\ end\ options
+exit=0
+records:
+  001.msg: --force is needed on that push
+  002.msg: -- literal text
+  003.msg: use -- to end options
