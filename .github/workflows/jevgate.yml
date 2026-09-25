@@ -26,17 +26,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The cache key includes the exact JevGate source revision.
-      - name: Restore the JevGate binary
-        id: jevgate-binary
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cargo/bin/jevgate
-          key: jevgate-9eb307b-${{ runner.os }}-${{ runner.arch }}
-
-      - name: Install JevGate
-        if: steps.jevgate-binary.outputs.cache-hit != 'true'
-        run: cargo install --git https://github.com/twilwa/jevgate --rev 9eb307b --locked --force jevgate
+      - name: Install/Download JevGate
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/jevgate"
+          curl --fail --location --silent --show-error --retry 3 \
+            'https://github.com/twilwa/jevgate/releases/download/bin-9eb307b/jevgate-x86_64-unknown-linux-gnu' \
+            --output "$binary"
+          printf '%s  %s\n' \
+            '212f12ab4b9accaf229c1194d9e93ea36a0190dafbe5cf9a3bf9f129e4bbd4e1' \
+            "$binary" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 0755 "$binary" "$RUNNER_TEMP/bin/jevgate"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       # JevGate caches exact requests, so unchanged files do not spend credit again.
       - name: Restore cached answers
