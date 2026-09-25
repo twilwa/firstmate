@@ -59,13 +59,45 @@ run_spawn() {
     "$id" "$PROJECT_DIR" "$@"
 }
 
+# pane_pool_root <pane-log>
+# Prints the --root the spawn sent with its `treehouse get` pane line.
+pane_pool_root() {
+  sed -n "s/^treehouse get --root '\\(.*\\)'\$/\\1/p" "$1"
+}
+
+# assert_pool_root_outside_homes <root> <label> <home>...
+# The root must sit under the user's HOME, outside every Firstmate home, with
+# no AGENTS.md or CLAUDE.md in any directory from the root up to the case dir.
+assert_pool_root_outside_homes() {
+  local root=$1 label=$2 home dir
+  shift 2
+  case "$root" in
+    "$CASE_DIR/user-home/.treehouse-fm/"?*) ;;
+    *) fail "$label pool root is not a per-clone root under the user HOME: '$root'" ;;
+  esac
+  for home in "$@"; do
+    case "$root/" in
+      "$home/"*) fail "$label pool root $root is inside Firstmate home $home" ;;
+    esac
+  done
+  dir=$root
+  while :; do
+    [ ! -e "$dir/AGENTS.md" ] && [ ! -e "$dir/CLAUDE.md" ] \
+      || fail "$label pool root $root has an instruction-file ancestor at $dir"
+    [ "$dir" != "$CASE_DIR" ] || break
+    dir=$(dirname "$dir")
+  done
+}
+
 # Both clones share an origin, so Treehouse's default remote-keyed pool may
 # hand the second home a slot linked to the first home's clone.
 test_foreign_home_pool_slot_refused_before_worker_launch() {
-  local rec id out status first_project foreign_slot second_home second_project pane_log own_slot
+  local rec id out status first_home first_project foreign_slot second_home second_project pane_log own_slot
+  local second_root first_root
   id='pool-foreign-home-r1'
   rec=$(make_case foreign-home "$id")
   read_case_record "$rec"
+  first_home=$HOME_DIR
   first_project=$PROJECT_DIR
   second_home="$CASE_DIR/second-home"
   second_project="$second_home/projects/project"
@@ -73,22 +105,24 @@ test_foreign_home_pool_slot_refused_before_worker_launch() {
   git clone --quiet "file://$CASE_DIR/origin.git" "$second_project"
   fm_test_spawn_home "$second_home" codex
   fm_test_spawn_brief "$second_home" "$id"
+  printf 'supervisor contract\n' | tee "$first_home/AGENTS.md" "$second_home/AGENTS.md" >/dev/null
+  printf '@AGENTS.md\n' | tee "$first_home/CLAUDE.md" "$second_home/CLAUDE.md" >/dev/null
   foreign_slot="$CASE_DIR/slots/1/project"
   mkdir -p "$(dirname "$foreign_slot")"
   git -C "$first_project" worktree move "$POOL_DIR" "$foreign_slot"
   printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$foreign_slot" \
     > "$CASE_DIR/slots/treehouse-state.json"
   HOME_DIR=$second_home PROJECT_DIR=$second_project POOL_DIR=$foreign_slot
-  pane_log="$CASE_DIR/pane.log"
-  out=$(FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
+  pane_log="$CASE_DIR/pane-second-foreign.log"
+  out=$(FM_TEST_USER_HOME="$CASE_DIR/user-home" FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
   status=$?
   [ "$status" -ne 0 ] || fail "second-home spawn launched in first home's clone: $out"
   assert_contains "$out" "Treehouse pool slot" "foreign slot refusal did not identify the unsafe pool slot"
   assert_contains "$out" "$foreign_slot" "foreign slot refusal did not identify the slot"
   [ ! -e "$second_home/state/$id.meta" ] || fail "foreign slot published task metadata"
   [ ! -e "$CASE_DIR/slots/1/.fm-slot-owner" ] || fail "foreign slot was claimed by the second home"
-  grep -Fxq -- "treehouse get --root '$second_home/projects/.treehouse'" "$pane_log" \
-    || fail "second-home spawn did not select its own physical pool root"
+  second_root=$(pane_pool_root "$pane_log")
+  assert_pool_root_outside_homes "$second_root" "second-home" "$first_home" "$second_home"
   [ "$(git -C "$foreign_slot" rev-parse --path-format=absolute --git-common-dir)" = "$first_project/.git" ] \
     || fail "foreign slot did not belong to the first clone"
 
@@ -100,14 +134,28 @@ test_foreign_home_pool_slot_refused_before_worker_launch() {
   printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$own_slot" \
     > "$CASE_DIR/second-slots/treehouse-state.json"
   POOL_DIR=$own_slot
-  out=$(FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
+  pane_log="$CASE_DIR/pane-second-own.log"
+  out=$(FM_TEST_USER_HOME="$CASE_DIR/user-home" FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
   status=$?
   expect_code 0 "$status" "second-home spawn should accept its own clone's pool slot"$'\n'"$out"
   assert_grep "worktree=$own_slot" "$second_home/state/$id.meta" \
     "second-home spawn did not publish its own slot"
   assert_grep "task=$id" "$CASE_DIR/second-slots/1/.fm-slot-owner" \
     "second-home spawn did not claim its own slot"
-  pass "same-origin clones use a per-clone root and reject slots from the other home"
+  [ "$(pane_pool_root "$pane_log")" = "$second_root" ] \
+    || fail "second-home spawns of one clone did not reuse one pool root"
+
+  id='pool-foreign-home-r1'
+  HOME_DIR=$first_home PROJECT_DIR=$first_project POOL_DIR=$foreign_slot
+  pane_log="$CASE_DIR/pane-first.log"
+  out=$(FM_TEST_USER_HOME="$CASE_DIR/user-home" FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
+  status=$?
+  expect_code 0 "$status" "first-home spawn should accept its own clone's pool slot"$'\n'"$out"
+  first_root=$(pane_pool_root "$pane_log")
+  assert_pool_root_outside_homes "$first_root" "first-home" "$first_home" "$second_home"
+  [ "$first_root" != "$second_root" ] \
+    || fail "same-origin clones in different homes shared one pool root: $first_root"
+  pass "same-origin clones use per-clone roots outside every home and reject slots from the other home"
 }
 
 test_remote_seeded_home_spawns_from_treehouse_pool() {
