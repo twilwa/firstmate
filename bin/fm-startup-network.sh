@@ -13,8 +13,13 @@
 # composed from bounded local reads while these checks run concurrently in a
 # detached worker, and their result is reported back inline when it finishes in
 # time, or as a durable wake when it does not. The locked startup's bounded
-# inactive-outcome scan also runs here because its local current-state reads can
-# be just as slow; that scan publishes its own findings to the durable wake queue.
+# inactive-outcome scan and best-effort home-summary refresh also run here because
+# their local current-state reads can be just as slow; the scan publishes its own
+# findings to the durable wake queue. Summary publication runs concurrently with
+# the checks under its own single-flight lock and a deadline capped at the stage
+# budget. The network result is published before the summary child is reaped, and
+# that child is still reaped before the deferred stage finishes. It never inherits
+# the digest stdout.
 #
 # WHAT IS PRESERVED. Nothing is dropped. bin/fm-bootstrap.sh remains the single
 # owner of every network sweep and still runs all of them, unchanged, via its
@@ -106,12 +111,15 @@
 #                             and the wake decision; every wait on it is bounded.
 #
 # The whole stage is bounded by FM_STARTUP_NETWORK_TIMEOUT (default 120s), one
-# aggregate deadline covering both the inactive-outcome scan and network sweeps
-# plus every lock the worker waits on before them.
-# Publication and delivery are bounded the same way by FM_SESSION_START_TIMEOUT.
-# A lock that a live process still holds at either deadline ends the worker with
-# a failed record naming that holder and the rerun command, never a wait that
-# outlives the budget with its output discarded.
+# aggregate deadline covering the inactive-outcome scan and network sweeps plus
+# every lock the worker waits on before them. A locked session also starts the
+# best-effort home-summary refresh concurrently, capped to the stage budget
+# remaining after those lock waits; it is reaped after publication and delivery.
+# Publication and delivery are bounded by FM_SESSION_START_TIMEOUT. A lock that
+# a live process still holds at either deadline ends the worker with a failed
+# record naming that holder and the rerun command, never a wait that outlives the
+# budget with its output discarded. The summary cleanup cannot delay publication
+# of the network result.
 # Hitting the bound is reported as an actionable NETWORK_CHECKS: line, never as
 # silence. bin/fm-timeout-lib.sh remains the single owner of bounded execution.
 set -u
@@ -224,7 +232,7 @@ worker_alive() {
 phase_label() {  # <phases>
   case "$1" in
     probe) printf 'GitHub authentication' ;;
-    probe,sweeps) printf 'GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, and inactive terminal-outcome reconciliation' ;;
+    probe,sweeps) printf 'GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, inactive terminal-outcome reconciliation, and home-summary publication' ;;
     *) printf 'the deferred network checks' ;;
   esac
 }
@@ -478,7 +486,7 @@ publish_lock_held() {  # <generation> <phases> <locked> <started> <lockdir> <out
 }
 
 cmd_run() {  # <locked> <lock-pid> <generation>
-  local locked=$1 lock_pid=$2 generation=$3 phases started budget out rc sweep_locked=0 downgraded=0 internal=0 lease_held=0 timings stage_started stage_deadline
+  local locked=$1 lock_pid=$2 generation=$3 phases started budget out rc sweep_locked=0 downgraded=0 internal=0 lease_held=0 timings stage_started stage_deadline summary_pid='' summary_budget
   mkdir -p "$STATE" 2>/dev/null || return 1
   started=$(now)
   budget=$(stage_budget)
@@ -564,14 +572,25 @@ EOF
       downgraded=1
     fi
   fi
-  # One aggregate deadline covers both deferred operations. The inactive scan
-  # retains its own tighter per-scan bound inside this outer bound. Findings
-  # need no report translation: the scan writes its ordinary durable
+  # One aggregate deadline covers the deferred inactive scan and network
+  # sweeps. The scan retains its tighter per-scan bound inside this outer bound.
+  # Findings need no report translation: the scan writes its ordinary durable
   # inactive-outcome wakes directly. A child shell composes the two executable
   # owners only so fm_run_timed can govern them as one process group.
   # The sweeps get whatever the lock waits above left of the stage budget.
   budget=$(seconds_until "$stage_deadline")
+  # The best-effort summary is single-flight and runs alongside the checks, not
+  # in front of them. Its bounded wrapper stays outside the network process
+  # group: killing that wrapper at the stage deadline could strand its process
+  # group. Its budget is capped to the time left after lock acquisition, and the
+  # network result is published before the summary child is reaped.
   if [ "$sweep_locked" -eq 1 ]; then
+    summary_budget=${FM_HOME_SUMMARY_TIMEOUT:-60}
+    case "$summary_budget" in ''|*[!0-9]*|0) summary_budget=60 ;; esac
+    [ "$summary_budget" -le "$budget" ] || summary_budget=$budget
+    FM_HOME_SUMMARY_TIMEOUT="$summary_budget" FM_HOME_SUMMARY_IF_IDLE=1 \
+      "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort </dev/null >/dev/null 2>&1 &
+    summary_pid=$!
     # shellcheck disable=SC2016  # Child-shell variables expand inside the bound.
     fm_run_timed "$budget" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
       FM_BOOTSTRAP_NETWORK=only FM_BOOTSTRAP_NETWORK_LOCK_PID="$lock_pid" \
@@ -611,6 +630,7 @@ EOF
 }
 
 run_cleanup() {  # <output-file> <timing-file>
+  [ -z "${summary_pid:-}" ] || wait "$summary_pid" || true
   rm -f "$1" 2>/dev/null || true
   [ -z "${2:-}" ] || rm -f "$2" 2>/dev/null || true
 }
