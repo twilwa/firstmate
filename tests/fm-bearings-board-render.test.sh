@@ -128,7 +128,9 @@ render_call() {  # <home> <call-json> <answers-json>
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    LAVISH_AXI_STATE_DIR="$home/lavish-state" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  require_listener_reached_poll "$home"
   node "$HARNESS" "$home/.lavish/bearings-board.html" "$answers" \
     || fail "the built board could not be rendered"
 }
