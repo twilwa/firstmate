@@ -131,7 +131,8 @@ test_brief_assertion_precedes_branch() {
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" tangle-brief-cc3 alpha --mode no-mistakes >/dev/null 2>&1
   brief="$home/data/tangle-brief-cc3/brief.md"
   assert_present "$brief" "brief was not scaffolded"
-  assert_grep "blocked: launched in primary checkout, not an isolated worktree" "$brief" \
+  # shellcheck disable=SC2016 # The generated instruction keeps the stamp literal.
+  assert_grep 'blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree' "$brief" \
     "brief is missing the isolation blocked-status contract"
   assert_grep "The path check is authoritative" "$brief" \
     "brief must make the path check authoritative"
@@ -278,8 +279,8 @@ test_spawn_tmux_window_construction() {
     "must disable allow-rename on the spawned window"
 
   # Bug 2 fix (b): treehouse-get and the worktree wait loop target the stable id.
-  assert_grep "send-keys -t @spawnwid treehouse get Enter" "$rec" \
-    "treehouse get must be sent to the stable window id"
+  grep -Eq "send-keys -t @spawnwid treehouse get --root '[^']+' Enter\$" "$rec" \
+    || fail "treehouse get --root must be sent to the stable window id"
   assert_grep "display-message -p -t @spawnwid #{pane_current_path}" "$rec" \
     "the worktree wait loop must query the stable window id, not the name"
 

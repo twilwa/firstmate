@@ -25,7 +25,7 @@ Keep each registry description useful for identifying the project, but keep deli
 Do not turn the registry into project documentation.
 
 Before adding, cloning, creating, or registering any project in the main home, inspect the authoritative `data/secondmates.md` routing table and judge every existing natural-language `scope:` against the proposed project or domain.
-Apply `AGENTS.md` section 7's authoritative secondmate routing rules; if an existing scope owns that domain, route the new-project operation or work there instead of creating or registering a duplicate main-home clone.
+Apply `task-intake`'s authoritative secondmate routing rules; if an existing scope owns that domain, route the new-project operation or work there instead of creating or registering a duplicate main-home clone.
 Absence from the main `data/projects.md` registry is never evidence that no second mate owns the domain.
 If the owning second mate cannot accept the route, report that concrete blocker or obtain an explicit captain redirection rather than silently duplicating the project in the main home.
 
@@ -35,7 +35,8 @@ Do not overwrite or repurpose an existing path.
 
 ## Delivery posture
 
-The registry records the project's standing posture, which is the captain's default for the work rather than any task's answer; `AGENTS.md` section 7 owns how each task's concrete mode and yolo are resolved at intake and passed explicitly to the brief, the spawn, and any promotion.
+The registry records the project's standing delivery posture and optional ship-branch prefix, which are the captain's defaults rather than any task's answer.
+`task-intake` owns how each task's concrete mode, yolo, and branch prefix are resolved at intake and passed explicitly to the brief and spawn, while `task-delivery` owns scout promotion and passes the resolved values.
 Choose that posture when adding or creating the project:
 
 - `no-mistakes` runs the full validation pipeline before a PR.
@@ -51,6 +52,14 @@ Registering a conditional policy is a one-time choice and never requires classif
 The optional `+yolo` posture changes merge authority only and does not change the delivery mode.
 Default it off for every project and every posture, and enable it only on the captain's explicit instruction.
 `AGENTS.md` section 7 owns the merge-authority contract.
+
+The optional `forge=` token records which forge the project's remote actually is; its one value is `forge=gerrit`.
+It is orthogonal to the mode and to `+yolo`, so it is never derived from either, and it is never inferred at use time from a remote name, host, port, or push target.
+At add or create intake, run `bin/fm-forge-detect.sh projects/<name>` once the clone exists and propose its answer alongside the posture; the captain's confirmation is what binds it, and the registry token is the durable record of that confirmation.
+Never register the binding from detection alone, and never re-derive it later from the clone.
+A forge composes with `no-mistakes`, `direct-PR`, and `no-mistakes-prod-only`, and the registry refuses it on `local-only`, which publishes nothing; a Gerrit-hosted project kept local registers `local-only` with no forge token.
+`yolo` is inactive on a `forge=gerrit` project, so never propose `+yolo` alongside it.
+`bin/fm-project-mode.sh`'s header owns the binding and `bin/fm-dod-lib.sh` owns what it changes for a worker.
 
 ## Add or clone an existing project
 

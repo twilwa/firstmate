@@ -4,7 +4,8 @@
 # `fm-bearings-board.sh build` and then executed under the minimal DOM shim in
 # tests/assets/board-render-harness.mjs. The assertions are on what the page
 # renders - row badges, the stat strip, the empty state - never on the
-# template's source text.
+# template's source text, and the answer context the page hands to lavish when a
+# Captain's Call card is answered.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -24,22 +25,26 @@ make_home() {  # <name>
   # tests/lib.sh, not with a shell array: make_home runs inside a command
   # substitution, where an array append never reaches the caller.
   fm_test_track_procevent_home "$home" "$home/procevent-claims"
-  mkdir -p "$home/state" "$home/data"
+  mkdir -p "$home/state" "$home/data" "$home/lavish-state"
   fakebin=$(fm_fakebin "$home")
   # The build proves the board session is live before it arms anything, so the
-  # stub reports the opened shape the real lavish-axi emits. This suite is about
-  # what the template renders, not about session liveness, which
-  # tests/fm-bearings-board.test.sh owns.
+  # stub reports the opened shape the real lavish-axi emits, and records that
+  # session in this home's own store. The listener resolves its server from that
+  # store; the machine-wide default has no session for this board.
   cat > "$fakebin/lavish-axi" <<'SH'
 #!/usr/bin/env bash
 case "${1-}" in
-  --version) printf '0.1.61\n' ;;
+  --version) printf '0.1.77\n' ;;
   '')
     printf 'sessions[1]{file,status,url,pending_prompts}:\n'
     [ ! -s "$FM_HOME/lavish-open" ] \
-      || printf '  %s,open,"http://127.0.0.1/session/render",0\n' "$(cat "$FM_HOME/lavish-open")"
+      || printf '  %s,open,"http://127.0.0.1:4387/session/0123456789abcdef",0\n' "$(cat "$FM_HOME/lavish-open")"
     ;;
   poll)
+    # The build's listening sample can land before this process resolves a
+    # session. Recording entry makes that gap observable: a claim that dies
+    # without reaching poll is not a listener.
+    printf 'entered\n' > "$FM_HOME/stub-poll"
     # Bounded, so a listener that escapes its test stops on its own.
     while [ "$SECONDS" -lt "${FM_TEST_STUB_MAX_BLOCK_SECONDS:-120}" ]; do sleep 1; done
     exit 75
@@ -47,6 +52,9 @@ case "${1-}" in
   *)
     real=$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")
     printf '%s\n' "$real" > "$FM_HOME/lavish-open"
+    jq -n --arg file "$real" \
+      '{sessions:{"0123456789abcdef":{file:$file,url:"http://127.0.0.1:4387/session/0123456789abcdef"}}}' \
+      > "$LAVISH_AXI_STATE_DIR/state.json"
     printf 'session:\n  status: opened\n'
     ;;
 esac
@@ -54,6 +62,35 @@ exit 0
 SH
   chmod +x "$fakebin/lavish-axi"
   printf '%s\n' "$home"
+}
+
+# The build treats a claimed runner as listening before that runner resolves a
+# Lavish session. Wait until the stub poll is entered or the source is no longer
+# live, and require both: a claim that dies in the gap is the flake.
+require_listener_reached_poll() {  # <home>
+  local home=$1 i=0 owner=''
+  while [ "$i" -lt 40 ]; do
+    i=$((i + 1))
+    owner=$(PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+      LAVISH_AXI_STATE_DIR="$home/lavish-state" \
+      "$ROOT/bin/fm-procevent.sh" list 2>/dev/null \
+      | awk 'NR > 1 { print $3; exit }')
+    if [ -s "$home/stub-poll" ] && [ "$owner" = live ]; then
+      return 0
+    fi
+    case "$owner" in
+      none|orphaned)
+        if [ -s "$home/stub-poll" ]; then
+          fail "the board listener reached the Lavish poll and then exited (owner: $owner)"
+        fi
+        fail "the board listener exited before it reached the Lavish poll (owner: $owner)"
+        ;;
+    esac
+    sleep 0.05
+  done
+  fail "the board listener did not reach the Lavish poll (owner: ${owner:-none})"
 }
 
 # Build the board from <underway-json> plus <charted-json> and return what the
@@ -68,7 +105,9 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    LAVISH_AXI_STATE_DIR="$home/lavish-state" \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  require_listener_reached_poll "$home"
   node "$HARNESS" "$home/.lavish/bearings-board.html" \
     || fail "the built board could not be rendered"
 }
@@ -76,6 +115,27 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
 # Build the board from <charted-json> alone and return what the renderer produced.
 render() {  # <home> <charted-json> [charted_more] [charted_warning_more]
   render_board "$1" '[]' "$2" "${3:-0}" "${4:-0}"
+}
+
+# Build a Captain's Call deck from <call-json> and return what the renderer
+# produced after <answers-json> is submitted against its cards.
+render_call() {  # <home> <call-json> <answers-json>
+  local home=$1 call=$2 answers=$3 data="$1/payload.json"
+  jq -n --argjson call "$call" '{
+    schema:"fm-bearings-board.v1", home:"render-home", generated:"2026-08-26T00:00Z",
+    prs_live:false, captains_call:$call, underway:[], landed:[],
+    charted:[], charted_more:0, charted_warning_more:0}' > "$data"
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    "$BOARD" build "$data" >/dev/null || fail "the board did not build"
+  node "$HARNESS" "$home/.lavish/bearings-board.html" "$answers" \
+    || fail "the built board could not be rendered"
+}
+
+# The context bytes queued for the <n>th answer, exactly as lavish receives them.
+queued_context() {  # <render-json> <index>
+  printf '%s' "$1" | jq -c --argjson i "$2" '.queued[$i].data'
 }
 
 charted_next_count() {  # <render-json>
@@ -228,6 +288,113 @@ test_charted_rows_without_a_filed_date_follow_the_dated_rows_in_payload_order() 
   pass "charted rows with no filed date follow the dated rows in payload order"
 }
 
+# The board expresses a dated defer with the option's own `until`; the emitted
+# answer context fm-procevent-lavish.sh reads is what proves which close mode
+# the captain's selection actually carries.
+test_an_option_date_emits_the_dated_defer_answer_context() {
+  local home out call answers
+  home=$(make_home defer-context)
+  call='[
+    {"key":"sample-open-call","type":"decision","repo":"sample","title":"Open question",
+     "options":[{"value":"yes","label":"Adopt"},
+                {"value":"later","label":"Revisit in October","until":"2026-10-01"}],
+     "allow_freeform":true},
+    {"key":"sample-gated-call","type":"decision","repo":"sample","title":"Gated work",
+     "close":"release",
+     "options":[{"value":"go","label":"Proceed"},
+                {"value":"later","label":"Revisit in October","until":"2026-10-01"}],
+     "allow_freeform":true}
+  ]'
+  answers='[
+    {"question":"sample-open-call","selection":"later","note":"after the launch"},
+    {"question":"sample-open-call","selection":"yes","note":""},
+    {"question":"sample-gated-call","selection":"go","note":""},
+    {"question":"sample-gated-call","selection":"later","note":""}
+  ]'
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '.error == ""' >/dev/null \
+    || fail "the board rendered its fail-closed error instead of the deck: $out"
+
+  [ "$(queued_context "$out" 0)" = '{"schema":"fm-bearings-answer.v1","question":"sample-open-call","selection":"later","note":"after the launch","close":"defer","until":"2026-10-01"}' ] \
+    || fail "an option date did not emit the dated defer context: $out"
+  [ "$(queued_context "$out" 1)" = '{"schema":"fm-bearings-answer.v1","question":"sample-open-call","selection":"yes","note":""}' ] \
+    || fail "an option without a date emitted a close mode: $out"
+  [ "$(queued_context "$out" 2)" = '{"schema":"fm-bearings-answer.v1","question":"sample-gated-call","selection":"go","note":"","close":"release"}' ] \
+    || fail "the card close did not govern an option carrying no date: $out"
+  [ "$(queued_context "$out" 3)" = '{"schema":"fm-bearings-answer.v1","question":"sample-gated-call","selection":"later","note":"","close":"defer","until":"2026-10-01"}' ] \
+    || fail "an option date did not override the card's release close: $out"
+  pass "an option date emits a dated defer while the card close governs every other answer"
+}
+
+# The date an option commits the call to has to be on the card the captain
+# reads, not only in the context the board emits behind it.
+test_a_deferring_option_shows_the_date_it_commits_the_call_to() {
+  local home out call answers
+  home=$(make_home defer-visible)
+  call='[
+    {"key":"sample-dated-call","type":"decision","repo":"sample","title":"Open question",
+     "options":[{"value":"yes","label":"Adopt","hint":"recommended"},
+                {"value":"later","label":"Revisit in October","until":"2027-10-01"}],
+     "allow_freeform":true}
+  ]'
+  answers='[
+    {"question":"sample-dated-call","selection":"later","note":""},
+    {"question":"sample-dated-call","selection":"yes","note":""}
+  ]'
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '.error == ""' >/dev/null \
+    || fail "the board rendered its fail-closed error instead of the deck: $out"
+  printf '%s' "$out" | jq -e '
+    .call[0].options
+    | ((map(select(.value == "later")) | length) == 1)
+      and (map(select(.value == "later"))[0]
+        | .until == "deferred until 2027-10-01" and .label == "Revisit in October")
+      and (map(select(.value == "yes"))[0]
+        | .until == null and .hint == "recommended" and .label == "Adopt")
+  ' >/dev/null || fail "the card did not show the date its defer option commits to: $out"
+
+  printf '%s' "$out" | jq -e '
+    .queued[0].text == "Open question -> later (deferred until 2027-10-01)"
+      and .queued[0].prompt == "Captain'"'"'s Call answer - Open question: later (deferred until 2027-10-01)"
+  ' >/dev/null || fail "the queued deferral did not state the date the captain chose: $out"
+  printf '%s' "$out" | jq -e '
+    .queued[1].text == "Open question -> yes"
+      and .queued[1].prompt == "Captain'"'"'s Call answer - Open question: yes"
+  ' >/dev/null || fail "an answer that defers nothing did not keep its confirmation shape: $out"
+
+  [ "$(queued_context "$out" 0)" = '{"schema":"fm-bearings-answer.v1","question":"sample-dated-call","selection":"later","note":"","close":"defer","until":"2027-10-01"}' ] \
+    || fail "showing the date changed the emitted deferral context: $out"
+  [ "$(queued_context "$out" 1)" = '{"schema":"fm-bearings-answer.v1","question":"sample-dated-call","selection":"yes","note":""}' ] \
+    || fail "showing the date changed a non-deferring answer's context: $out"
+  pass "a deferring option shows its date on the card and in the queued answer"
+}
+
+# Display-only defer decoration must not consume the captain's 512-byte answer
+# budget. Both options submit the same 511-byte undecorated answer payload; the
+# deferring option then adds its visible date only after that payload passes.
+test_a_deferring_option_keeps_the_same_note_budget() {
+  local home out call answers note
+  home=$(make_home defer-note-budget)
+  note=$(printf 'n%.0s' {1..504})
+  call='[
+    {"key":"sample-budget-call","type":"decision","repo":"sample","title":"Budgeted answer","options":[{"value":"ship","label":"Ship now"},{"value":"wait","label":"Wait","until":"2027-10-01"}],"allow_freeform":true}
+  ]'
+  answers=$(jq -cn --arg note "$note" '[
+    {question:"sample-budget-call",selection:"ship",note:$note},
+    {question:"sample-budget-call",selection:"wait",note:$note}
+  ]')
+  out=$(render_call "$home" "$call" "$answers")
+  printf '%s' "$out" | jq -e '
+    (.queued | length) == 2
+      and (.queued[0].data.note | length) == 504
+      and (.queued[1].data.note | length) == 504
+      and (.queued[0].text | startswith("Budgeted answer -> ship - "))
+      and (.queued[1].text | startswith("Budgeted answer -> wait - "))
+      and (.queued[1].text | endswith(" (deferred until 2027-10-01)"))
+  ' >/dev/null || fail "defer decoration reduced the note budget below an ordinary option: $out"
+  pass "a deferring option keeps the same 512-byte answer budget as an ordinary option"
+}
+
 test_an_underway_row_leads_with_the_task_name_and_keeps_its_run_status
 test_an_underway_identifier_label_is_not_replaced_by_run_status
 test_charted_next_reads_newest_filed_first
@@ -237,3 +404,6 @@ test_warnings_are_excluded_from_the_charted_next_count
 test_a_board_of_only_warnings_still_reports_nothing_queued
 test_omitted_warnings_never_count_as_more_queued
 test_an_omitted_kind_keeps_the_existing_queued_rendering
+test_an_option_date_emits_the_dated_defer_answer_context
+test_a_deferring_option_shows_the_date_it_commits_the_call_to
+test_a_deferring_option_keeps_the_same_note_budget

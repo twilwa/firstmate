@@ -1,0 +1,8 @@
+{
+  "schema": "firstmate-pr-review-ledger.v1", "task": "synthetic-undispositioned", "url": "https://github.com/o/r/pull/7", "current_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "generations": [{"head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "created_at": "2026-09-20T00:00:00Z", "created_epoch": 1000,
+    "risk": {"level": "low", "reason": "synthetic fixture"}, "not_before_epoch": 1600, "next_checkpoint_epoch": null, "retry_index": 0,
+    "checkpoints": [{"at": "2026-09-20T00:10:00Z", "at_epoch": 1600, "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pending_reviews": [], "checks": [{"name": "ci", "status": "COMPLETED", "conclusion": "pass", "required": true}], "comment_ids": [["top-level", "10"]]}],
+    "review_items": [{"kind": "top-level", "id": "10", "url": "https://example.test/top", "author": "sourcery", "body": "consider the edge case", "updated_at": "2026-09-20T00:10:00Z", "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fingerprint": "[\"top-level\",\"10\",\"consider the edge case\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"2026-09-20T00:10:00Z\"]", "present": true, "disposition": null, "evidence": null, "disposed_at": null}],
+    "attestations": [], "final_disposition": null, "post_merge_verifications": [], "merge_decision": null}]
+}

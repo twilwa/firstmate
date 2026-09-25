@@ -35,7 +35,7 @@ state=${LAVISH_FAKE_STATE:?}
 emit() {  # <canonical-file> <status>
   printf 'session:\n'
   printf '  file: %s\n' "$1"
-  printf '  url: "http://127.0.0.1:4387/session/deadbeef"\n'
+  printf '  url: "http://127.0.0.1:4387/session/0123456789abcdef"\n'
   printf '  status: %s\n' "$2"
 }
 case "${1-}" in
@@ -69,7 +69,7 @@ case "${1-}" in
     if [ -s "$state/open" ]; then
       while IFS= read -r listed; do
         [ -n "$listed" ] || continue
-        printf '  %s,open,"http://127.0.0.1:4387/session/deadbeef",0\n' "$listed"
+        printf '  %s,open,"http://127.0.0.1:4387/session/0123456789abcdef",0\n' "$listed"
       done < "$state/open"
     fi
     exit 0
@@ -91,6 +91,9 @@ if [ -e "$state/refuse-reopen" ]; then
 fi
 rm -f -- "$state/user-ended"
 printf '%s\n' "$real" > "$state/open"
+jq -n --arg file "$real" \
+  '{sessions:{"0123456789abcdef":{file:$file,url:"http://127.0.0.1:4387/session/0123456789abcdef"}}}' \
+  > "$state/state.json"
 emit "$real" opened
 exit 0
 SH
@@ -106,7 +109,7 @@ run_board() {  # <home> <args...>
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    LAVISH_FAKE_STATE="$home/lavish-state" \
+    LAVISH_FAKE_STATE="$home/lavish-state" LAVISH_AXI_STATE_DIR="$home/lavish-state" \
     "$BOARD" "$@"
 }
 
@@ -116,6 +119,7 @@ run_procevent() {  # <home> <command args...>
   PATH="$home/fakebin:$PATH" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
+    LAVISH_AXI_STATE_DIR="$home/lavish-state" \
     "$ROOT/bin/fm-procevent.sh" "$@"
 }
 
@@ -348,10 +352,9 @@ test_build_injects_binds_then_arms() {
 }
 
 test_registration_cannot_consume_before_any_origin_binding() {
-  local home data runtime origin key hold board sid show
+  local home data origin key hold board sid show
   home=$(make_home order-proof)
   data="$home/payload.json"
-  runtime="$home/runtime"
   origin=order-proof-review
   key=captain-choice
   hold="$origin-decision-$key"
@@ -374,21 +377,6 @@ EOF
   jq --arg hold "$hold" '.captains_call[0].key = $hold' "$data" > "$data.tmp" \
     && mv "$data.tmp" "$data"
 
-  mkdir -p "$runtime"
-  cp -R "$ROOT/bin" "$runtime/bin"
-  cat > "$runtime/bin/fm-procevent-lavish.sh" <<'SH'
-#!/usr/bin/env bash
-set -eu
-if [ "${1:-}" = arm ]; then
-  artifact=${2:-}
-  "$REAL_LAVISH_ADAPTER" arm "$artifact" >/dev/null
-  sid=$("$REAL_LAVISH_ADAPTER" source-id "$artifact")
-  "$REAL_PROCEVENT" start "$sid" >/dev/null
-  exit 0
-fi
-exec "$REAL_LAVISH_ADAPTER" "$@"
-SH
-  chmod +x "$runtime/bin/fm-procevent-lavish.sh"
   cat > "$home/fakebin/lavish-axi" <<'SH'
 #!/usr/bin/env bash
 if [ -z "${1:-}" ]; then
@@ -400,6 +388,10 @@ fi
 if [ "${1:-}" != poll ]; then
   real=$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")
   printf '%s\n' "$real" > "$FM_HOME/order-open"
+  mkdir -p "$LAVISH_AXI_STATE_DIR"
+  jq -n --arg file "$real" \
+    '{sessions:{"0123456789abcdef":{file:$file,url:"http://127.0.0.1:14387/session/0123456789abcdef"}}}' \
+    > "$LAVISH_AXI_STATE_DIR/state.json"
   printf 'session:\n  status: opened\n'
   exit 0
 fi
@@ -413,17 +405,17 @@ EOF
 SH
   chmod +x "$home/fakebin/lavish-axi"
 
-  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$runtime" FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
-    FM_BEARINGS_BOARD_TEMPLATE="$ROOT/.agents/skills/bearings/assets/board-template.html" \
-    REAL_LAVISH_ADAPTER="$ROOT/bin/fm-procevent-lavish.sh" \
-    REAL_PROCEVENT="$ROOT/bin/fm-procevent.sh" ORDER_PROOF_HOLD="$hold" \
-    "$runtime/bin/fm-bearings-board.sh" build "$data" >/dev/null \
+  ORDER_PROOF_HOLD="$hold" run_board "$home" build "$data" >/dev/null \
     || fail "the order-proof board build failed"
 
-  show=$(cd "$home" && tasks-axi show "$hold" --full) \
-    || fail "the order-proof captain hold disappeared"
+  # Arm starts the listener, which captures the answer and closes the hold on
+  # its own schedule after build returns.
+  for _ in $(seq 1 100); do
+    show=$(cd "$home" && tasks-axi show "$hold" --full) \
+      || fail "the order-proof captain hold disappeared"
+    case "$show" in *"state: done"*) break ;; esac
+    sleep 0.1
+  done
   assert_contains "$show" "state: done" \
     "registration consumed its answer before the any-origin binding existed"
   assert_contains "$show" "Resolution mode: answered" \
@@ -777,6 +769,95 @@ test_build_refuses_a_nondecision_reconcile_value() {
   pass "build reserves reconcile across non-decision cards"
 }
 
+test_build_refuses_duplicate_option_values_within_one_card() {
+  local home data board out rc
+  home=$(make_home duplicate-option-value)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  jq '.captains_call[0].options += [
+    { "value":"later", "label":"Revisit in October", "until":"2026-10-01" },
+    { "value":"later", "label":"Revisit next year", "until":"2027-10-01" }
+  ]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a card repeating an option value was accepted"
+  assert_contains "$out" "later" "the refusal did not name the duplicated option value"
+  assert_absent "$board" "a card repeating an option value still produced a board"
+
+  jq '.captains_call[0].options[-1].value = "much-later"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "distinct option values carrying their own dates were refused"
+  extract_payload "$board" | jq -e '
+    [.captains_call[0].options[]
+      | select(.value == "later" or .value == "much-later")
+      | .until]
+    | sort == ["2026-10-01", "2027-10-01"]
+  ' >/dev/null || fail "the built board lost a distinct option date"
+  pass "build refuses duplicate option values and accepts distinct ones"
+}
+
+test_build_refuses_duplicate_option_values_across_card_types() {
+  local home data rc out
+  home=$(make_home duplicate-option-value-merge)
+  data="$home/payload.json"
+  write_valid_payload "$data"
+  jq '.captains_call[1].options += [{ "value":"hold", "label":"Wait for review" }]' \
+    "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "a merge card repeating an option value was accepted"
+  assert_contains "$out" "hold" "the refusal did not name the duplicated merge option value"
+  assert_absent "$home/.lavish/bearings-board.html" "a refused merge card still produced a board"
+  pass "build requires unique option values on non-decision cards too"
+}
+
+test_build_accepts_an_optional_option_date() {
+  local home data board out rc before after
+  home=$(make_home defer-option)
+  data="$home/payload.json"
+  board="$home/.lavish/bearings-board.html"
+  write_valid_payload "$data"
+  jq '.captains_call[0].options += [{
+    "value":"later",
+    "label":"Revisit in October",
+    "hint":"Return after launch",
+    "until":"2026-10-01"
+  }]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
+  run_board "$home" build "$data" >/dev/null \
+    || fail "an option carrying its own date was refused"
+  extract_payload "$board" | jq -e '
+    .captains_call[0].options[]
+    | select(.value == "later")
+    | .until == "2026-10-01"
+  ' >/dev/null || fail "the built board lost the option's date"
+  before=$(cksum < "$board")
+
+  jq '.captains_call[0].options[-1].until = "2026-02-30"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "an impossible option date was accepted"
+  after=$(cksum < "$board")
+  [ "$after" = "$before" ] || fail "a refused option date replaced the existing board"
+
+  jq '.captains_call[0].options[-1].until = "next October"' "$data" > "$data.tmp" \
+    && mv "$data.tmp" "$data"
+  set +e
+  out=$(run_board "$home" build "$data" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "an unparseable option date was accepted"
+  pass "build accepts an optional option date and refuses one that is not a calendar day"
+}
+
 test_path_is_stable_and_home_scoped
 test_build_refuses_malformed_payloads_before_touching_the_board
 test_charted_kind_is_optional_and_accepts_both_values
@@ -795,3 +876,6 @@ test_build_fails_when_reconcile_cannot_establish_a_listener
 test_every_decision_card_carries_the_reconcile_choice
 test_build_refuses_a_payload_that_occupies_the_reconcile_value
 test_build_refuses_a_nondecision_reconcile_value
+test_build_refuses_duplicate_option_values_within_one_card
+test_build_refuses_duplicate_option_values_across_card_types
+test_build_accepts_an_optional_option_date

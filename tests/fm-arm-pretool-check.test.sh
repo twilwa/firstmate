@@ -13,6 +13,7 @@ set -u
 
 CHECK="$ROOT/bin/fm-arm-pretool-check.sh"
 POLICY="$ROOT/bin/fm-arm-command-policy.mjs"
+ACTIVE_HOME=${FM_HOME:-$ROOT}
 
 # --- full cross-harness acceptance matrix ----------------------------------
 
@@ -38,7 +39,7 @@ matrix_case A09 allow "export FM_HOME='$ROOT'; bin/fm-watch-checkpoint.sh --seco
 matrix_case A10 allow 'source config/x-mode.env; bin/fm-watch-checkpoint.sh --seconds 180'
 matrix_case A11 allow "source 'config/x-mode.env'; bin/fm-watch-checkpoint.sh --seconds 180"
 matrix_case A12 allow "source './config/x-mode.env'; bin/fm-watch-checkpoint.sh --seconds 180"
-matrix_case A13 allow "source '$ROOT/config/x-mode.env'; bin/fm-watch-checkpoint.sh --seconds 180"
+matrix_case A13 allow "source '$ACTIVE_HOME/config/x-mode.env'; bin/fm-watch-checkpoint.sh --seconds 180"
 matrix_case A14 allow "[ -f 'config/x-mode.env' ] && source 'config/x-mode.env'; exec bin/fm-watch-arm.sh"
 matrix_case A15 allow "cd $ROOT && exec bin/fm-watch-arm.sh"
 matrix_case A16 allow "export FM_HOME=$ROOT && bin/fm-watch-checkpoint.sh --seconds 180"

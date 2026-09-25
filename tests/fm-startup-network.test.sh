@@ -17,10 +17,14 @@
 #     staying "in progress" forever
 #   - phase-aware single-flight: a covering worker is reused, while a later
 #     locked request supersedes an in-flight probe-only worker
+#   - a publish lock a live process holds past the budget ends the worker with a
+#     failed-rerun record instead of an unbounded wait
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$ROOT/bin/fm-timeout-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-startup-network-tests)
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
@@ -28,8 +32,8 @@ FM_TEST_CLEANUP_DIRS+=("$TMP_ROOT")
 trap fm_test_cleanup EXIT
 
 # new_world <name>: an FM_HOME plus a fake code root whose bin/ is a real
-# firstmate bin/ except for fm-bootstrap.sh, which is replaced by a scriptable
-# stand-in. The stage's contract is about WHEN and WHETHER the network half runs
+# firstmate bin/ except for fm-bootstrap.sh and fm-home-summary-refresh.sh,
+# which are replaced by scriptable stand-ins. The contract is when each runs
 # and how its result is published; bin/fm-bootstrap.sh's own behavior is owned by
 # tests/fm-bootstrap.test.sh, so pinning it here would duplicate that owner and
 # make these assertions depend on unrelated tool detection.
@@ -61,10 +65,35 @@ if [ -n "${FM_TIMING_LOG:-}" ]; then
     "$(( $(fm_timing_now_ms) - 1500 ))" "${FM_FAKE_TIMING_DETAIL:-}"
 fi
 [ -z "${FM_FAKE_BOOTSTRAP_SLEEP:-}" ] || sleep "$FM_FAKE_BOOTSTRAP_SLEEP"
+if [ -n "${FM_FAKE_BOOTSTRAP_RELEASE:-}" ]; then
+  ticks=0
+  while [ ! -e "$FM_FAKE_BOOTSTRAP_RELEASE" ] && [ "$ticks" -lt 1200 ]; do
+    sleep 0.1
+    ticks=$((ticks + 1))
+  done
+  [ -e "$FM_FAKE_BOOTSTRAP_RELEASE" ] || exit 98
+fi
 [ -z "${FM_FAKE_BOOTSTRAP_OUT:-}" ] || printf '%s\n' "$FM_FAKE_BOOTSTRAP_OUT"
 exit "${FM_FAKE_BOOTSTRAP_RC:-0}"
 SH
   chmod +x "$root/bin/fm-bootstrap.sh"
+  rm -f "$root/bin/fm-home-summary-refresh.sh"
+  cat > "$root/bin/fm-home-summary-refresh.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+[ -z "${FM_FAKE_SUMMARY_LOG:-}" ] || printf '%s %s %s\n' "$$" "${FM_HOME_SUMMARY_IF_IDLE:-0}" "$*" >> "$FM_FAKE_SUMMARY_LOG"
+if [ -n "${FM_FAKE_SUMMARY_RELEASE:-}" ]; then
+  ticks=0
+  while [ ! -e "$FM_FAKE_SUMMARY_RELEASE" ] && [ "$ticks" -lt 300 ]; do
+    sleep 0.1
+    ticks=$((ticks + 1))
+  done
+fi
+printf 'summary stdout must remain private\n'
+printf 'summary stderr must remain private\n' >&2
+exit "${FM_FAKE_SUMMARY_RC:-0}"
+SH
+  chmod +x "$root/bin/fm-home-summary-refresh.sh"
   cat > "$root/bin/ps" <<'SH'
 #!/usr/bin/env bash
 pid=
@@ -130,7 +159,132 @@ wait_for_startup_network_wake() {  # <home> [tenths]
   grep -Fq $'check\tstartup-network' "$home/state/.wake-queue" 2>/dev/null
 }
 
+# hold_publish_lock <home>: take the stage's publish lock from a separate live
+# process, the way a harvest wedged on a stalled stdout holds it, and print that
+# holder's pid. The holder keeps the pid the lock records, so the lock's
+# stale-owner recovery never reclaims it while the test runs.
+hold_publish_lock() {  # <home>
+  local lock="$1/state/.startup-network.lock" holder waited=0
+  FM_STATE_OVERRIDE="$1/state" FM_ROOT_OVERRIDE="$ROOT" bash -c '
+    . "$1/fm-wake-lib.sh"
+    fm_lock_try_acquire "$2" || exit 1
+    exec sleep 120' _ "$ROOT/bin" "$lock" >/dev/null 2>&1 </dev/null &
+  holder=$!
+  while [ "$(cat "$lock/pid" 2>/dev/null || true)" != "$holder" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$holder" ] \
+    || fail "could not hold the publish lock from a second process"
+  printf '%s' "$holder"
+}
+
+# await_pid_exit <pid> <tenths>: true when the process exits inside the bound.
+await_pid_exit() {  # <pid> <tenths>
+  local waited=0
+  while kill -0 "$1" 2>/dev/null && [ "$waited" -lt "$2" ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  ! kill -0 "$1" 2>/dev/null
+}
+
 # --- tests -------------------------------------------------------------------
+
+test_summary_runs_concurrently_and_is_reaped() {
+  local rec home root log summary release out report harvest summary_pid waited=0
+  rec=$(new_world summary-concurrent)
+  IFS='|' read -r home root log <<EOF
+$rec
+EOF
+  summary="${root%/root}/summary.log"
+  release="${root%/root}/summary.release"
+  printf '%s\n' $$ > "$home/state/.lock"
+  out=$(FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_SUMMARY_LOG="$summary" \
+    FM_FAKE_SUMMARY_RELEASE="$release" FM_FAKE_BOOTSTRAP_RC=7 FM_FAKE_SUMMARY_RC=9 \
+    run_stage "$home" "$root" start --locked 1 --harvest-pid $$)
+  while { [ ! -s "$summary" ] || [ ! -s "$log" ]; } && [ "$waited" -lt 100 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  assert_grep ' 1 --best-effort' "$summary" "summary did not use single-flight best-effort mode"
+  assert_grep 'network=only detect_only=0' "$log" "summary blocked the network checks"
+  read -r summary_pid _ < "$summary"
+  kill -0 "$summary_pid" 2>/dev/null || fail "summary gate did not remain outstanding"
+  report=''
+  while [ "$waited" -lt 100 ]; do
+    report=$(run_stage "$home" "$root" report)
+    if ! grep -q 'IN PROGRESS' <<EOF
+$report
+EOF
+    then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  assert_contains "$report" 'exited 7' "summary reaping delayed publication of the network result"
+  assert_not_contains "$report" 'IN PROGRESS' "network result remained unpublished behind summary reaping"
+  kill -0 "$summary_pid" 2>/dev/null || fail "summary did not remain outstanding after network publication"
+  harvest=$(run_stage "$home" "$root" harvest --pid "$$") || fail "published network result could not be harvested"
+  assert_contains "$harvest" 'exited 7' "harvest did not receive the published network result"
+  : > "$release"
+  run_stage "$home" "$root" wait 30 >/dev/null || fail "summary stage never settled"
+  waited=0
+  while kill -0 "$summary_pid" 2>/dev/null && [ "$waited" -lt 100 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$summary_pid" 2>/dev/null; then fail "summary child was not reaped"; fi
+  assert_not_contains "$out$report$harvest" 'summary stdout' "summary stdout leaked into stage output"
+  assert_not_contains "$out$report$harvest" 'summary stderr' "summary stderr leaked into stage output"
+  pass "fm-startup-network: network results publish before concurrent summary reaping"
+}
+
+test_summary_is_authorized_and_bounded() {
+  local rec home root log summary release report summary_pid waited=0
+  rec=$(new_world summary-bound)
+  IFS='|' read -r home root log <<EOF
+$rec
+EOF
+  summary="${root%/root}/summary.log"
+  release="${root%/root}/summary.release"
+  printf '222222\n' > "$home/state/.lock"
+  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_SUMMARY_LOG="$summary" \
+    run_stage "$home" "$root" run --locked 1 --lock-pid 111111
+  assert_absent "$summary" "lock-refused worker launched summary publication"
+  # Use the real summary timeout wrapper here: a stub without its nested
+  # process group would miss an orphaned collector after the network deadline.
+  rm "$root/bin/fm-home-summary-refresh.sh" "$root/bin/fm-fleet-snapshot.sh"
+  ln -s "$ROOT/bin/fm-home-summary-refresh.sh" "$root/bin/fm-home-summary-refresh.sh"
+  cat > "$root/bin/fm-fleet-snapshot.sh" <<'SH'
+#!/usr/bin/env bash
+trap '' TERM
+printf '%s\n' "$$" > "${FM_FAKE_SUMMARY_LOG:?}"
+while :; do sleep 1; done
+SH
+  chmod +x "$root/bin/fm-fleet-snapshot.sh"
+  printf '%s\n' $$ > "$home/state/.lock"
+  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_SUMMARY_LOG="$summary" \
+    FM_FAKE_SUMMARY_RELEASE="$release" FM_STARTUP_NETWORK_TIMEOUT=5 \
+    FM_HOME_SUMMARY_TIMEOUT=60 FM_FAKE_BOOTSTRAP_SLEEP=20 \
+    run_stage "$home" "$root" start --locked 1 --harvest-pid $$
+  while [ ! -s "$summary" ] && [ "$waited" -lt 100 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -s "$summary" ] || fail "bounded summary never started"
+  read -r summary_pid _ < "$summary"
+  FM_STARTUP_NETWORK_TIMEOUT=5 run_stage "$home" "$root" wait 20 >/dev/null \
+    || fail "summary exceeded the deferred-stage bound"
+  report=$(run_stage "$home" "$root" report)
+  assert_contains "$report" 'hit the 5s bound' "summary timeout was not reported"
+  assert_contains "$report" 'home-summary publication' "timeout omitted the summary obligation"
+  if kill -0 "$summary_pid" 2>/dev/null; then fail "timed-out summary child survived cleanup"; fi
+  assert_grep '5-second deadline' "$home/state/.home-summary-refresh.log" \
+    "summary did not retain and report its capped deadline"
+  pass "fm-startup-network: summary requires lock authority and cannot outlive the stage bound"
+}
 
 # `start` is called from inside a session-open hook whose stdout the harness
 # reads to EOF. A worker that inherited that pipe would hold the session open for
@@ -138,20 +292,33 @@ wait_for_startup_network_wake() {  # <home> [tenths]
 # path, so this asserts both halves: start returns fast, AND the pipe closes
 # while the worker is still running.
 test_start_returns_without_holding_the_callers_stdout() {
-  local rec home root log started elapsed pending
+  local rec home root log pending release returned caller output waited=0
   rec=$(new_world start-nonblocking)
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
   printf '%s\n' $$ > "$home/state/.lock"
 
-  started=$(date +%s)
+  release="${root%/root}/bootstrap.release"
+  returned="${root%/root}/start.returned"
   # Command substitution reads to EOF, exactly like a hook harvesting hook output.
-  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=10 \
-    run_stage "$home" "$root" start --locked 1 --harvest-pid $$ >/dev/null
-  elapsed=$(( $(date +%s) - started ))
-
-  [ "$elapsed" -lt 4 ] || fail "start blocked for ${elapsed}s behind a 10s worker"
+  (
+    output=$(FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_RELEASE="$release" \
+      FM_STARTUP_NETWORK_TIMEOUT=120 \
+      run_stage "$home" "$root" start --locked 1 --harvest-pid $$) || exit 1
+    printf '%s' "$output" > "$returned"
+  ) &
+  caller=$!
+  while [ ! -e "$returned" ] && [ "$waited" -lt 600 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if [ ! -e "$returned" ]; then
+    : > "$release"
+    wait "$caller" || true
+    fail "start or its stdout remained blocked behind the gated worker"
+  fi
+  wait "$caller" || fail "start failed before returning its output"
   await_worker_record "$home"
   pending=$(run_stage "$home" "$root" report)
   [ "$(printf '%s\n' "$pending" | head -1)" = "IN PROGRESS - the deferred network checks have not finished yet." ] \
@@ -160,6 +327,7 @@ EOF
     "the pending guidance still promised a wake for clean success"
   assert_contains "$pending" "$root/bin/fm-startup-network.sh report" \
     "the pending guidance omitted the durable on-demand report path"
+  : > "$release"
   run_stage "$home" "$root" wait 30 >/dev/null || fail "the worker never published"
   assert_grep 'network=only' "$log" "the worker did not run bootstrap's network-only phase"
   pass "fm-startup-network: start returns immediately and never holds the caller's stdout open"
@@ -577,13 +745,16 @@ EOF
 }
 
 test_lock_takeover_stays_read_only_while_a_sweep_holds_the_lease() {
-  local rec home root log next_owner new_owner out rc started elapsed waited=0
+  local rec home root log next_owner new_owner out rc release attempt waited=0
   rec=$(new_world sweep-lease)
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
   printf '%s\n' $$ > "$home/state/.lock"
-  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=6 \
+  release="${root%/root}/bootstrap.release"
+  attempt="${root%/root}/lock-attempt"
+  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_RELEASE="$release" \
+    FM_STARTUP_NETWORK_TIMEOUT=120 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
   while [ ! -s "$log" ] && [ "$waited" -lt 50 ]; do
     sleep 0.1
@@ -592,18 +763,33 @@ EOF
   [ -s "$log" ] || fail "the mutating sweep never started"
 
   next_owner=$(/bin/ps -o ppid= -p $$ | tr -d ' ')
-  started=$(date +%s)
-  rc=0
-  out=$(PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="$next_owner" \
-    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" 2>&1) || rc=$?
-  elapsed=$(( $(date +%s) - started ))
+  # Keep mutation outstanding until the real lock command returns. A fixed
+  # sleep races ancestry discovery on loaded hosts and can permit a valid
+  # takeover after the sweep has already completed.
+  (
+    rc=0
+    PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="$next_owner" \
+      FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" > "$attempt.out" 2>&1 || rc=$?
+    printf '%s\n' "$rc" > "$attempt.rc"
+  ) &
+  waited=0
+  while [ ! -s "$attempt.rc" ] && [ "$waited" -lt 600 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if [ ! -s "$attempt.rc" ]; then
+    : > "$release"
+    fail "lock takeover blocked behind the gated deferred sweep"
+  fi
+  rc=$(cat "$attempt.rc")
+  out=$(cat "$attempt.out")
   [ "$rc" -ne 0 ] || fail "lock takeover succeeded while the prior sweep was mutating"
-  [ "$elapsed" -lt 4 ] || fail "lock takeover blocked ${elapsed}s behind deferred network work"
   assert_contains "$out" "operate read-only" \
     "a lease-blocked takeover did not fail closed to read-only: $out"
   [ "$(cat "$home/state/.lock")" = "$$" ] \
     || fail "the lease-blocked takeover replaced the prior owner"
 
+  : > "$release"
   run_stage "$home" "$root" wait 30 >/dev/null || fail "the leased sweep never settled"
   out=$(PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="$next_owner" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" 2>&1) \
@@ -759,6 +945,74 @@ GITHUB_TOKEN=ghp_supersecretvalue" \
   pass "fm-startup-network: the timing artifact cannot carry a command line or forge records"
 }
 
+# A live holder of the publish lock used to keep the worker spinning for as long
+# as the lock stayed held - hours, when a harvest wedged on a stalled stdout -
+# with every result discarded at the end. Both the wait before the sweeps and
+# the publication wait after them must give up inside the worker's own budget,
+# record the failure the way `report` already reads a failed stage, and wake.
+test_a_held_publish_lock_cannot_keep_the_worker_alive_past_its_budget() {
+  local rec home root log holder began took rc report worker waited
+  rec=$(new_world held-lock)
+  IFS='|' read -r home root log <<EOF
+$rec
+EOF
+
+  # Before the sweeps: the lock is held before the worker even registers.
+  holder=$(hold_publish_lock "$home")
+  began=$(date +%s)
+  rc=0
+  fm_run_timed 15 env PATH="$root/bin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    FM_STARTUP_NETWORK_TIMEOUT=2 FM_SESSION_START_TIMEOUT=2 FM_FAKE_BOOTSTRAP_LOG="$log" \
+    "$root/bin/fm-startup-network.sh" run --locked 0 >/dev/null 2>&1 || rc=$?
+  took=$(( $(date +%s) - began ))
+  [ "$rc" -ne 124 ] || fail "the worker was still waiting on the held publish lock 15s past a 2s budget"
+  [ "$rc" -ne 0 ] || fail "the worker reported success without ever taking the publish lock"
+  [ "$took" -le 6 ] || fail "the worker took ${took}s to give up on a 2s budget"
+  [ ! -f "$log" ] || fail "the sweeps ran even though the worker could not register itself"
+  [ "$(sed -n 's/^state=//p' "$home/state/.startup-network.status")" = failed ] \
+    || fail "a worker that gave up on the lock did not record a failed stage"
+  report=$(run_stage "$home" "$root" report)
+  assert_contains "$report" "still held by pid $holder" \
+    "the failed record did not name the process holding the lock: $report"
+  assert_contains "$report" "fm-startup-network.sh run --locked 0" \
+    "the failed record did not say how to rerun the stage"
+  assert_grep 'check	startup-network' "$home/state/.wake-queue" \
+    "a worker that gave up on the lock did not surface to the agent"
+  kill "$holder" 2>/dev/null || true
+  await_pid_exit "$holder" 50 || fail "could not release the first lock holder"
+
+  # After the sweeps: the worker registers and sweeps freely, then finds the
+  # lock held when it comes to publish. What the sweeps produced must survive.
+  rm -f "$home/state/.wake-queue" "$log"
+  FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=2 FM_FAKE_BOOTSTRAP_OUT='PROBE_RAN' \
+    FM_STARTUP_NETWORK_TIMEOUT=10 FM_SESSION_START_TIMEOUT=2 \
+    run_stage "$home" "$root" start --locked 0 --harvest-pid 999999999
+  await_worker_record "$home"
+  worker=$(sed -n 's/^pid=//p' "$home/state/.startup-network.status")
+  waited=0
+  while [ ! -f "$log" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -f "$log" ] || fail "the detached worker never started its sweep"
+  holder=$(hold_publish_lock "$home")
+  await_pid_exit "$worker" 100 \
+    || fail "the worker was still alive 10s after its sweep finished against a held publish lock (2s delivery budget)"
+  [ "$(sed -n 's/^state=//p' "$home/state/.startup-network.status")" = failed ] \
+    || fail "a worker that could not publish did not record a failed stage"
+  report=$(run_stage "$home" "$root" report)
+  assert_contains "$report" "PROBE_RAN" \
+    "the sweep output was discarded when publication found the lock held: $report"
+  assert_contains "$report" "still held by pid $holder" \
+    "the unpublished result did not name the process holding the lock"
+  assert_grep 'check	startup-network' "$home/state/.wake-queue" \
+    "a result that could not be published under the lock did not surface to the agent"
+  kill "$holder" 2>/dev/null || true
+  pass "fm-startup-network: a held publish lock ends the worker inside its budget with a failed-rerun record"
+}
+
+test_summary_runs_concurrently_and_is_reaped
+test_summary_is_authorized_and_bounded
 test_wait_fails_without_a_published_stage
 test_start_returns_without_holding_the_callers_stdout
 test_harvest_acknowledgement_suppresses_the_wake_and_no_claim_produces_it
@@ -779,4 +1033,5 @@ test_records_share_one_origin_so_offsets_form_a_timeline
 test_timings_are_published_and_only_the_on_demand_report_prints_them
 test_a_bounded_run_still_publishes_the_timings_it_managed_to_record
 test_the_timing_artifact_cannot_carry_a_command_line_or_forge_records
+test_a_held_publish_lock_cannot_keep_the_worker_alive_past_its_budget
 echo "# fm-startup-network.test.sh: all assertions passed"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell line into its terminal, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
+# Usage: fm-send.sh <target> [--resolve-key <key>]... [--defer-until YYYY-MM-DD] [--fire-and-forget <delivery-id>] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -156,8 +156,9 @@
 # blocked: record in the target task's state/<id>.status. fm-send itself
 # appends the closing resolved line to that status file, so the captain-facing
 # OPEN DECISIONS record closes at answer time and never depends on the busy
-# worker writing a matching resolved line. Ordinary keys close with
-# "resolved [key=<key>]: answered: <capped excerpt>". A reserved key
+# worker writing a matching resolved line. For ordinary keys the payload is
+# "resolved [key=<key>]: answered: <capped excerpt>" before the emission-time
+# handling owned by bin/fm-classify-lib.sh. A reserved key
 # (pending-reply-* today; bin/fm-classify-lib.sh's reserved-key guard) is
 # closed with the owning library's vocabulary note
 # (fm_pending_reply_close_note_for_key / fm_pending_reply_resolved_note), so
@@ -176,12 +177,25 @@
 # (a remote mate's escalations reach it through the parent-replies ingest);
 # only the answer message crosses the backend or remote transport.
 #
+# Answering a decision is the gate-answer path and is main-owned while
+# attended: when any named key is an open needs-decision or a captain-held task
+# (a blocked: key is ordinary steering and stays lease-guarded only), the Pi
+# supervision branch is refused outright, exactly as its prompt promises. While
+# the away-posture record exists main is parked and that one refusal relocates
+# to the branch (contract: bin/fm-lease-lib.sh); which findings firstmate may
+# decide at all remains ask-user-authority's judgment for either actor.
+#
 # Chat is also a channel that carries keyed captain answers, so the same flag
 # feeds bin/fm-captain-hold.sh's one keyed-answer intake for any key that names
 # a captain-held task in this home - the key as a task id itself, or through
 # the legacy `<task>-decision-<key>` identity for pre-collapse rows. fm-send
 # closes nothing itself; it hands the intake `<task-id>\t<answer>\t<label>`
 # exactly as every other channel does, and the intake owns what that means.
+# `--defer-until YYYY-MM-DD` adds the intake's `defer` mode and required date;
+# it is valid only for keys already carried by captain-held tasks, because the
+# intake - not the status-log close path - owns dated deferral.
+# The date must be strictly later than today's UTC date; past and same-day
+# values are refused before the answer is recorded or sent.
 # This is what lets an answer reach a decision that has already been
 # transferred from the live status log to its durable captain-held task, which
 # the status ledger alone can no longer close.
@@ -242,6 +256,8 @@ fi
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-calendar-lib.sh
+. "$SCRIPT_DIR/fm-calendar-lib.sh"
 # shellcheck source=bin/fm-line-cap-lib.sh
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
@@ -455,6 +471,10 @@ fi
 # must precede --key or the message text; everything after the last flag is the
 # message exactly as before, so ordinary sends are byte-identical.
 RESOLVE_KEYS=
+RESOLVE_DEFER_UNTIL=
+RESOLVE_DEFER_UNTIL_SET=0
+RESOLVE_DEFER_TODAY=
+RESOLVE_DEFER_OBSERVATION=
 FIRE_AND_FORGET_ID=
 fm_send_add_resolve_key() { # <key>
   local k=$1
@@ -486,6 +506,28 @@ while :; do
     fm_send_add_resolve_key "${1#--resolve-key=}" || exit 1
     shift
     ;;
+  --defer-until)
+    [ $# -ge 2 ] || {
+      echo "error: --defer-until requires a YYYY-MM-DD date" >&2
+      exit 1
+    }
+    [ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || {
+      echo "error: duplicate --defer-until" >&2
+      exit 1
+    }
+    RESOLVE_DEFER_UNTIL_SET=1
+    RESOLVE_DEFER_UNTIL=$2
+    shift 2
+    ;;
+  --defer-until=*)
+    [ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || {
+      echo "error: duplicate --defer-until" >&2
+      exit 1
+    }
+    RESOLVE_DEFER_UNTIL_SET=1
+    RESOLVE_DEFER_UNTIL=${1#--defer-until=}
+    shift
+    ;;
   --fire-and-forget)
     [ $# -ge 2 ] || {
       echo "error: --fire-and-forget requires a delivery id" >&2
@@ -506,9 +548,32 @@ while :; do
     FIRE_AND_FORGET_ID=${1#--fire-and-forget=}
     shift
     ;;
+  --key) break ;;
+  --*)
+    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --defer-until, --fire-and-forget, and --key. Nothing was sent." >&2
+    exit 1
+    ;;
   *) break ;;
   esac
 done
+
+if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+  fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
+    echo "error: --defer-until requires a YYYY-MM-DD date: $RESOLVE_DEFER_UNTIL" >&2
+    exit 1
+  }
+  RESOLVE_DEFER_TODAY=$(fm_utc_calendar_day "${FM_CAPTAIN_HOLD_NOW:-}") || {
+    echo "error: could not determine the UTC calendar date for --defer-until; nothing was recorded or sent" >&2
+    exit 1
+  }
+  fm_future_calendar_day "$RESOLVE_DEFER_UNTIL" "$RESOLVE_DEFER_TODAY" || {
+    echo "error: --defer-until date $RESOLVE_DEFER_UNTIL must be later than UTC today $RESOLVE_DEFER_TODAY; nothing was recorded or sent" >&2
+    exit 1
+  }
+  # Reuse the hold lifecycle's existing deterministic clock input so the
+  # intake and its answer subprocess validate against this pre-send day.
+  RESOLVE_DEFER_OBSERVATION=${FM_CAPTAIN_HOLD_NOW:-${RESOLVE_DEFER_TODAY}T00:00:00Z}
+fi
 
 if [ "$TARGET_BACKEND" != remote ]; then
   fm_backend_validate "$TARGET_BACKEND" || exit 1
@@ -551,6 +616,7 @@ RESOLVE_STATUS_FILE=
 # longer owns also keeps the common path free of any backlog read.
 RESOLVE_STATUS_KEYS=
 RESOLVE_HOLD_KEYS=
+RESOLVE_CLOSE_MAX=$FM_LINE_CAP_DEFAULT
 
 # Resolve a --resolve-key key that the status log no longer owns to the
 # captain-held task that carries it: the key as a task id itself (the collapsed
@@ -636,8 +702,35 @@ if [ -n "$RESOLVE_KEYS" ]; then
     echo "error: --resolve-key '$k': no open decision or blocker with that key in $RESOLVE_STATUS_FILE, and no captain-held task '$k' or '$RESOLVE_TASK_ID-decision-$k' still open (already closed or mistyped). Re-check the OPEN DECISIONS listing, then resend without that key or with the right one; nothing was sent." >&2
     exit 1
   done
+  if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+    [ -z "$RESOLVE_STATUS_KEYS" ] || {
+      echo "error: --defer-until can defer only captain-held task keys; status-log key(s) '$RESOLVE_STATUS_KEYS' have not been transferred to that lifecycle owner. Nothing was sent." >&2
+      exit 1
+    }
+  fi
+  # The decision-answer partition (the header's "Answering a decision"
+  # contract): a key that is an open needs-decision, or already a captain-held
+  # task, is a decision, and answering one is main-owned while attended. A
+  # blocked: key is ordinary steering and takes no partition guard. Under the
+  # away-posture record the guard passes the branch instead (relocation:
+  # bin/fm-lease-lib.sh); which findings firstmate may decide at all stays
+  # ask-user-authority's judgment, for either actor.
+  RESOLVE_IS_DECISION=0
+  [ -z "$RESOLVE_HOLD_KEYS" ] || RESOLVE_IS_DECISION=1
+  for k in $RESOLVE_STATUS_KEYS; do
+    [ "$(_fm_open_set_verb "$resolve_open_set" "$k")" = needs-decision ] && RESOLVE_IS_DECISION=1
+  done
+  if [ "$RESOLVE_IS_DECISION" -eq 1 ]; then
+    fm_lease_forbid_branch "decision answer (fm-send --resolve-key)" --away-relocated
+  fi
   # Refuse before send when a named status-log key cannot actually close: a
   # reserved key with an answered: note is a silent no-op in the fold.
+  # The cap bounds the line that is actually APPENDED, and the self-announced
+  # append stamps each line with its emission time. Reserve that stamp's width
+  # here so the probe below measures the same bytes the writer will produce and
+  # the close record stays inside the cap this refusal cites.
+  RESOLVE_CLOSE_MAX=$((FM_LINE_CAP_DEFAULT - $(status_stamp_width)))
+  [ "$RESOLVE_CLOSE_MAX" -ge 0 ] || RESOLVE_CLOSE_MAX=0
   resolve_excerpt=$(printf '%s' "$*" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     probe=$(fm_send_resolve_close_note "$k" "$resolve_excerpt")
@@ -646,7 +739,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
       exit 1
     fi
     probe_line="resolved [key=$k]: $probe"
-    fm_cap_line_var "$probe_line"
+    fm_cap_line_var "$probe_line" "$RESOLVE_CLOSE_MAX"
     probe_key=$(_fm_decision_key "$FM_LINE_CAP_LINE") || probe_key=
     if [ "$(status_line_verb "$FM_LINE_CAP_LINE")" != resolved ] || [ "$probe_key" != "$k" ]; then
       echo "error: --resolve-key cannot close a decision key of length ${#k}: its ${#probe_line}-character close record exceeds the $FM_LINE_CAP_DEFAULT-character status-line cap, and truncation would remove the structural key delimiter. Refusing rather than writing an ineffective close; nothing was sent." >&2
@@ -655,35 +748,50 @@ if [ -n "$RESOLVE_KEYS" ]; then
   done
 fi
 
+[ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || [ -n "$RESOLVE_KEYS" ] || {
+  echo "error: --defer-until requires at least one --resolve-key" >&2
+  exit 1
+}
+
 # Close each answered decision in this home's ledger, only after the answer is
 # durably sent: enqueued on the inbox plane, submit-confirmed on the typed
 # plane. An append failure exits nonzero with the manual close
 # command; the decision then stays open and re-surfaces, never silently lost.
-# The close is this home's own bookkeeping, written by the very turn that
-# answered the decision, so it goes through the guarded self-announced append
-# (bin/fm-wake-lib.sh) and does not wake this same session again; any
-# concurrent foreign status bytes leave the watcher's wake path untouched.
+# All of one answer's closes are this home's own bookkeeping, written by the
+# very turn that answered the decisions, so they go through ONE guarded
+# self-announced append (bin/fm-wake-lib.sh). That records the appended byte
+# range so separate --resolve-key answers do not each wake this same session,
+# including when this home already folded those bytes through OPEN DECISIONS
+# without a matching watcher seen marker; any concurrent foreign status bytes,
+# or a worker line the fold read but never listed, leave the watcher's wake
+# path untouched.
 fm_send_close_resolved_keys() { # <answer-text>
-  local note=$1 k line close_note append_rc still manual_close_cmd
+  local note=$1 k close_note append_rc still manual_close_cmd close_lines=() i=0
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     close_note=$(fm_send_resolve_close_note "$k" "$note")
-    line="resolved [key=$k]: $close_note"
-    fm_cap_line_var "$line"
-    printf -v manual_close_cmd "printf '%%s\\n' %q >> %q" "$FM_LINE_CAP_LINE" "$RESOLVE_STATUS_FILE"
-    append_rc=0
-    fm_wake_status_append_self_announced "$STATE" "$RESOLVE_STATUS_FILE" "$FM_LINE_CAP_LINE" || append_rc=$?
-    if [ "$append_rc" -eq 2 ]; then
-      echo "error: the answer was delivered to $T, but decision key '$k' could not be closed in $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
-      return 1
-    fi
-    still=$(status_open_decisions "$RESOLVE_STATUS_FILE")
+    fm_cap_line_var "resolved [key=$k]: $close_note" "$RESOLVE_CLOSE_MAX"
+    close_lines+=("$FM_LINE_CAP_LINE")
+  done
+  [ "${#close_lines[@]}" -gt 0 ] || return 0
+  append_rc=0
+  fm_wake_status_append_self_announced "$STATE" "$RESOLVE_STATUS_FILE" "${close_lines[@]}" || append_rc=$?
+  if [ "$append_rc" -eq 2 ]; then
+    printf -v manual_close_cmd ' %q' "${close_lines[@]}"
+    printf -v manual_close_cmd "printf '%%s\\n'%s >> %q" "$manual_close_cmd" "$RESOLVE_STATUS_FILE"
+    echo "error: the answer was delivered to $T, but the close for decision key(s) '$RESOLVE_STATUS_KEYS' could not be appended to $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
+    return 1
+  fi
+  still=$(status_open_decisions "$RESOLVE_STATUS_FILE")
+  for k in $RESOLVE_STATUS_KEYS; do
     case "$still" in
     "$k"$'\t'* | *$'\n'"$k"$'\t'*)
+      printf -v manual_close_cmd "printf '%%s\\n' %q >> %q" "${close_lines[$i]}" "$RESOLVE_STATUS_FILE"
       echo "error: the answer was delivered to $T, but decision key '$k' is still open in $RESOLVE_STATUS_FILE; it may have been reopened concurrently or the fold did not accept the close. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
       return 1
       ;;
     esac
+    i=$((i + 1))
   done
 }
 
@@ -696,11 +804,23 @@ fm_send_feed_resolved_holds() { # <answer-text>
   [ -n "$RESOLVE_HOLD_KEYS" ] || return 0
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_HOLD_KEYS; do
-    lines="${lines}${k}"$'\t'"${note}"$'\t'$'\n'
+    if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+      lines="${lines}${k}"$'\t'"${note}"$'\t'$'\tdefer\t'"${RESOLVE_DEFER_UNTIL}"$'\n'
+    else
+      lines="${lines}${k}"$'\t'"${note}"$'\t'$'\n'
+    fi
   done
-  if ! printf '%s' "$lines" | "$SCRIPT_DIR/fm-captain-hold.sh" answers \
-    --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
-    echo "error: the answer was delivered to $T, but this captain-held task could not be closed: ${RESOLVE_HOLD_KEYS}. Close it with fm-captain-hold.sh answer - do not resend the answer." >&2
+  # Delivery may cross UTC midnight. Carry the day accepted before delivery
+  # into the sole intake so it cannot reject the already-sent answer as today.
+  if ! printf '%s' "$lines" \
+    | FM_CAPTAIN_HOLD_NOW="$RESOLVE_DEFER_OBSERVATION" \
+      "$SCRIPT_DIR/fm-captain-hold.sh" answers \
+        --source "a firstmate answer sent to $RESOLVE_TASK_ID" >/dev/null 2>&1; then
+    if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+      echo "error: the answer was delivered to $T, but this captain-held task could not be deferred: ${RESOLVE_HOLD_KEYS}. Finish each still-open task with fm-captain-hold.sh answer <task-id> --decision-file <path> --defer-until $RESOLVE_DEFER_UNTIL; if that is refused because $RESOLVE_DEFER_UNTIL is no longer later than UTC today, supply the next day instead of repeating this date - do not resend the answer." >&2
+    else
+      echo "error: the answer was delivered to $T, but this captain-held task could not be closed: ${RESOLVE_HOLD_KEYS}. Close it with fm-captain-hold.sh answer - do not resend the answer." >&2
+    fi
     return 1
   fi
 }
@@ -729,6 +849,24 @@ if [ "${1:-}" = "--key" ]; then
     exit 1
     ;;
   esac
+  # The option loop breaks at --key without consuming what follows it, and this
+  # path reads only the key, so a trailing argument would be discarded in
+  # silence while the key was still delivered and the exit code still reported
+  # success. Refuse it instead. --fire-and-forget is named on the way through
+  # because FIRE_AND_FORGET_ID is only set when the flag precedes --key, so the
+  # check above cannot see this ordering.
+  if [ "$#" -gt 2 ]; then
+    for key_extra in "${@:3}"; do
+      case "$key_extra" in
+      --fire-and-forget | --fire-and-forget=*)
+        echo "error: --fire-and-forget cannot accompany --key" >&2
+        exit 1
+        ;;
+      esac
+    done
+    echo "error: unexpected argument '$3' after '--key $2'; --key takes exactly one key and nothing else. Nothing was sent." >&2
+    exit 1
+  fi
   key=$2
   semantic_key=$(fm_send_normalize_key "$key")
   if [ "$TARGET_BACKEND" = remote ]; then

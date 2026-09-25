@@ -215,6 +215,7 @@ a { color: inherit; text-decoration: none; }
 .bb-opt__body { min-width: 0; flex: 1 1 auto; }
 .bb-opt__label { display: block; font-size: var(--fs-sm); font-weight: 700; color: var(--text-strong); line-height: 1.3; }
 .bb-opt__hint { display: block; font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.35; margin-top: 1px; }
+.bb-opt__until { display: block; font-size: var(--fs-xs); font-weight: 700; color: var(--rust-500); line-height: 1.35; margin-top: 1px; }
 .bb-opt__rec { flex: none; align-self: center; font-size: var(--fs-2xs); font-weight: 800; text-transform: uppercase;
   letter-spacing: 0.07em; color: var(--navy-700); background: var(--gold-300);
   border: 1px solid var(--gold-600); border-radius: var(--radius-xs); padding: 3px 7px 2px; }
@@ -526,6 +527,7 @@ __FM_BEARINGS_BOARD_DATA__
       var body = el("span", "bb-opt__body");
       body.appendChild(el("span", "bb-opt__label", o.label));
       if (o.hint) body.appendChild(el("span", "bb-opt__hint", o.hint));
+      if (o.until) body.appendChild(el("span", "bb-opt__until", "deferred until " + o.until));
       lab.appendChild(body);
       if (item.recommend_value && o.value === item.recommend_value) {
         lab.appendChild(el("span", "bb-opt__rec", "rec"));
@@ -559,6 +561,11 @@ __FM_BEARINGS_BOARD_DATA__
       var fd = new FormData(form);
       var value = fd.get("answer");
       var note = (fd.get("note") || "").trim();
+      var selectedOption = null;
+      item.options.forEach(function (option) {
+        if (option.value === value) selectedOption = option;
+      });
+      var deferUntil = selectedOption && selectedOption.until ? selectedOption.until : "";
       var displayAnswer = value ? (note ? value + " - " + note : value) : note;
       if (!displayAnswer) return;
       if (utf8ByteLength(displayAnswer) > 512) {
@@ -566,16 +573,20 @@ __FM_BEARINGS_BOARD_DATA__
         answerLimit.classList.add("is-visible");
         return;
       }
+      if (deferUntil) displayAnswer += " (deferred until " + deferUntil + ")";
       if (window.lavish && window.lavish.queuePrompt) {
         /* The versioned context keeps the selected option separate from its
-           note, while close carries the composer-declared completion mode. */
+           note. A selected option's own until is a dated defer; the card's
+           close remains the default for ordinary completion and release. */
         var ctxData = {
           schema: "fm-bearings-answer.v1",
           question: item.key,
           selection: value || "",
           note: note
         };
-        if (item.close) ctxData.close = item.close;
+        var close = deferUntil ? "defer" : item.close;
+        if (close) ctxData.close = close;
+        if (deferUntil) ctxData.until = deferUntil;
         window.lavish.queuePrompt(
           "Captain's Call answer - " + item.title + ": " + displayAnswer,
           { tag: "choice", text: item.title + " -> " + displayAnswer, element: form,
