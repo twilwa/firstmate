@@ -1,0 +1,45 @@
+# Live lab: per-clone Treehouse pool roots (fm/fm-pool-per-home)
+# Real bin/fm-spawn.sh + bin/fm-teardown.sh, real treehouse v2.3.0, private tmux server (TMUX_TMPDIR=/tmp/nmlab-poolhome/tmuxdir),
+# throwaway HOME=/tmp/nmlab-poolhome/user-home, two Firstmate homes (homes/main, homes/sm1) each with AGENTS.md+CLAUDE.md and projects/proj cloned from one origin.
+# Harness=claude (real fm-claude-trust.sh; worker binary is a named 'claude' stand-in so no LLM session is started).
+
+## BASE 51ccbfa: main-home spawn -> force teardown -> secondmate-home spawn
+spawned base-main-1 harness=claude kind=scout window=firstmate:fm-base-main-1 worktree=/tmp/nmlab-poolhome/user-home/.treehouse/proj-f280af/1/proj
+exit=0
+--- secondmate home:
+error: refusing to pre-register Claude trust: '/tmp/nmlab-poolhome/user-home/.treehouse/proj-f280af/1/proj' is not a worktree of project '/tmp/nmlab-poolhome/homes/sm1/projects/proj'
+error: could not pre-register Claude workspace trust for /tmp/nmlab-poolhome/user-home/.treehouse/proj-f280af/1/proj; refusing to launch a claude worker that would wedge on the trust dialog; inspect window firstmate:fm-base-sm1-1
+exit=1
+slot common dir: /tmp/nmlab-poolhome/homes/main/projects/proj/.git  (foreign to sm1)
+
+## TARGET 582dd57: same sequence
+spawned tgt-main-1 harness=claude kind=scout window=firstmate:fm-tgt-main-1 worktree=/tmp/nmlab-poolhome/user-home/.treehouse-fm/109a256c3b53/.treehouse/proj-f280af/1/proj
+exit=0
+--- secondmate home:
+spawned tgt-sm1-1 harness=claude kind=scout window=firstmate:fm-tgt-sm1-1 worktree=/tmp/nmlab-poolhome/user-home/.treehouse-fm/17e3b62289a3/.treehouse/proj-f280af/1/proj
+exit=0
+slot common dir: /tmp/nmlab-poolhome/homes/sm1/projects/proj/.git
+slot owner claim: task=tgt-sm1-1 home=/tmp/nmlab-poolhome/homes/sm1 
+hash(main clone)=109a256c3b53 hash(sm1 clone)=17e3b62289a3 -> distinct roots under $HOME/.treehouse-fm
+
+## Instruction-file ancestor walk (slot -> /)
+user-home/.treehouse-fm/109a256c3b53/.treehouse/proj-f280af/1/proj: AGENTS.md/CLAUDE.md ancestors found=0
+user-home/.treehouse-fm/17e3b62289a3/.treehouse/proj-f280af/1/proj: AGENTS.md/CLAUDE.md ancestors found=0
+
+## Old ~/.treehouse pool listing before vs after target runs
+unchanged:
+user-home/.treehouse
+user-home/.treehouse/.gitignore
+user-home/.treehouse/proj-f280af
+user-home/.treehouse/proj-f280af/1
+user-home/.treehouse/proj-f280af/1/proj
+user-home/.treehouse/proj-f280af/treehouse-state.json
+user-home/.treehouse/proj-f280af/treehouse-state.lock
+user-home/.treehouse/update-check.json
+
+## ADVERSARIAL: foreign slot (from main clone, via real 'treehouse get --root <sm1 root>') planted as sm1's free slot 2
+slot 2 common dir: /tmp/nmlab-poolhome/homes/main/projects/proj/.git
+error: Treehouse pool slot /tmp/nmlab-poolhome/user-home/.treehouse-fm/17e3b62289a3/.treehouse/proj-f280af/2/proj is not linked to project clone /tmp/nmlab-poolhome/homes/sm1/projects/proj; refusing to launch a worker outside that project; inspect window firstmate:fm-tgt-sm1-foreign
+exit=1
+state/tgt-sm1-foreign.meta exists: no
+slot 2 .fm-slot-owner exists: no
