@@ -174,6 +174,9 @@ receipt_append_locked() { # <one-line-json>
   if [ -e "$RECEIPTS" ]; then
     [ -f "$RECEIPTS" ] || return 1
   fi
+  if [ -s "$RECEIPTS" ] && [ -n "$(tail -c 1 "$RECEIPTS" 2>/dev/null)" ]; then
+    printf '\n' >> "$RECEIPTS" 2>/dev/null || return 1
+  fi
   (umask 077; printf '%s\n' "$record" >> "$RECEIPTS") 2>/dev/null
 }
 
