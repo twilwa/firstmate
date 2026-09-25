@@ -1,0 +1,50 @@
+### S1: hold a captain call, then defer the answer (real UTC today 2026-09-25)
+$ fm-captain-hold.sh hold release-call --title "Choose the release window" --reason "captain picks the window" --repo sample
+release-call
+rc=0
+$ fm-captain-hold.sh answer release-call --decision-file defer.txt --defer-until 2026-12-01
+deferred: release-call until 2026-12-01
+rc=0
+$ tasks-axi show release-call --full
+task:
+  id: release-call
+  title: Choose the release window
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: captain picks the window
+  hold_kind: captain
+  hold_until: 2026-12-01
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: 2026-09-25
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-09-25T09:51:24Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: ee7dd930a83444554719eae77eecc16e6b03c48c66c9096b1c4bac7eee5f490f\nResolution mode: deferred\nDeferred until: 2026-12-01\n\nCaptain decision:\nRevisit after the Q4 freeze lifts."
+
+### S2: fleet snapshot before the date (not actionable) and after it (actionable again)
+snapshot @2026-09-25: [{"id":"release-call","captain_actionable":false,"hold_until":"2026-12-01","hold_bucket":"dated"}]
+snapshot @2026-12-02: [{"id":"release-call","captain_actionable":true,"hold_until":"2026-12-01","hold_bucket":"live"}]
+$ FM_CAPTAIN_HOLD_NOW=2026-12-02T12:00:00Z fm-captain-hold.sh open release-call
+rc=0
+
+### S3: exact replay adds no record; a new date replaces the hold date
+deferred: release-call until 2026-12-01
+rc=0
+deferred records: 1
+deferred: release-call until 2027-01-15
+rc=0
+deferred records: 1;   state: queued   hold_until: 2027-01-15 
+
+### S4: after the date passes, the final answer closes the call
+$ FM_CAPTAIN_HOLD_NOW=2027-01-20T09:00:00Z fm-captain-hold.sh answer release-call --decision-file final.txt
+answered: release-call
+rc=0
+  state: done
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: 342c27df231a748f155b081632ed75b0e2a1a2584070006de6d3138efccdbdbb\nResolution mode: answered\n\nCaptain decision:\nShip in the January window.\n\nResolution recorded by fm-captain-hold.\nDecision digest: 90966895dece6f0620cd472e69aaa67f206e7593458d343ae1024657a1abb278\nResolution mode: deferred\nDeferred until: 2027-01-15\n\nCaptain decision:\nRevisit after the Q4 freeze lifts.\n\nResolution recorded by fm-captain-hold.\nDecision digest: ee7dd930a83444554719eae77eecc16e6b03c48c66c9096b1c4bac7eee5f490f\nResolution mode: deferred\nDeferred until: 2026-12-01\n\nCaptain decision:\nRevisit after the Q4 freeze lifts."
+$ fm-captain-hold.sh answer release-call --decision-file defer.txt --defer-until 2027-06-01   (closed task)
+fm-captain-hold: task release-call is already closed; --defer-until cannot reopen it
+rc=1

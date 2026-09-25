@@ -1,0 +1,31 @@
+### S7: secondmate deferral keeps the parent decision key open until the final answer
+$ (secondmate) fm-captain-hold.sh hold db-call --title "Choose the DB migration date" ...
+db-call
+rc=0
+parent channel:
+  needs-decision [key=captain-hold-db-call-1] [at=1790329955]: captain hold db-call: captain picks date
+parent open decisions: [captain-hold-db-call-1	needs-decision	captain hold db-call: captain picks date]
+$ (secondmate) fm-captain-hold.sh answer db-call --decision-file defer.txt --defer-until 2026-12-01
+deferred: db-call until 2026-12-01
+rc=0
+parent channel:
+  needs-decision [key=captain-hold-db-call-1] [at=1790329955]: captain hold db-call: captain picks date
+  note [key=captain-hold-db-call-1] [at=1790329958]: captain hold db-call: deferred until 2026-12-01
+parent open decisions: [captain-hold-db-call-1	needs-decision	captain hold db-call: captain picks date]
+$ (secondmate, controlled clock 2026-12-05) fm-captain-hold.sh open db-call
+rc=0
+parent open decisions after due date: [captain-hold-db-call-1	needs-decision	captain hold db-call: captain picks date]
+$ (secondmate, 2026-12-05) fm-captain-hold.sh answer db-call --decision-file final.txt
+answered: db-call
+rc=0
+parent channel:
+  needs-decision [key=captain-hold-db-call-1] [at=1790329955]: captain hold db-call: captain picks date
+  note [key=captain-hold-db-call-1] [at=1790329958]: captain hold db-call: deferred until 2026-12-01
+  resolved [key=captain-hold-db-call-1] [at=1790329963]: captain hold db-call: answered
+parent open decisions: []
+lines naming db-call-2 (must be 0): 0
+
+### S7b: release + re-hold still opens a distinct key -2 (terminal count unchanged by deferral)
+re-hold of closed task rc=1 (expected refusal or new occurrence)
+  note [key=captain-hold-db-call-1] [at=1790329958]: captain hold db-call: deferred until 2026-12-01
+  resolved [key=captain-hold-db-call-1] [at=1790329963]: captain hold db-call: answered

@@ -1,0 +1,9 @@
+ok - a deferred captain call leaves the live Captain's Call until its date and stays answerable
+ok - direct and keyed answers defer without closing the captain-held task
+ok - deferral rejects impossible, past, same-day, and conflicting requests before recording
+ok - a deferred answer and its replay keep the pending reconcile request
+ok - a deferred record cannot disguise an out-of-band task close
+ok - a secondmate home publishes each hold occurrence and its answer on the parent channel
+ok - a secondmate deferral keeps its parent decision open until the final answer
+ok - a bound channel's captured answers close their captain-held tasks at answer time
+ok - normal answers and their replays retire reconcile requests

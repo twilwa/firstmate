@@ -1,0 +1,17 @@
+### S7b: hold -> defer -> release -> re-hold -> answer on the secondmate; parent keys pair up 1/1 and 2/2
+rel-call
+rc=0
+deferred: rel-call until 2026-11-01
+rc=0
+released: rel-call
+rc=0
+rel-call
+rc=0
+answered: rel-call
+rc=0
+parent channel lines for rel-call:
+  needs-decision [key=captain-hold-rel-call-1]: captain hold rel-call: captain gates rollout
+  note [key=captain-hold-rel-call-1]: captain hold rel-call: deferred until 2026-11-01
+  resolved [key=captain-hold-rel-call-1]: captain hold rel-call: released
+  needs-decision [key=captain-hold-rel-call-2]: captain hold rel-call: captain gates the second phase
+  resolved [key=captain-hold-rel-call-2]: captain hold rel-call: answered

@@ -1,0 +1,54 @@
+### S5: keyed answers intake with defer mode (5th field = date)
+$ printf "keyed-call\tRevisit after the vendor demo\t\tdefer\t2026-11-10\n" | fm-captain-hold.sh answers --source "captain chat"
+deferred: keyed-call until 2026-11-10
+answers: closed=0 deferred=1 skipped=0
+rc=0
+  state: queued
+  hold_kind: captain
+  hold_until: 2026-11-10
+(replay)
+deferred: keyed-call until 2026-11-10
+answers: closed=0 deferred=1 skipped=0
+rc=0
+
+### S6: adversarial guards - nothing recorded on refusal
+$ answer guard-call --defer-until '2026-02-30'
+fm-captain-hold: --defer-until must be a real YYYY-MM-DD calendar date: 2026-02-30
+rc=1
+$ answer guard-call --defer-until '2026-09-25'
+fm-captain-hold: --defer-until date 2026-09-25 must be later than UTC today 2026-09-25; nothing was recorded
+rc=1
+$ answer guard-call --defer-until '2026-09-01'
+fm-captain-hold: --defer-until date 2026-09-01 must be later than UTC today 2026-09-25; nothing was recorded
+rc=1
+$ answer guard-call --defer-until '26-12-01'
+fm-captain-hold: --defer-until must be a real YYYY-MM-DD calendar date: 26-12-01
+rc=1
+$ answer guard-call --defer-until ''
+fm-captain-hold: --defer-until must be a real YYYY-MM-DD calendar date: 
+rc=1
+$ answer guard-call --release --defer-until 2026-12-01
+fm-captain-hold: --release and --defer-until are mutually exclusive
+rc=1
+$ answer guard-call --defer-until 2026-12-01 --defer-until 2027-01-01
+fm-captain-hold: duplicate --defer-until
+rc=1
+$ answer guard-call --defer-until   (missing value)
+fm-captain-hold: --defer-until requires a YYYY-MM-DD date
+rc=1
+$ keyed: done mode with a stray date / defer without date / defer same-day / reconcile value in defer mode
+skipped: guard-call (a defer date requires defer close mode)
+skipped: guard-call (a defer date requires defer close mode)
+skipped: guard-call (defer close mode requires a YYYY-MM-DD date)
+skipped: guard-call (--defer-until date 2026-09-25 must be a valid future UTC date)
+refused: guard-call (reconcile requests require a bound captured source)
+answers: closed=0 deferred=0 skipped=5
+rc=1
+$ answer on a non-held task
+fm-captain-hold: task plain-task is not held for the captain; hold it first or name the right task
+rc=1
+$ tasks-axi show guard-call --full (after all refusals)
+  state: queued
+  hold_kind: captain
+  hold_until: "-"
+  body: "Captain hold set: 2026-09-25T09:52:09Z"
