@@ -1,0 +1,15 @@
+Real jevgate 0.12.1 (downloaded by the workflow step) running 'jevgate check --concurrency 1 --format json bin/fm-mail.py bin/fm-voice-relay.py bin/fm-extension.mjs'
+in a throwaway snapshot of the target tree. Uses a fake OPENROUTER_API_KEY and sends HTTPS through a dead proxy (127.0.0.1:9), so every provider attempt fails offline and nothing reaches OpenRouter.
+
+== BASE jevgate.toml (max_requests = 10)
+   provider model: typesafe/jev-latest   fail_on: ['none']   status: incomplete
+   api_requests (attempts made): 10
+   x2 Session API request budget exhausted; restart with an explicit larger --max-requests
+   x1 Provider request timed out or its connection dropped; gave up after 2 attempts
+
+== TARGET jevgate.toml (max_requests removed)
+   provider model: typesafe/jev-latest   fail_on: ['none']   status: incomplete
+   api_requests (attempts made): 51
+   x3 Provider request timed out or its connection dropped; gave up after 2 attempts
+
+Both runs exit 2 (incomplete: offline). Neither exits 1, because fail_on = ["none"] keeps the gate advisory.

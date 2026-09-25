@@ -1,0 +1,7 @@
+$ bash -e <Install/Download JevGate step with the expected sha256 replaced by zeros>
+/tmp/tmp.W5UiQ4er87/runner2/jevgate: FAILED
+sha256sum: WARNING: 1 computed checksum did NOT match
+exit=1
+--- GITHUB_PATH contents (expect empty):
+--- $RUNNER_TEMP/bin exists? (expect no)
+ls: cannot access '/tmp/tmp.W5UiQ4er87/runner2/bin': No such file or directory
