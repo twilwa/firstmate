@@ -1,0 +1,71 @@
+name: JevGate
+
+on: pull_request
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jevgate-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Keep findings and operational failures advisory while we calibrate.
+    continue-on-error: true
+    name: Review changed files (advisory)
+    if: >-
+      vars.JEVGATE_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The cache key includes the exact JevGate source revision.
+      - name: Restore the JevGate binary
+        id: jevgate-binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/jevgate
+          key: jevgate-9eb307b-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install JevGate
+        if: steps.jevgate-binary.outputs.cache-hit != 'true'
+        run: cargo install --git https://github.com/twilwa/jevgate --rev 9eb307b --locked --force jevgate
+
+      # JevGate caches exact requests, so unchanged files do not spend credit again.
+      - name: Restore cached answers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .jevgate/cache
+          key: jevgate-answers-${{ github.sha }}
+          restore-keys: jevgate-answers-
+
+      # Review the policy from the base branch so this pull request cannot loosen its own check.
+      - name: Resolve the review policy
+        run: |
+          if git cat-file -e "$BASE_SHA:jevgate.toml" 2>/dev/null; then
+            git show "$BASE_SHA:jevgate.toml" > "$RUNNER_TEMP/jevgate.toml"
+            echo "Using the reviewed jevgate.toml from base commit $BASE_SHA."
+          else
+            cp jevgate.toml "$RUNNER_TEMP/jevgate.toml"
+            echo "::notice::Base commit $BASE_SHA has no jevgate.toml; bootstrapping with this pull request's own file."
+          fi
+
+      - name: Review the changed files
+        run: jevgate check --config "$RUNNER_TEMP/jevgate.toml" --base "$BASE_SHA" --format github
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Upload the JSON report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jevgate-report
+          path: .jevgate/latest.json
+          if-no-files-found: ignore
