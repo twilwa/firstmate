@@ -230,6 +230,9 @@
 #   itself a linked worktree of the project repository still launches. A pane
 #   that never reaches an isolated worktree refuses at the end of that wait,
 #   naming the last path seen and why it was rejected.
+#   A Treehouse slot must also resolve to the spawning project clone's physical
+#   Git common directory: a slot linked to another clone of the same remote is
+#   refused even after passing that isolation test.
 #   That placement is proven only at launch. Every ship or scout pane therefore
 #   also receives `export FM_TASK_ID=<task-id>` before the launch command, on
 #   the same channel as GOTMPDIR, and bin/fm-test-run.sh refuses to execute the
@@ -4010,7 +4013,23 @@ if [ "$RELAUNCH" -eq 1 ]; then
   fi
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  spawn_send_text_line "$WT_TARGET" 'treehouse get'
+  # Treehouse names pools by repo basename and remote URL, not by clone path.
+  # Give each clone its own root, keyed by a hash of its physical path, so
+  # another home's clone of the same origin cannot lend this task a foreign
+  # slot. The root sits under the user's HOME rather than beside the clone so
+  # no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor of a crew slot.
+  # Explicit --root also overrides an inherited TREEHOUSE_ROOT or user-level
+  # Treehouse config.
+  if command -v shasum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+  else
+    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | cksum | awk '{printf "%08x", $1}')
+  fi
+  pool_root="$HOME/.treehouse-fm/$pool_hash"
+  pool_root_quoted=${pool_root//\'/\'\\\'\'}
+  spawn_send_text_line "$WT_TARGET" "treehouse get --root '$pool_root_quoted'"
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
   # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -4078,9 +4097,9 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # to once that task's worker exits - and that is exactly when the slot is
   # handed on and this task's worktree= line goes stale. The claim is what lets
   # bin/fm-teardown.sh leave a slot that has since been reassigned untouched, so
-  # a slot that cannot be claimed is refused here, at the cheapest point, rather
-  # than launching a worker whose slot teardown could later release out from
-  # under its successor.
+  # a managed slot that cannot be claimed is refused here, at the cheapest
+  # point, rather than launching a worker whose slot teardown could later
+  # release out from under its successor.
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
   if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
@@ -4089,6 +4108,14 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       exit 1
     fi
     SPAWN_SLOT_CLAIMED=1
+  else
+    # A foreign clone may have the same remote URL and thus the same default
+    # Treehouse pool name. Refuse it even when the pane's isolated-path check
+    # passed: that check proves isolation, not this home's Git ownership.
+    if ! fm_same_git_common_dir "$PROJ_ABS" "$WT"; then
+      echo "error: Treehouse pool slot $WT is not linked to project clone $PROJ_ABS; refusing to launch a worker outside that project; inspect window $T" >&2
+      exit 1
+    fi
   fi
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then

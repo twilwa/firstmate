@@ -272,6 +272,10 @@ Codex App support is recorded in `docs/codex-app-backend.md`; it is not selectab
 ## Worktrees, not branches in your checkout
 
 Crewmates never intentionally touch your project clone; [treehouse](https://github.com/kunchenguid/treehouse) pools clean worktrees for tmux, herdr, zellij, and cmux tasks, while Orca creates its own worktrees for `backend=orca`.
+Treehouse v2.3 names each pool from the repository basename and remote URL hash (falling back to the repository path when no remote exists), so two clones of one remote otherwise share a pool.
+Firstmate passes an explicit pool root at `$HOME/.treehouse-fm/<hash of the physical project clone path>` when acquiring a crew slot, so Treehouse creates that clone's pools under `<root>/.treehouse/`; this keeps clones in different homes separate even when a user-level Treehouse root is configured, and keeps crew slots outside every Firstmate home so no home's `AGENTS.md` or `CLAUDE.md` is an ancestor of a worker's directory. Returns use the recorded slot's absolute path and Treehouse's own pool-state lookup.
+Existing slots in older pools are not moved, destroyed, or reassigned: running workers return their slots through the usual guarded cleanup, while new spawns from project clones use the per-clone roots instead.
+Secondmate home leases from `fm-home-seed.sh` retain their separate Treehouse allocation and return behavior.
 The [`fm-spawn.sh` header](../bin/fm-spawn.sh) owns ship/scout worktree isolation and fresh-base refusal rules, including spawns from linked homes.
 Portable regressions live in [`tests/fm-spawn-pool-base-freshen.test.sh`](../tests/fm-spawn-pool-base-freshen.test.sh) for spawn isolation and base freshness, and [`tests/fm-control-relaunch.test.sh`](../tests/fm-control-relaunch.test.sh) for preserving the recorded copy on relaunch.
 
