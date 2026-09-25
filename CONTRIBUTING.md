@@ -32,13 +32,6 @@ GitHub Actions and Dependabot are exempt so their automation keeps working, but 
 
 See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/start-here/quick-start/) for the full first-run walkthrough.
 
-## Advisory JevGate review
-
-Repository maintainers can opt same-repository pull requests into an additional AI review by setting the repository variable `JEVGATE_ENABLED` to `true` and providing the `OPENROUTER_API_KEY` Actions secret.
-The JevGate job is advisory while it is being calibrated, so its findings and operational failures do not block merging, and pull requests from forks are skipped so their code never receives the review credential.
-After the bootstrap pull request, the workflow reads [`jevgate.toml`](jevgate.toml) from the pull request's base commit so a pull request cannot weaken its own review policy.
-The workflow publishes its JSON result as the `jevgate-report` artifact; [the workflow](.github/workflows/jevgate.yml) and [`jevgate.toml`](jevgate.toml) own the exact execution and policy settings.
-
 ## Maintaining required checks
 
 GitHub required checks are configured in the repository's existing main ruleset, not activated by committing workflow YAML.
