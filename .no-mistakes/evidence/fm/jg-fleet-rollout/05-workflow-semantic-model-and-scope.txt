@@ -1,0 +1,43 @@
+Workflow semantic model (parsed YAML):
+{
+  "triggers": "pull_request",
+  "job_if": "vars.JEVGATE_ENABLED == 'true' && github.event.pull_request.head.repo.full_name == github.repository",
+  "continue_on_error": true,
+  "permissions": {
+    "contents": "read"
+  },
+  "secret_env_by_step": {
+    "Review the changed files": [
+      "OPENROUTER_API_KEY",
+      "${{ secrets.OPENROUTER_API_KEY }}"
+    ]
+  },
+  "all_secret_refs": [
+    "OPENROUTER_API_KEY"
+  ],
+  "install_step": "cargo install --git https://github.com/twilwa/jevgate --rev 9eb307b --locked --force jevgate",
+  "cache_key": "jevgate-9eb307b-${{ runner.os }}-${{ runner.arch }}"
+}
+
+Policy (parsed TOML): {
+  "provider": "openrouter",
+  "model": "typesafe/jev-latest",
+  "max_requests": 10,
+  "fail_on": [
+    "none"
+  ],
+  "upload_deny": [
+    "**/.env*",
+    "**/*.pem",
+    "**/*.key",
+    "**/*.p12",
+    "**/*.pfx",
+    "**/id_rsa*",
+    "**/*.credentials"
+  ]
+}
+
+Files changed vs base b42d4fa:
+A	.github/workflows/jevgate.yml
+A	jevgate.toml
+

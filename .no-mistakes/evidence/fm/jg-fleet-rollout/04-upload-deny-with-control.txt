@@ -1,0 +1,15 @@
+Fixture: PR head adds app.py, id_rsa_helper.py, sub/id_rsa_tool.py (parseable Python w/ sentinels) and settings/.env.local.js; base a813c87.
+
+$ jevgate check --config <this change's jevgate.toml> --base $BASE --dry-run --show-requests
+  [exit 0]
+   app.py -> pending 
+   id_rsa sentinels present in request bodies: none
+   app.py source present in request bodies: True
+
+$ jevgate check --config <control: same policy with upload_deny removed> --base $BASE --dry-run --show-requests
+  [exit 0]
+   app.py -> pending 
+   id_rsa_helper.py -> pending 
+   sub/id_rsa_tool.py -> pending 
+   id_rsa sentinels present in request bodies: ['SENTINEL_NESTED_ID_RSA', 'SENTINEL_ROOT_ID_RSA']
+   app.py source present in request bodies: True

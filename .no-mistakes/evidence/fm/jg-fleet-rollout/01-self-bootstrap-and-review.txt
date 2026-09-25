@@ -1,0 +1,51 @@
+
+$ [Resolve the review policy] (cwd=/tmp/jg-test-01M3B8W/repo)
+$ if git cat-file -e "$BASE_SHA:jevgate.toml" 2>/dev/null; then
+  git show "$BASE_SHA:jevgate.toml" > "$RUNNER_TEMP/jevgate.toml"
+  echo "Using the reviewed jevgate.toml from base commit $BASE_SHA."
+else
+  cp jevgate.toml "$RUNNER_TEMP/jevgate.toml"
+  echo "::notice::Base commit $BASE_SHA has no jevgate.toml; bootstrapping with this pull request's own file."
+fi
+::notice::Base commit b42d4fa8a752fad9a5f0235783b02534bce29219 has no jevgate.toml; bootstrapping with this pull request's own file.
+[exit 0]
+--- resolved policy ---
+# JevGate uses OpenRouter's Jev route and keeps all findings advisory while we calibrate.
+provider = "openrouter"
+model = "typesafe/jev-latest"
+max_requests = 10
+fail_on = ["none"]
+
+# Keep common credentials and private key material out of review uploads.
+upload_deny = [
+  "**/.env*",
+  "**/*.pem",
+  "**/*.key",
+  "**/*.p12",
+  "**/*.pfx",
+  "**/id_rsa*",
+  "**/*.credentials",
+]
+
+
+$ [Review the changed files (+ --dry-run)] (cwd=/tmp/jg-test-01M3B8W/repo)
+$ jevgate check --config "$RUNNER_TEMP/jevgate.toml" --base "$BASE_SHA" --format github --dry-run
+JevGate: dry run · 0 files · 0 first-pass requests, 0 answered by the cache · ~0 new input tokens; follow-ups depend on the answers
+[exit 0]
+
+--- no OPENROUTER_API_KEY (secret unset): exact workflow command ---
+
+$ [Review the changed files] (cwd=/tmp/jg-test-01M3B8W/repo)
+$ jevgate check --config "$RUNNER_TEMP/jevgate.toml" --base "$BASE_SHA" --format github
+JevGate: no-changed-source · gate passed · 0 files · 0 API requests · 0 input tokens
+[exit 0]
+--- step summary ---
+### JevGate: dry run · 0 files · 0 first-pass requests, 0 answered by the cache · ~0 new input tokens; follow-ups depend on the answers
+
+No new review or consider findings.
+
+### JevGate: no-changed-source · gate passed · 0 files · 0 API requests · 0 input tokens
+
+No new review or consider findings.
+
+
