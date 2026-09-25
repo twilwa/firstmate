@@ -63,8 +63,19 @@ make_case() {
 write_review_policy() {
   local case_dir=$1 handoff_policy=$2
   mkdir -p "$case_dir/.github"
-  printf '{"require_reviewed_head_handoff":%s}\n' "$handoff_policy" \
+  printf '{"require_reviewed_head_handoff":%s,"ledger_directory":"pr-review-ledger"}\n' "$handoff_policy" \
     > "$case_dir/.github/firstmate-review-policy.json"
+}
+
+# Args: case_dir pr_number merge_decision_json
+write_review_ledger() {
+  local case_dir=$1 number=$2 decision=$3
+  mkdir -p "$case_dir/home/data/pr-review-ledger"
+  jq -n --arg url "https://github.com/example/repo/pull/$number" --argjson decision "$decision" '{
+    schema:"firstmate-pr-review-ledger.v1",task:"task-x1",url:$url,
+    current_head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    generations:[{head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",merge_decision:$decision}]
+  }' > "$case_dir/home/data/pr-review-ledger/github--example--repo--$number.json"
 }
 
 # Live GitHub JSON for the pre-merge verify, plus gh-axi for the
@@ -535,6 +546,42 @@ test_direct_github_merge_rejects_invalid_review_handoff_policy() {
     "github-invalid-review-policy: invalid handoff policy was not named"
   [ ! -s "$case_dir/gh.log" ] || fail "github-invalid-review-policy: gh ran with malformed policy"
   pass "direct GitHub merge refuses a malformed reviewed-head policy"
+}
+
+test_direct_github_merge_refuses_unreleased_review_ledger_hold() {
+  local case_dir rc
+  case_dir=$(make_case github-review-ledger-hold)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" false
+  write_review_ledger "$case_dir" 90 \
+    '{"decision":"hold","reason":"captain must approve the spend"}'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-review-ledger-hold: a held PR must not merge directly"
+  assert_grep 'the review ledger holds this pull request: captain must approve the spend' \
+    "$case_dir/stderr" "github-review-ledger-hold: refusal did not name the hold"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "github-review-ledger-hold: the held PR was recorded"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-review-ledger-hold: gh ran for a held PR"
+
+  write_review_ledger "$case_dir" 90 null
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "github-review-ledger-hold: a released hold must not block merging"
+  assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  pass "direct GitHub merge refuses an unreleased review-ledger hold and proceeds once released"
 }
 
 test_reviewed_head_handoff_refuses_a_later_push() {
@@ -2266,6 +2313,7 @@ test_verified_merge_records_pr_and_head
 test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false
 test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in
 test_direct_github_merge_rejects_invalid_review_handoff_policy
+test_direct_github_merge_refuses_unreleased_review_ledger_hold
 test_reviewed_head_handoff_refuses_a_later_push
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording

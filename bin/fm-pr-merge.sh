@@ -110,6 +110,8 @@
 # push between ledger verification and this script refuses rather than merging
 # a different head. GitLab callers use this script directly and must not
 # provide the GitHub-only handoff.
+# A GitHub merge also refuses while the PR's review ledger records an unreleased
+# hold on its current generation, whether or not the handoff is required.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -160,6 +162,7 @@ if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
 fi
 REVIEW_POLICY="$FM_ROOT/.github/firstmate-review-policy.json"
 REVIEWED_HEAD_HANDOFF_REQUIRED=false
+REVIEW_LEDGER=
 if [ "$PROVIDER" = github ] && { [ -e "$REVIEW_POLICY" ] || [ -L "$REVIEW_POLICY" ]; }; then
   [ -f "$REVIEW_POLICY" ] && [ ! -L "$REVIEW_POLICY" ] || {
     echo "error: GitHub review policy is not a regular file" >&2
@@ -184,6 +187,17 @@ if [ "$PROVIDER" = github ] && { [ -e "$REVIEW_POLICY" ] || [ -L "$REVIEW_POLICY
     true|false) ;;
     *) echo "error: require_reviewed_head_handoff must be boolean" >&2; exit 2 ;;
   esac
+  REVIEW_LEDGER_DIR=$(jq -er '.ledger_directory | select(type == "string" and length > 0)' "$REVIEW_POLICY") || {
+    echo "error: GitHub review policy ledger_directory is invalid" >&2
+    exit 2
+  }
+  case "$REVIEW_LEDGER_DIR" in
+    /*|.|..|*/../*|../*|*/..|*//*|*[!A-Za-z0-9._/-]*)
+      echo "error: GitHub review policy ledger_directory is unsafe" >&2
+      exit 2
+      ;;
+  esac
+  REVIEW_LEDGER="${FM_DATA_OVERRIDE:-$FM_HOME/data}/$REVIEW_LEDGER_DIR/github--$PR_OWNER--$PR_REPO--$PR_NUMBER.json"
 fi
 # glab resolves the instance from the project URL passed to -R, so the host is
 # rebuilt from the parsed identity rather than read from any ambient default.
@@ -386,6 +400,22 @@ if [ "$PROVIDER" = github ] \
   && [ -z "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
   echo "error: GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true" >&2
   exit 2
+fi
+if [ -n "$REVIEW_LEDGER" ] && { [ -e "$REVIEW_LEDGER" ] || [ -L "$REVIEW_LEDGER" ]; }; then
+  REVIEW_HOLD_REASON=$( [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] && jq -er --arg url "$URL" '
+    select(.url == $url and (.generations | type == "array" and length > 0))
+    | .generations[-1].merge_decision
+    | if (.decision // "") == "hold"
+      then ((.reason // "") | if . == "" then "no reason recorded" else . end)
+      else "" end
+  ' "$REVIEW_LEDGER") || {
+    echo "error: the review ledger for this pull request is unreadable" >&2
+    exit 2
+  }
+  if [ -n "$REVIEW_HOLD_REASON" ]; then
+    echo "error: GitHub merge refused: the review ledger holds this pull request: $REVIEW_HOLD_REASON; record the human decision with bin/fm-pr-review.sh release-hold before merging" >&2
+    exit 2
+  fi
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then
   echo "error: PR merge refused: $FM_BACKLOG_TRANSITION_ERROR" >&2

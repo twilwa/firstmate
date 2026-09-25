@@ -34,7 +34,7 @@ Destructive, irreversible, and security-sensitive merges still escalate.
 Without a current explicit captain instruction that states the concrete merge, the green default stands, and standing `yolo` cannot authorize a red merge.
 `AGENTS.md` owns when a current explicit captain instruction overrides a Firstmate-written standing rule within its exact scope.
 Load `ask-user-authority` before deciding any ask-user finding; the implementation worker never answers its own finding.
-Use `bin/fm-pr-review.sh merge` for every GitHub task PR merge, `bin/fm-pr-merge.sh` directly for GitLab, and `bin/fm-merge-local.sh` for approved local-only landing.
+For a GitHub task PR, use `bin/fm-pr-review.sh merge` when `.github/firstmate-review-policy.json` sets `require_reviewed_head_handoff` to `true`, and `bin/fm-pr-merge.sh` otherwise, which refuses while the review ledger records an unreleased hold; use `bin/fm-pr-merge.sh` directly for GitLab, and `bin/fm-merge-local.sh` for approved local-only landing.
 Never call a lower-level merge command around their guards.
 After an autonomous merge, give the captain a one-line full-URL or local-main outcome.
 Before applying Ready for QA after a GitHub merge or deploy, load `pr-review-policy` and satisfy its head-keyed post-merge gate without weakening any pre-merge browser check.

@@ -120,7 +120,7 @@ jq -n \
           | {kind:"review-submission",id:(.id|tostring),url:.html_url,author:.user.login,
              body:(.body // ""),updated_at:.submitted_at,head:(.commit_id // "")}]
         + [$threads[0].data.repository.pullRequest.reviewThreads.nodes[]
-          | [.comments.nodes[] | select((.author.login // "") != $author)] as $reviewer_comments
+          | [.comments.nodes[] | external] as $reviewer_comments
           | select(($reviewer_comments | length) > 0)
           | {kind:"inline-thread",id:.id,
              url:([$reviewer_comments[] | .url] | first // $url),
