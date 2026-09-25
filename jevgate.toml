@@ -1,7 +1,6 @@
-# JevGate uses OpenRouter's Jev route and keeps all findings advisory while we calibrate.
+# The request cap was removed because Jev is cheap.
 provider = "openrouter"
 model = "typesafe/jev-latest"
-max_requests = 10
 fail_on = ["none"]
 
 # Keep common credentials and private key material out of review uploads.
