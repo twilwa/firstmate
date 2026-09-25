@@ -230,6 +230,9 @@
 #   itself a linked worktree of the project repository still launches. A pane
 #   that never reaches an isolated worktree refuses at the end of that wait,
 #   naming the last path seen and why it was rejected.
+#   A Treehouse slot must also resolve to the spawning project clone's physical
+#   Git common directory: a slot linked to another clone of the same remote is
+#   refused even after passing that isolation test.
 #   That placement is proven only at launch. Every ship or scout pane therefore
 #   also receives `export FM_TASK_ID=<task-id>` before the launch command, on
 #   the same channel as GOTMPDIR, and bin/fm-test-run.sh refuses to execute the
