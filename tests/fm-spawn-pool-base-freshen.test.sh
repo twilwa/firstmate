@@ -59,6 +59,57 @@ run_spawn() {
     "$id" "$PROJECT_DIR" "$@"
 }
 
+# Both clones share an origin, so Treehouse's default remote-keyed pool may
+# hand the second home a slot linked to the first home's clone.
+test_foreign_home_pool_slot_refused_before_worker_launch() {
+  local rec id out status first_project foreign_slot second_home second_project pane_log own_slot
+  id='pool-foreign-home-r1'
+  rec=$(make_case foreign-home "$id")
+  read_case_record "$rec"
+  first_project=$PROJECT_DIR
+  second_home="$CASE_DIR/second-home"
+  second_project="$second_home/projects/project"
+  mkdir -p "$second_home/projects"
+  git clone --quiet "file://$CASE_DIR/origin.git" "$second_project"
+  fm_test_spawn_home "$second_home" codex
+  fm_test_spawn_brief "$second_home" "$id"
+  foreign_slot="$CASE_DIR/slots/1/project"
+  mkdir -p "$(dirname "$foreign_slot")"
+  git -C "$first_project" worktree move "$POOL_DIR" "$foreign_slot"
+  printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$foreign_slot" \
+    > "$CASE_DIR/slots/treehouse-state.json"
+  HOME_DIR=$second_home PROJECT_DIR=$second_project POOL_DIR=$foreign_slot
+  pane_log="$CASE_DIR/pane.log"
+  out=$(FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "second-home spawn launched in first home's clone: $out"
+  assert_contains "$out" "Treehouse pool slot" "foreign slot refusal did not identify the unsafe pool slot"
+  assert_contains "$out" "$foreign_slot" "foreign slot refusal did not identify the slot"
+  [ ! -e "$second_home/state/$id.meta" ] || fail "foreign slot published task metadata"
+  [ ! -e "$CASE_DIR/slots/1/.fm-slot-owner" ] || fail "foreign slot was claimed by the second home"
+  grep -Fxq -- "treehouse get --root '$second_home/projects/.treehouse'" "$pane_log" \
+    || fail "second-home spawn did not select its own physical pool root"
+  [ "$(git -C "$foreign_slot" rev-parse --path-format=absolute --git-common-dir)" = "$first_project/.git" ] \
+    || fail "foreign slot did not belong to the first clone"
+
+  id='pool-own-home-r1'
+  fm_test_spawn_brief "$second_home" "$id"
+  own_slot="$CASE_DIR/second-slots/1/project"
+  mkdir -p "$(dirname "$own_slot")"
+  git -C "$second_project" worktree add --quiet --detach "$own_slot" HEAD
+  printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$own_slot" \
+    > "$CASE_DIR/second-slots/treehouse-state.json"
+  POOL_DIR=$own_slot
+  out=$(FM_FAKE_PANE_LOG="$pane_log" run_spawn "$id" --scout)
+  status=$?
+  expect_code 0 "$status" "second-home spawn should accept its own clone's pool slot"$'\n'"$out"
+  assert_grep "worktree=$own_slot" "$second_home/state/$id.meta" \
+    "second-home spawn did not publish its own slot"
+  assert_grep "task=$id" "$CASE_DIR/second-slots/1/.fm-slot-owner" \
+    "second-home spawn did not claim its own slot"
+  pass "same-origin clones use a per-clone root and reject slots from the other home"
+}
+
 test_remote_seeded_home_spawns_from_treehouse_pool() {
   local rec id out status lock
   id='pool-remote-seeded-r13'
@@ -743,6 +794,7 @@ test_pool_slot_claim_follows_the_spawn_outcome() {
   pass "a Treehouse slot claim names the launched task, refuses when unclaimable, and is dropped by a locked abort"
 }
 
+test_foreign_home_pool_slot_refused_before_worker_launch
 test_remote_seeded_home_spawns_from_treehouse_pool
 test_pool_slot_claim_follows_the_spawn_outcome
 test_linked_spawning_home_rejects_primary_before_refresh
