@@ -37,11 +37,12 @@ Low stakes are small reversible docs/tests or bounded implementation with no sec
 High stakes include lifecycle/recovery, permissions/auth/secrets, production infrastructure, schema/data migrations, money, broad rewrites, and uncertain risk.
 Do not downgrade the classifier's high result by intuition; correct incomplete changed-surface evidence and classify again, or preserve high.
 
-High-stakes readiness additionally requires a no-mistakes run whose recorded model is exactly the configured `fable-5.1`, plus at least one independent agent review on the PR at the current head.
-Posting `@codex` in the PR thread is an allowed way to request the independent review.
-Do not record a model alias, family, fallback, or another model as Fable 5.1.
-If the no-mistakes run cannot prove that exact model, keep the PR held rather than substituting silently.
-Record both high-stakes proofs with `attest` and evidence URLs or run identifiers.
+High-stakes readiness requires a no-mistakes run whose recorded model exactly matches `high_stakes.no_mistakes_model` in `.github/firstmate-review-policy.json`.
+It also requires the configured number of independent agent reviews on the current head, which may be zero.
+Posting `@codex` in the PR thread is an allowed way to request an independent review when the policy requires one.
+Do not record a model alias, family, fallback, or another model as the configured model.
+If the no-mistakes run cannot prove the exact configured model, keep the PR held rather than substituting silently.
+Record each configured high-stakes proof with `attest` and evidence URLs or run identifiers.
 
 Record unresolved product, rights, spend, destructive, security-sensitive, or other human gates with `hold`; a hold survives review checkpoints and head generations until the responsible human decision is recorded with `release-hold` and evidence.
 Repository-specific custody and testing rules remain additive.
@@ -49,7 +50,8 @@ Repository-specific custody and testing rules remain additive.
 ## Merge
 
 Post the final disposition and evidence on the PR, then bind that post to the current generation with `final-disposition` before merging.
-Use `bin/fm-pr-review.sh merge <task> <url> [fm-pr-merge args...]` for a GitHub PR.
+Use `bin/fm-pr-review.sh merge <task> <url> [fm-pr-merge args...]` when the repository policy opts into the reviewed-head handoff or an active review-ledger gate must be resolved.
+For other GitHub PRs, use `bin/fm-pr-merge.sh <task> <url> [merge args...]`.
 It takes a fresh complete snapshot, starts a new generation if the head moved, refuses pending reviews, stale checks, missing dispositions, or missing high-stakes attestations, records the merge decision with the reviewed and immediately verified head, then hands the same URL to the guarded merge command.
 The guarded merge command binds the forge request to that head, so a push in the remaining interval fails instead of merging unreviewed code.
 

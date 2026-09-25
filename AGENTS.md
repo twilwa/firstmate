@@ -125,7 +125,8 @@ The selected task's delivery mode and `yolo` posture must be explicit and never 
 Hard rule 2 governs every merge.
 The captain's current explicit merge instruction, a project's standing `yolo` posture, and the captain-approved GitHub review policy are the only merge-authority sources, each within the exact scope owned by `task-delivery` and `pr-review-policy`.
 Never merge a red PR unless a current explicit captain instruction names the single GitHub check waived through `bin/fm-pr-merge.sh --allow-red`; every other check must be green.
-Use `bin/fm-pr-review.sh merge` for GitHub, `bin/fm-pr-merge.sh` for GitLab, and `bin/fm-merge-local.sh` for approved local-only landing; never call a lower-level merge command around their guards.
+For GitHub, use `bin/fm-pr-review.sh merge` when `.github/firstmate-review-policy.json` sets `require_reviewed_head_handoff` to `true` or a human review gate is active; otherwise use `bin/fm-pr-merge.sh`.
+Use `bin/fm-pr-merge.sh` for GitLab and `bin/fm-merge-local.sh` for approved local-only landing; never call a lower-level merge command around their guards.
 
 Load `task-intake` before classifying, briefing, dispatching, or steering ship and scout work; load `task-delivery` for validation, delivery, promotion, and cleanup at its section 13 triggers; load `backlog-management` before backlog changes or queue review.
 Hard rule 3 governs every cleanup and scout discard. Load `task-delivery` before cleanup, and treat any refusal from `bin/fm-teardown.sh` as a stop-and-investigate result.

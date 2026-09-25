@@ -60,6 +60,13 @@ make_case() {
   printf '%s\n' "$case_dir"
 }
 
+write_review_policy() {
+  local case_dir=$1 handoff_policy=$2
+  mkdir -p "$case_dir/.github"
+  printf '{"require_reviewed_head_handoff":%s}\n' "$handoff_policy" \
+    > "$case_dir/.github/firstmate-review-policy.json"
+}
+
 # Live GitHub JSON for the pre-merge verify, plus gh-axi for the
 # post-merge fallback view. Merge itself is `gh pr merge --match-head-commit`.
 # Args: case_dir head_sha
@@ -389,7 +396,7 @@ run_pr_merge() {
   else
     reviewed_head=
   fi
-  FM_ROOT_OVERRIDE="$ROOT" \
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-$ROOT}" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
@@ -463,25 +470,71 @@ test_verified_merge_records_pr_and_head() {
   pass "fm-pr-merge records pr= and pr_head= for a verified GitHub merge"
 }
 
-test_direct_github_merge_requires_reviewed_head_handoff() {
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false() {
+  local case_dir rc policy
+  for policy in absent false; do
+    case_dir=$(make_case "github-no-handoff-$policy")
+    mkdir -p "$case_dir/wt"
+    add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    if [ "$policy" = false ]; then
+      write_review_policy "$case_dir" false
+    fi
+
+    set +e
+    FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+      run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+        > "$case_dir/stdout" 2> "$case_dir/stderr"
+    rc=$?
+    set -e
+
+    expect_code 0 "$rc" "github-no-handoff-$policy: an unconfigured handoff must not block merging"
+    assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  done
+  pass "direct GitHub merges allow an absent or false reviewed-head handoff policy"
+}
+
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in() {
   local case_dir rc
   case_dir=$(make_case github-requires-review-handoff)
   mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" true
   add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
   set +e
-  FM_PR_REVIEW_EXPECTED_HEAD='' run_pr_merge "$case_dir" task-x1 \
-    https://github.com/example/repo/pull/90 > "$case_dir/stdout" 2> "$case_dir/stderr"
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
-  expect_code 2 "$rc" "github-requires-review-handoff: a direct GitHub merge must refuse"
-  assert_grep 'GitHub merges require the reviewed-head handoff from bin/fm-pr-review.sh merge' \
-    "$case_dir/stderr" "github-requires-review-handoff: refusal did not name the required wrapper"
+  expect_code 2 "$rc" "github-requires-review-handoff: policy opt-in must require the handoff"
+  assert_grep 'GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true' \
+    "$case_dir/stderr" "github-requires-review-handoff: refusal did not name the policy requirement"
   assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
     "github-requires-review-handoff: the unreviewed PR was recorded"
   [ ! -s "$case_dir/gh.log" ] || fail "github-requires-review-handoff: gh ran without review coverage"
-  pass "direct GitHub merges require the review wrapper handoff while GitLab remains direct"
+  pass "direct GitHub merges require the handoff only when the repository policy opts in"
+}
+
+test_direct_github_merge_rejects_invalid_review_handoff_policy() {
+  local case_dir rc
+  case_dir=$(make_case github-invalid-review-policy)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" '"true"'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-invalid-review-policy: handoff policy must be boolean"
+  assert_grep 'require_reviewed_head_handoff must be boolean' "$case_dir/stderr" \
+    "github-invalid-review-policy: invalid handoff policy was not named"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-invalid-review-policy: gh ran with malformed policy"
+  pass "direct GitHub merge refuses a malformed reviewed-head policy"
 }
 
 test_reviewed_head_handoff_refuses_a_later_push() {
@@ -2210,7 +2263,9 @@ test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
 test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
-test_direct_github_merge_requires_reviewed_head_handoff
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in
+test_direct_github_merge_rejects_invalid_review_handoff_policy
 test_reviewed_head_handoff_refuses_a_later_push
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording

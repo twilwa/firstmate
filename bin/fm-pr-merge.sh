@@ -103,11 +103,13 @@
 # away-record read, or a captain hold.
 #
 # Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [-- <extra forge merge args>]
-# FM_PR_REVIEW_EXPECTED_HEAD is the required internal GitHub handoff from
-# fm-pr-review.sh. The live pre-merge head must equal that reviewed head, so a
-# push between ledger verification and this script refuses instead of letting
-# this script validate and merge a different, unreviewed head. GitLab callers
-# use this script directly and must not provide the GitHub-only handoff.
+# The repository policy in .github/firstmate-review-policy.json may set
+# require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
+# from fm-pr-review.sh for GitHub merges.
+# When supplied, the live pre-merge head must equal that reviewed head, so a
+# push between ledger verification and this script refuses rather than merging
+# a different head. GitLab callers use this script directly and must not
+# provide the GitHub-only handoff.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -155,6 +157,33 @@ if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
   && { [ "$PROVIDER" != github ] || ! fm_pr_head_valid "$FM_PR_REVIEW_EXPECTED_HEAD"; }; then
   echo "error: invalid reviewed-head merge handoff" >&2
   exit 2
+fi
+REVIEW_POLICY="$FM_ROOT/.github/firstmate-review-policy.json"
+REVIEWED_HEAD_HANDOFF_REQUIRED=false
+if [ "$PROVIDER" = github ] && { [ -e "$REVIEW_POLICY" ] || [ -L "$REVIEW_POLICY" ]; }; then
+  [ -f "$REVIEW_POLICY" ] && [ ! -L "$REVIEW_POLICY" ] || {
+    echo "error: GitHub review policy is not a regular file" >&2
+    exit 2
+  }
+  command -v jq >/dev/null 2>&1 || {
+    echo "error: jq is required to read the GitHub review policy" >&2
+    exit 2
+  }
+  REVIEWED_HEAD_HANDOFF_REQUIRED=$(jq -r '
+    if type != "object" then "invalid"
+    elif has("require_reviewed_head_handoff") then
+      if (.require_reviewed_head_handoff | type) == "boolean" then
+        (.require_reviewed_head_handoff | tostring)
+      else "invalid" end
+    else "false" end
+  ' "$REVIEW_POLICY") || {
+    echo "error: GitHub review policy is invalid" >&2
+    exit 2
+  }
+  case "$REVIEWED_HEAD_HANDOFF_REQUIRED" in
+    true|false) ;;
+    *) echo "error: require_reviewed_head_handoff must be boolean" >&2; exit 2 ;;
+  esac
 fi
 # glab resolves the instance from the project URL passed to -R, so the host is
 # rebuilt from the parsed identity rather than read from any ambient default.
@@ -352,8 +381,10 @@ if [ ! -f "$META" ] || [ -L "$META" ]; then
   echo "error: task metadata is unavailable" >&2
   exit 1
 fi
-if [ "$PROVIDER" = github ] && [ -z "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
-  echo "error: GitHub merges require the reviewed-head handoff from bin/fm-pr-review.sh merge" >&2
+if [ "$PROVIDER" = github ] \
+  && [ "$REVIEWED_HEAD_HANDOFF_REQUIRED" = true ] \
+  && [ -z "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+  echo "error: GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true" >&2
   exit 2
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then

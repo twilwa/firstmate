@@ -136,26 +136,30 @@ test_new_head_invalidates_old_checks_and_review_coverage() {
   pass 'a new head invalidates prior checks and review coverage'
 }
 
-test_high_stakes_requires_exact_fable_and_independent_review() {
+test_high_stakes_uses_configured_model_without_mandatory_independent_review() {
   local high_files initial checkpoint status=0 reason
   high_files='[{"filename":"bin/fm-teardown.sh","status":"modified","additions":5,"deletions":1}]'
   printf '%s\n' "$high_files" > "$TMP_ROOT/high-files.json"
   reason=$($RISK "$TMP_ROOT/high-files.json") || fail 'risk classifier failed'
   [ "$(printf '%s' "$reason" | jq -r .level)" = high ] || fail 'lifecycle surface was not high stakes'
+  [ "$(jq -r '.high_stakes.no_mistakes_model' "$ROOT/.github/firstmate-review-policy.json")" = claude-opus-5-5 ] \
+    || fail 'the fork review policy does not select Claude Opus 5.5'
+  [ "$(jq -r '.high_stakes.independent_agent_reviews' "$ROOT/.github/firstmate-review-policy.json")" -eq 0 ] \
+    || fail 'the fork review policy still requires an independent review'
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   initial="$TMP_ROOT/high-initial.json"; checkpoint="$TMP_ROOT/high-checkpoint.json"
   snapshot "$initial" "$HEAD_A" '[]' '[]' '[]' "$high_files"
   snapshot "$checkpoint" "$HEAD_A" '[]' '[]' '[]' "$high_files"
   FM_TEST_NOW_EPOCH=3000 review init task-high "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=3600 review checkpoint "$URL" --snapshot "$checkpoint" >/dev/null
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.0 'run old-model' >/dev/null
-  review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-4 'run old-model' >/dev/null
   status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
-  [ "$status" -ne 0 ] || fail 'another model was silently substituted for Fable 5.1'
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
+  [ "$status" -ne 0 ] || fail 'another model was silently substituted for Claude Opus 5.5'
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-5 'run configured-model' >/dev/null
   bind_final_disposition "$HEAD_A" "$URL#issuecomment-102" "$checkpoint"
-  review ready "$URL" "$HEAD_A" >/dev/null || fail 'exact Fable 5.1 and an independent review did not satisfy the high-stakes gate without repository-required checks'
-  pass 'high-stakes readiness requires exact Fable 5.1 plus an independent review and accepts an empty required-check set'
+  review ready "$URL" "$HEAD_A" >/dev/null \
+    || fail 'the configured high-stakes model did not satisfy the gate without an independent review'
+  pass 'high-stakes readiness requires the configured model and no independent review when the policy count is zero'
 }
 
 test_risk_classifier_resolves_incomplete_evidence_high() {
@@ -235,7 +239,7 @@ test_late_attestation_invalidates_final_disposition() {
   FM_TEST_NOW_EPOCH=4300 review checkpoint "$URL" --snapshot "$initial" >/dev/null
   review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
   bind_final_disposition "$HEAD_A" "$URL#issuecomment-103" "$initial"
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-5 'run configured-model' >/dev/null
   path=$(ledger)
   [ "$(jq -r '.generations[-1].final_disposition' "$path")" = null ] \
     || fail 'a late high-stakes attestation left an earlier final disposition bound'
@@ -284,7 +288,7 @@ case "${1:-} ${2:-}" in
     printf '%s\n' '{"login":"maintainer"}'
     ;;
   "api /repos/o/r/pulls/7")
-    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"contributor"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
+    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"maintainer"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
     ;;
   "api /repos/o/r/pulls/7/files?per_page=100")
     printf '%s\n' '[[{"filename":"tests/x.test.sh","status":"modified","additions":2,"deletions":0}]]'
@@ -839,7 +843,7 @@ test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
 
 test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
-test_high_stakes_requires_exact_fable_and_independent_review
+test_high_stakes_uses_configured_model_without_mandatory_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high

@@ -5,9 +5,9 @@
 # partial snapshot. The output includes top-level comments, submitted reviews,
 # every inline review thread, requested reviewers, triggered reviewer checks,
 # and required checks bound to the exact head. Comments from the pull-request
-# author are excluded. The authenticated collection actor is recorded so the
-# ledger can exclude only its exact bound final-disposition post while retaining
-# genuine review feedback from that same actor.
+# author are excluded unless the authenticated collector is that author; the
+# ledger then excludes only its exact bound final-disposition post while
+# retaining genuine review feedback from the collector.
 #
 # Usage: fm-pr-review-snapshot.sh <pr-url> <output.json>
 set -eu
@@ -86,7 +86,9 @@ jq -n \
   --slurpfile rollup "$TMP/rollup.json" \
   --slurpfile policy "$POLICY" '
   def pages($x): ($x[0] | add // []);
-  def external: select((.user.login // .author.login // "") != $author);
+  def external:
+    select((.user.login // .author.login // "") != $author or
+      (.user.login // .author.login // "") == $actor);
   def check_pending:
     if .__typename == "StatusContext" then
       (.state != "SUCCESS" and .state != "FAILURE" and .state != "ERROR")
