@@ -23,7 +23,7 @@ fm_pane_question_text() {  # <capture>
       gsub(/`[^`]*`/, "", last)
       sub(/[[:space:]]+$/, "", last)
       sub(/^[[:space:]]*([^[:alnum:][:space:]]+[[:space:]]+)?/, "", first)
-      if (last ~ /\?$/ || tolower(first) ~ /^captain,/) print last
+      if (last ~ /\?$/ || tolower(first) ~ /^captain,/) print (last != "" ? last : first)
     }
   '
 }

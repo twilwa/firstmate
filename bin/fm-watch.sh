@@ -2938,7 +2938,10 @@ EOF
     # decision-owned row off the supervision branch (fm-branch-dispatch.ts,
     # fm-primary-pi-watch.ts), and the away daemon, whose handle_durable_wakes
     # passes it to handle_wake (see the comment above handle_wake in
-    # bin/fm-supervise-daemon.sh).
+    # bin/fm-supervise-daemon.sh). A turn end that fm_pane_question_turn found
+    # ending on an unfiled question is marked "signal: decision-pending <file>"
+    # instead; both readers treat it as decision-owned, and the away daemon's
+    # classify_signal escalates it.
     # shellcheck disable=SC2086  # same space-separated status-path list
     if afk_present || [ -n "$FM_PANE_QUESTION_FILES" ] || [ "$signal_actionable" -eq 0 ] \
       || { ! signal_crew_provably_working $files && ! signal_turnend_panes_churned $files; }; then

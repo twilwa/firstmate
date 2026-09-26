@@ -87,6 +87,7 @@ run_turn captain-possessive "The captain's requested change is implemented.$PI_T
 run_turn captain-mention "Ready for the captain to review.$PI_TAIL" '' 0
 run_turn claude-marker-address "⏺ Captain, please pick one of A or B.$CLAUDE_TAIL" '' 1
 run_turn wrapped-address "Captain, the migration can keep the old column or drop it\n  now; pick one before I continue.$PI_TAIL" '' 1
+run_turn inline-code-address "Captain, pick which command to run next:\n  \`make migrate-all\`$PI_TAIL" '' 1
 
 # One publication per status position: a second question turn with no status
 # growth stays quiet, and any status append re-arms the detector.
