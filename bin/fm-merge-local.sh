@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Perform the approved local merge for a local-only ship task: fast-forward the
-# project's default branch to the crewmate's fm/<id> branch.
+# project's default branch to the crewmate's immutable ship branch recorded in
+# state/<task-id>.meta ("fm/<id>" for records created before that field existed).
 #
 # This is firstmate's merge gate-action (the captain's merge authority applied
 # locally instead of via a GitHub PR). It is the one sanctioned exception to hard
@@ -142,12 +143,12 @@ if [ "$DELEGATED" -eq 0 ]; then
 fi
 
 PARENT_HOME=$(cd "$FM_HOME" && pwd -P)
-[ -d "$PROJECTS" ] || { echo "error: projects directory $PROJECTS is not present" >&2; exit 1; }
-PROJECTS_ABS=$(cd "$PROJECTS" && pwd -P)
 OFFER_BLOB=
 LANDING_BLOB=
 IMPORT_REF=
 if [ "$DELEGATED" -eq 1 ]; then
+  [ -d "$PROJECTS" ] || { echo "error: projects directory $PROJECTS is not present" >&2; exit 1; }
+  PROJECTS_ABS=$(cd "$PROJECTS" && pwd -P)
   fm_local_handoff_valid_sha "$EXPECT_HEAD" || { echo "error: --expect-head must be a full commit id" >&2; exit 1; }
   fm_local_handoff_offer_load "$OFFER_FILE" || { echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2; exit 1; }
   OFFER_BLOB=$FM_LOCAL_HANDOFF_RECORD
@@ -201,7 +202,7 @@ if [ "$DELEGATED" -eq 1 ]; then
 else
   PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
   MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
-  [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge GitHub PR tasks with bin/fm-pr-review.sh merge <id> <PR url>, or GitLab MR tasks with bin/fm-pr-merge.sh <id> <MR url>, after approval" >&2; exit 1; }
+  [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge GitHub PR tasks with bin/fm-pr-review.sh merge <id> <PR url> when the review policy requires the reviewed-head handoff and bin/fm-pr-merge.sh <id> <PR url> otherwise, or GitLab MR tasks with bin/fm-pr-merge.sh <id> <MR url>, after approval" >&2; exit 1; }
   PROJECT_NAME=$(basename "$PROJ")
   # A bound local-only clone is a CHILD copy of someone else's project. Landing
   # it here would produce a merge no receipt can ever prove, and teardown would
@@ -235,7 +236,12 @@ if [ "$DELEGATED" -eq 1 ]; then
   BRANCH=$(fm_local_handoff_field "$OFFER_BLOB" branch)
   MERGE_TARGET=$EXPECT_HEAD
 else
-  BRANCH="fm/$ID"
+  BRANCH=$(grep '^branch=' "$META" | cut -d= -f2- || true)
+  [ -n "$BRANCH" ] || BRANCH="fm/$ID"
+  if ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
+    echo "error: task $ID has an invalid recorded ship branch '$BRANCH'" >&2
+    exit 1
+  fi
   git -C "$PROJ" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null || { echo "error: branch $BRANCH does not exist in $PROJ" >&2; exit 1; }
   MERGE_TARGET=$BRANCH
 fi
@@ -293,6 +299,8 @@ if [ "$merge_status" -ne 0 ]; then
   exit "$merge_status"
 fi
 after=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
+# Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test.
+[ ! -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE "$SCRIPT_DIR/fm-fleet-ledger.sh" merged "$ID" local || true
 
 if [ "$DELEGATED" -eq 1 ]; then
   git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true

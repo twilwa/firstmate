@@ -351,6 +351,31 @@ SH
   pass "fm-lint.sh --fast disables ShellCheck extended analysis"
 }
 
+test_binary_paths_ignore_exported_functions() {
+  local tmp fakebin fixture log out rc=0
+  tmp=$(fm_test_tmproot fm-lint-binary-paths)
+  fakebin=$(fm_fakebin "$tmp")
+  fixture="$tmp/fixture.sh"
+  log="$tmp/shellcheck.log"
+  cat > "$fixture" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' ok
+SH
+  chmod +x "$fixture"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  shellcheck() { printf 'version: 0.0.0\n'; }
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  perl() { printf 'shadowed perl function invoked\n' >&2; return 97; }
+  export -f shellcheck perl
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 \
+    "$LINT" --fast "$fixture" 2>&1) || rc=$?
+  unset -f shellcheck perl
+  [ "$rc" -eq 0 ] || fail "lint did not resolve external tools past exported functions (exit $rc)"$'\n'"$out"
+  [ "$(cat "$log")" = "$fixture" ] || fail "the external ShellCheck executable did not lint the requested file"
+  pass "fm-lint resolves external ShellCheck and Perl binaries past exported functions"
+}
+
 test_ci_defaults_to_full_analysis() {
   local tmp fakebin log mode_log fixture out
   tmp=$(fm_test_tmproot fm-lint-ci-analysis)
@@ -572,7 +597,7 @@ test_changed_mode_drops_external_sources_and_excludes_cross_file_codes() {
     "changed-mode local lint did not disclose dropped source following"
   assert_grep $'analysis_mode\tlocal' "$telemetry" \
     "telemetry did not record local analysis mode"
-  assert_grep $'source_directives\t4' "$telemetry" \
+  assert_grep $'source_directives\t5' "$telemetry" \
     "telemetry did not count the changed root's source directives"
   assert_grep $'source_followed_directives\t0' "$telemetry" \
     "telemetry reported followed sources in no-external-sources mode"
@@ -1408,6 +1433,7 @@ test_help_reports_the_complete_interface
 test_list_files_reports_the_shell_inventory
 test_canonical_partitions_preserve_full_lint
 test_fast_mode_disables_extended_analysis
+test_binary_paths_ignore_exported_functions
 test_ci_defaults_to_full_analysis
 test_ci_rejects_explicit_fast_mode
 test_fast_mode_catches_a_real_lint_defect

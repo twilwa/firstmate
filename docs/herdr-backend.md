@@ -166,6 +166,8 @@ Firstmate immediately revalidates the same journal, metadata absence, workspace 
 It closes only that pane, never a workspace.
 The matching journal is retired only after the exact pane is positively confirmed gone; an unconfirmed close retains the journal, while a confirmed close may retire it even when focus restoration reported an error after the close.
 A second run finds no matching title or journal and is a no-op.
+Discovery validates this home's journals once per pass, but every locked mutation check rereads them.
+`FM_HERDR_SESSION_CLEANUP_TIMEOUT` bounds the complete pass; at the deadline Firstmate reclaims a recorded lock only while it is free or still provably owned by the timed-out worker (the recorded PID, now a zombie, with its recorded process identity), warns about any lock it cannot reclaim safely, preserves every unfinished candidate, and warns that cleanup coverage is unconfirmed.
 A malformed or missing title or token, duplicate token, zero or multiple journal matches, cross-home version 2 binding, current metadata, registered or unknown agent, extra tab or pane, active target, busy lock, changed revalidation, unreadable check, or any error preserves the candidate and lets session startup continue with at most a concise warning.
 
 Operational compromises:
@@ -231,6 +233,15 @@ Spawn-time fixed commands may use Herdr's atomic run primitive.
 Enter, Escape, and Ctrl-C are supported.
 Typed-plane slash input, and dollar-prefixed skill input for Codex, uses the shared harness-aware settle before the first Enter so a completion popup cannot consume it.
 Typed-plane text is typed once; only Enter is retried.
+When native `agent get` identity is Claude, the adapter types only into an empty composer and, before that Enter, continues only when the selected composer shows the typed payload, or only Claude paste placeholders with no literal remainder.
+Claude draws its slash-command completion popup below the composer, sized by the pane rather than the payload, so when the payload-sized read selects no composer the proof selects from the whole recent read, where the bottom-most composer still wins.
+That comparison ignores whitespace and U+2063, the invisible mark that starts operational inputs and ends the from-firstmate label, because Claude's Herdr read-back never shows it.
+A composer that holds a shorter suffix, or a placeholder plus a literal remainder, does not receive Enter.
+The adapter presses Ctrl+U until the shared classifier reads the composer as empty, then reports `send-failed`, so a resend starts from a clean composer.
+Ctrl+C is not used for this, because Claude documents it as interrupting a running operation.
+If the composer cannot be verified empty again, the submit reports `unknown` instead, because text may still be in the composer.
+A Claude composer that already holds text, or cannot be read, before the send is refused with nothing typed.
+Other harnesses, and panes with no native identity, skip this proof and keep the type-then-Enter path, because their paste placeholders and composer shapes are not live-verified.
 
 On an idle or done native baseline, submit confirmation first waits for `working` or `blocked` across a bounded polling window.
 If native status stays idle, the shared composer verdict is the next positive signal: a cleared composer is delivery, and proven pending text retries Enter.
@@ -299,8 +310,8 @@ Neither the stopped-server exception nor the stale-registration verdict widens h
 Native registration still identifies Pi by name where tmux would see a generic interpreter; the process-level proof only decides whether that registration is backed by a running process.
 `tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh` pins the live-Pi versus leftover-shell distinction; [`verification/runtime-backends.md`](verification/runtime-backends.md#agent-lifecycle-control) owns the versioned evidence.
 
-The session-start sweep uses this probe.
-Mid-session secondmate agent-process liveness is not implemented because idle secondmates are deliberately exempt from stale-pane escalation and need a separate periodic identity signal.
+The session-start sweep and the watcher's dedicated secondmate liveness tick use this probe; idle secondmates remain exempt from stale-pane escalation.
+[Secondmate endpoint recovery](architecture.md) owns the shared supervision mechanism.
 
 ## Push events and polling fallback
 
@@ -324,6 +335,7 @@ The pane-independent max-defer alert is configured in [`wedge-alarm.md`](wedge-a
 
 Harnesses with native tracked background execution can run the daemon in their terminal.
 Pi and pi-signed no longer launch the away daemon; their ordinary supervision session continues under the posture record.
+An opted-in non-Pi home also skips the daemon for `/afk`; see [supervision-host.md](supervision-host.md).
 For another harness without native tracked background execution, `bin/fm-afk-launch.sh` creates a dedicated unfocused Herdr workspace, runs the daemon there with an explicit supervisor target and backend, records the exact daemon pane, and closes only that pane on stop.
 It never splits the captain's active tab and never uses shell `&`.
 Recovery reconciles only the recorded exact id.
@@ -337,7 +349,7 @@ Never use ambient `herdr server stop` for Firstmate verification.
 An environment-only session selection can silently reach a different running server, and the ambient stop command has no explicit target.
 
 `bin/fm-herdr-lab.sh` is the sole supported lifecycle helper for isolated verification.
-It provisions only non-default names beginning with `fm-lab-`, appends an explicit `--session` to allowed task commands, refuses caller-supplied session flags and server/session lifecycle subcommands, and performs destructive stop/delete only through its guarded lifecycle actions.
+It provisions only non-default names beginning with `fm-lab-`, supplies an explicit `--session` Herdr option before any `--` delimiter in allowed task commands, refuses caller-supplied session flags and server/session lifecycle subcommands, and performs destructive stop/delete only through its guarded lifecycle actions.
 Immediately before every destructive call it re-queries the named session and refuses empty, missing, literal `default`, or `default:true` identities.
 Its before/after tripwire requires the live default-session snapshot to remain byte-identical.
 
@@ -350,7 +362,6 @@ Tests use thin compatibility wrappers in `tests/herdr-test-safety.sh` and never 
 - Mutable labels can collide; they are never placement or destructive authority.
 - A Firstmate outside Herdr cannot resolve a launcher workspace, so a colliding home label refuses new spawns until the collision is cleared.
 - Ghost and placeholder recognition uses ANSI de-emphasis when available; an unstyled glyph row carrying trailing non-idle text fails safely to `unknown`.
-- Mid-session secondmate agent-process liveness is not implemented.
 - Only tmux and Herdr can host the away-mode supervisor terminal.
 
 ## Regression entry points

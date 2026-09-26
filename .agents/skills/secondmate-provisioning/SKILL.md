@@ -13,7 +13,8 @@ metadata:
 
 Use this reference before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a persistent secondmate, and before editing `data/secondmates.md`.
 
-Keep the always-inline routing rules in `AGENTS.md` authoritative: route by natural-language `scope:`, a local-only project's landing authority stays with the primary that seeded its bound copy, and secondmates are idle by default.
+Keep `task-intake`'s routing rules authoritative: route by natural-language `scope:`; a local-only project's landing authority stays with the primary that seeded its bound copy.
+The charter `bin/fm-brief.sh` seeds into the secondmate's own `data/charter.md` owns idle-by-default.
 
 ## Routing table
 
@@ -97,7 +98,7 @@ When the file's tokens do apply, an explicit per-spawn `--model` or `--effort` f
 Because this resolves from the file on every spawn, the pin is durable across every respawn (recovery, `/updatefirstmate`, restart) exactly like the harness axis itself - e.g. `config/secondmate-harness` containing `claude opus` keeps a secondmate pinned to Opus even if the primary's own default model later changes.
 This is secondmate-only: crewmate/scout model resolution is untouched by this file.
 
-This section is the single owner of the secondmate sync and inherited-local-material propagation contract; `AGENTS.md` sections 3 and 4 point here.
+This section is the single owner of the secondmate sync and inherited-local-material propagation contract; `AGENTS.md` section 13 points here.
 Before a local launch, `fm-spawn.sh --secondmate` locally fast-forwards the home to the primary firstmate checkout's current default-branch commit when it is safe, or reconciles a clean divergence whose complete local result is already present there (e.g. after a squash merge) with `reset --keep`; dirty, uniquely diverged, or in-flight homes launch unchanged with a warning, and a genuine divergence gets the same durable reconciliation record `bin/fm-ff-lib.sh` writes for `/updatefirstmate`.
 The locked session-start deferred network stage runs the same bootstrap sweep for every live local secondmate home, discovered from `state/<id>.meta` records with `kind=secondmate` (`data/secondmates.md` only backfills `home=` for older records).
 That no-fetch path is a purely local fast-forward or redundant-divergence reconcile of tracked files, never an origin fetch, and it never touches the gitignored operational dirs, so a secondmate's backlog, projects, and in-flight work are never disturbed; a linked worktree advances immediately, while a standalone clone that lacks the target receives firstmate updates through `/updatefirstmate`'s origin refresh.
@@ -116,6 +117,7 @@ Inherited `config/backend` becomes that secondmate home's local runtime-backend 
 A present primary value always converges byte-exact into validated secondmate homes, and primary absence removes the destination so those homes keep runtime auto-detection.
 Explicit per-spawn `--backend` and `FM_BACKEND` remain stronger than every home's local `config/backend`, including an inherited default.
 `config/secondmate-harness` is not inherited because it is only the primary's knob for launching secondmate agents.
+`config/claude-account` and `config/pi-account` are not inherited: a local secondmate agent launches on the launching home's worker account pin, and a secondmate home that should pin its own workers needs its own file ([`docs/configuration.md`](../../../docs/configuration.md) "Worker account pin").
 `data/captain-shared.md` is main-authoritative in the primary home and read-only in secondmate homes.
 Its primary file header must state that the file is main-authoritative, read-only in secondmate homes, must not be edited there, and that new captain-preference discoveries are routed to the main firstmate through marked status or a document pointer.
 Every propagation point converges the secondmate copy to the primary bytes; when the primary file is absent, any existing secondmate copy is quarantined and removed so absence converges too.
@@ -185,7 +187,7 @@ When a landing succeeds but its receipt or landing record cannot be completed, t
 Missing or stale identities, dirty or diverged work, a changed head, a changed route, a failed receipt, and an interrupted seed transaction all refuse and preserve the work.
 
 Worker allocation follows [fm-spawn.sh](../../../bin/fm-spawn.sh)'s clone-custody guard and explicit Treehouse root contract, including for independent secondmate project clones that share the primary's origin.
-New allocations override ambient Treehouse root configuration; existing tasks keep their recorded worktrees and guarded return path.
+New allocations override ambient Treehouse root configuration with a per-clone root under `$HOME/.treehouse-fm/`, outside every Firstmate home; existing tasks keep their recorded worktrees and guarded return path.
 
 ## Record intake for an existing or inherited domain
 
@@ -209,7 +211,7 @@ Treat an inherited queue that carries plans with no matching delivery record as 
 
 ## Backlog handoff
 
-Apply `AGENTS.md` section 10's work-items-only backlog contract before creation or handoff.
+Load `backlog-management` and apply its work-items-only backlog contract before creation or handoff.
 When a secondmate is created for a domain, existing main-backlog items that fall under its scope should become its work instead of staying stranded in the main backlog.
 Scope-matching is firstmate's judgment against the secondmate's natural-language scope, not a keyword rule.
 Read `data/backlog.md`, pick queued items that fit the new scope, and move them with:
@@ -238,6 +240,8 @@ It refuses any destination that is not a genuine seeded firstmate home with safe
 A `local-only` item follows the same queued-only rule as any other, and handing it off never moves its landing authority away from the primary that seeded the bound copy.
 
 ## Recovery
+
+Ordinary supervision also performs a cadence-gated liveness tick through [`bin/fm-secondmate-liveness-lib.sh`](../../../bin/fm-secondmate-liveness-lib.sh), so a mate that dies mid-session is relaunched without waiting for the next session start.
 
 For local `kind=secondmate` meta with no window, treat the secondmate as a dead persistent direct report and respawn it with:
 

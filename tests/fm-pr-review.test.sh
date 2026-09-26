@@ -136,26 +136,30 @@ test_new_head_invalidates_old_checks_and_review_coverage() {
   pass 'a new head invalidates prior checks and review coverage'
 }
 
-test_high_stakes_requires_exact_fable_and_independent_review() {
+test_high_stakes_uses_configured_model_without_mandatory_independent_review() {
   local high_files initial checkpoint status=0 reason
   high_files='[{"filename":"bin/fm-teardown.sh","status":"modified","additions":5,"deletions":1}]'
   printf '%s\n' "$high_files" > "$TMP_ROOT/high-files.json"
   reason=$($RISK "$TMP_ROOT/high-files.json") || fail 'risk classifier failed'
   [ "$(printf '%s' "$reason" | jq -r .level)" = high ] || fail 'lifecycle surface was not high stakes'
+  [ "$(jq -r '.high_stakes.no_mistakes_model' "$ROOT/.github/firstmate-review-policy.json")" = claude-opus-5-5 ] \
+    || fail 'the fork review policy does not select Claude Opus 5.5'
+  [ "$(jq -r '.high_stakes.independent_agent_reviews' "$ROOT/.github/firstmate-review-policy.json")" -eq 0 ] \
+    || fail 'the fork review policy still requires an independent review'
   rm -rf "$HOME_DIR/data/pr-review-ledger"
   initial="$TMP_ROOT/high-initial.json"; checkpoint="$TMP_ROOT/high-checkpoint.json"
   snapshot "$initial" "$HEAD_A" '[]' '[]' '[]' "$high_files"
   snapshot "$checkpoint" "$HEAD_A" '[]' '[]' '[]' "$high_files"
   FM_TEST_NOW_EPOCH=3000 review init task-high "$URL" --snapshot "$initial" >/dev/null
   FM_TEST_NOW_EPOCH=3600 review checkpoint "$URL" --snapshot "$checkpoint" >/dev/null
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.0 'run old-model' >/dev/null
-  review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-4 'run old-model' >/dev/null
   status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>&1 || status=$?
-  [ "$status" -ne 0 ] || fail 'another model was silently substituted for Fable 5.1'
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
+  [ "$status" -ne 0 ] || fail 'another model was silently substituted for Claude Opus 5.5'
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-5 'run configured-model' >/dev/null
   bind_final_disposition "$HEAD_A" "$URL#issuecomment-102" "$checkpoint"
-  review ready "$URL" "$HEAD_A" >/dev/null || fail 'exact Fable 5.1 and an independent review did not satisfy the high-stakes gate without repository-required checks'
-  pass 'high-stakes readiness requires exact Fable 5.1 plus an independent review and accepts an empty required-check set'
+  review ready "$URL" "$HEAD_A" >/dev/null \
+    || fail 'the configured high-stakes model did not satisfy the gate without an independent review'
+  pass 'high-stakes readiness requires the configured model and no independent review when the policy count is zero'
 }
 
 test_risk_classifier_resolves_incomplete_evidence_high() {
@@ -235,7 +239,7 @@ test_late_attestation_invalidates_final_disposition() {
   FM_TEST_NOW_EPOCH=4300 review checkpoint "$URL" --snapshot "$initial" >/dev/null
   review attest "$URL" "$HEAD_A" independent-agent-review codex 'review URL' >/dev/null
   bind_final_disposition "$HEAD_A" "$URL#issuecomment-103" "$initial"
-  review attest "$URL" "$HEAD_A" no-mistakes fable-5.1 'run exact-model' >/dev/null
+  review attest "$URL" "$HEAD_A" no-mistakes claude-opus-5-5 'run configured-model' >/dev/null
   path=$(ledger)
   [ "$(jq -r '.generations[-1].final_disposition' "$path")" = null ] \
     || fail 'a late high-stakes attestation left an earlier final disposition bound'
@@ -284,7 +288,7 @@ case "${1:-} ${2:-}" in
     printf '%s\n' '{"login":"maintainer"}'
     ;;
   "api /repos/o/r/pulls/7")
-    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"contributor"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
+    printf '%s\n' '{"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"user":{"login":"maintainer"},"requested_reviewers":[{"login":"codex"}],"requested_teams":[]}'
     ;;
   "api /repos/o/r/pulls/7/files?per_page=100")
     printf '%s\n' '[[{"filename":"tests/x.test.sh","status":"modified","additions":2,"deletions":0}]]'
@@ -416,22 +420,37 @@ SH
   pass 'unreported required checks remain pending instead of satisfying readiness'
 }
 
-test_migrated_assessment_rows_are_durable_fixtures() {
-  local fixture count held nulls
-  count=0; held=0; nulls=0
-  for fixture in "$ROOT"/tests/fixtures/pr-review-ledger/*.json; do
-    jq -e '.schema == "firstmate-pr-review-ledger.v1" and
-      (.url | startswith("https://github.com/")) and
-      (.current_head == .generations[-1].head)' "$fixture" >/dev/null \
-      || fail "migrated assessment fixture is invalid: $fixture"
-    count=$((count + 1))
-    [ "$(jq -r '.generations[-1].merge_decision.decision' "$fixture")" != hold ] || held=$((held + 1))
-    nulls=$((nulls + $(jq '[.generations[-1].review_items[] | select(.disposition == null)] | length' "$fixture")))
-  done
-  [ "$count" -eq 5 ] || fail 'the five initial assessments were not all migrated into fixtures'
-  [ "$held" -eq 5 ] || fail 'an imported held PR lost its real hold decision and reason'
-  [ "$nulls" -gt 0 ] || fail 'imported undispositioned findings were defaulted instead of staying null'
-  pass 'five initial assessments remain durable fixtures with honest null dispositions and hold decisions'
+test_imported_ledgers_keep_holds_and_null_dispositions_blocking() {
+  local fixtures="$ROOT/tests/fixtures/pr-review-ledger" snap path err status
+  snap="$TMP_ROOT/imported-ledger.json"; err="$TMP_ROOT/imported-ledger.err"
+  snapshot "$snap" "$HEAD_A" '[]' "$(jq -c '[.[0]]' <<<"$COMMENTS")" "$GREEN" "$LOW_FILES"
+  path=$(ledger)
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"; mkdir -p "$HOME_DIR/data/pr-review-ledger"
+  cp "$fixtures/held.json" "$path"
+  status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>"$err" || status=$?
+  [ "$status" -ne 0 ] || fail 'an imported hold did not block readiness'
+  grep -Fq 'pull request is held: synthetic hold awaiting a captain decision' "$err" \
+    || fail 'readiness did not name the imported hold reason'
+  status=0; FM_TEST_NOW_EPOCH=2000 review merge-decision "$URL" --snapshot "$snap" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'merge-decision recorded a merge over an imported hold'
+  [ "$(jq -r '.generations[-1].merge_decision | "\(.decision)|\(.reason)"' "$path")" = 'hold|synthetic hold awaiting a captain decision' ] \
+    || fail 'merge-decision replaced the imported hold'
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"; mkdir -p "$HOME_DIR/data/pr-review-ledger"
+  cp "$fixtures/undispositioned.json" "$path"
+  status=0; review ready "$URL" "$HEAD_A" >/dev/null 2>"$err" || status=$?
+  [ "$status" -ne 0 ] || fail 'an imported null disposition did not block readiness'
+  grep -Fq 'lacks a disposition with evidence' "$err" \
+    || fail 'readiness did not name the undispositioned imported finding'
+  ! grep -Fq 'pull request is held' "$err" || fail 'an unheld imported ledger was reported as held'
+  status=0; FM_TEST_NOW_EPOCH=2000 review merge-decision "$URL" --snapshot "$snap" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail 'merge-decision recorded a merge over an undispositioned imported finding'
+  [ "$(jq -r '.generations[-1].merge_decision' "$path")" = null ] \
+    || fail 'merge-decision recorded a decision over an undispositioned imported finding'
+  [ "$(jq -r '.generations[-1].review_items[] | select(.id == "10") | .disposition' "$path")" = null ] \
+    || fail 'an imported null disposition was defaulted'
+  pass 'imported ledgers keep holds and null dispositions blocking ready and merge-decision'
 }
 
 test_human_hold_survives_head_change_until_evidenced_release() {
@@ -824,7 +843,7 @@ test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
 
 test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
-test_high_stakes_requires_exact_fable_and_independent_review
+test_high_stakes_uses_configured_model_without_mandatory_independent_review
 test_risk_classifier_resolves_incomplete_evidence_high
 test_risk_classifier_treats_authentication_names_as_high
 test_risk_classifier_treats_migrate_directories_as_high
@@ -835,7 +854,7 @@ test_merge_decision_records_only_the_live_reviewed_head
 test_live_collector_includes_submitted_reviews_and_inline_threads
 test_bound_final_disposition_excludes_only_its_exact_post
 test_live_collector_keeps_unreported_required_checks_pending
-test_migrated_assessment_rows_are_durable_fixtures
+test_imported_ledgers_keep_holds_and_null_dispositions_blocking
 test_human_hold_survives_head_change_until_evidenced_release
 test_merge_forwards_guarded_options_to_the_merge_parser
 test_merge_rejects_a_task_that_does_not_own_the_ledger

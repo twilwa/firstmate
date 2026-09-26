@@ -944,6 +944,79 @@ test_send_text_submit_detects_landed_send() {
   pass "fm_backend_zellij_send_text_submit: reports 'empty' once the composer classifies empty (submitted)"
 }
 
+# Portable popup fixture modeled on Claude 2.1.283's /exit capture on a
+# 150x45 Herdr pane (2026-09-26). The pre-send empty composer is visible;
+# post-paste the synthetic popup pushes the composer above the 20-row tail.
+zellij_claude_exit_popup_screen() {  # <composer>
+  local rule
+  rule=$(printf '─%.0s' $(seq 1 150))
+  printf '%s\n' \
+    'Claude Code v2.1.283' \
+    "$rule" \
+    "$1" \
+    "$rule" \
+    '  /exit                         Exit the CLI' \
+    '  /context                      Visualize current context usage as a colored grid' \
+    '  /usage-credits                Configure usage credits' \
+    '  /doctor                       Health-check the setup' \
+    '  /claude-in-chrome             Automates your Chrome browser' \
+    '  /artifact-capabilities        Runtime capabilities' \
+    '  /verify                       Verify that a code change does what it should' \
+    '  /memory                       Edit CLAUDE.md files and memory settings' \
+    '  /passes                       Share a free week' \
+    '  /autocompact                  Set how full the context gets' \
+    '  /subtask                      Send a subagent' \
+    '  /clear                        Start a new session' \
+    '  /compact                      Free up context' \
+    '  /model                        Set the AI model' \
+    '  /skill-doctor                 Show unused skills' \
+    '  /theme                        Change appearance' \
+    '  /status                       Show current state' \
+    '  /help                         Show available commands' \
+    '  /feedback                     Send feedback' \
+    '  /permissions                  Review tool permissions'
+}
+
+test_send_text_submit_claude_exit_popup_keeps_post_paste_proof() {
+  local dir fb out
+  dir="$TMP_ROOT/submit-exit-popup"; mkdir -p "$dir/responses"
+  zellij_pane_response "$dir" 1 7 3
+  printf '❯ \n' > "$dir/responses/2.out"
+  zellij_pane_response "$dir" 3 7 3
+  zellij_pane_response "$dir" 5 7 3
+  zellij_claude_exit_popup_screen '❯ /exit' > "$dir/responses/6.out"
+  [ "$(tail -n 20 "$dir/responses/6.out" | grep -c '❯')" -eq 0 ] \
+    || fail 'popup fixture must push the composer above the 20-row tail'
+  zellij_pane_response "$dir" 7 7 3
+  zellij_pane_response "$dir" 9 7 3
+  printf '❯ \n' > "$dir/responses/10.out"
+  fb=$(make_zellij_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_ZELLIJ_LOG="$dir/log" FM_ZELLIJ_RESPONSES="$dir/responses" \
+    FM_ZELLIJ_SESSION_LIST=firstmate \
+    bash -c '. "$0/bin/backends/zellij.sh"; fm_backend_zellij_send_text_submit firstmate:7 /exit 3 0.01 0.01' "$ROOT" )
+  [ "$out" = empty ] || fail "a /exit composer above the popup should be submitted once, got '$out'"
+  [ "$(grep -c $'\x1f''send-keys' "$dir/log")" -eq 1 ] || fail 'a proven /exit should receive one Enter'
+  pass 'fm_backend_zellij_send_text_submit: /exit popup does not hide the post-paste proof'
+}
+
+test_send_text_submit_claude_exit_popup_refuses_truncated_composer() {
+  local dir fb out
+  dir="$TMP_ROOT/submit-exit-popup-truncated"; mkdir -p "$dir/responses"
+  zellij_pane_response "$dir" 1 7 3
+  printf '❯ \n' > "$dir/responses/2.out"
+  zellij_pane_response "$dir" 3 7 3
+  zellij_pane_response "$dir" 5 7 3
+  { printf '❯ /exit\n'; zellij_claude_exit_popup_screen '❯ xit'; } > "$dir/responses/6.out"
+  fb=$(make_zellij_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_ZELLIJ_LOG="$dir/log" FM_ZELLIJ_RESPONSES="$dir/responses" \
+    FM_ZELLIJ_SESSION_LIST=firstmate \
+    bash -c '. "$0/bin/backends/zellij.sh"; fm_backend_zellij_send_text_submit firstmate:7 /exit 3 0.01 0.01' "$ROOT" )
+  [ "$out" = send-failed ] || fail "an older /exit transcript must not prove a truncated live composer, got '$out'"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''send-keys' \
+    'the truncated composer must not receive Enter'
+  pass 'fm_backend_zellij_send_text_submit: popup proof refuses a truncated live composer despite transcript echo'
+}
+
 test_send_text_submit_detects_swallowed_enter() {
   local dir fb out
   dir="$TMP_ROOT/submit-swallow"; mkdir -p "$dir/responses"
@@ -1341,6 +1414,8 @@ test_kill_is_noop_when_session_absent
 test_teardown_passes_recorded_tab_id_to_zellij_kill
 test_forced_secondmate_teardown_kills_zellij_children_with_child_home_tag
 test_send_text_submit_detects_landed_send
+test_send_text_submit_claude_exit_popup_keeps_post_paste_proof
+test_send_text_submit_claude_exit_popup_refuses_truncated_composer
 test_send_text_submit_detects_swallowed_enter
 test_send_text_submit_unrelated_change_is_not_delivery
 test_send_text_submit_rejects_unobserved_paste
