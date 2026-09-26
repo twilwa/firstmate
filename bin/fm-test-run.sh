@@ -102,12 +102,13 @@
 #   FM_TEST_LISTENERS found=<n>
 #
 # Listener guard:
-#   After a run that executed scripts, every process still carrying this
-#   invocation's inherited FM_TEST_RUN_TOKEN and holding a listening TCP socket
-#   is reported as a leak and fails the run; listeners this invocation did not
-#   start are ignored. The guard reports but does not stop leaked servers. Where
-#   it cannot inspect sockets (non-Linux, no /proc/net/tcp, or no python3), it
-#   prints "FM_TEST_LISTENERS unchecked: <reason>" to stderr and does not fail.
+#   After a run that executed scripts, every process whose inherited
+#   FM_TEST_RUN_TOKENS chain includes this invocation's FM_TEST_RUN_TOKEN (so
+#   nested runs count) and that holds a listening TCP socket is reported as a
+#   leak and fails the run; listeners this invocation did not start are ignored.
+#   The guard reports but does not stop leaked servers. Where it cannot inspect
+#   sockets (non-Linux, no /proc/net/tcp, or no python3), it prints
+#   "FM_TEST_LISTENERS unchecked: <reason>" to stderr and does not fail.
 #
 # Placement refusal:
 #   A task worker is assigned an isolated worktree, and that placement is
