@@ -817,6 +817,50 @@ test_a_failed_receipt_keeps_the_landing_row_open_until_recovery() {
   pass "a failed receipt keeps the landing row open until recovery closes it without relanding"
 }
 
+# A landing interrupted after its fast-forward but before it recorded anything
+# leaves only a pinned record. If the approval row is gone by the time recovery
+# runs, recovery must refuse without writing, so a repeat refuses too instead
+# of reading its own earlier writes as a completed landing.
+test_recovery_refuses_a_missing_landing_row_without_writing() {
+  local head err status attempt receipt
+  make_bound_fixture missing-row-recovery
+  commit_child_work 'change landed by an interrupted landing'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (missing row recovery)"; return 0; }
+  approve_current_offer
+  receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
+  err="$TMP_ROOT/missing-row-recovery.err"
+
+  # FIXTURE INSTRUMENTATION ONLY: the fast-forward an interrupted landing
+  # completed, then the approval row removed out of band.
+  git -C "$FX_MAIN/projects/app" fetch --no-tags --quiet "$FX_OFFER.bundle" \
+    "refs/heads/fm/$FX_TASK:refs/fm-local-handoff-test/imported"
+  git -C "$FX_MAIN/projects/app" merge --ff-only --quiet refs/fm-local-handoff-test/imported \
+    || fail "could not simulate the interrupted landing's fast-forward"
+  git -C "$FX_MAIN/projects/app" update-ref -d refs/fm-local-handoff-test/imported
+  (cd "$FX_MAIN" && tasks-axi rm "$FX_LANDING") >/dev/null 2>&1 \
+    || fail "could not remove the landing row"
+  assert_equals "" "$(landing_row_state)" "the landing row is still present, so this case proves nothing"
+
+  for attempt in first second; do
+    status=0
+    run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app \
+      >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "the $attempt recovery accepted a landing whose approval row is gone"
+    assert_grep 'no landing row land-app' "$err" \
+      "the $attempt refusal did not name the missing landing row"
+    assert_equals pinned "$(record_field "$FX_LANDING_RECORD" state)" \
+      "the $attempt refused recovery recorded the landing as landed"
+    assert_absent "$receipt" "the $attempt refused recovery published a receipt"
+  done
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "a refused recovery changed the primary's default branch"
+  pass "recovery refuses a missing landing row durably and writes nothing"
+}
+
 test_teardown_requires_the_parent_receipt() {
   local head err status out
   make_bound_fixture teardown-gate
@@ -1261,6 +1305,7 @@ test_a_refused_landing_leaves_no_imported_ref
 test_landing_refuses_a_project_moved_off_local_only
 test_receipt_recovery_is_idempotent_and_proves_the_landing
 test_a_failed_receipt_keeps_the_landing_row_open_until_recovery
+test_recovery_refuses_a_missing_landing_row_without_writing
 test_teardown_requires_the_parent_receipt
 test_a_substituted_parent_clone_proves_nothing
 test_the_receipt_gate_survives_a_missing_worktree

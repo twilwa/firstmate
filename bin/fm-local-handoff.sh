@@ -405,6 +405,11 @@ command_receipt() {  # <offer-file> <landing-id>
   if [ "$(fm_local_handoff_field "$landing" state)" = landed ]; then
     was_landed=1
   else
+    if ! fm_backlog_row_probe "$DATA" "$landing_id"; then
+      [ "$FM_BACKLOG_ROW_RESULT" != not_found ] \
+        || die "this home has no landing row $landing_id; recovery records nothing for a landing whose approval row is gone"
+      die "cannot read landing row $landing_id: $FM_BACKLOG_ROW_ERROR"
+    fi
     fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
       "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
       || die "$FM_LOCAL_HANDOFF_ERROR"
