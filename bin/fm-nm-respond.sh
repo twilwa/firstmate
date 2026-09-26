@@ -17,6 +17,7 @@ skip=0
 review=0
 step_given=0
 findings=''
+findings_given=0
 while (($#)); do
   arg=$1
   shift
@@ -31,7 +32,7 @@ while (($#)); do
       case $arg in
         --action) if [[ ${value,,} == skip ]]; then skip=1; fi ;;
         --step) step_given=1; if [[ ${value,,} == review ]]; then review=1; fi ;;
-        --findings) findings+=",$value" ;;
+        --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
       esac
       ;;
     --action=*|--step=*|--findings=*)
@@ -40,7 +41,7 @@ while (($#)); do
       case ${arg%%=*} in
         --action) if [[ ${value,,} == skip ]]; then skip=1; fi ;;
         --step) step_given=1; if [[ ${value,,} == review ]]; then review=1; fi ;;
-        --findings) findings+=",$value" ;;
+        --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
       esac
       ;;
     *) args+=("$arg") ;;
@@ -51,25 +52,20 @@ if ((skip && !whole_step && (!step_given || review))); then
   # Even with --step omitted, axi responds to the gate currently awaiting approval.
   # Read its gate before deciding whether a skip is a review-step skip.
   status=$("$nm" axi status) || fail 'cannot read axi status; refusing skip'
-  if ((review)) || { (( !step_given )) && printf '%s\n' "$status" | grep -Eiq '^  step: review[[:space:]]*$|^gate: review[[:space:]]*$'; }; then
-    missing=$(printf '%s\n' "$status" | awk -v selected="$findings" '
-      BEGIN {
-        n = split(selected, tokens, ",")
-        for (i = 1; i <= n; i++) if (tokens[i] != "") named[tokens[i]] = 1
-      }
-      /^gate:([[:space:]]*review[[:space:]]*)?$/ { gate = 1; if ($0 ~ /review/) step = "review"; next }
-      gate && /^  step: / { step = $2; next }
-      gate && /^[[:space:]]*findings\[[0-9]+\]\{id,/ {
-        header = 1
-        indent = match($0, /[^ ]/) - 1
-        count = $0
-        sub(/^[[:space:]]*findings\[/, "", count)
-        sub(/\].*/, "", count)
-        next
-      }
-      gate && /^[[:space:]]*findings: none[[:space:]]*$/ { header = 1; count = 0; next }
-      gate && header && /^[[:space:]]+/ {
-        row_indent = match($0, /[^ ]/) - 1
+  rc=0
+  missing=$(printf '%s\n' "$status" | awk -v selected="$findings" '
+    BEGIN {
+      n = split(selected, tokens, ",")
+      for (i = 1; i <= n; i++) if (tokens[i] != "") named[tokens[i]] = 1
+    }
+    /^[^[:space:]]/ { nested = 0 }
+    /^gate:[[:space:]]*$/ { gate = 1; nested = 1; next }
+    /^gate:[[:space:]]*[^[:space:]]/ { gate = 1; scalar = 1; step = $2; next }
+    nested && /^  step: / { step = $2; next }
+    rows && /[^[:space:]]/ {
+      row_indent = match($0, /[^ ]/) - 1
+      if (row_indent <= indent) rows = 0
+      else {
         if (row_indent != indent + 2) next
         id = $0
         sub(/,.*/, "", id)
@@ -78,11 +74,27 @@ if ((skip && !whole_step && (!step_given || review))); then
         else { seen++; if (!(id in named)) missing[++miss] = id }
         next
       }
-      END {
-        if (!gate || step != "review" || !header || bad || seen != count) exit 2
-        for (i = 1; i <= miss; i++) printf "%s%s", (i == 1 ? "" : ","), missing[i]
-      }
-    ') || fail 'cannot read open review findings from axi status; refusing skip'
+    }
+    (nested || scalar) && /^[[:space:]]*findings\[[0-9]+\]\{id,/ {
+      if (header) bad = 1
+      header = 1
+      rows = 1
+      indent = match($0, /[^ ]/) - 1
+      count = $0
+      sub(/^[[:space:]]*findings\[/, "", count)
+      sub(/\].*/, "", count)
+      next
+    }
+    (nested || scalar) && /^[[:space:]]*findings: none[[:space:]]*$/ { if (header) bad = 1; header = 1; count = 0; next }
+    END {
+      if (!gate || step == "") exit 2
+      if (tolower(step) != "review") exit 3
+      if (!header || bad || seen != count) exit 2
+      for (i = 1; i <= miss; i++) printf "%s%s", (i == 1 ? "" : ","), missing[i]
+    }
+  ') || rc=$?
+  if ((rc != 3 || review)); then
+    ((rc == 0)) || fail 'cannot read open review findings from axi status; refusing skip'
     [ -z "$missing" ] || fail "review skip leaves unnamed open findings: $missing (name each with --findings or use --whole-step)"
   fi
 fi
