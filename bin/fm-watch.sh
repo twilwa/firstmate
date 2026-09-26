@@ -17,8 +17,7 @@
 # while the away-posture record (state/.afk-contract) exists an
 # item held for the captain is never rechecked at all, in either posture.
 # While state/.afk exists, the daemon owns triage and this watcher queues and exits
-# on every wake. Per-task budget cadence and persisted dedupe are owned below by task_budget_tick.
-# Printed reason lines:
+# on every wake. Printed reason lines:
 #   signal: <file>...      status/turn-end signals, surfaced when a listed status
 #                          span has a captain-relevant event OR a no-verb signal lacks
 #                          positive execution evidence, unless afk is active
@@ -150,6 +149,12 @@
 #                          budget and is parked until a probe reads it live
 #                          again (FM_SECONDMATE_LIVENESS_MAX_ATTEMPTS and
 #                          FM_SECONDMATE_LIVENESS_WINDOW_SECS)
+#   check: task-budget task=<id> period=<n> age=<s>s ...
+#                          a ship/scout task that is not done or failed crossed
+#                          its recorded wall-clock budget (period 0) or another
+#                          FM_BUDGET_REPEAT_SECS past it; firstmate decides
+#                          whether it continues (task_budget_tick owns cadence
+#                          and persisted dedupe)
 # For normal supervision, resume the session-start primary-harness protocol
 # after each printed reason. Direct duplicate invocations of this script still
 # no-op through the watcher singleton lock.
