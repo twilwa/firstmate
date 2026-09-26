@@ -407,6 +407,19 @@ assert_not_contains "$DOCTOR_OUT" 'fix herdr=applied' "--fix claimed to have ins
 assert_no_dangerous_calls "the doctor reached for auto-login, FileVault, or the keychain"
 pass "a missing herdr CLI is a human gap that --fix never claims to close"
 
+new_case Linux with-herdr no-gui
+CASE_REMOTE_JOB_ACTIVE=1
+treehouse() { return 97; }
+herdr() { return 97; }
+export -f treehouse herdr
+doctor
+unset -f treehouse herdr
+assert_contains "$DOCTOR_OUT" "required treehouse=$CASE_BIN/treehouse" \
+  "required-tool reporting did not resolve the external treehouse executable"
+assert_contains "$DOCTOR_OUT" "check herdr=ok: $CASE_BIN/herdr" \
+  "herdr reporting did not resolve the external executable path"
+pass "remote doctor reports external executable paths despite shadowing functions"
+
 # --- an absent launch agent is a fixable gap that --fix installs -------------
 
 new_case Darwin with-herdr gui

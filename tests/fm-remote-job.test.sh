@@ -121,6 +121,22 @@ export FM_REMOTE_JOB_TIMEOUT=5
 # shellcheck source=bin/fm-remote-job-lib.sh
 . "$ROOT/bin/fm-remote-job-lib.sh"
 
+test_operator_tool_ignores_a_shadowing_function() {
+  local bin="$TMP_ROOT/operator-tool-bin" resolved
+  mkdir -p "$bin"
+  printf '#!/bin/sh\nexit 0\n' > "$bin/fm_remote_job_path_probe"
+  chmod +x "$bin/fm_remote_job_path_probe"
+  fm_remote_job_path_probe() { return 97; }
+  FM_REMOTE_JOB_OPERATOR_PATH="$bin:/usr/bin:/bin"
+  resolved=$(fm_remote_job_operator_tool fm_remote_job_path_probe) \
+    || fail "operator tool lookup did not resolve the external executable"
+  unset -f fm_remote_job_path_probe
+  [ "$resolved" = "$bin/fm_remote_job_path_probe" ] \
+    || fail "operator tool lookup returned '$resolved' instead of the executable path"
+  pass "remote job operator tool lookup ignores a shadowing shell function"
+}
+test_operator_tool_ignores_a_shadowing_function
+
 LOCAL_BIN_PARENT="$ACCOUNT_HOME/.local"
 LOCAL_BIN_TARGET="$TMP_ROOT/local-bin-target"
 mkdir -p "$LOCAL_BIN_PARENT" "$LOCAL_BIN_TARGET"

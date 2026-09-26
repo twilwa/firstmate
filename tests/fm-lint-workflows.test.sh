@@ -204,6 +204,26 @@ test_valid_fixture_passes() {
   pass "valid fixture workflow passes"
 }
 
+test_actionlint_path_ignores_an_exported_function() {
+  local tmp fakebin out rc=0
+  tmp=$(fm_test_tmproot fm-lint-wf-binary-path)
+  fakebin=$(fm_fakebin "$tmp")
+  mkdir -p "$tmp/.github/workflows"
+  write_valid_workflow "$tmp/.github/workflows/ci.yml"
+  cat > "$fakebin/actionlint" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = -version ]; then printf '1.7.12\n'; else exit 0; fi
+SH
+  chmod +x "$fakebin/actionlint"
+  actionlint() { printf 'shadowed actionlint function invoked\n' >&2; return 97; }
+  export -f actionlint
+  out=$(PATH="$fakebin:$PATH" "$LINT_WF" --root "$tmp" 2>&1) || rc=$?
+  unset -f actionlint
+  [ "$rc" -eq 0 ] || fail "workflow lint did not resolve external actionlint (exit $rc)"$'\n'"$out"
+  assert_contains "$out" "1 workflow files valid" "external actionlint did not validate the fixture"
+  pass "workflow lint resolves external actionlint past an exported function"
+}
+
 test_empty_workflows_dir_fails() {
   local tmp out rc
   tmp=$(fm_test_tmproot fm-lint-wf-empty)
@@ -518,6 +538,7 @@ test_pins_an_explicit_version
 test_current_workflows_pass
 test_col0_heredoc_fails_with_clear_error
 test_valid_fixture_passes
+test_actionlint_path_ignores_an_exported_function
 test_empty_workflows_dir_fails
 test_explicit_broken_path_fails
 test_non_mapping_root_fails

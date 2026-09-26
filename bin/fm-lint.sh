@@ -603,8 +603,8 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   exit 1
 fi
 unset SHELLCHECK_OPTS
-SHELLCHECK_BIN=$(command -v shellcheck)
-if ! PERL_BIN=$(command -v perl); then
+SHELLCHECK_BIN=$(type -P shellcheck)
+if ! PERL_BIN=$(type -P perl); then
   printf 'fm-lint.sh: perl is required for bounded worker cleanup.\n' >&2
   exit 127
 fi

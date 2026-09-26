@@ -112,7 +112,7 @@ if ! command -v actionlint >/dev/null 2>&1; then
     "$REQUIRED_ACTIONLINT" >&2
   exit 1
 fi
-ACTIONLINT_BIN=$(command -v actionlint)
+ACTIONLINT_BIN=$(type -P actionlint)
 resolved=$("$ACTIONLINT_BIN" -version | awk 'NR==1 {print; exit}')
 printf 'fm-lint-workflows.sh: actionlint %s (pinned %s)\n' "$resolved" "$REQUIRED_ACTIONLINT" >&2
 if [ "$resolved" != "$REQUIRED_ACTIONLINT" ]; then
