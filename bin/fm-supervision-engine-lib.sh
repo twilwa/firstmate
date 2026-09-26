@@ -110,7 +110,7 @@ fm_supervision_engine_bin() {
   case "$1" in
     claude)
       bin=${FM_SUPERVISION_ENGINE_CLAUDE_BIN:-}
-      [ -n "$bin" ] || bin=$(command -v claude 2>/dev/null || true)
+      [ -n "$bin" ] || bin=$(type -P claude 2>/dev/null || true)
       ;;
     *) bin= ;;
   esac

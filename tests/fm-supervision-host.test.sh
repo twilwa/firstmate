@@ -98,6 +98,27 @@ chmod +x "$STUB"
 export FM_REPO="$ROOT"
 export FM_SUPERVISION_ENGINE_CLAUDE_BIN="$STUB"
 export FM_SUPERVISION_HOST_PRIMARY=claude
+
+test_engine_resolves_executable_past_a_shadowing_function() {
+  local bin="$TMP_ROOT/engine-path-bin" resolved
+  mkdir -p "$bin"
+  printf '#!/bin/sh\nexit 0\n' > "$bin/claude"
+  chmod +x "$bin/claude"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  claude() { return 97; }
+  resolved=$(PATH="$bin:$PATH" FM_SUPERVISION_ENGINE_CLAUDE_BIN='' \
+    fm_supervision_engine_bin claude) \
+    || fail "supervision engine lookup did not resolve the external executable"
+  unset -f claude
+  [ "$resolved" = "$bin/claude" ] \
+    || fail "supervision engine lookup returned '$resolved' instead of the executable path"
+  pass "supervision engine lookup ignores a shadowing shell function"
+}
+(
+  # shellcheck source=bin/fm-supervision-engine-lib.sh
+  . "$ROOT/bin/fm-supervision-engine-lib.sh"
+  test_engine_resolves_executable_past_a_shadowing_function
+)
 export FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999
 export FM_ARM_CONFIRM_TIMEOUT=30
 unset FM_SUPERVISION_ACTOR FM_BRANCH_REPORT_TURN FM_LEASE_HOLDER_PID PI_CODING_AGENT

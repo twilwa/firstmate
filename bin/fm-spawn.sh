@@ -221,8 +221,14 @@
 #   default-branch commit when safe: directly for a local home, or through the
 #   configured host for a remote home. Skipped syncs warn and launch unchanged.
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
-#   git worktree root distinct from both the spawning project and its repository's
-#   primary checkout, including when the spawning project is a linked worktree.
+#   linked git worktree root sharing the spawning project's canonical common git
+#   directory, distinct from both the spawning project and the primary checkout.
+#   New Treehouse allocations use --root $HOME/.treehouse-fm/<hash of the
+#   canonical common git dir> to separate independent clones even when they
+#   share an origin, and to keep crew slots outside every Firstmate home. This
+#   overrides ambient Treehouse root configuration for new allocations only; recorded
+#   worktrees, slot claims, project locks and absolute-path returns keep their
+#   existing owners. Relaunch never reallocates or refreshes the recorded copy.
 #   On the backends that discover that path by reading the task pane's own cwd,
 #   the same isolation test screens every read: a pane still showing the project
 #   or the repository primary while `treehouse get` prepares the slot is waited
@@ -2225,7 +2231,7 @@ fi
 
 case "$HARNESS" in
 devin)
-  DEVIN_BIN=$(command -v devin) || {
+  DEVIN_BIN=$(type -P devin) || {
     echo "error: devin executable not found on PATH" >&2
     exit 1
   }
@@ -2338,7 +2344,7 @@ secondmate_registry_value() {
 
 resolve_kimi_binary() {
   local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+  candidate=$(type -P kimi 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2365,7 +2371,7 @@ resolve_kimi_binary() {
 
 resolve_muse_binary() {
   local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
+  candidate=$(type -P muse 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2387,7 +2393,7 @@ resolve_muse_binary() {
 
 resolve_rovo_binary() {
   local candidate dir fallback
-  candidate=$(command -v rovo 2>/dev/null || true)
+  candidate=$(type -P rovo 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2565,20 +2571,16 @@ case "$LAUNCH" in
   ;;
 esac
 
+KIMI_HOOK_REQUIRED=0
 case "$LAUNCH" in
 *__KIMIBIN__*)
+  KIMI_HOOK_REQUIRED=1
   KIMI_BIN=$(resolve_kimi_binary) || exit 1
   LAUNCH=${LAUNCH//__KIMIBIN__/$(shell_quote "$KIMI_BIN")}
   fm_backend_visible_capture_supported "$BACKEND" || {
     echo "error: refusing Kimi spawn because backend '$BACKEND' has no verified viewport-bounded capture; Kimi 2.0.0 gates a fresh worktree on a trust dialog that can only be answered and confirmed cleared from a scrollback-free read of the live pane" >&2
     exit 1
   }
-  if [ "$KIND" != secondmate ]; then
-    "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
-      echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely" >&2
-      exit 1
-    }
-  fi
   ;;
 esac
 
@@ -2998,6 +3000,14 @@ BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 # once here so every downstream comparison uses the same physical form
 # (docs/herdr-backend.md "Known gaps").
 PROJ_ABS_REAL=$(cd "$PROJ_ABS" 2>/dev/null && pwd -P) || PROJ_ABS_REAL="$PROJ_ABS"
+PROJ_COMMON_REAL=
+if [ "$KIND" != secondmate ]; then
+  if ! PROJ_COMMON_REAL=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir) ||
+    ! PROJ_COMMON_REAL=$(cd "$PROJ_COMMON_REAL" && pwd -P); then
+    echo "error: could not resolve the spawning project's common git directory; refusing to allocate a worktree" >&2
+    exit 1
+  fi
+fi
 
 real_path_or_raw() { # <path>
   local path=$1 real
@@ -3019,7 +3029,7 @@ real_path_or_raw() { # <path>
 
 # True when <path> is an isolated worktree of the spawning project: a real
 # directory that is its own worktree root, is not the spawning project itself,
-# and does not share the project repository's common git dir. SPAWN_WT_TOP is
+# shares its common git dir, and has a separate per-worktree git dir. SPAWN_WT_TOP is
 # left holding the worktree root the check read, and SPAWN_WT_REASON a short
 # phrase naming why a rejected path failed, both for the refusal messages.
 #
@@ -3034,7 +3044,7 @@ real_path_or_raw() { # <path>
 SPAWN_WT_TOP=
 SPAWN_WT_REASON=
 spawn_worktree_isolated() { # <path>
-  local path=$1 wt_real wt_top_real wt_git_dir proj_common
+  local path=$1 wt_real wt_top_real wt_git_dir wt_common
   SPAWN_WT_TOP=
   SPAWN_WT_REASON=
   wt_real=
@@ -3071,14 +3081,18 @@ spawn_worktree_isolated() { # <path>
   # dir, so comparing only the two working directories cannot protect primary.
   wt_git_dir=$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null) &&
     wt_git_dir=$(cd "$wt_git_dir" 2>/dev/null && pwd -P) || wt_git_dir=
-  proj_common=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
-    proj_common=$(cd "$proj_common" 2>/dev/null && pwd -P) || proj_common=
-  if [ -z "$wt_git_dir" ] || [ -z "$proj_common" ]; then
+  wt_common=$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
+    wt_common=$(cd "$wt_common" 2>/dev/null && pwd -P) || wt_common=
+  if [ -z "$wt_git_dir" ] || [ -z "$wt_common" ] || [ -z "$PROJ_COMMON_REAL" ]; then
     SPAWN_WT_REASON="its git directory could not be resolved"
     return 1
   fi
-  if [ "$wt_git_dir" = "$proj_common" ]; then
-    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is the spawning project's common git dir)"
+  if [ "$wt_git_dir" = "$wt_common" ]; then
+    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is its common git dir)"
+    return 1
+  fi
+  if [ "$wt_common" != "$PROJ_COMMON_REAL" ]; then
+    SPAWN_WT_REASON="its common git dir '$wt_common' does not belong to the spawning project '$PROJ_COMMON_REAL'"
     return 1
   fi
   return 0
@@ -3087,7 +3101,14 @@ spawn_worktree_isolated() { # <path>
 validate_spawn_worktree() { # <source> <inspect-target>
   local source=$1 inspect_target=$2
   if ! spawn_worktree_isolated "$WT"; then
-    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
+    if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
+      # A returned allocation ID is not removal authority when its path fails
+      # custody validation. Keep both resources for inspection; valid owned
+      # allocations retain the normal cleanup path for later launch failures.
+      ORCA_ABORT_CLEANUP=0
+      echo "warning: preserving unverified Orca allocation id='$ORCA_WORKTREE_ID' path='$WT' terminal='${ORCA_TERMINAL:-none}'; no worktree removal or terminal closure attempted" >&2
+    fi
+    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'; $SPAWN_WT_REASON); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
 }
@@ -4021,23 +4042,19 @@ if [ "$RELAUNCH" -eq 1 ]; then
   fi
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  # Treehouse names pools by repo basename and remote URL, not by clone path.
-  # Give each clone its own root, keyed by a hash of its physical path, so
-  # another home's clone of the same origin cannot lend this task a foreign
-  # slot. The root sits under the user's HOME rather than beside the clone so
-  # no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor of a crew slot.
-  # Explicit --root also overrides an inherited TREEHOUSE_ROOT or user-level
-  # Treehouse config.
+  # Bind new allocations to this clone, even when homes share an origin or an
+  # ambient Treehouse root is set, by keying the root on a hash of the clone's
+  # canonical common git dir. The root sits under the user's HOME rather than
+  # beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
+  # of a crew slot. Relaunch uses the recorded slot unchanged.
   if command -v shasum >/dev/null 2>&1; then
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
   elif command -v sha256sum >/dev/null 2>&1; then
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
   else
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | cksum | awk '{printf "%08x", $1}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
   fi
-  pool_root="$HOME/.treehouse-fm/$pool_hash"
-  pool_root_quoted=${pool_root//\'/\'\\\'\'}
-  spawn_send_text_line "$WT_TARGET" "treehouse get --root '$pool_root_quoted'"
+  spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$HOME/.treehouse-fm/$pool_hash") get"
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
   # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -4052,10 +4069,10 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # A single read that already looks isolated is not proof the pane settled
   # there: on some tmux/WSL setups a brand-new window's pane_current_path
   # transiently reports an unrelated stale path (seen live as another real git
-  # checkout entirely) before the shell catches up with treehouse get's cd. That
-  # stale path passes spawn_worktree_isolated too (it resolves to a real,
-  # distinct worktree top-level), so accepting it on one read alone silently
-  # records the wrong worktree= in state/<id>.meta. Require two consecutive
+  # checkout entirely) before the shell catches up with treehouse get's cd.
+  # Foreign clones fail the custody check, but another linked worktree of this
+  # clone can still pass it. Accepting that on one read alone silently records
+  # the wrong worktree= in state/<id>.meta. Require two consecutive
   # reads to agree on the same isolated path before accepting it; a mismatch
   # just becomes the new candidate rather than resetting the wait, so a pane
   # that is already settled by the first real read only costs the one existing
@@ -4128,6 +4145,15 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
+fi
+
+# Executable/capture preflight above is read-only. Even Kimi's global hook must
+# wait until the worker's recorded or allocated copy has passed custody checks.
+if [ "$KIMI_HOOK_REQUIRED" -eq 1 ] && [ "$KIND" != secondmate ]; then
+  "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
+    echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely; inspect window $T" >&2
+    exit 1
+  }
 fi
 
 # Pre-register Claude's workspace trust for the directory this launch starts in,
