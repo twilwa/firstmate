@@ -854,12 +854,16 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-i
 # bin/fm-backlog-transition-lib.sh.
 # An already closed row is left alone, which is what lets receipt recovery
 # repeat, and a row held for the captain again is the captain's to resolve, so
-# it refuses rather than closing an open call.
+# it refuses rather than closing an open call. A row the backlog no longer
+# shows is accepted only with --completed, which the caller passes when this
+# landing was already fully acknowledged before it ran, because a closed row is
+# later archived out of the live backlog.
 # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
-fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id>
-  local data=$1 id=$2
+fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id> [--completed]
+  local data=$1 id=$2 completed=${3:-}
   if ! fm_backlog_row_probe "$data" "$id"; then
     if [ "$FM_BACKLOG_ROW_RESULT" = not_found ]; then
+      [ "$completed" != --completed ] || return 0
       FM_LOCAL_HANDOFF_ERROR="this home has no landing row $id to close"
     else
       FM_LOCAL_HANDOFF_ERROR="cannot read landing row $id: $FM_BACKLOG_ROW_ERROR"

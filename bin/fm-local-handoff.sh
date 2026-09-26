@@ -371,6 +371,7 @@ command_request() {  # <landing-id> <offer-file>
 
 command_receipt() {  # <offer-file> <landing-id>
   local offer_file=$1 landing_id=$2 blob head child_home child_project task existing landing unchanged
+  local was_landed=0
 
   [ -n "$offer_file" ] || die "receipt needs the offer file to answer"
   fm_local_handoff_valid_slug "$landing_id" \
@@ -401,7 +402,9 @@ command_receipt() {  # <offer-file> <landing-id>
   fm_local_handoff_head_in_default "$PARENT_PROJECT" "$head" \
     || die "$FM_LOCAL_HANDOFF_ERROR"
 
-  if [ "$(fm_local_handoff_field "$landing" state)" != landed ]; then
+  if [ "$(fm_local_handoff_field "$landing" state)" = landed ]; then
+    was_landed=1
+  else
     fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
       "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
       || die "$FM_LOCAL_HANDOFF_ERROR"
@@ -416,7 +419,11 @@ command_receipt() {  # <offer-file> <landing-id>
     fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
       || die "$FM_LOCAL_HANDOFF_ERROR"
   fi
-  fm_local_handoff_landing_row_close "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
+  if [ "$was_landed" = 1 ] && [ "$unchanged" = 1 ]; then
+    fm_local_handoff_landing_row_close "$DATA" "$landing_id" --completed || die "$FM_LOCAL_HANDOFF_ERROR"
+  else
+    fm_local_handoff_landing_row_close "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
+  fi
   printf 'receipt=%s\n' "$existing"
   [ "$unchanged" = 0 ] || printf 'unchanged=1\n'
 }

@@ -750,6 +750,20 @@ test_receipt_recovery_is_idempotent_and_proves_the_landing() {
     "a repeated recovery landed the work a second time"
   assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
     "recovery did not complete the parent's own landing record"
+
+  # Later closes archive the completed landing row out of the live backlog,
+  # and recovery must still repeat as a no-op rather than read that as a
+  # landing row that never existed.
+  sed -i.bak 's/^done_keep = .*/done_keep = 1/' "$FX_MAIN/.tasks.toml"
+  rm -f "$FX_MAIN/.tasks.toml.bak"
+  (cd "$FX_MAIN" && tasks-axi add later-row "Later work" --kind ship --start \
+    && tasks-axi "done" later-row --note "local main") >/dev/null 2>&1 \
+    || fail "closing a later backlog row failed"
+  assert_equals "" "$(landing_row_state)" \
+    "the completed landing row was not archived, so this case proves nothing"
+  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app 2>&1) \
+    || fail "repeating receipt recovery failed once the landing row was archived"$'\n'"$out"
+  assert_contains "$out" "unchanged=1" "recovery after archival was not reported as unchanged"
   pass "receipt recovery proves the landing from the repository and repeats safely"
 }
 
