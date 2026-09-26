@@ -28,7 +28,8 @@
 #     guarded landing refuses an absent record, a record pinned to another head
 #     or identity, and a landing row that is absent rather than released, then
 #     marks the record `state=landed`. That landed record is the parent's own
-#     evidence of the landing and outlives the child task.
+#     evidence of the landing and outlives the child task; the row <id> itself
+#     is closed only once the child's receipt is published.
 #
 #   fm-local-receipt.v1       <child-home>/state/<task>.local-receipt
 #     secondmate parent_home parent_project project task spawn_gen head
@@ -844,4 +845,34 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-i
     "default_branch=$default" \
     "landing_id=$landing_id" \
     "landed_at=$(date +%s)"
+}
+
+# Close the parent-owned landing row once its landing is complete: the offered
+# head is in the primary's default branch, the landing record says `landed`,
+# and the child's receipt is published. The close goes through the backlog
+# transition owner, so callers must also source bin/fm-tasks-axi-lib.sh and
+# bin/fm-backlog-transition-lib.sh.
+# An already closed row is left alone, which is what lets receipt recovery
+# repeat, and a row held for the captain again is the captain's to resolve, so
+# it refuses rather than closing an open call.
+# shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id>
+  local data=$1 id=$2
+  if ! fm_backlog_row_probe "$data" "$id"; then
+    if [ "$FM_BACKLOG_ROW_RESULT" = not_found ]; then
+      FM_LOCAL_HANDOFF_ERROR="this home has no landing row $id to close"
+    else
+      FM_LOCAL_HANDOFF_ERROR="cannot read landing row $id: $FM_BACKLOG_ROW_ERROR"
+    fi
+    return 1
+  fi
+  [ "${FM_BACKLOG_ROW_STATE%% *}" != "done" ] || return 0
+  if [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing row $id is held for the captain again; only bin/fm-captain-hold.sh answer resolves it"
+    return 1
+  fi
+  if ! fm_backlog_done "$data" "$id" --note "local main"; then
+    FM_LOCAL_HANDOFF_ERROR="cannot close landing row $id: $FM_BACKLOG_TRANSITION_ERROR"
+    return 1
+  fi
 }

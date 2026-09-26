@@ -1548,11 +1548,7 @@ backlog_done_args() {
       ;;
     *)
       if [ "$MODE" = local-only ]; then
-        if task_clone_is_bound_local_only; then
-          BACKLOG_DONE_ARGS=(--note "parent local main")
-        else
-          BACKLOG_DONE_ARGS=(--note "local main")
-        fi
+        BACKLOG_DONE_ARGS=(--note "local main")
       elif [ -n "$PR_URL" ]; then
         BACKLOG_DONE_ARGS=(--pr "$PR_URL")
       fi

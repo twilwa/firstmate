@@ -33,16 +33,11 @@
 #   fm-local-handoff.sh receipt <offer-file> --landing <landing-id>
 #       Run in the PRIMARY home. Re-proves that the offered head is contained
 #       in the primary clone's default branch, completes the parent's own
-#       landing record, then publishes (or confirms) the landing receipt in the
-#       child home. This is the idempotent recovery path for a fast-forward
-#       that landed but whose evidence publication failed; it NEVER merges
-#       anything, so a retry cannot land a second time.
-#
-#   fm-local-handoff.sh verify-receipt <child-home> <task-id>
-#       Read-only. Exit 0 only when a receipt exists, matches the task's offer
-#       identity, and its head is genuinely contained in the primary clone's
-#       default branch right now. bin/fm-teardown.sh asks this before it may
-#       treat a bound local-only task's work as landed.
+#       landing record, publishes (or confirms) the landing receipt in the
+#       child home, then closes the landing row <landing-id>. This is the
+#       idempotent recovery path for a fast-forward that landed but whose
+#       evidence publication or row close failed; it NEVER merges anything, so
+#       a retry cannot land a second time.
 #
 # Every subcommand fails closed: a missing, stale, malformed, or mismatched
 # identity refuses and preserves the work rather than guessing.
@@ -59,6 +54,11 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 . "$SCRIPT_DIR/fm-local-handoff-lib.sh"
 # shellcheck source=bin/fm-secondmate-parent-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
+# `receipt` closes the landing row through the backlog transition owner.
+# shellcheck source=bin/fm-tasks-axi-lib.sh
+. "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-backlog-transition-lib.sh
+. "$SCRIPT_DIR/fm-backlog-transition-lib.sh"
 # The fleet's existing lock owner. `request` takes the same per-landing control
 # lock bin/fm-merge-local.sh holds, so taking a pin and consuming one are
 # serialized by the lock that already guards this landing.
@@ -69,7 +69,7 @@ SUB_HOME_MARKER=.fm-secondmate-home
 SUB_HOME_PARENT_MARKER=.fm-secondmate-parent
 
 usage() {
-  sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -370,7 +370,7 @@ command_request() {  # <landing-id> <offer-file>
 }
 
 command_receipt() {  # <offer-file> <landing-id>
-  local offer_file=$1 landing_id=$2 blob head child_home child_project task existing landing
+  local offer_file=$1 landing_id=$2 blob head child_home child_project task existing landing unchanged
 
   [ -n "$offer_file" ] || die "receipt needs the offer file to answer"
   fm_local_handoff_valid_slug "$landing_id" \
@@ -408,29 +408,17 @@ command_receipt() {  # <offer-file> <landing-id>
   fi
 
   existing=$(fm_local_handoff_receipt_path "${child_home%/}/state" "$task")
-  if [ -e "$existing" ]; then
-    if fm_local_handoff_landed_proof "$child_home" "$blob" "$existing" "$child_project"; then
-      printf 'receipt=%s\n' "$existing"
-      printf 'unchanged=1\n'
-      return 0
-    fi
+  unchanged=0
+  if [ -e "$existing" ] \
+    && fm_local_handoff_landed_proof "$child_home" "$blob" "$existing" "$child_project"; then
+    unchanged=1
+  else
+    fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
+      || die "$FM_LOCAL_HANDOFF_ERROR"
   fi
-  fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
-    || die "$FM_LOCAL_HANDOFF_ERROR"
+  fm_local_handoff_landing_row_close "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
   printf 'receipt=%s\n' "$existing"
-}
-
-command_verify_receipt() {  # <child-home> <task-id>
-  local child_home=$1 id=$2 offer_file receipt_file blob
-  fm_local_handoff_valid_slug "$id" || die "task id must be a privacy-safe slug: $id"
-  child_home=$(resolved_path "$child_home")
-  offer_file=$(fm_local_handoff_offer_path "$child_home/state" "$id")
-  fm_local_handoff_offer_load "$offer_file" || die "$FM_LOCAL_HANDOFF_ERROR"
-  blob=$FM_LOCAL_HANDOFF_RECORD
-  receipt_file=$(fm_local_handoff_receipt_path "$child_home/state" "$id")
-  fm_local_handoff_landed_proof "$child_home" "$blob" "$receipt_file" \
-    "$(fm_local_handoff_field "$blob" child_project)" || die "$FM_LOCAL_HANDOFF_ERROR"
-  printf 'landed=%s\n' "$(fm_local_handoff_field "$blob" head)"
+  [ "$unchanged" = 0 ] || printf 'unchanged=1\n'
 }
 
 case "${1:-}" in
@@ -445,10 +433,6 @@ case "${1:-}" in
   receipt)
     [ "$#" -eq 4 ] && [ "$3" = --landing ] || { usage >&2; exit 2; }
     command_receipt "$2" "$4"
-    ;;
-  verify-receipt)
-    [ "$#" -eq 3 ] || { usage >&2; exit 2; }
-    command_verify_receipt "$2" "$3"
     ;;
   -h|--help|'')
     usage

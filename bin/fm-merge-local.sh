@@ -33,7 +33,8 @@
 #       through the offer's git bundle into a private import ref - never a
 #       remote, a forge, or shared object storage - and the fast-forward is
 #       followed by a durable landing receipt in the child home, which is the
-#       only thing that later permits that child task's ordinary teardown.
+#       only thing that later permits that child task's ordinary teardown, and
+#       only then by closing the landing row <landing-id>.
 #       A landing whose receipt cannot be published reports the work as landed
 #       but unacknowledged and names the idempotent recovery command; it never
 #       reports success.
@@ -47,6 +48,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-tasks-axi-lib.sh
+. "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
 # shellcheck source=bin/fm-backlog-transition-lib.sh
 . "$SCRIPT_DIR/fm-backlog-transition-lib.sh"
 # shellcheck source=bin/fm-local-handoff-lib.sh
@@ -314,6 +317,8 @@ if [ "$DELEGATED" -eq 1 ]; then
     landing_failure="its landing record could not be completed"
   elif ! fm_local_handoff_publish_receipt "$OFFER_BLOB" "$PROJ" "$ID"; then
     landing_failure="its landing receipt could not be published"
+  elif ! fm_local_handoff_landing_row_close "$DATA" "$ID"; then
+    landing_failure="its landing row could not be closed"
   fi
   if [ -n "$landing_failure" ]; then
     fm_lock_release "$MERGE_CONTROL_LOCK" || true

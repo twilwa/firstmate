@@ -103,7 +103,6 @@ A restart must be a non-event because durable state and live backend inventory, 
 
 Load `project-management` before adding, creating, cloning, registering, initializing, or removing a project.
 Load `secondmate-provisioning` before any secondmate-home lifecycle or registry work named in section 13.
-That skill owns bound local-only secondmate project custody and primary-only landing; `task-intake` owns routing.
 
 Route durable knowledge to its most specific owner:
 

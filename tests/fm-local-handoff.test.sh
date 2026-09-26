@@ -248,6 +248,30 @@ lock_holder_is_the_publisher() {  # <lock-owner-pid> <publishing-pid>
   return 1
 }
 
+# The landing row's backlog state, read through the backlog tool itself.
+landing_row_state() {
+  (cd "$FX_MAIN" && tasks-axi show "$FX_LANDING") 2>/dev/null \
+    | sed -n 's/^  state: *//p' | head -1
+}
+
+# FIXTURE INSTRUMENTATION ONLY: a wrapper placed ahead of the real mv on the
+# primary home's PATH that fails every publication of a landing receipt, which
+# is how a landing whose receipt could not be written is driven on purpose.
+# Every other mv is passed straight through.
+install_receipt_failure_shim() {
+  local real
+  real=$(command -v mv) || fail "this host has no mv to wrap"
+  mkdir -p "$FX_MAIN/fakebin"
+  cat > "$FX_MAIN/fakebin/mv" <<SHIM
+#!/usr/bin/env bash
+# FIXTURE INSTRUMENTATION ONLY (tests/fm-local-handoff.test.sh).
+dest=\${@: -1}
+[ "\${dest%.local-receipt}" = "\$dest" ] || exit 1
+exec $real "\$@"
+SHIM
+  chmod 0755 "$FX_MAIN/fakebin/mv"
+}
+
 # The captain's own hand path in a manual-backend home: the backlog row is
 # released straight through the backlog tool, without the per-task control
 # lock bin/fm-captain-hold.sh takes for its own answer.
@@ -439,10 +463,13 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
   assert_equals land-app "$(record_field "$receipt" landing_id)" \
     "the receipt does not name the parent record that authorized the landing"
 
-  out=$(run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK") \
-    || fail "verifying a genuine receipt failed"
-  assert_contains "$out" "landed=$head" "verification did not report the landed head"
-  pass "a pinned delegated landing fast-forwards the primary and receipts the child"
+  assert_equals "done" "$(landing_row_state)" \
+    "the landing did not close its parent-owned landing row"
+
+  out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
+    || fail "cleanup refused a task whose genuine receipt was published"$'\n'"$out"
+  assert_absent "$FX_CHILD/state/$FX_TASK.meta" "cleanup left the task record behind"
+  pass "a pinned delegated landing fast-forwards the primary, receipts the child, and closes its row"
 }
 
 test_delegated_landing_refuses_an_unpinned_or_stale_approval() {
@@ -668,7 +695,7 @@ test_landing_refuses_a_project_moved_off_local_only() {
 }
 
 test_receipt_recovery_is_idempotent_and_proves_the_landing() {
-  local head receipt out err status=0
+  local head receipt out err status=0 backlog_before
   make_bound_fixture receipt-recovery
   commit_child_work 'recovered change'
   head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
@@ -711,14 +738,69 @@ test_receipt_recovery_is_idempotent_and_proves_the_landing() {
   assert_contains "$out" "receipt=$receipt" "recovery did not report the receipt it wrote"
   assert_equals "$head" "$(record_field "$receipt" head)" "the recovered receipt names another head"
 
+  assert_equals "done" "$(landing_row_state)" "recovery reopened or lost the closed landing row"
+  backlog_before=$(cat "$FX_MAIN/data/backlog.md" "$FX_MAIN/data/done-archive.md" 2>/dev/null)
   out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app) \
     || fail "repeating receipt recovery failed"
   assert_contains "$out" "unchanged=1" "a repeated recovery was not reported as unchanged"
+  assert_equals "$backlog_before" \
+    "$(cat "$FX_MAIN/data/backlog.md" "$FX_MAIN/data/done-archive.md" 2>/dev/null)" \
+    "a repeated recovery changed the backlog again"
   assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "a repeated recovery landed the work a second time"
   assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
     "recovery did not complete the parent's own landing record"
   pass "receipt recovery proves the landing from the repository and repeats safely"
+}
+
+# A landing that moved the primary's default branch but could not publish its
+# receipt is landed yet unacknowledged, so its row stays open until recovery
+# finishes the receipt, and recovery never lands a second time.
+test_a_failed_receipt_keeps_the_landing_row_open_until_recovery() {
+  local head err status out landed_commits receipt
+  make_bound_fixture receipt-failure
+  commit_child_work 'change whose receipt fails'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the landing offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi cannot host the landing row (failed receipt)"; return 0; }
+  approve_current_offer
+  receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
+  err="$TMP_ROOT/receipt-failure.err"
+
+  install_receipt_failure_shim
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a landing whose receipt failed reported success"
+  assert_grep 'landing receipt could not be published' "$err" \
+    "the failure did not name the unpublished receipt"
+  assert_grep "fm-local-handoff.sh receipt $FX_OFFER --landing land-app" "$err" \
+    "the failure did not name the recovery command"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the fast-forward itself did not happen"
+  assert_absent "$receipt" "a failed publication left a receipt behind"
+  assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the landing record did not record the landing that happened"
+  assert_equals in_flight "$(landing_row_state)" \
+    "the landing row did not stay open while its receipt was missing"
+  landed_commits=$(git -C "$FX_MAIN/projects/app" rev-list --count main)
+  rm -f "$FX_MAIN/fakebin/mv"
+
+  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app) \
+    || fail "receipt recovery failed after a landed but unacknowledged landing"
+  assert_contains "$out" "receipt=$receipt" "recovery did not report the receipt it wrote"
+  assert_equals "$head" "$(record_field "$receipt" head)" "the recovered receipt names another head"
+  assert_equals "done" "$(landing_row_state)" "recovery did not close the landing row"
+  assert_equals "$landed_commits" "$(git -C "$FX_MAIN/projects/app" rev-list --count main)" \
+    "recovery added history to the primary's default branch"
+
+  out=$(run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app) \
+    || fail "repeating receipt recovery failed"
+  assert_contains "$out" "unchanged=1" "a repeated recovery was not reported as unchanged"
+  assert_equals "done" "$(landing_row_state)" "a repeated recovery changed the closed landing row"
+  pass "a failed receipt keeps the landing row open until recovery closes it without relanding"
 }
 
 test_teardown_requires_the_parent_receipt() {
@@ -789,12 +871,6 @@ test_a_substituted_parent_clone_proves_nothing() {
     "the refusal did not name the substituted clone"
   assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
 
-  status=0
-  run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK" \
-    >/dev/null 2>"$err" || status=$?
-  expect_code 1 "$status" "verification accepted a receipt naming the child's own copy"
-  assert_grep 'as the primary clone' "$err" \
-    "the refusal did not name the substituted clone"
 
   # Naming the real parent clone is not enough either: the parent's own
   # landing record is what the child cannot write for itself.
@@ -847,7 +923,7 @@ test_the_receipt_gate_survives_a_missing_worktree() {
 
 # One damaged record must never be read as a weaker version of a good one.
 # The landing is the strictest consumer, so it drives the offer cases; the
-# read-only verification drives the receipt case.
+# cleanup gate drives the receipt case.
 test_damaged_records_fail_closed() {
   local head saved err status default_before receipt
   make_bound_fixture damaged-records
@@ -923,10 +999,11 @@ test_damaged_records_fail_closed() {
     sed -i.bak "s/^head=.*/head=$default_before/" "$receipt"
     rm -f "$receipt.bak"
     status=0
-    run_home "$FX_MAIN" "$HANDOFF" verify-receipt "$FX_CHILD" "$FX_TASK" >/dev/null 2>"$err" || status=$?
-    expect_code 1 "$status" "verification accepted a receipt edited to name another commit"
+    run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "cleanup accepted a receipt edited to name another commit"
     assert_grep "but the offer says $head" "$err" \
       "the refusal did not name the receipt's disagreement with the offer"
+    assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
   else
     echo "skip: tasks-axi cannot host the landing row (damaged landing record and receipt)"
   fi
@@ -1169,6 +1246,7 @@ test_pinning_an_offer_needs_an_open_captain_call
 test_a_refused_landing_leaves_no_imported_ref
 test_landing_refuses_a_project_moved_off_local_only
 test_receipt_recovery_is_idempotent_and_proves_the_landing
+test_a_failed_receipt_keeps_the_landing_row_open_until_recovery
 test_teardown_requires_the_parent_receipt
 test_a_substituted_parent_clone_proves_nothing
 test_the_receipt_gate_survives_a_missing_worktree
