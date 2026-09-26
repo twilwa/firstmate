@@ -82,6 +82,11 @@ run_turn claude-other-verb "$ASK\n\n✳ Churned for 3s$CLAUDE_PROMPT_TAIL" '' 1
 run_turn claude-assistant-bullet "$ASK\n● Worked for 2s$CLAUDE_PROMPT_TAIL" '' 0
 run_turn list-timings "Next: should I also bump the lockfile?\n- Soaked for 30m\n- Tested for 5m$PI_TAIL" '' 0
 run_turn list-timing-address "Captain, the soak results are in:\n\n* Ran for 2h$PI_TAIL" '' 0
+# Claude rotates its completion verb; some are non-ASCII. Pin the match under
+# the C locale, where a letter class does not cover UTF-8 bytes.
+CLAUDE_SAUTEED_TAIL="\n\n✻ Sautéed for 1s · done 7:46 PM$CLAUDE_PROMPT_TAIL"
+LC_ALL=C run_turn claude-non-ascii-verb-question "$ASK$CLAUDE_SAUTEED_TAIL" '' 1
+LC_ALL=C run_turn claude-non-ascii-verb-address "● Captain, please pick one of A or B.$CLAUDE_SAUTEED_TAIL" '' 1
 run_turn claude-two-status-rows "$ASK\n\n✳ Churned for 3s\n\n✻ Worked for 2s · done 5:54 PM$CLAUDE_PROMPT_TAIL" '' 0
 run_turn codex-question "$ASK$CODEX_TAIL" '' 1
 run_turn codex-summary "Implementation complete.$CODEX_TAIL" '' 0

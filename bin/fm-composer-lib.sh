@@ -1623,11 +1623,12 @@ fm_composer_transcript_above() {  # <screen>
     NR <= n { row[NR] = $0; count = NR }
     END {
       while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
-      # A non-ASCII status glyph, one verb, and an elapsed duration. The
-      # optional completion timestamp is furniture too. Ordinary assistant
-      # bullets (●, •, ⏺) and ASCII list markers do not qualify as status glyphs.
+      # A non-ASCII status glyph, one verb in any script, and an elapsed
+      # duration. The optional completion timestamp is furniture too. Ordinary
+      # assistant bullets (●, •, ⏺) and ASCII list markers do not qualify as
+      # status glyphs.
       if (count > 0 && row[count] !~ /^[[:space:]]*(●|•|⏺)/ &&
-          row[count] ~ /^[[:space:]]*[^[:print:][:cntrl:]]+[[:space:]]+[[:alpha:]]+[[:space:]]+for[[:space:]]+([0-9]+[.])?[0-9]+(ms|s|m|h)([[:space:]]+[0-9]+(ms|s|m|h))*([[:space:]]*·[[:space:]]*done[[:space:]]+[0-9]+:[0-9]+([[:space:]]*[AP]M)?)?[[:space:]]*$/) {
+          row[count] ~ /^[[:space:]]*[^[:print:][:cntrl:]]+[[:space:]]+[^[:space:]]+[[:space:]]+for[[:space:]]+([0-9]+[.])?[0-9]+(ms|s|m|h)([[:space:]]+[0-9]+(ms|s|m|h))*([[:space:]]*·[[:space:]]*done[[:space:]]+[0-9]+:[0-9]+([[:space:]]*[AP]M)?)?[[:space:]]*$/) {
         count--
         while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
       }
