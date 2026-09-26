@@ -162,7 +162,7 @@ Secondmate project lists may include `no-mistakes` and `direct-PR` projects only
 For `no-mistakes` projects, seeding initializes only projects newly cloned into a secondmate home and refuses to mutate a preexisting clone that is not already initialized.
 
 Worker allocation follows [fm-spawn.sh](../../../bin/fm-spawn.sh)'s clone-custody guard and explicit Treehouse root contract, including for independent secondmate project clones that share the primary's origin.
-New allocations override ambient Treehouse root configuration; existing tasks keep their recorded worktrees and guarded return path.
+New allocations override ambient Treehouse root configuration with a per-clone root under `$HOME/.treehouse-fm/`, outside every Firstmate home; existing tasks keep their recorded worktrees and guarded return path.
 
 ## Record intake for an existing or inherited domain
 

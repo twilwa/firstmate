@@ -1,7 +1,0 @@
-{
-  "schema": "firstmate-pr-review-ledger.v1", "task": "fm-decision-defer-close-mode", "url": "https://github.com/twilwa/firstmate/pull/2", "current_head": "1e5ff17f4c469616d92ac20f7a70a7d8e0326959",
-  "generations": [{"head": "1e5ff17f4c469616d92ac20f7a70a7d8e0326959", "created_at": "2026-09-20T00:00:00Z", "created_epoch": 1789862400,
-    "risk": {"level": "high", "reason": "broad and lifecycle-adjacent change: 17 files and 889 changed lines"}, "not_before_epoch": 1789863000, "next_checkpoint_epoch": null, "retry_index": 0,
-    "checkpoints": [{"at": "2026-09-20T00:10:00Z", "at_epoch": 1789863000, "head": "1e5ff17f4c469616d92ac20f7a70a7d8e0326959", "pending_reviews": [], "checks": [{"name": "reported aggregate", "status": "COMPLETED", "conclusion": "pass", "required": true}], "comment_ids": []}], "review_items": [], "attestations": [], "final_disposition": null,
-    "merge_decision": {"decision": "hold", "reviewed_head": "1e5ff17f4c469616d92ac20f7a70a7d8e0326959", "verified_head": "1e5ff17f4c469616d92ac20f7a70a7d8e0326959", "verified_at": "2026-09-20T00:10:00Z", "reason": "four commits stale against its still-running lane; reassess when the lane reports"}}]
-}

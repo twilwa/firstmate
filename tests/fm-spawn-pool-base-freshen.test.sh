@@ -64,10 +64,28 @@ pane_pool_root() {
   sed -n "s/^treehouse --root '\\(.*\\)' get\$/\\1/p" "$1"
 }
 
-assert_clone_pool_root() { # <observed-root> <project-clone>
-  local expected
-  expected=$(cd "$2/.git" && pwd -P)/firstmate-treehouse
-  [ "$1" = "$expected" ] || fail "clone pool root mismatch: '$1' != '$expected'"
+# assert_pool_root_outside_homes <root> <label> <home>...
+# The root must sit under the user's HOME, outside every Firstmate home, with
+# no AGENTS.md or CLAUDE.md in any directory from the root up to the case dir.
+assert_pool_root_outside_homes() {
+  local root=$1 label=$2 home dir
+  shift 2
+  case "$root" in
+    "$CASE_DIR/user-home/.treehouse-fm/"?*) ;;
+    *) fail "$label pool root is not a per-clone root under the user HOME: '$root'" ;;
+  esac
+  for home in "$@"; do
+    case "$root/" in
+      "$home/"*) fail "$label pool root $root is inside Firstmate home $home" ;;
+    esac
+  done
+  dir=$root
+  while :; do
+    [ ! -e "$dir/AGENTS.md" ] && [ ! -e "$dir/CLAUDE.md" ] \
+      || fail "$label pool root $root has an instruction-file ancestor at $dir"
+    [ "$dir" != "$CASE_DIR" ] || break
+    dir=$(dirname "$dir")
+  done
 }
 
 # Both clones share an origin, so Treehouse's default remote-keyed pool may
@@ -104,7 +122,7 @@ test_foreign_home_pool_slot_refused_before_worker_launch() {
   [ ! -e "$second_home/state/$id.meta" ] || fail "foreign slot published task metadata"
   [ ! -e "$CASE_DIR/slots/1/.fm-slot-owner" ] || fail "foreign slot was claimed by the second home"
   second_root=$(pane_pool_root "$pane_log")
-  assert_clone_pool_root "$second_root" "$second_project"
+  assert_pool_root_outside_homes "$second_root" "second-home" "$first_home" "$second_home"
   [ "$(git -C "$foreign_slot" rev-parse --path-format=absolute --git-common-dir)" = "$first_project/.git" ] \
     || fail "foreign slot did not belong to the first clone"
 
@@ -134,10 +152,10 @@ test_foreign_home_pool_slot_refused_before_worker_launch() {
   status=$?
   expect_code 0 "$status" "first-home spawn should accept its own clone's pool slot"$'\n'"$out"
   first_root=$(pane_pool_root "$pane_log")
-  assert_clone_pool_root "$first_root" "$first_project"
+  assert_pool_root_outside_homes "$first_root" "first-home" "$first_home" "$second_home"
   [ "$first_root" != "$second_root" ] \
     || fail "same-origin clones in different homes shared one pool root: $first_root"
-  pass "same-origin clones use distinct canonical git roots and reject slots from the other home"
+  pass "same-origin clones use per-clone roots outside every home and reject slots from the other home"
 }
 
 test_remote_seeded_home_spawns_from_treehouse_pool() {
@@ -892,7 +910,7 @@ test_foreign_clone_never_reaches_refresh_or_launch() {
 }
 
 test_allocation_root_uses_canonical_clone_custody() {
-  local rec id out status primary linked command root input
+  local rec id out status primary linked command root first_root input
   id='pool-root-quoted'
   rec=$(make_originless_case "root with spaces and ' quote" "$id")
   read_case_record "$rec"
@@ -900,7 +918,8 @@ test_allocation_root_uses_canonical_clone_custody() {
   linked="$CASE_DIR/linked project"
   git -C "$primary" worktree add --quiet --detach "$linked" HEAD
   ln -s "$linked" "$CASE_DIR/linked-alias"
-  root=$(cd "$primary/.git" && pwd -P)/firstmate-treehouse
+  printf 'supervisor contract\n' > "$HOME_DIR/AGENTS.md"
+  first_root=
   fm_test_fake_sleep_noop "$FAKEBIN_DIR"
   cat > "$FAKEBIN_DIR/treehouse" <<'SH'
 #!/usr/bin/env bash
@@ -910,16 +929,21 @@ SH
   for input in "$primary" "$linked" "$CASE_DIR/linked-alias"; do
     PROJECT_DIR=$input
     rm -f "$CASE_DIR/pane-log"
-    out=$(FM_FAKE_PANE_LOG="$CASE_DIR/pane-log" run_spawn "$id" --scout)
+    out=$(FM_TEST_USER_HOME="$CASE_DIR/user-home" FM_FAKE_PANE_LOG="$CASE_DIR/pane-log" run_spawn "$id" --scout)
     status=$?
     expect_code 0 "$status" "origin-less canonical clone should launch: $out"
     command=$(grep '^treehouse ' "$CASE_DIR/pane-log")
     [ -n "$command" ] || fail 'spawn did not send a Treehouse allocation command'
     FM_TEST_TREEHOUSE_ARGS="$CASE_DIR/args" PATH="$FAKEBIN_DIR:$PATH" \
       bash -c "$command" || fail 'allocation command did not survive shell quoting'
-    printf '%s\n' --root "$root" get > "$CASE_DIR/expected-args"
-    cmp -s "$CASE_DIR/expected-args" "$CASE_DIR/args" \
-      || fail "allocation did not address the canonical clone pool: $(cat "$CASE_DIR/args")"
+    [ "$(sed -n 1p "$CASE_DIR/args")" = --root ] && [ "$(sed -n 3p "$CASE_DIR/args")" = get ] \
+      && [ "$(wc -l < "$CASE_DIR/args")" -eq 3 ] \
+      || fail "allocation did not pass one explicit root: $(cat "$CASE_DIR/args")"
+    root=$(sed -n 2p "$CASE_DIR/args")
+    assert_pool_root_outside_homes "$root" "$input" "$HOME_DIR"
+    [ -n "$first_root" ] || first_root=$root
+    [ "$root" = "$first_root" ] \
+      || fail "one clone's spellings addressed different pools: '$root' != '$first_root'"
     [ ! -e "$primary/.git/FETCH_HEAD" ] || fail 'origin-less clone fetched'
   done
   pass 'new allocations quote one canonical root for primary, linked and symlinked origin-less inputs'

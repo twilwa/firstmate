@@ -223,9 +223,10 @@
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
 #   linked git worktree root sharing the spawning project's canonical common git
 #   directory, distinct from both the spawning project and the primary checkout.
-#   New Treehouse allocations use --root <canonical-common-dir>/firstmate-treehouse
-#   to separate independent clones even when they share an origin. This overrides
-#   ambient Treehouse root configuration for new allocations only; recorded
+#   New Treehouse allocations use --root $HOME/.treehouse-fm/<hash of the
+#   canonical common git dir> to separate independent clones even when they
+#   share an origin, and to keep crew slots outside every Firstmate home. This
+#   overrides ambient Treehouse root configuration for new allocations only; recorded
 #   worktrees, slot claims, project locks and absolute-path returns keep their
 #   existing owners. Relaunch never reallocates or refreshes the recorded copy.
 #   On the backends that discover that path by reading the task pane's own cwd,
@@ -4034,8 +4035,18 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # Bind new allocations to this clone, even when homes share an origin or an
-  # ambient Treehouse root is set. Relaunch uses the recorded slot unchanged.
-  spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$PROJ_COMMON_REAL/firstmate-treehouse") get"
+  # ambient Treehouse root is set, by keying the root on a hash of the clone's
+  # canonical common git dir. The root sits under the user's HOME rather than
+  # beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
+  # of a crew slot. Relaunch uses the recorded slot unchanged.
+  if command -v shasum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+  else
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
+  fi
+  spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$HOME/.treehouse-fm/$pool_hash") get"
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
   # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -4132,7 +4143,7 @@ fi
 # wait until the worker's recorded or allocated copy has passed custody checks.
 if [ "$KIMI_HOOK_REQUIRED" -eq 1 ] && [ "$KIND" != secondmate ]; then
   "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
-    echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely" >&2
+    echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely; inspect window $T" >&2
     exit 1
   }
 fi

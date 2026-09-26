@@ -71,7 +71,7 @@ allocate() { # <id> <requesting-project> <expected-common-dir>
   local id=$1 project=$2 expected=$3 out common
   fm_test_spawn_brief "$HOME_DIR" "$id"
   out=$(FM_TEST_REQUESTING_PROJECT="$project" FM_TEST_PROBE_SHELL="$TMP_ROOT/probe-shell" \
-    FM_TEST_ALLOCATED_PATH="$TMP_ROOT/allocated" \
+    FM_TEST_ALLOCATED_PATH="$TMP_ROOT/allocated" FM_TEST_USER_HOME="$TMP_ROOT/spawn-user" \
     fm_test_run_spawn "$HOME_DIR" ignored "$FAKEBIN" "$id" "$project" --scout) \
     || fail "real Treehouse allocation did not launch: $out"
   ALLOCATED=$(cat "$TMP_ROOT/allocated")
@@ -79,8 +79,11 @@ allocate() { # <id> <requesting-project> <expected-common-dir>
   common=$(cd "$common" && pwd -P)
   [ "$common" = "$expected" ] || fail "foreign clone custody: $common, expected $expected"
   case "$ALLOCATED" in
-    "$expected/firstmate-treehouse/"*) ;;
+    "$TMP_ROOT/spawn-user/.treehouse-fm/"?*/.treehouse/*) ;;
     *) fail "new allocation ignored clone-scoped root: $ALLOCATED" ;;
+  esac
+  case "$ALLOCATED/" in
+    "$HOME_DIR/"*) fail "new allocation sits inside Firstmate home: $ALLOCATED" ;;
   esac
   CLAUDE_CONFIG_DIR="$TMP_ROOT/trust" "$ROOT/bin/fm-claude-trust.sh" "$ALLOCATED" "$project" \
     || fail 'unchanged trust guard refused an own-clone allocation'
@@ -105,7 +108,7 @@ allocate custody-linked "$TMP_ROOT/linked-alias" "$COMMON_B"
 
 # The old absolute-path return contract finds the real slot without new root
 # metadata. An unrelated explicit fixture root must remain untouched.
-lease=$(cd "$CLONE_B" && "$TREEHOUSE_BIN" --root "$COMMON_B/firstmate-treehouse" get \
+lease=$(cd "$CLONE_B" && "$TREEHOUSE_BIN" --root "${WT_B%/.treehouse/*}" get \
   --no-fetch --lease --lease-holder return-fixture --json)
 return_path=$(printf '%s' "$lease" | jq -er .path)
 (cd "$CLONE_B" && "$TREEHOUSE_BIN" --root "$TREEHOUSE_ROOT" return "$return_path" \
