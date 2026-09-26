@@ -117,7 +117,7 @@ The file is size-capped through `FM_WATCH_CYCLE_LOG_MAX_BYTES` and `FM_WATCH_CYC
 `state/.watch-triage.log` remains only the watcher's bounded absorbed-wake debug log and carries no lifecycle semantics.
 
 The default 300-second grace is unchanged.
-Only the watcher process touches `state/.last-watcher-beat`, at cycle start, after completed steps and each direct-report inspection, and before its terminal wait.
+Only the watcher process touches `state/.last-watcher-beat`; [`turnend-guard.md`](turnend-guard.md#guard-grace-and-the-poll-cadence) owns when it renews within a cycle.
 No helper process can make a wedged watcher appear healthy; a step that itself stalls past the grace still requires investigation.
 `FM_WATCH_TRACE` is an opt-in diagnostic and test hook that appends `<epoch> <pid> <step>` lines to the named file; it is off by default and is not part of the liveness contract.
 The watcher uses bash's native fatal handling for HUP and TERM, including during a blocked poll, so both run its EXIT cleanup; `watcher_stop_signals` in `bin/fm-watch.sh` owns the signal-handling rationale.
@@ -131,6 +131,7 @@ The guard and session-start suites prove that active generation evidence tolerat
 `tests/fm-watch-recovery-loop.test.sh` covers the once-per-generation announcement bound with the real Pi extension against a refused handling handshake, and a handling successor that must surface a real crew event instead of going blind.
 `tests/fm-watch-triage.test.sh` proves TERM stops a watcher blocked inside a poll's pane capture and still releases its lock and records an acknowledgeable stop.
 It also checks that a newly appended keyed decision is classified without rereading earlier status bytes, so signal handling can return to the watcher's beacon refresh even when the status history is long.
+`tests/fm-watch-beacon.test.sh` proves a live watcher renews a beacon that went stale during a slow registered check before its next terminal wait.
 `tests/fm-watcher-lock.test.sh` covers verified-successor attach, recovery publication before stale-lock removal, the typed self-eviction failure, bounded and successor-linked lifecycle rows, and a SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 `tests/fm-subagent-pretool-check.test.sh` proves Claude retains only the non-status Bash seatbelts.
 `tests/fm-claude-stop-autoarm.test.sh` covers the auto-arm's scope, stale and live session owners, unchanged AFK and need boundaries, single-flight, bounded failure retries, benign live-watcher cycle ends, one-notice failure episodes, exit-2 translation, the handling successor an ended attached cycle starts with the closed arm as its predecessor and that outlives the rewake, an unconfirmed successor reported in the banner without withholding the wake, and host-timeout HUP/TERM/INT translation into the same durable failure handoff.
