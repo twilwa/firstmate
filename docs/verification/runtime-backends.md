@@ -2325,3 +2325,31 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 6. `bin/fm-control.sh <id> exit` stopped the agent and `bin/fm-teardown.sh` returned the worktree and closed the item.
 
 `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` refreshes the primary evidence; the worker path above is refreshed by repeating the scout dispatch after any omp upgrade.
+
+## OpenCode 2.0.16 standalone worker (2026-09-26)
+
+`opencode --version` printed `opencode v2.0.16`.
+The worker adapter requires OpenCode 2.0 or later; 1.x worker launches and the v1 plugin hook are no longer supported.
+`opencode --help` exposes `--standalone`, `--prompt`, and `--continue`, but no top-level `--model`; `opencode mini --help` exposes `--model provider/model`, and `opencode run --help` exposes the separate headless `-m provider/model#variant`.
+The installed v2 plugin loader rejected the old named-export-only worker plugin with `Plugin must export a default definition with an id and an effect or setup function`.
+The repaired worker plugin exports only a v2 setup definition, consuming the private server's `context.event.subscribe()` stream; 2.0.16 emitted `session.execution.started`, `session.execution.succeeded`, and `session.execution.interrupted` for the worker's session.
+
+`FM_OPENCODE_ADAPTER_LIVE=1 bash tests/fm-opencode-adapter-live-e2e.test.sh` ran on 2026-09-26 in a named non-default Herdr lab, with its teardown tripwire, and every OpenCode process in `systemd-run --user --scope -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900` under `--standalone`.
+The guard built the model-pinned command and busy plugin through `bin/fm-spawn.sh`, then launched that command in the lab.
+It observed MiMo `opencode-go/mimo-v2.6-flash` answer, semantic busy-to-idle plugin transitions and a turn-end notification, a second answer from an Enter queued during busy work, double Escape interrupt and idle, `/exit` returning to the pane shell, then `mini --continue --standalone` handling a manually submitted next instruction.
+That resume step reused the first session's pane, so its scrollback could satisfy it without a restored session.
+The guard now relaunches `mini --model opencode-go/mimo-v2.6-flash --standalone --continue` without `--prompt` in a fresh lab pane and requires recall of a code word given only in the first session.
+That fresh-pane guard ran once more on 2026-09-26 against `opencode v2.0.16` in the isolated Herdr lab, under an outer `systemd-run --user --scope -p TasksMax=512 -p MemoryMax=3G -p MemorySwapMax=0 -p RuntimeMaxSec=1200`, and exited 0 with:
+
+```text
+ok - OpenCode opencode v2.0.16: fm-spawn model pin, private server, v2 busy/idle and rendered answer
+ok - OpenCode opencode v2.0.16: busy-queued Enter delivered and settled
+ok - OpenCode opencode v2.0.16: double Escape interrupted active turn
+ok - OpenCode opencode v2.0.16: /exit closed the private-server worker
+ok - OpenCode opencode v2.0.16: --continue on a private server restored the previous session
+```
+
+After teardown, the lab helper's session list showed exactly one running session, the default one.
+The guard is the refresh command after an OpenCode upgrade; its negative assertions fail naming the version, rather than treating a rendered answer as proof the plugin still runs.
+`tests/fm-busy-adapter-wiring.test.sh` drives the plugin's v2 event stream without the vendor binary, including each terminal event and a child terminal event that must not clear the root session.
+The test runs a fake tmux delivery for `fm-spawn.sh` and executes its exact generated launch inside the real lab; it does not independently prove `fm-control.sh` delivery through Herdr, primary OpenCode hooks, or a real dispatch into the live Firstmate fleet.
