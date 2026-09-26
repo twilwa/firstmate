@@ -59,18 +59,21 @@ if ((skip && !whole_step && (!step_given || review))); then
       }
       /^gate:([[:space:]]*review[[:space:]]*)?$/ { gate = 1; if ($0 ~ /review/) step = "review"; next }
       gate && /^  step: / { step = $2; next }
-      gate && /^  findings\[[0-9]+\]\{id,/ {
+      gate && /^[[:space:]]*findings\[[0-9]+\]\{id,/ {
         header = 1
+        indent = match($0, /[^ ]/) - 1
         count = $0
-        sub(/^  findings\[/, "", count)
+        sub(/^[[:space:]]*findings\[/, "", count)
         sub(/\].*/, "", count)
         next
       }
-      gate && /^  findings: none[[:space:]]*$/ { header = 1; count = 0; next }
-      gate && header && /^    / {
+      gate && /^[[:space:]]*findings: none[[:space:]]*$/ { header = 1; count = 0; next }
+      gate && header && /^[[:space:]]+/ {
+        row_indent = match($0, /[^ ]/) - 1
+        if (row_indent != indent + 2) next
         id = $0
         sub(/,.*/, "", id)
-        sub(/^    /, "", id)
+        sub(/^[[:space:]]+/, "", id)
         if (id == "" || id ~ /[[:space:]]/) bad = 1
         else { seen++; if (!(id in named)) missing[++miss] = id }
         next

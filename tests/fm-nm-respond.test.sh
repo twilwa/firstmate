@@ -77,4 +77,18 @@ FM_NM_STATUS='gate:
   step: review
   status: awaiting_approval' refuse --action skip --step review
 rg -q 'cannot read open review findings' "$tmp/out"
+# Installed AXI may render the gate as a scalar with a top-level findings table.
+FM_NM_STATUS='gate: review
+findings[2]{id,severity,file,line,action,description}:
+  r1,warning,a.sh,,auto-fix,first
+  r2,error,b.sh,,ask-user,second' refuse --action=skip --step=review --findings=r1
+rg -q 'r2' "$tmp/out"
+FM_NM_STATUS='gate: review
+findings[2]{id,severity,file,line,action,description}:
+  r1,warning,a.sh,,auto-fix,first
+  r2,error,b.sh,,ask-user,second' accept --action=skip --findings=r1,r2
+FM_NM_STATUS='gate: review
+findings[2]{id,severity,file,line,action,description}:
+  r1,warning,a.sh,,auto-fix,first
+  r2,error,b.sh,,ask-user,second' accept --action=skip --whole-step
 echo 'fm-nm-respond: PASS'
