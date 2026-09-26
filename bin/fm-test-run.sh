@@ -2704,7 +2704,7 @@ fi
 # non-Linux hosts (and hosts without procfs/Python), say explicitly that the
 # socket check is unavailable; the portable test result remains meaningful.
 check_run_listeners() {
-  if [ "$(uname -s)" != Linux ] || [ ! -r /proc/net/tcp ] || [ ! -r /proc/net/tcp6 ] || ! type -P python3 >/dev/null 2>&1; then
+  if [ "$(uname -s)" != Linux ] || [ ! -r /proc/net/tcp ] || ! type -P python3 >/dev/null 2>&1; then
     printf 'FM_TEST_LISTENERS unchecked: listener inspection unavailable on this platform\n' >&2
     return 0
   fi
@@ -2716,7 +2716,10 @@ import sys
 marker = b'FM_TEST_RUN_TOKEN=' + sys.argv[1].encode()
 try:
     listening = {}
-    for table in ('/proc/net/tcp', '/proc/net/tcp6'):
+    tables = ['/proc/net/tcp']
+    if os.path.exists('/proc/net/tcp6'):
+        tables.append('/proc/net/tcp6')
+    for table in tables:
         with open(table, encoding='ascii') as rows:
             next(rows)
             for row in rows:

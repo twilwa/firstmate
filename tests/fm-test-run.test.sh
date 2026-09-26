@@ -1736,8 +1736,8 @@ assert len(doc["scripts"])==3
   pass "aggregate-json merges lane timing artifacts"
 }
 
-# A focused public-interface probe can run independently of the scheduler's
-# broader integration coverage.
+# The runner rejects a leaked listener, accepts registered cleanup, and ignores
+# listeners it did not start.
 test_live_listener_guard() {
   local tmp fixture outside out rc before
   tmp=$(fm_test_tmproot fm-test-run-listeners)
