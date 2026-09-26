@@ -25,7 +25,7 @@ fi
 printf 'fm-custom-check-v1\n%s\n' "$hash" > "$state/slow.check-trust"
 chmod 600 "$state/slow.check-trust"
 
-FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_CHECK_INTERVAL=999999 \
+FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_POLL=20 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
   FM_HEARTBEAT=999999 "$ROOT/bin/fm-watch.sh" > "$work/watch.out" 2> "$work/watch.err" &
 watch_pid=$!
 i=0
@@ -52,12 +52,12 @@ FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_GUARD_GRACE=300 \
 arm_pid=$!
 i=0
 while [ "$i" -lt 100 ]; do
-  rg -q 'watcher: attached pid=' "$work/arm.out" && break
+  grep -q 'watcher: attached pid=' "$work/arm.out" && break
   kill -0 "$arm_pid" 2>/dev/null || break
   sleep 0.1
   i=$((i + 1))
 done
-rg -q 'watcher: attached pid=' "$work/arm.out" \
+grep -q 'watcher: attached pid=' "$work/arm.out" \
   || fail "auto-arm refused the live watcher: $(cat "$work/arm.out")"
 printf 'working [at=%s]: test signal\n' "$(date +%s)" > "$state/probe.status"
 wait "$arm_pid" || fail "attached arm did not deliver wake: $(cat "$work/arm.out")"

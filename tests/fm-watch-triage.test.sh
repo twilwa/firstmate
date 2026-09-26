@@ -73,28 +73,28 @@ wait_live() {
 # ever ran - and then every "no wake, no marker" assertion passes vacuously
 # while every "marker written" assertion fails spuriously.
 # The beacon now advances within a cycle, so a second beacon write no longer
-# proves that a whole scan completed. Count two cycle-start trace events instead.
+# proves that a whole scan completed. Snapshot this watcher's cycle-start trace
+# count on entry and wait for two more: the first starts after this call, and
+# the second proves that cycle completed.
 # 0 if the watcher is still alive after a completed cycle, 1 if it exited.
 wait_poll_cycle() {  # <state> <pid> [limit-ticks]
-  local state=$1 pid=$2 limit=${3:-300} i=0 starts previous previous_pid target
-  read -r previous_pid previous < "$state/.watch-test-consumed" 2>/dev/null || true
-  if [ "${previous_pid:-}" = "$pid" ]; then
-    case "${previous:-}" in ''|*[!0-9]*) target=2 ;; *) target=$((previous + 1)) ;; esac
-  else
-    target=2
-  fi
+  local pid=$2 limit=${3:-300} i=0 starts target
+  target=$(( $(watch_cycle_starts "$pid") + 2 ))
   while [ "$i" -lt "$limit" ]; do
     kill -0 "$pid" 2>/dev/null || return 1
-    starts=$(rg -c " $pid cycle-start\$" "$FM_WATCH_TRACE" 2>/dev/null || true)
-    case "$starts" in ''|*[!0-9]*) starts=0 ;; esac
-    if [ "$starts" -ge "$target" ]; then
-      printf '%s %s\n' "$pid" "$starts" > "$state/.watch-test-consumed"
-      return 0
-    fi
+    starts=$(watch_cycle_starts "$pid")
+    [ "$starts" -ge "$target" ] && return 0
     sleep 0.1
     i=$((i + 1))
   done
   return 1
+}
+
+watch_cycle_starts() {  # <pid>
+  local starts
+  starts=$(grep -c " $1 cycle-start\$" "$FM_WATCH_TRACE" 2>/dev/null || true)
+  case "$starts" in ''|*[!0-9]*) starts=0 ;; esac
+  printf '%s\n' "$starts"
 }
 
 # Every wait_for_exit budget in this file is 100 ticks (10s), not because any
