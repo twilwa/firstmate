@@ -2,18 +2,19 @@
 
 Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
 OpenCode 2.0.16's model-pinned `mini` launch and isolated worker lifecycle were verified on 2026-09-26; [`runtime-backends.md`](../../../../../docs/verification/runtime-backends.md#opencode-2016-standalone-worker-2026-09-26) holds the version-specific evidence.
+The worker adapter requires OpenCode 2.0 or later: its launch uses 2.0's `--standalone` and `mini` forms, and its busy-state plugin exports only the 2.0 default definition.
 
 ## Operating facts
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned plugin latches the worker session; v1 uses `session.status` busy/retry/idle, while 2.0 uses the v2 `session.execution.started` and `session.execution.succeeded`/`interrupted` event stream. |
+| Busy state | The Firstmate-owned plugin latches the worker session on `session.execution.started` and settles it on `session.execution.succeeded`, `failed`, or `interrupted`. |
 | Exit command | `/exit`. |
 | Interrupt | Double Escape; verified on 2.0.16 during a shell-tool turn, but a long shell command can delay cancellation, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue --standalone` in the same directory; on 2.0.16 `mini` restored earlier messages and processed a manually sent next instruction. Do not assume `--prompt` auto-submits alongside `--continue`. |
 | Model flag | On 2.0, the main TUI has no `--model`; pin interactive workers with `opencode mini --model <provider/model> --standalone --prompt`. For an unpinned worker, use `opencode --standalone --prompt`. `run -m provider/model#variant` is headless, not an interactive worker. |
-| Effort flag | None for Firstmate's interactive `opencode --prompt` launch verified on 1.17.6; `opencode run` has `--variant`, but that is not this path. |
+| Effort flag | None for Firstmate's interactive `opencode --standalone --prompt` and `opencode mini` launch verified on 2.0.16; `opencode run` has `--variant`, but that is not this path. |
 | Model discovery | On 2.0 `opencode models` accepts no provider positional argument; its empty stdout is not proof an authenticated model is unavailable. Confirm the candidate with a bounded standalone probe. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |

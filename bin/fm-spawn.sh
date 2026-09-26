@@ -4339,10 +4339,9 @@ EOF
     cat >"$WT/.opencode/plugins/fm-busy-state.js" <<EOF
 // Firstmate semantic busy-state events + turn-end notification; written by
 // fm-spawn under the contract owned by bin/fm-busy-lib.sh.
-// OpenCode 2.0's plugin loader requires a default id/setup definition and
-// emits session.execution.started/succeeded instead of session.status/idle.
-// Keep the named v1 hook for older installations; both paths latch the root
-// session so a child cannot clear its parent's busy marker.
+// Requires OpenCode 2.0 or later: its plugin loader reads only a default
+// id/setup definition, and the v2 event stream reports session.execution.*.
+// The root session is latched so a child cannot clear its parent's busy marker.
 import { execFile } from "node:child_process";
 const invoke = (file, args) => new Promise((resolve) => {
   execFile(file, args, () => resolve());
@@ -4353,22 +4352,20 @@ const busyEvent = (state, event) => invoke("$FM_ROOT/bin/fm-busy-event.sh", [
 ]);
 let activeSession = null;
 const update = async (event) => {
-  const sessionID = event.data?.sessionID ?? event.properties?.sessionID;
+  const sessionID = event.data?.sessionID;
   if (!sessionID) return;
   const type = event.type;
-  const status = event.properties?.status?.type;
-  if (type === "session.execution.started" || (type === "session.status" && (status === "busy" || status === "retry"))) {
+  if (type === "session.execution.started") {
     if (activeSession === null) activeSession = sessionID;
-    if (sessionID === activeSession) await busyEvent("busy", type === "session.status" ? "session-" + status : type);
-  } else if (type === "session.execution.succeeded" || type === "session.execution.failed" || type === "session.execution.cancelled" || type === "session.execution.interrupted" || type === "session.idle" || (type === "session.status" && status === "idle")) {
+    if (sessionID === activeSession) await busyEvent("busy", type);
+  } else if (type === "session.execution.succeeded" || type === "session.execution.failed" || type === "session.execution.interrupted") {
     if (sessionID === activeSession) {
       activeSession = null;
       await busyEvent("idle", type);
     }
-    if (type !== "session.status") await invoke("touch", ["$TURNEND"]);
+    await invoke("touch", ["$TURNEND"]);
   }
 };
-export const FmBusyState = async () => ({ event: async ({ event }) => update(event) });
 export default {
   id: "fm-busy-state",
   setup: (context) => {
