@@ -63,6 +63,7 @@ fm_pane_question_turn() {  # <state> <task> <turn-signature> <capture>
   text=''
   [ "$nudged" = "$size" ] || text=$(fm_pane_question_text "$capture")
   [ -n "$text" ] || { printf '%s\t%s\t%s\n' "$sig" "$size" "$nudged" > "$marker"; return 1; }
+  # shellcheck disable=SC2034 # Output global, read by the sourcing watcher.
   FM_PANE_QUESTION_SIZE=$size
   return 0
 }

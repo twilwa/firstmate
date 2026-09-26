@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Focused public watcher coverage for unfiled questions at turn end.
 set -u
+# shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pane-question-tests)
 WATCH="$ROOT/bin/fm-watch.sh"
@@ -19,8 +20,8 @@ watch_turn() {  # <case-dir>: one watcher run until it surfaces the turn end
 
 question_counts() {  # <state> -> "<decision-wakes> <nudges>"
   local wakes nudges
-  wakes=$(rg -c 'decision-pending task.turn-ended' "$1/.wake-queue" 2>/dev/null || true)
-  nudges=$(rg -l 'Your last turn ended on a question' "$1/task.inbox" --glob '*.msg' 2>/dev/null | wc -l | tr -d '[:space:]')
+  wakes=$(grep -c 'decision-pending task.turn-ended' "$1/.wake-queue" 2>/dev/null || true)
+  nudges=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$1/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   printf '%s %s' "${wakes:-0}" "$nudges"
 }
 
@@ -33,12 +34,12 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   : > "$state/task.turn-ended"
   watch_turn "$dir" || fail "watcher did not surface turn end in $1"
   out=$(cat "$state/.wake-queue")
-  nudge=$(rg -l 'Your last turn ended on a question' "$state/task.inbox" --glob '*.msg' 2>/dev/null | wc -l | tr -d '[:space:]')
+  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   if [ "$4" -eq 1 ]; then
     case "$out" in *'decision-pending task.turn-ended'*) ;; *) fail "missing decision-pending reason in $1: $out" ;; esac
     FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-wake-drain.sh" > "$dir/drain" 2>/dev/null \
       || fail "cannot drain decision-pending event in $1"
-    rg -q 'decision-pending task.turn-ended' "$dir/drain" \
+    grep -q 'decision-pending task.turn-ended' "$dir/drain" \
       || fail "decision-pending event hidden in drain for $1"
     [ "$nudge" -eq 1 ] || fail "expected one nudge in $1, saw $nudge"
   else
@@ -55,9 +56,9 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   sleep 3
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-  count=$(rg -c 'decision-pending task.turn-ended' "$state/.wake-queue" 2>/dev/null || true)
+  count=$(grep -c 'decision-pending task.turn-ended' "$state/.wake-queue" 2>/dev/null || true)
   [ "${count:-0}" -le 1 ] || fail "repeated decision wake in $1: $(cat "$state/.wake-queue")"
-  nudge=$(rg -l 'Your last turn ended on a question' "$state/task.inbox" --glob '*.msg' 2>/dev/null | wc -l | tr -d '[:space:]')
+  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   [ "$nudge" -eq "$4" ] || fail "repeated nudge in $1"
   pass "$1"
 }
