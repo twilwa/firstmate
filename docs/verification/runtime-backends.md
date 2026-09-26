@@ -1171,7 +1171,24 @@ Claude drew its completion popup below the composer's closing rule, and the popu
 | 80x80 | `/` | 42 |
 
 From 150x45 up, a 20-row read held only the popup, which is why the Claude payload proof selects from the whole recent read when the payload-sized read selects no composer.
-`tests/fm-backend-herdr.test.sh` pins that proof with the popup rows of the 150x45 capture, and the `/exit` step of `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh` refreshes it on Herdr.
+`tests/fm-backend-herdr.test.sh` pins that proof with the popup rows of the 150x45 capture.
+The same shape is pinned for zellij's post-paste proof in `tests/fm-backend-zellij.test.sh`; this portable fixture does not claim a live zellij run.
+
+The Herdr live guard passed all three checks on 2026-09-26 against Claude Code 2.1.283 and herdr 0.9.1.
+Refresh with:
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 reports empty and renders the requested reply in isolated session fm-lab-herdr-submit-con-3507012-7981
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 submits a U+2063 away-supervisor payload whose read-back drops the mark
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 submits /exit through its completion popup and exits
+rc=0
+```
 
 ### Prune and respawn
 
