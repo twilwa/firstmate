@@ -44,6 +44,7 @@ Before applying Ready for QA after a GitHub merge or deploy, load `pr-review-pol
 For a no-mistakes ship, trigger validation on the same worker after its implementation commit, using the harness invocation owned by `harness-adapters`.
 The task worker that starts a no-mistakes run drives the pipeline and owns every `no-mistakes axi run` and `no-mistakes axi respond` call through the next gate or outcome.
 Firstmate never invokes `no-mistakes axi respond` for a crew-owned run.
+A review decision names its finding IDs one by one; a whole-step skip needs the explicit `--whole-step` flag, which [`bin/fm-nm-respond.sh`](../../../bin/fm-nm-respond.sh) enforces.
 When the captain adds or changes an ask mid-task, append the captain's words without added speaker labels or direct address to that brief's `## Captain's intent` and relay those words to the worker.
 Firstmate build constraints stay in `## Firstmate spec` or the steer.
 [`bin/fm-dod-lib.sh`](../../../bin/fm-dod-lib.sh) owns the worker-side `--intent` contract.
