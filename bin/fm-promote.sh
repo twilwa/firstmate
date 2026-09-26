@@ -38,7 +38,7 @@
 # binding and bin/fm-dod-lib.sh owns what it changes for the worker, including
 # the refusal of a forge on local-only.
 # --tests selects the promoted task's local test scope exactly as bin/fm-brief.sh
-# does, defaulting to none; pass --tests full for upstream-bound work. The same
+# does, defaulting to focused; pass --tests full for upstream-bound work. The same
 # `## Test scope` section, rendered by bin/fm-dod-lib.sh, supersedes the scout's.
 # Usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>]
 set -eu
@@ -69,7 +69,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 MODE=
 YOLO=
 BRANCH_PREFIX=fm/
-TEST_SCOPE=none
+TEST_SCOPE=focused
 MODE_SET=0
 YOLO_SET=0
 FORGE=none
@@ -123,7 +123,7 @@ case "$YOLO" in
   *) echo "error: --yolo must be on or off (got '$YOLO')" >&2; exit 1 ;;
 esac
 fm_test_scope_valid "$TEST_SCOPE" || exit 1
-TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE")
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "$MODE")
 # A posture this forge cannot carry is refused once the registry binding has been
 # read. Merge authority on a Gerrit forge is refused rather than quietly dropped,
 # on the captain's decision of 2026-09-15 (bin/fm-project-mode.sh's header carries

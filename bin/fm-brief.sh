@@ -73,8 +73,10 @@
 # change.
 # It defaults to squash on gerrit and is refused without it.
 # --tests selects the task's local test scope: none, focused, safe-suite, or full.
-# Because the scaffold has no reliable signal for upstream-bound work, it defaults
-# to none; firstmate must pass --tests full explicitly for upstream-bound work.
+# It defaults to none for no-mistakes and direct-PR ship briefs, whose CI runs
+# the tests, and to focused for local-only and scout briefs, which reach no CI.
+# The scaffold has no reliable signal for upstream-bound work, so firstmate must
+# pass --tests full explicitly for it.
 # safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
 # owned by bin/fm-test-run.sh; bin/fm-dod-lib.sh owns the rendered section, which
 # bin/fm-promote.sh shares. Only ship and scout task briefs accept this flag.
@@ -180,7 +182,7 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
-TEST_SCOPE=none
+TEST_SCOPE=
 TEST_SCOPE_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
@@ -251,6 +253,12 @@ fi
 if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
   echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
   exit 1
+fi
+if [ "$TEST_SCOPE_SET" -eq 0 ]; then
+  case "$KIND:$MODE" in
+    ship:no-mistakes|ship:direct-PR) TEST_SCOPE=none ;;
+    *) TEST_SCOPE=focused ;;
+  esac
 fi
 fm_test_scope_valid "$TEST_SCOPE" || exit 1
 
@@ -464,7 +472,7 @@ fi
 
 REPO=${POS[1]}
 
-TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE")
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "${MODE:-scout}")
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")

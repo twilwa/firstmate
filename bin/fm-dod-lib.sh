@@ -142,7 +142,8 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 
 # Single owner of the task test-scope declaration: bin/fm-brief.sh renders it
 # into ship and scout briefs and bin/fm-promote.sh into promoted ship
-# instructions, both defaulting to none. The Firstmate figures are
+# instructions; each caller owns its default. Only no-mistakes and direct-PR
+# reach CI, so none promises CI only there. The Firstmate figures are
 # bin/fm-test-run.sh --estimate-ms over the selections the section names.
 fm_test_scope_valid() {  # <scope>
   case "$1" in
@@ -152,16 +153,20 @@ fm_test_scope_valid() {  # <scope>
   return 1
 }
 
-fm_test_scope_section() {  # <none|focused|safe-suite|full>
-  local scope=$1 lib_dir estimate_ms no_figure
+fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout>
+  local scope=$1 flow=$2 lib_dir estimate_ms no_figure
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
   printf '## Test scope\nScope: %s.\n' "$scope"
   case "$scope" in
     none)
-      printf '%s\n' \
-        'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' \
-        'Expected duration: 0 minutes.'
+      case "$flow" in
+        no-mistakes|direct-PR)
+          printf '%s\n' 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' ;;
+        *)
+          printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
+      esac
+      printf '%s\n' 'Expected duration: 0 minutes.'
       ;;
     focused)
       printf '%s\n' \

@@ -35,19 +35,31 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
   safe_minutes=$(firstmate_minutes xargs "$ROOT/bin/fm-test-run.sh" --estimate-ms --all < "$ROOT/tests/safe-suite-exclusions.txt")
   full_minutes=$(firstmate_minutes "$ROOT/bin/fm-test-run.sh" --estimate-ms --all)
 
-  id='brief-scope-default-ship'
-  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode local-only >/dev/null 2>&1 \
-    || fail 'ship brief with omitted --tests failed'
+  id='brief-scope-default-pr'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode direct-PR >/dev/null 2>&1 \
+    || fail 'direct-PR brief with omitted --tests failed'
   brief="$HOME_ROOT/data/$id/brief.md"
-  assert_present "$brief" 'default ship brief was not written'
-  assert_grep 'Scope: none.' "$brief" 'ship default is not none'
+  assert_present "$brief" 'default direct-PR brief was not written'
+  assert_grep 'Scope: none.' "$brief" 'direct-PR default is not none'
   assert_grep 'Expected duration: 0 minutes.' "$brief" 'default scope duration is missing'
   assert_grep 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' "$brief" 'none scope omitted what it permits'
+
+  id='brief-scope-default-local'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode local-only >/dev/null 2>&1 \
+    || fail 'local-only brief with omitted --tests failed'
+  assert_grep 'Scope: focused.' "$HOME_ROOT/data/$id/brief.md" 'local-only default is not focused'
+
+  id='brief-scope-none-local'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode local-only --tests none >/dev/null 2>&1 \
+    || fail 'local-only brief rejected --tests none'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'Permits: no local test runs, and no CI will run tests for this task.' "$brief" 'local-only none scope omitted its no-CI wording'
+  assert_no_grep 'CI runs it' "$brief" 'local-only none scope promised CI that does not exist'
 
   id='brief-scope-default-scout'
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1 \
     || fail 'scout brief with omitted --tests failed'
-  assert_grep 'Scope: none.' "$HOME_ROOT/data/$id/brief.md" 'scout default is not none'
+  assert_grep 'Scope: focused.' "$HOME_ROOT/data/$id/brief.md" 'scout default is not focused'
 
   for scope in focused safe-suite full; do
     id="brief-scope-$scope"
@@ -150,6 +162,15 @@ test_promotion_renders_selected_scope() {
   assert_grep 'Permits: the full local suite' "$instructions" 'promoted ship instructions omitted what full permits'
   assert_grep 'Expected duration: at least about' "$instructions" 'promoted ship instructions omitted the full-suite floor'
   assert_grep 'Scope: full.' "$brief" 'promoted brief omitted the selected scope for relaunch'
+
+  id=promote-scope-default
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1 \
+    || fail 'scout brief for default promotion failed'
+  sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' "$HOME_ROOT/data/$id/brief.md"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$HOME_ROOT/state/$id.meta"
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-promote.sh" "$id" --mode direct-PR --yolo off >/dev/null 2>&1 \
+    || fail 'promotion without --tests failed'
+  assert_grep 'Scope: focused.' "$HOME_ROOT/data/$id/ship-instructions.md" 'promotion without --tests did not default to focused'
   pass 'fm-promote.sh renders the selected test scope into ship instructions and the promoted brief'
 }
 
