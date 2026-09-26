@@ -179,7 +179,7 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full>
       estimate_ms=$("$lib_dir/fm-test-run.sh" --estimate-ms --all) || return 1
       printf '%s\n' \
         'Permits: the full local suite, including tests that drive live Herdr, Codex, or Lavish.' \
-        "Expected duration: about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured duration hints; $no_figure"
+        "Expected duration: at least about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured CI duration hints, not counting live Herdr, Codex, or Lavish runtime, which is unmeasured and can be much longer; record your own estimate in your first status line before starting. Any other repo has no measured figure either."
       ;;
   esac
 }

@@ -70,7 +70,8 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
         ;;
       full)
         assert_grep 'Permits: the full local suite' "$brief" 'full scope omitted what it permits'
-        assert_grep "Expected duration: about $full_minutes minutes run serially in the Firstmate repo" "$brief" 'full duration does not match the measured estimate'
+        assert_grep "Expected duration: at least about $full_minutes minutes run serially in the Firstmate repo" "$brief" 'full duration does not match the measured floor'
+        assert_grep 'not counting live Herdr, Codex, or Lavish runtime, which is unmeasured and can be much longer; record your own estimate in your first status line before starting.' "$brief" 'full duration does not disclaim unmeasured live runtime'
         ;;
     esac
   done
@@ -153,6 +154,7 @@ test_promotion_renders_selected_scope() {
   instructions="$HOME_ROOT/data/$id/ship-instructions.md"
   assert_grep 'Scope: full.' "$instructions" 'promoted ship instructions omitted the selected scope'
   assert_grep 'Permits: the full local suite' "$instructions" 'promoted ship instructions omitted what full permits'
+  assert_grep 'Expected duration: at least about' "$instructions" 'promoted ship instructions omitted the full-suite floor'
   assert_grep 'Scope: full.' "$brief" 'promoted brief omitted the selected scope for relaunch'
   pass 'fm-promote.sh renders the selected test scope into ship instructions and the promoted brief'
 }
