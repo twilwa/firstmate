@@ -92,6 +92,7 @@ EOF
     "worktree=$home/projects/alpha-worktree" \
     "project=alpha" \
     "harness=claude" \
+    "model=older-choice" \
     "model=anthropic/claude-opus-4" \
     "effort=high" \
     "kind=ship" \
