@@ -164,7 +164,7 @@ fm_cursor_catalog_has_model() {  # <model>
 fm_cursor_resolve_binary() {
   local name candidate
   for name in cursor-agent agent; do
-    candidate=$(command -v "$name" 2>/dev/null || true)
+    candidate=$(type -P "$name" 2>/dev/null || true)
     [ -n "$candidate" ] && [ -x "$candidate" ] || continue
     if fm_cursor_verify_executable "$candidate"; then
       printf '%s\n' "$candidate"

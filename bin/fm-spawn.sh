@@ -2220,7 +2220,7 @@ fi
 
 case "$HARNESS" in
 devin)
-  DEVIN_BIN=$(command -v devin) || {
+  DEVIN_BIN=$(type -P devin) || {
     echo "error: devin executable not found on PATH" >&2
     exit 1
   }
@@ -2333,7 +2333,7 @@ secondmate_registry_value() {
 
 resolve_kimi_binary() {
   local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+  candidate=$(type -P kimi 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2360,7 +2360,7 @@ resolve_kimi_binary() {
 
 resolve_muse_binary() {
   local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
+  candidate=$(type -P muse 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2382,7 +2382,7 @@ resolve_muse_binary() {
 
 resolve_rovo_binary() {
   local candidate dir fallback
-  candidate=$(command -v rovo 2>/dev/null || true)
+  candidate=$(type -P rovo 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
