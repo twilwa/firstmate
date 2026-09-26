@@ -155,6 +155,7 @@ fm_test_scope_valid() {  # <scope>
 
 fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout>
   local scope=$1 flow=$2 lib_dir estimate_ms no_figure
+  local test_step_rule='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite. If the Test step times out, report needs-decision; never choose fix.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
   printf '## Test scope\nScope: %s.\n' "$scope"
@@ -166,12 +167,18 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
         *)
           printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
       esac
+      if [ "$flow" = no-mistakes ]; then
+        printf '%s\n' "$test_step_rule"
+      fi
       printf '%s\n' 'Expected duration: 0 minutes.'
       ;;
     focused)
       printf '%s\n' \
         'Permits: only the tests covering the behavior you touch; never the full local suite.' \
         'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
+      if [ "$flow" = no-mistakes ]; then
+        printf '%s\n' "$test_step_rule"
+      fi
       ;;
     safe-suite)
       estimate_ms=$(xargs "$lib_dir/fm-test-run.sh" --estimate-ms --all < "$lib_dir/../tests/safe-suite-exclusions.txt") || return 1

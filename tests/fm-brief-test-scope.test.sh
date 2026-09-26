@@ -31,7 +31,8 @@ firstmate_minutes() {
 }
 
 test_public_scaffold_renders_default_and_explicit_scopes() {
-  local id scope brief status out safe_minutes full_minutes
+  local id scope brief status out safe_minutes full_minutes test_step_rule
+  test_step_rule='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite. If the Test step times out, report needs-decision; never choose fix.'
   safe_minutes=$(firstmate_minutes xargs "$ROOT/bin/fm-test-run.sh" --estimate-ms --all < "$ROOT/tests/safe-suite-exclusions.txt")
   full_minutes=$(firstmate_minutes "$ROOT/bin/fm-test-run.sh" --estimate-ms --all)
 
@@ -86,6 +87,26 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
         ;;
     esac
   done
+
+  id='brief-scope-no-mistakes-none'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode no-mistakes --tests none >/dev/null 2>&1 \
+    || fail 'no-mistakes brief rejected --tests none'
+  assert_grep "$test_step_rule" "$HOME_ROOT/data/$id/brief.md" 'no-mistakes none scope omitted Test-step guidance'
+
+  id='brief-scope-no-mistakes-focused'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode no-mistakes --tests focused >/dev/null 2>&1 \
+    || fail 'no-mistakes brief rejected --tests focused'
+  assert_grep "$test_step_rule" "$HOME_ROOT/data/$id/brief.md" 'no-mistakes focused scope omitted Test-step guidance'
+
+  id='brief-scope-direct-pr-focused'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode direct-PR --tests focused >/dev/null 2>&1 \
+    || fail 'direct-PR brief rejected --tests focused'
+  assert_no_grep "$test_step_rule" "$HOME_ROOT/data/$id/brief.md" 'direct-PR focused scope received no-mistakes Test-step guidance'
+
+  id='brief-scope-no-mistakes-safe-suite'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode no-mistakes --tests safe-suite >/dev/null 2>&1 \
+    || fail 'no-mistakes brief rejected --tests safe-suite'
+  assert_no_grep "$test_step_rule" "$HOME_ROOT/data/$id/brief.md" 'no-mistakes safe-suite received Test-step guidance'
 
   id='brief-scope-scout-safe'
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout --tests=safe-suite >/dev/null 2>&1 \
