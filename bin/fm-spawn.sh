@@ -31,6 +31,10 @@
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
+#   --budget-wall-secs and --budget-output-tokens override the brief's task budget
+#   on fresh ship/scout spawns; defaults are 21600 seconds and 1000000 tokens.
+#   The original budget_start_epoch is retained on relaunch (including legacy
+#   records without a start, which cannot be assigned one retroactively).
 #   --branch-prefix is the optional prefix selected at intake for this ship's
 #   immutable branch, defaulting to "fm/". It must agree with the branch recorded
 #   in the brief, and is refused on scouts, secondmates, and relaunches. When the
@@ -621,6 +625,10 @@ MODE=
 YOLO=
 BRANCH_PREFIX=fm/
 TRACEPARENT_ARG=
+BUDGET_WALL_ARG=
+BUDGET_OUTPUT_ARG=
+BUDGET_WALL_SET=0
+BUDGET_OUTPUT_SET=0
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
@@ -672,6 +680,14 @@ for a in "$@"; do
     traceparent)
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
+      ;;
+    budget-wall-secs)
+      BUDGET_WALL_ARG=$a
+      BUDGET_WALL_SET=1
+      ;;
+    budget-output-tokens)
+      BUDGET_OUTPUT_ARG=$a
+      BUDGET_OUTPUT_SET=1
       ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
@@ -726,6 +742,10 @@ for a in "$@"; do
     BRANCH_PREFIX=${a#--branch-prefix=}
     BRANCH_PREFIX_SET=1
     ;;
+  --budget-wall-secs) want_value=budget-wall-secs ;;
+  --budget-wall-secs=*) BUDGET_WALL_ARG=${a#*=}; BUDGET_WALL_SET=1 ;;
+  --budget-output-tokens) want_value=budget-output-tokens ;;
+  --budget-output-tokens=*) BUDGET_OUTPUT_ARG=${a#*=}; BUDGET_OUTPUT_SET=1 ;;
   --traceparent) want_value=traceparent ;;
   --traceparent=*)
     TRACEPARENT_ARG=${a#--traceparent=}
@@ -762,6 +782,20 @@ done
   echo "error: --yolo requires a non-empty value" >&2
   exit 1
 }
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
+if [ "$BUDGET_WALL_SET" -eq 1 ] || [ "$BUDGET_OUTPUT_SET" -eq 1 ]; then
+  [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] || {
+    echo "error: budget overrides apply only to fresh ship/scout spawns" >&2
+    exit 1
+  }
+fi
+if [ "$BUDGET_WALL_SET" -eq 1 ]; then
+  fm_task_budget_positive "$BUDGET_WALL_ARG" || { echo "error: --budget-wall-secs requires a positive integer" >&2; exit 1; }
+fi
+if [ "$BUDGET_OUTPUT_SET" -eq 1 ]; then
+  fm_task_budget_positive "$BUDGET_OUTPUT_ARG" || { echo "error: --budget-output-tokens requires a positive integer" >&2; exit 1; }
+fi
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || {
   echo "error: --traceparent requires a non-empty value" >&2
   exit 1
@@ -1423,6 +1457,8 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ "$MODE_SET" -eq 0 ] || shared_args+=(--mode "$MODE")
   [ "$YOLO_SET" -eq 0 ] || shared_args+=(--yolo "$YOLO")
   [ "$BRANCH_PREFIX_SET" -eq 0 ] || shared_args+=(--branch-prefix "$BRANCH_PREFIX")
+  [ "$BUDGET_WALL_SET" -eq 0 ] || shared_args+=(--budget-wall-secs "$BUDGET_WALL_ARG")
+  [ "$BUDGET_OUTPUT_SET" -eq 0 ] || shared_args+=(--budget-output-tokens "$BUDGET_OUTPUT_ARG")
   for pair in "${POS[@]}"; do
     case "$pair" in
     *=*) : ;;
@@ -2868,12 +2904,47 @@ if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   # Use the existing launch-brief overlay for every worker kind, including
   # pre-scope briefs and relaunches. Charters never enter this worker path.
   SOURCE_BRIEF=$BRIEF
+  if [ "$RELAUNCH" -eq 1 ]; then
+    BUDGET_START=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_start_epoch)
+    BUDGET_ID=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_id)
+    BUDGET_WALL=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_wall_secs)
+    BUDGET_OUTPUT=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_output_tokens)
+  else
+    BUDGET_START=$(date +%s)
+    BUDGET_ID="b$BUDGET_START.${BASHPID:-$$}.$RANDOM"
+    BUDGET_WALL=$FM_BUDGET_DEFAULT_WALL_SECS
+    BUDGET_OUTPUT=$FM_BUDGET_DEFAULT_OUTPUT_TOKENS
+    budget_line=$(grep '^Task budget: wall_secs=' "$SOURCE_BRIEF" | head -1 || true)
+    if [ -n "$budget_line" ]; then
+      if [[ "$budget_line" =~ ^Task\ budget:\ wall_secs=([0-9]+)\ output_tokens=([0-9]+)$ ]]; then
+        BUDGET_WALL=${BASH_REMATCH[1]}
+        BUDGET_OUTPUT=${BASH_REMATCH[2]}
+      else
+        echo "error: invalid Task budget line in $SOURCE_BRIEF" >&2
+        exit 1
+      fi
+    fi
+    [ "$BUDGET_WALL_SET" -eq 0 ] || BUDGET_WALL=$BUDGET_WALL_ARG
+    [ "$BUDGET_OUTPUT_SET" -eq 0 ] || BUDGET_OUTPUT=$BUDGET_OUTPUT_ARG
+  fi
+  # Legacy relaunches without a recorded start cannot safely reset the clock.
+  if [ "$RELAUNCH" -eq 0 ] || [ -n "$BUDGET_START" ]; then
+    if ! fm_task_budget_positive "$BUDGET_START" || ! fm_task_budget_positive "$BUDGET_WALL" \
+      || ! fm_task_budget_positive "$BUDGET_OUTPUT"; then
+      echo "error: invalid task budget in $SOURCE_BRIEF or ${RELAUNCH_META:-$SOURCE_BRIEF}" >&2
+      exit 1
+    fi
+  fi
   BRIEF="$DATA/$ID/launch-brief.md"
   BRIEF_TMP="$DATA/$ID/.launch-brief.md.${BASHPID:-$$}"
   {
     fm_brief_worker_role "$STATE" "$ID" &&
       printf '\n' &&
       cat "$SOURCE_BRIEF" &&
+      if [ -n "$BUDGET_START" ]; then
+        printf '\nCurrent task budget: start_epoch=%s wall_secs=%s output_tokens=%s (spawn record is authoritative).\n' \
+          "$BUDGET_START" "$BUDGET_WALL" "$BUDGET_OUTPUT"
+      fi &&
       if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
         fm_brief_intent_overlay "$CAPTAIN_INTENT"
       fi
@@ -4705,6 +4776,12 @@ preserve_relaunch_meta() {
   [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  if [ "$KIND" != secondmate ] && [ "$RELAUNCH" -eq 0 ]; then
+    echo "budget_id=$BUDGET_ID"
+    echo "budget_start_epoch=$BUDGET_START"
+    echo "budget_wall_secs=$BUDGET_WALL"
+    echo "budget_output_tokens=$BUDGET_OUTPUT"
+  fi
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;

@@ -149,6 +149,12 @@
 #                          budget and is parked until a probe reads it live
 #                          again (FM_SECONDMATE_LIVENESS_MAX_ATTEMPTS and
 #                          FM_SECONDMATE_LIVENESS_WINDOW_SECS)
+#   check: task-budget task=<id> period=<n> age=<s>s ...
+#                          a ship/scout task that is not done or failed crossed
+#                          its recorded wall-clock budget (period 0) or another
+#                          FM_BUDGET_REPEAT_SECS past it; firstmate decides
+#                          whether it continues (task_budget_tick owns cadence
+#                          and persisted dedupe)
 # For normal supervision, resume the session-start primary-harness protocol
 # after each printed reason. Direct duplicate invocations of this script still
 # no-op through the watcher singleton lock.
@@ -201,6 +207,8 @@ mkdir -p "$STATE"
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
 # Steering-inbox loss detection: bin/fm-task-inbox-lib.sh owns the record,
 # doorbell, re-ring ladder, and unavailable-endpoint contracts; this watcher
 # supplies their live endpoint and busy checks plus wake emission
@@ -2527,6 +2535,80 @@ rerecord_device_shifted_pr_poll() {  # <id>
   return 0
 }
 
+# A budget is independent of pane liveness and status events: inspect every
+# recorded ship/scout task on every cycle, even if a different signal is due.
+# Lock the queue and the high-water marker together so an acknowledged wake
+# cannot be reissued on a watcher restart. The marker stores the largest period
+# seen for this task's original start, so a backward clock cannot reopen it.
+# A failed marker publication warns and retries next cycle without stopping
+# supervision; a queued key prevents a duplicate before acknowledgement.
+# Queue keys include the period so
+# distinct four-hour repeats cannot be coalesced by the drain.
+# A task whose latest event is done or failed is waiting on firstmate, not
+# spending budget; a later event resumes the original clock and marker.
+task_budget_tick() {
+  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period status_verb failed=0
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    task=${meta##*/}; task=${task%.meta}
+    case "$task" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    kind=$(fm_task_budget_meta_value "$meta" kind)
+    case "$kind" in ship|scout) ;; *) continue ;; esac
+    fm_task_budget_snapshot "$meta" "$STATE/$task.status" || continue
+    period=$FM_BUDGET_PERIOD
+    [ "$period" -ge 0 ] || continue
+    status_line_verb "$FM_BUDGET_STATUS_LINE" status_verb
+    case "$status_verb" in done|failed) continue ;; esac
+    marker="$STATE/.budget-wake-$task"
+    key="task-budget:$task:$FM_BUDGET_ID:$period"
+    if ! fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"; then
+      failed=1
+      continue
+    fi
+    recorded_id='' recorded_period=''
+    if [ -e "$marker" ] || [ -L "$marker" ]; then
+      if [ ! -f "$marker" ] || [ -L "$marker" ]; then
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        failed=1
+        continue
+      fi
+      read -r recorded_id recorded_period < "$marker" || true
+    fi
+    if [ "$recorded_id" = "$FM_BUDGET_ID" ] \
+      && [[ "$recorded_period" =~ ^[0-9]+$ ]] && [ "$recorded_period" -ge "$period" ]; then
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      continue
+    fi
+    reason="check: task-budget task=$task period=$period $(fm_task_budget_detail)"
+    queued=0
+    while IFS= read -r queued_key; do
+      [ "$queued_key" = "$key" ] && queued=1
+    done < <(fm_wake_queued_keys_locked check)
+    if [ "$queued" -eq 0 ]; then
+      fm_wake_append_locked check "$key" "$reason" || {
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        failed=1
+        continue
+      }
+    fi
+    tmp=$(mktemp "$STATE/.budget-wake.XXXXXX") || {
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      failed=1
+      continue
+    }
+    if ! printf '%s %s\n' "$FM_BUDGET_ID" "$period" > "$tmp" \
+      || ! chmod 0600 "$tmp" || ! _fm_atomic_replace "$tmp" "$marker"; then
+      rm -f -- "$tmp"
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      failed=1
+      continue
+    fi
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    wake "$reason"
+  done
+  return "$failed"
+}
+
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
   # Re-announcing from this cycle is what turned a lost handshake into an
@@ -2602,6 +2684,10 @@ while :; do
     exit 1
   }
   watch_step_done secondmate-stall
+
+  # Check cumulative cost before signal triage; a chatty worker cannot starve it.
+  task_budget_tick || echo "watcher: task budget check failed; retrying next cycle" >&2
+  watch_step_done task-budget
 
   # Process-to-event liveness repair. This never discovers a result by polling:
   # each registered source has its own child blocking on that source, and this

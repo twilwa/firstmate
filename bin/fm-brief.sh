@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--tests <none|focused|safe-suite|full>] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -72,6 +72,9 @@
 # membership pinned when its watch is armed, because the merge watch follows one
 # change.
 # It defaults to squash on gerrit and is refused without it.
+# --budget-wall-secs and --budget-output-tokens select per-brief task limits;
+# defaults are 21600 seconds and 1000000 tokens for ship/scout briefs.
+# Spawn reads the Task budget line and may override it on a fresh launch.
 # --tests selects the task's local test scope: none, focused, safe-suite, or full.
 # It defaults to none for no-mistakes and direct-PR ship briefs, whose CI runs
 # the tests, and to focused for local-only and scout briefs, which reach no CI.
@@ -184,6 +187,9 @@ MODE=
 MODE_SET=0
 TEST_SCOPE=
 TEST_SCOPE_SET=0
+BUDGET_WALL=21600
+BUDGET_OUTPUT=1000000
+BUDGET_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
 FORGE=none
@@ -203,6 +209,8 @@ for a in "$@"; do
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
       tests) TEST_SCOPE=$a; TEST_SCOPE_SET=1 ;;
+      budget-wall-secs) BUDGET_WALL=$a; BUDGET_SET=1 ;;
+      budget-output-tokens) BUDGET_OUTPUT=$a; BUDGET_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -221,6 +229,10 @@ for a in "$@"; do
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
     --shape=*) SHAPE=${a#--shape=}; SHAPE_SET=1 ;;
+    --budget-wall-secs) want_value=budget-wall-secs ;;
+    --budget-wall-secs=*) BUDGET_WALL=${a#*=}; BUDGET_SET=1 ;;
+    --budget-output-tokens) want_value=budget-output-tokens ;;
+    --budget-output-tokens=*) BUDGET_OUTPUT=${a#*=}; BUDGET_SET=1 ;;
     --tests) want_value=tests ;;
     --tests=*) TEST_SCOPE=${a#--tests=}; TEST_SCOPE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
@@ -250,6 +262,10 @@ elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
 fi
+if [ "$KIND" = secondmate ] && [ "$BUDGET_SET" -eq 1 ]; then
+  echo "error: task budgets apply only to ship or scout briefs, not secondmate charters" >&2
+  exit 1
+fi
 if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
   echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
   exit 1
@@ -261,6 +277,19 @@ if [ "$TEST_SCOPE_SET" -eq 0 ]; then
   esac
 fi
 fm_test_scope_valid "$TEST_SCOPE" || exit 1
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
+if [ "$KIND" != secondmate ]; then
+  if ! fm_task_budget_positive "$BUDGET_WALL" || ! fm_task_budget_positive "$BUDGET_OUTPUT"; then
+    echo "error: task budget values must be positive integers" >&2
+    exit 1
+  fi
+  TASK_BUDGET_LINE="Task budget: wall_secs=$BUDGET_WALL output_tokens=$BUDGET_OUTPUT"
+  TASK_BUDGET_RULE="   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / $FM_BUDGET_REPEAT_SECS rounded down; once per period, append \`needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?\` and stop; firstmate decides."
+else
+  TASK_BUDGET_LINE=
+  TASK_BUDGET_RULE=
+fi
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
 # decision, but it still only makes sense where a branch is actually created.
@@ -572,6 +601,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 $TASK_SECTION
 
+$TASK_BUDGET_LINE
+
 $HERDR_SECTION
 
 # Setup
@@ -601,6 +632,7 @@ The report is the only thing that survives, so anything worth keeping must be in
    \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) and firstmate rechecks at that time instead.
    Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
+$TASK_BUDGET_RULE
 6. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
@@ -650,6 +682,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 $TASK_SECTION
 
+$TASK_BUDGET_LINE
+
 $HERDR_SECTION
 
 # Setup
@@ -683,6 +717,7 @@ $RULE1
    firstmate then leaves your idle pane alone and rechecks it on a long
    cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
+$TASK_BUDGET_RULE
 6. If a decision belongs above the implementation worker (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
 $ASK_USER_BLOCK
