@@ -465,7 +465,7 @@ The generated shared-host safety rules apply without this include; homes still c
 ## Contained worker experiments
 
 The worker-facing risk gate and containment rule are owned by `bin/fm-brief.sh` and generated for ship and scout briefs.
-For an approved experiment, an illustrative user-scope command is `systemd-run --user --scope -p TasksMax=512 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- <command>`; size these values to the job, not as host-wide limits.
+For an approved experiment, the user-scope command shape is `systemd-run --user --scope -p TasksMax=<n> -p MemoryMax=<size> -p MemorySwapMax=0 -p RuntimeMaxSec=<seconds> -- <command>`; size each placeholder to the job, not as host-wide limits.
 Script authors must resolve a binary's real path with `type -P <name>` before any wrapper directory is prepended to PATH, not `command -v`, which may return a shell function's bare name rather than an executable path.
 
 ## Worker launch environment (config/launch-env-allowlist)
