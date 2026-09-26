@@ -277,7 +277,7 @@ Firstmate overrides ambient Treehouse roots for new worker allocations with `$HO
 Existing slots in older pools are not moved, destroyed, or reassigned: relaunch validates the recorded copy's custody without allocating another slot.
 Secondmate home leases from `fm-home-seed.sh` retain their separate Treehouse allocation and return behavior.
 The [`fm-spawn.sh` header](../bin/fm-spawn.sh) owns ship/scout worktree isolation and fresh-base refusal rules, including spawns from linked homes.
-Portable regressions live in [`tests/fm-spawn-pool-base-freshen.test.sh`](../tests/fm-spawn-pool-base-freshen.test.sh) for spawn isolation and base freshness, and [`tests/fm-control-relaunch.test.sh`](../tests/fm-control-relaunch.test.sh) for preserving the recorded copy on relaunch.
+Portable regressions live in [`tests/fm-spawn-pool-base-freshen.test.sh`](../tests/fm-spawn-pool-base-freshen.test.sh) for spawn isolation and base freshness, and [`tests/fm-control-relaunch.test.sh`](../tests/fm-control-relaunch.test.sh) for preserving the recorded copy on relaunch; [`tests/fm-treehouse-clone-custody.test.sh`](../tests/fm-treehouse-clone-custody.test.sh) drives real Treehouse allocations across two clones of one origin.
 
 The firstmate repo has one extra exposure because it can dispatch crewmates to work on itself.
 Its operating checkout (`FM_ROOT`) and the disposable crewmate worktrees are all linked git worktrees of the same repository, so the valid discriminator is branch state, not whether the checkout is linked.
