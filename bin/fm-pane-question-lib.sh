@@ -11,30 +11,33 @@ fm_pane_question_text() {  # <capture>
   local transcript
   transcript=$(fm_composer_transcript_above "$1") || return 0
   printf '%s\n' "$transcript" | awk '
-    /^[[:space:]]*```/ { fence = !fence; next }
-    fence { next }
-    /^[[:space:]]*(>|\||[[:alnum:]_-]+[[:space:]]*\[.*\]:)/ { next }
-    /^[[:space:]]*["\047].*["\047][[:space:]]*$/ { next }
-    /^[[:space:]]*(needs-decision|blocked|working|done|resolved|failed|paused)[[:space:]]*(\[.*\])?:/ { next }
-    /^[[:space:]]*$/ { next }
-    { last = $0 }
+    BEGIN { brk = 1 }
+    /^[[:space:]]*```/ { fence = !fence; brk = 1; next }
+    fence || /^[[:space:]]*(>|\||[[:alnum:]_-]+[[:space:]]*\[.*\]:)/ \
+      || /^[[:space:]]*["\047].*["\047][[:space:]]*$/ \
+      || /^[[:space:]]*(needs-decision|blocked|working|done|resolved|failed|paused)[[:space:]]*(\[.*\])?:/ \
+      || /^[[:space:]]*$/ { brk = 1; next }
+    { if (brk) first = $0; brk = 0; last = $0 }
     END {
       if (last ~ /(needs-decision|blocked)[[:space:]]*\[key=[^]]+\]:/) exit
       gsub(/`[^`]*`/, "", last)
       sub(/[[:space:]]+$/, "", last)
-      if (last ~ /\?$/ || tolower(last) ~ /^[[:space:]]*captain,/) print last
+      sub(/^[[:space:]]*([^[:alnum:][:space:]]+[[:space:]]+)?/, "", first)
+      if (last ~ /\?$/ || tolower(first) ~ /^captain,/) print last
     }
   '
 }
 
-# The marker is the last observed turn signature and status byte position. It
-# advances only after the wake and durable nudge have been queued. Same-marker
-# polls cannot repeat either publication, even after watcher restart.
+# The marker is the last observed turn signature, status byte position, and the
+# status size at the last published question. It advances only after the wake
+# and durable nudge have been queued. Same-marker polls cannot repeat either
+# publication, even after watcher restart, and a later question turn publishes
+# again only once the status file has moved off the published size.
 fm_pane_question_turn() {  # <state> <task> <turn-signature> <capture>
-  local state=$1 task=$2 sig=$3 capture=$4 marker prev='' prior=0 size=0 text line verb
+  local state=$1 task=$2 sig=$3 capture=$4 marker prev='' prior=0 nudged='' size=0 text line verb
   marker="$state/.pane-question-$task"
   if [ -f "$marker" ] && [ ! -L "$marker" ]; then
-    IFS=$(printf '\t') read -r prev prior < "$marker" || true
+    IFS=$(printf '\t') read -r prev prior nudged < "$marker" || true
   fi
   [ "$prev" != "$sig" ] || return 1
   case "$prior" in ''|*[!0-9]*) prior=0 ;; esac
@@ -47,15 +50,16 @@ fm_pane_question_turn() {  # <state> <task> <turn-signature> <capture>
         case "$line" in
           needs-decision\ *|blocked\ *)
             case "$line" in *'[key='*']'*)
-              printf '%s\t%s\n' "$sig" "$size" > "$marker"
+              printf '%s\t%s\t%s\n' "$sig" "$size" "$nudged" > "$marker"
               return 1 ;;
             esac ;;
         esac
       done < <(LC_ALL=C tail -c "+$((prior + 1))" "$state/$task.status")
     fi
   fi
-  text=$(fm_pane_question_text "$capture")
-  [ -n "$text" ] || { printf '%s\t%s\n' "$sig" "$size" > "$marker"; return 1; }
+  text=''
+  [ "$nudged" = "$size" ] || text=$(fm_pane_question_text "$capture")
+  [ -n "$text" ] || { printf '%s\t%s\t%s\n' "$sig" "$size" "$nudged" > "$marker"; return 1; }
   FM_PANE_QUESTION_SIZE=$size
   return 0
 }

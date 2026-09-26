@@ -2953,7 +2953,7 @@ EOF
             task=${f##*/}; task=${task%.turn-ended}
             while IFS=$(printf '\t') read -r question_file question_size; do
               [ "$question_file" = "$f" ] || continue
-              printf '%s\t%s\n' "$sig" "$question_size" > "$STATE/.pane-question-$task" || exit 1
+              printf '%s\t%s\t%s\n' "$sig" "$question_size" "$question_size" > "$STATE/.pane-question-$task" || exit 1
             done <<OFFSETS
 $FM_PANE_QUESTION_OFFSETS
 OFFSETS

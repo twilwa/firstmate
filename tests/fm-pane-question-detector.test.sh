@@ -5,6 +5,25 @@ set -u
 TMP_ROOT=$(fm_test_tmproot fm-pane-question-tests)
 WATCH="$ROOT/bin/fm-watch.sh"
 
+export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
+
+watch_turn() {  # <case-dir>: one watcher run until it surfaces the turn end
+  local pid
+  PATH="$1/fakebin:$PATH" FM_FAKE_TMUX_WINDOW=test:fm-task FM_FAKE_TMUX_CAPTURE="$1/pane" \
+    FM_STATE_OVERRIDE="$1/state" FM_CREW_STATE_BIN="$1/fakebin/fm-crew-state.sh" \
+    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_WATCH_HANDLING_SUCCESSOR=1 "$WATCH" > "$1/out" &
+  pid=$!
+  wait_for_exit "$pid" 100
+}
+
+question_counts() {  # <state> -> "<decision-wakes> <nudges>"
+  local wakes nudges
+  wakes=$(rg -c 'decision-pending task.turn-ended' "$1/.wake-queue" 2>/dev/null || true)
+  nudges=$(rg -l 'Your last turn ended on a question' "$1/task.inbox" --glob '*.msg' 2>/dev/null | wc -l | tr -d '[:space:]')
+  printf '%s %s' "${wakes:-0}" "$nudges"
+}
+
 run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   local dir state fakebin out pid nudge count
   dir=$(make_case "$1"); state="$dir/state"; fakebin="$dir/fakebin"
@@ -12,13 +31,7 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   printf '%b' "$3" > "$state/task.status"
   printf 'window=test:fm-task\nkind=ship\nharness=codex\n' > "$state/task.meta"
   : > "$state/task.turn-ended"
-  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW=test:fm-task FM_FAKE_TMUX_CAPTURE="$dir/pane" \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
-    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    "$WATCH" > "$dir/out" &
-  pid=$!
-  wait_for_exit "$pid" 100 || fail "watcher did not surface turn end in $1"
+  watch_turn "$dir" || fail "watcher did not surface turn end in $1"
   out=$(cat "$state/.wake-queue")
   nudge=$(rg -l 'Your last turn ended on a question' "$state/task.inbox" --glob '*.msg' 2>/dev/null | wc -l | tr -d '[:space:]')
   if [ "$4" -eq 1 ]; then
@@ -72,3 +85,30 @@ run_turn log-quote "\"$ASK\"$PI_TAIL" '' 0
 run_turn address "Captain, please pick one.$PI_TAIL" '' 1
 run_turn captain-possessive "The captain's requested change is implemented.$PI_TAIL" '' 0
 run_turn captain-mention "Ready for the captain to review.$PI_TAIL" '' 0
+run_turn claude-marker-address "⏺ Captain, please pick one of A or B.$CLAUDE_TAIL" '' 1
+run_turn wrapped-address "Captain, the migration can keep the old column or drop it\n  now; pick one before I continue.$PI_TAIL" '' 1
+
+# One publication per status position: a second question turn with no status
+# growth stays quiet, and any status append re-arms the detector.
+test_question_once_per_status_position() {
+  local dir state counts
+  dir=$(make_case once-per-position); state="$dir/state"
+  printf '%b\n' "$ASK$PI_TAIL" > "$dir/pane"
+  printf 'working [at=1]: starting\n' > "$state/task.status"
+  printf 'window=test:fm-task\nkind=ship\nharness=codex\n' > "$state/task.meta"
+  printf 'a' > "$state/task.turn-ended"
+  watch_turn "$dir" || fail "first question turn was not surfaced"
+  counts=$(question_counts "$state")
+  [ "$counts" = '1 1' ] || fail "first question turn should wake and nudge once, saw $counts"
+  printf 'ab' > "$state/task.turn-ended"
+  watch_turn "$dir" || fail "second question turn was not surfaced"
+  counts=$(question_counts "$state")
+  [ "$counts" = '1 1' ] || fail "a repeat question with no status growth must stay quiet, saw $counts"
+  printf 'working [at=2]: answered the nudge\n' >> "$state/task.status"
+  printf 'abc' > "$state/task.turn-ended"
+  watch_turn "$dir" || fail "question turn after a status append was not surfaced"
+  counts=$(question_counts "$state")
+  [ "$counts" = '2 2' ] || fail "a status append must re-arm the detector, saw $counts"
+  pass "one decision-pending wake and nudge per status position"
+}
+test_question_once_per_status_position
