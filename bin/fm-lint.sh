@@ -597,13 +597,12 @@ if [ "$LIST_FILES" -eq 1 ]; then
   exit 0
 fi
 
-if ! command -v shellcheck >/dev/null 2>&1; then
+if ! SHELLCHECK_BIN=$(type -P shellcheck); then
   printf 'fm-lint.sh: ShellCheck not found; install ShellCheck %s with bin/fm-install-shellcheck.sh <destination-directory> and put that directory on PATH.\n' \
     "$REQUIRED_SHELLCHECK" >&2
   exit 1
 fi
 unset SHELLCHECK_OPTS
-SHELLCHECK_BIN=$(type -P shellcheck)
 if ! PERL_BIN=$(type -P perl); then
   printf 'fm-lint.sh: perl is required for bounded worker cleanup.\n' >&2
   exit 127
