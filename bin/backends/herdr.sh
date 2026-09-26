@@ -2100,13 +2100,16 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #                on), so this verdict alone is resampled for the same bounded
 #                settle window and the first agent or shell reading wins; only
 #                an exhausted window keeps `other`.
-#   unreadable - process-info failed, described a different pane, named no
-#                shell pid, or the process table could not be read or does not
-#                contain the shell pid. An empty foreground-process list is NOT
-#                unreadable: it is the real, momentary shape of the exec-to-
-#                shell handoff (the harness process has exited but Herdr has
-#                not yet repopulated the foreground group), so it is treated
-#                like a shells-only foreground and settled by the same
+#   unreadable - process-info failed or described a different pane, or a
+#                shells-only foreground left the descendant walk without a
+#                usable shell pid, a readable process table, or the shell pid
+#                in it. A verified harness in the foreground is `agent` whether
+#                or not process-info names a shell pid (a directly launched
+#                harness has no wrapping shell). An empty foreground-process
+#                list is NOT unreadable: it is the real, momentary shape of the
+#                exec-to-shell handoff (the harness process has exited but
+#                Herdr has not yet repopulated the foreground group), so it is
+#                treated like a shells-only foreground and settled by the same
 #                descendant-process check below.
 #
 # Verified on Herdr 0.9.0 (docs/verification/runtime-backends.md "Stale agent
@@ -2138,9 +2141,6 @@ fm_backend_herdr_pane_process_state_sample() {  # <session> <pane_id>
     .result.type == "pane_process_info"
     and .result.process_info.pane_id == $pane
   ' >/dev/null 2>&1 || { printf 'unreadable'; return 0; }
-  shell_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) \
-    || { printf 'unreadable'; return 0; }
   count=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) \
     || { printf 'unreadable'; return 0; }
@@ -2171,6 +2171,9 @@ fm_backend_herdr_pane_process_state_sample() {  # <session> <pane_id>
   # descendant of the pane shell outside the foreground group; only its
   # absence, read from the real process table, is proof of an agent-free pane.
   [ "$others" -eq 0 ] || { printf 'other'; return 0; }
+  shell_pid=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) \
+    || { printf 'unreadable'; return 0; }
   ps_bin=${FM_HERDR_PS_BIN:-ps}
   command -v "$ps_bin" >/dev/null 2>&1 || { printf 'unreadable'; return 0; }
   rows=$(LC_ALL=C "$ps_bin" -axo pid=,ppid=,comm= 2>/dev/null) || { printf 'unreadable'; return 0; }

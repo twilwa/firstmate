@@ -547,6 +547,17 @@ test_registered_agent_with_a_live_foreground_process_stays_alive() {
   pass "herdr stale registration: a registered agent with a live Pi foreground process still reads alive"
 }
 
+test_registered_agent_with_a_harness_foreground_and_no_shell_pid_stays_alive() {
+  local out
+  # A directly launched Claude second mate: no wrapping shell, so process-info
+  # names no shell pid, but the foreground process is a verified harness.
+  out=$(stale_registration_case live-claude-no-shell 'done' \
+    '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","foreground_process_group_id":4243,"foreground_processes":[{"pid":4243,"name":"claude","argv0":"claude","argv":["claude"],"cmdline":"claude"}]}}}')
+  [ "$out" = "live alive refused" ] \
+    || fail "a registered agent whose foreground is Claude with no shell pid must stay live/alive, got '$out'"
+  pass "herdr stale registration: a verified harness foreground reads alive without a shell pid"
+}
+
 test_registered_agent_with_a_non_shell_foreground_process_stays_alive() {
   local out
   # A registered agent running a foreground tool in its own process group is
@@ -5681,6 +5692,7 @@ test_recovery_grade_read_widens_only_at_its_own_boundary
 test_stale_registration_over_a_shell_only_pane_is_agent_free
 test_stale_registration_ignores_status_and_reads_the_process
 test_registered_agent_with_a_live_foreground_process_stays_alive
+test_registered_agent_with_a_harness_foreground_and_no_shell_pid_stays_alive
 test_registered_agent_with_a_non_shell_foreground_process_stays_alive
 test_transient_prompt_helper_settles_into_stale_agent
 test_exhausted_settle_window_keeps_a_non_shell_foreground_live
