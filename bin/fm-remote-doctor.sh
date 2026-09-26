@@ -141,8 +141,8 @@ set_check() { # <name> <value> [operator-action]
 
 herdr_cli_available() {
   local herdr_bin jq_bin
-  herdr_bin=$(command -v herdr 2>/dev/null || true)
-  jq_bin=$(command -v jq 2>/dev/null || true)
+  herdr_bin=$(type -P herdr 2>/dev/null || true)
+  jq_bin=$(type -P jq 2>/dev/null || true)
   [ -n "$herdr_bin" ] && [ -x "$herdr_bin" ] && [ -n "$jq_bin" ] && [ -x "$jq_bin" ]
 }
 
@@ -506,7 +506,7 @@ wrapper_is_firstmate_owned() { # <path>
 repair_tool_wrapper() { # <tool>
   local tool=$1 target wrapper tmp
   local resolved
-  resolved=$(command -v "$tool" 2>/dev/null || true)
+  resolved=$(type -P "$tool" 2>/dev/null || true)
   [ -n "$resolved" ] && [ -x "$resolved" ] && return 0
   target=$(fm_remote_job_manager_tool "${HOME:-}" "$tool" 2>/dev/null || true)
   [ -n "$target" ] || return 1
@@ -542,7 +542,7 @@ repair_required_wrappers() {
     repair_tool_wrapper "$tool" || true
   done
   for tool in "${HARNESS_TOOLS[@]}"; do
-    resolved=$(command -v "$tool" 2>/dev/null || true)
+    resolved=$(type -P "$tool" 2>/dev/null || true)
     [ -z "$resolved" ] || [ ! -x "$resolved" ] || return 0
   done
   for tool in "${HARNESS_TOOLS[@]}"; do
