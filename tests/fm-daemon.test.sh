@@ -1481,6 +1481,34 @@ test_handle_wake_routes_self_and_escalate() {
   pass "handle_wake routes routine->self and captain->escalate"
 }
 
+# A turn end the watcher found ending on an unfiled question is queued as
+# "signal: decision-pending <file>". Away, the daemon must escalate it to the
+# captain naming the task, not self-handle it as a routine signal.
+test_decision_pending_queued_row_escalates() {
+  local dir state fakebin out
+  dir=$(make_supercase decision-pending-queued-row)
+  state="$dir/state"
+  fakebin="$dir/daemon-bin"
+  mkdir -p "$fakebin"
+  : > "$state/ask-task.turn-ended"
+  cat > "$fakebin/fm-wake-drain.sh" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = --ack-through ]; then exit 0; fi
+printf '1\t1\tsignal\task-task.turn-ended\t%s\n' 'signal: decision-pending ask-task.turn-ended'
+printf 'WAKE_ACK_REQUIRED: retry --ack-through 1 --recovery-generation gen\n' >&2
+EOF
+  chmod +x "$fakebin/fm-wake-drain.sh"
+  FM_DAEMON_DIR="$fakebin" FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999 \
+    handle_durable_wakes fallback "$state" \
+    || fail "the decision-pending queued row was not handled"
+  out=$(cat "$state/.subsuper-escalations" 2>/dev/null || true)
+  case "$out" in
+    *"ask-task: decision pending"*) ;;
+    *) fail "a decision-pending wake was not escalated naming its task: $out" ;;
+  esac
+  pass "a decision-pending queued row escalates to the captain"
+}
+
 # Decision-owned queued rows are marked needs-decision:<files> by the watcher.
 # The away-mode daemon must classify that payload the same way it classifies an
 # ordinary signal: escalate once as the decision, suppress an unchanged repeat
@@ -2822,6 +2850,7 @@ test_escalate_batch_age_uses_first_append
 test_heartbeat_scan_dedup
 test_handle_wake_routes_self_and_escalate
 test_needs_decision_queued_row_escalates_once_as_the_decision
+test_decision_pending_queued_row_escalates
 test_captain_held_decision_owned_row_is_self_handled
 test_inject_skip_forces_self
 test_is_wake_reason_distinguishes_status_stdout
