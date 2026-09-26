@@ -1,0 +1,13 @@
+$ bin/fm-test-run.sh /tmp/fmlg/leak.test.sh
+FM_TEST_BEGIN 2026-09-26T22:45:07Z /tmp/fmlg/leak.test.sh family=unclassified expected_gate_skip=none
+ok - started server on port 50933 pid 2325841 and forgot to stop it
+FM_TEST_END 2026-09-26T22:45:08Z /tmp/fmlg/leak.test.sh exit=0 duration_ms=118 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=266
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=118 failed=0
+FM_TEST_SLOWEST rank=1 script=/tmp/fmlg/leak.test.sh duration_ms=118
+FM_TEST_LISTENER pid=2325841 port=50933 test=/tmp/fmlg/leak.test.sh command=python3 /tmp/fmlg/listen.py /tmp/fmlg/leak.port 30
+FM_TEST_LISTENERS found=1
+EXIT=1
+
+# ss after run (server still alive; guard reports but does not reap):
+LISTEN 0      128                      127.0.0.1:50933      0.0.0.0:*    users:(("python3",pid=2325841,fd=3))    

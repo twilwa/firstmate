@@ -1,0 +1,19 @@
+$ bin/fm-test-run.sh /tmp/fmlg/outer.test.sh   # outer.test.sh itself runs bin/fm-test-run.sh on leak.test.sh
+FM_TEST_BEGIN 2026-09-26T22:46:12Z /tmp/fmlg/outer.test.sh family=unclassified expected_gate_skip=none
+# inner run:
+    inner| FM_TEST_BEGIN 2026-09-26T22:46:12Z /tmp/fmlg/leak.test.sh family=unclassified expected_gate_skip=none
+    inner| ok - started server on port 45215 pid 2385421 and forgot to stop it
+    inner| FM_TEST_END 2026-09-26T22:46:12Z /tmp/fmlg/leak.test.sh exit=0 duration_ms=100 gate_skip=false
+    inner| FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=265
+    inner| FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=100 failed=0
+    inner| FM_TEST_SLOWEST rank=1 script=/tmp/fmlg/leak.test.sh duration_ms=100
+    inner| FM_TEST_LISTENER pid=2385421 port=45215 test=/tmp/fmlg/leak.test.sh command=python3 /tmp/fmlg/listen.py /tmp/fmlg/leak.port 30
+    inner| FM_TEST_LISTENERS found=1
+ok - inner run finished (inner exit is ignored so the outer script itself passes)
+FM_TEST_END 2026-09-26T22:46:12Z /tmp/fmlg/outer.test.sh exit=0 duration_ms=457 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=639
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=457 failed=0
+FM_TEST_SLOWEST rank=1 script=/tmp/fmlg/outer.test.sh duration_ms=457
+FM_TEST_LISTENER pid=2385421 port=45215 test=/tmp/fmlg/leak.test.sh command=python3 /tmp/fmlg/listen.py /tmp/fmlg/leak.port 30
+FM_TEST_LISTENERS found=1
+EXIT=1

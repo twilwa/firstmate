@@ -1,0 +1,23 @@
+# EXPERIMENT (adversarial): copy of tests/fm-bearings-board-lavish-live-e2e.test.sh with only one added line after sourcing lib.sh:
+#   fm_test_stop_live_servers() { :; }   -> the registered Lavish stop is disabled, like the pre-fix test that leaked port 4387
+$ bin/fm-test-run.sh /tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh
+FM_TEST_BEGIN 2026-09-26T22:47:22Z /tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+# lavish-axi 0.1.78
+ok - lavish-axi 0.1.78 reports a captain-ended session without reopening it and without failing
+ok - the board build reopens a captain-ended session against real lavish-axi instead of arming a dead one
+FM_TEST_END 2026-09-26T22:47:56Z /tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh exit=0 duration_ms=34196 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=34335
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=34196 failed=0
+FM_TEST_SLOWEST rank=1 script=/tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh duration_ms=34196
+FM_TEST_LISTENER pid=2486356 port=50207 test=/tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh command=/home/firstmate/.local/share/mise/installs/node/24.21.0/bin/node /home/firstmate/.local/lib/node_modules/lavish-axi/dist/server.mjs server --port 50207
+FM_TEST_LISTENERS found=1
+EXIT=1
+# leaked server still listening after the run (guard reports, does not reap):
+LISTEN 0      511    100.119.229.113:50207 0.0.0.0:* users:(("MainThread",pid=2486356,fd=23))
+LISTEN 0      511          127.0.0.1:50207 0.0.0.0:* users:(("MainThread",pid=2486356,fd=21))
+FM_TEST_RUN_SCRIPT=/tmp/fmlg/lab/tests/fm-bearings-board-lavish-live-e2e.test.sh
+LAVISH_AXI_STATE_DIR=/tmp/fm-bearings-lavish-live.KqRTjG/lavish-state
+LAVISH_AXI_PORT=50207
+# state dir exists? no - removed with the test home (the incident: lavish-axi stop could not find it)
+# after manual kill of experiment pid 2486356:
+0

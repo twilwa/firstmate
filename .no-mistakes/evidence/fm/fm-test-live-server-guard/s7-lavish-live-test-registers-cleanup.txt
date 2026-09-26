@@ -1,0 +1,15 @@
+# operator Lavish before: 100.119.229.113:4387 users:(("MainThread",pid=3979916,fd=23)) 127.0.0.1:4387 users:(("MainThread",pid=3979916,fd=21)) 
+$ bin/fm-test-run.sh tests/fm-bearings-board-lavish-live-e2e.test.sh
+FM_TEST_BEGIN 2026-09-26T22:46:21Z tests/fm-bearings-board-lavish-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+# lavish-axi 0.1.78
+ok - lavish-axi 0.1.78 reports a captain-ended session without reopening it and without failing
+ok - the board build reopens a captain-ended session against real lavish-axi instead of arming a dead one
+FM_TEST_END 2026-09-26T22:46:58Z tests/fm-bearings-board-lavish-live-e2e.test.sh exit=0 duration_ms=36755 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=36893
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=36755 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-bearings-board-lavish-live-e2e.test.sh duration_ms=36755
+FM_TEST_LISTENERS found=0
+EXIT=0
+# operator Lavish after:  100.119.229.113:4387 users:(("MainThread",pid=3979916,fd=23)) 127.0.0.1:4387 users:(("MainThread",pid=3979916,fd=21)) 
+# Lavish-style (MainThread) listeners added by the run (should be empty):
+# end
