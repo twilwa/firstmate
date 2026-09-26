@@ -85,7 +85,8 @@ for ((i=0; i<30; i++)); do
   sleep 1
 done
 [ "$seen_busy" -eq 1 ] || fail "OpenCode $VERSION: no busy state during queued-Enter test"
-lab pane send-text "$pane" 'Answer exactly QUEUED_DONE.' >/dev/null || fail "OpenCode $VERSION: cannot type queued instruction"
+CODE_WORD="KESTREL$RANDOM$RANDOM"
+lab pane send-text "$pane" "Remember the code word $CODE_WORD, then answer exactly QUEUED_DONE." >/dev/null || fail "OpenCode $VERSION: cannot type queued instruction"
 lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: queued Enter failed"
 queued=0
 for ((i=0; i<70; i++)); do
@@ -134,20 +135,26 @@ done
 [ "$exited" -eq 1 ] || fail "OpenCode $VERSION: /exit did not end the OpenCode process"
 printf 'ok - OpenCode %s: /exit closed the private-server worker\n' "$VERSION"
 
-resume=${launch/--prompt/--continue --prompt}
+# Resume runs in a fresh pane, so no earlier scrollback can satisfy the check:
+# only a restored session knows the code word from the first session.
+resume="${launch%% --prompt *} --continue"
 printf '#!/bin/bash\nexec systemd-run --user --scope -q -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- /bin/bash -lc %q\n' "$resume" > "$TMP_ROOT/resume.sh"
+ws=$(lab workspace create --cwd "$WT" --label opencode-resume --no-focus) || fail "OpenCode $VERSION: resume workspace create failed"
+pane=$(printf '%s' "$ws" | jq -er '.result.root_pane.pane_id') || fail "OpenCode $VERSION: no resume pane"
 lab pane run "$pane" "/bin/bash $TMP_ROOT/resume.sh" >/dev/null || fail "OpenCode $VERSION: --continue relaunch failed"
 sleep 8
-history=$(lab pane read "$pane" --source recent --lines 180 2>/dev/null || true)
-case "$history" in *'QUEUED_DONE'*) ;; *) fail "OpenCode $VERSION: --continue did not restore the previous session history" ;; esac
-lab pane send-text "$pane" 'Reply exactly RESUME_DONE.' >/dev/null || fail "OpenCode $VERSION: cannot type resumed instruction"
+recalled="RESUMED_$CODE_WORD"
+case "$(lab pane read "$pane" --source recent --lines 180 2>/dev/null || true)" in
+  *"$recalled"*) fail "OpenCode $VERSION: resume pane showed the recalled code word before it was asked" ;;
+esac
+lab pane send-text "$pane" 'Reply exactly RESUMED_ immediately followed by the code word I asked you to remember earlier, with no space.' >/dev/null || fail "OpenCode $VERSION: cannot type resumed instruction"
 lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: cannot submit resumed instruction"
 resumed=0
 for ((i=0; i<50; i++)); do
   screen=$(lab pane read "$pane" --source recent --lines 160 2>/dev/null || true)
-  if printf '%s\n' "$screen" | rg -q '^[[:space:]]*RESUME_DONE[[:space:]]*$'; then resumed=1; break; fi
+  if printf '%s\n' "$screen" | rg -q "^[[:space:]]*${recalled}[[:space:]]*\$"; then resumed=1; break; fi
   sleep 1
 done
-[ "$resumed" -eq 1 ] || fail "OpenCode $VERSION: --continue did not process a manually submitted instruction"
-printf 'ok - OpenCode %s: --continue on a private server processed a new instruction\n' "$VERSION"
+[ "$resumed" -eq 1 ] || fail "OpenCode $VERSION: --continue did not restore the previous session"
+printf 'ok - OpenCode %s: --continue on a private server restored the previous session\n' "$VERSION"
 [ "$interrupted" -eq 1 ] || fail "OpenCode $VERSION: double Escape interrupt remains unverified"
