@@ -68,7 +68,9 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
 NBSP=$(printf '\302\240')
 RULE='────────────────────────'
 PI_TAIL="\n$RULE\n\n$RULE\n ~/repo (fm/branch)\n ↑1.2k ↓3.4k \$0.05 12%/200k"
-CLAUDE_TAIL="\n$RULE\n❯$NBSP\n$RULE\n  ⏵⏵ bypass permissions on (shift+tab to cycle)"
+CLAUDE_PROMPT_TAIL="\n$RULE\n❯$NBSP\n$RULE\n  ⏵⏵ bypass permissions on (shift+tab to cycle)"
+# Captured from Claude Code v2.1.283 at the live turn boundary.
+CLAUDE_TAIL="\n\n✻ Worked for 2s · done 5:54 PM$CLAUDE_PROMPT_TAIL"
 CODEX_TAIL='\n\n› Use /skills to list available skills\n\n  gpt-5.5 high · ~/repo'
 ASK='Would you like me to change this?'
 
@@ -76,6 +78,8 @@ run_turn pi-question "$ASK$PI_TAIL" '' 1
 run_turn pi-summary "Implementation complete.$PI_TAIL" '' 0
 run_turn claude-question "$ASK$CLAUDE_TAIL" '' 1
 run_turn claude-summary "Implementation complete.$CLAUDE_TAIL" '' 0
+run_turn claude-other-verb "$ASK\n\n✳ Churned for 3s$CLAUDE_PROMPT_TAIL" '' 1
+run_turn claude-assistant-bullet "$ASK\n● Worked for 2s$CLAUDE_PROMPT_TAIL" '' 0
 run_turn codex-question "$ASK$CODEX_TAIL" '' 1
 run_turn codex-summary "Implementation complete.$CODEX_TAIL" '' 0
 run_turn unsplittable "$ASK" '' 0

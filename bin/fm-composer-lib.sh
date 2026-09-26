@@ -1597,8 +1597,10 @@ EOF
 # composer's envelope (a box's top border, pi's opening separator, the left
 # bar's first row, or the bare glyph row, lifted to an enclosing separator
 # pair), so the harness's composer and footer furniture never stand in for its
-# transcript. Returns 1 when no composer can be selected: an unsplittable
-# screen has no transcript to offer.
+# transcript. A trailing turn-duration status row is also screen furniture,
+# not assistant text: accept it only by its glyph/verb/duration shape, not by
+# a particular status verb or completion timestamp. Returns 1 when no composer
+# can be selected: an unsplittable screen has no transcript to offer.
 fm_composer_transcript_above() {  # <screen>
   local plain top
   plain=$(printf '%s\n' "$1" | fm_composer_strip_ansi)
@@ -1616,7 +1618,21 @@ fm_composer_transcript_above() {  # <screen>
       fi
       ;;
   esac
-  printf '%s\n' "$plain" | awk -v n="$top" 'NR <= n'
+  printf '%s\n' "$plain" | LC_ALL=C awk -v n="$top" '
+    NR <= n { row[NR] = $0; count = NR }
+    END {
+      while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
+      # A decorated status glyph, one verb, and an elapsed duration. The
+      # optional completion timestamp is furniture too. Ordinary assistant
+      # bullets (●, •, ⏺) do not qualify as status glyphs.
+      while (count > 0 && row[count] !~ /^[[:space:]]*(●|•|⏺)/ &&
+             row[count] ~ /^[[:space:]]*[^[:alnum:][:space:]]+[[:space:]]+[[:alpha:]]+[[:space:]]+for[[:space:]]+([0-9]+[.])?[0-9]+(ms|s|m|h)([[:space:]]+[0-9]+(ms|s|m|h))*([[:space:]]*·[[:space:]]*done[[:space:]]+[0-9]+:[0-9]+([[:space:]]*[AP]M)?)?[[:space:]]*$/) {
+        count--
+        while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
+      }
+      for (i = 1; i <= count; i++) print row[i]
+    }
+  '
 }
 
 fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
