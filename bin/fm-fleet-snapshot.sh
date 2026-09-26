@@ -733,10 +733,10 @@ task_json_lines() {
   local meta original_meta id kind harness model effort mode yolo project worktree home projects spawn_gen backend target status_log report_path
   local remote_host remote_root current_file endpoint_file observation_line index=0
   local pr pr_source current_json endpoint_exists agent_alive current_state current_source pr_from_status
-  local open_decisions_tsv open_decisions_json line key
+  local open_decisions_tsv open_decisions_json line
   local event_present event_raw event_verb event_note event_age
   local meta_present report_present worktree_present home_present
-  local -A fields=()
+  local branch remote_backend remote_target meta_backend terminal window pr_head
 
   while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
     meta=${SNAPSHOT_TASK_METAS[index]}
@@ -745,44 +745,47 @@ task_json_lines() {
     original_meta="$STATE/$id.meta"
     # One pass over the captured generation retains fm_meta_get's last-value
     # semantics without launching a subshell for every field.
-    fields=()
+    kind='' harness='' model='' effort='' mode='' yolo='' project='' worktree='' home='' projects=''
+    spawn_gen='' branch='' remote_host='' remote_root='' remote_backend='' remote_target=''
+    meta_backend='' terminal='' window='' pr='' pr_head=''
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in
-        *=*)
-          key=${line%%=*}
-          case "$key" in
-            kind|harness|model|effort|mode|yolo|project|worktree|home|projects|spawn_gen|branch|remote_host|remote_root|remote_backend|remote_target|backend|terminal|window|pr|pr_head)
-              fields[$key]=${line#*=} ;;
-          esac ;;
+        kind=*) kind=${line#*=} ;;
+        harness=*) harness=${line#*=} ;;
+        model=*) model=${line#*=} ;;
+        effort=*) effort=${line#*=} ;;
+        mode=*) mode=${line#*=} ;;
+        yolo=*) yolo=${line#*=} ;;
+        project=*) project=${line#*=} ;;
+        worktree=*) worktree=${line#*=} ;;
+        home=*) home=${line#*=} ;;
+        projects=*) projects=${line#*=} ;;
+        spawn_gen=*) spawn_gen=${line#*=} ;;
+        branch=*) branch=${line#*=} ;;
+        remote_host=*) remote_host=${line#*=} ;;
+        remote_root=*) remote_root=${line#*=} ;;
+        remote_backend=*) remote_backend=${line#*=} ;;
+        remote_target=*) remote_target=${line#*=} ;;
+        backend=*) meta_backend=${line#*=} ;;
+        terminal=*) terminal=${line#*=} ;;
+        window=*) window=${line#*=} ;;
+        pr=*) pr=${line#*=} ;;
+        pr_head=*) pr_head=${line#*=} ;;
       esac
     done < "$meta"
-    kind=${fields[kind]:-ship}
-    harness=${fields[harness]:-}
-    model=${fields[model]:-}
-    effort=${fields[effort]:-}
-    mode=${fields[mode]:-}
-    yolo=${fields[yolo]:-}
-    project=${fields[project]:-}
-    worktree=${fields[worktree]:-}
-    home=${fields[home]:-}
-    projects=${fields[projects]:-}
-    spawn_gen=${fields[spawn_gen]:-}
-    branch=${fields[branch]:-}
-    remote_host=${fields[remote_host]:-}
-    remote_root=${fields[remote_root]:-}
+    kind=${kind:-ship}
     if [ -n "$remote_host" ]; then
-      backend=${fields[remote_backend]:-unknown}
-      target=${fields[remote_target]:-}
+      backend=${remote_backend:-unknown}
+      target=$remote_target
     else
-      backend=${fields[backend]:-tmux}
-      target=${fields[window]:-}
-      if [ "$backend" = orca ] && [ -n "${fields[terminal]:-}" ]; then
-        target=${fields[terminal]}
+      backend=${meta_backend:-tmux}
+      target=$window
+      if [ "$backend" = orca ] && [ -n "$terminal" ]; then
+        target=$terminal
       fi
     fi
     status_log="$SNAPSHOT_TASK_DIR/$id.status"
     report_path="$SNAPSHOT_TASK_DIR/$id.report"
-    pr=${fields[pr]:-}
     pr_source=meta
     if [ -z "$pr" ]; then
       pr_from_status=$(first_pr_url_in_file "$status_log" || true)
@@ -874,7 +877,7 @@ task_json_lines() {
       --arg remote_root "$remote_root" \
       --arg pr "$pr" \
       --arg pr_source "$pr_source" \
-      --arg pr_head "${fields[pr_head]:-}" \
+      --arg pr_head "$pr_head" \
       --arg agent_alive "$agent_alive" \
       --arg observed_at "$SNAPSHOT_NOW" \
       --arg meta_path "$original_meta" \
