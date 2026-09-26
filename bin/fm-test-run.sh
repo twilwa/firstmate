@@ -19,6 +19,7 @@
 #   fm-test-run.sh --list --lane portable-parallel-1
 #   fm-test-run.sh --list-scheduled --family <name>
 #   fm-test-run.sh --list-scheduled --lane portable-parallel-1
+#   fm-test-run.sh --estimate-ms --all [--exclude-family <name>...]
 #   fm-test-run.sh --list-families
 #   fm-test-run.sh --list-concurrent-safe-families
 #   fm-test-run.sh --concurrent-safe-family-jobs-max <name>
@@ -41,6 +42,9 @@
 #                   parallel hints, falling back to serial weights if missing.
 #                   Every other selection uses serial weights alone.
 #                   Equal weights are ordered by path under LC_ALL=C.
+#   --estimate-ms   print the selection's summed serial duration hints in
+#                   milliseconds and exit 0: each script's parallel hint, else
+#                   its serial hint, else PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
 #   --base <ref>    with --changed, compare against this ref (default: origin/main)
 #   --exclude-family <name>
 #                   drop scripts whose primary family matches <name> after selection
@@ -164,6 +168,7 @@ cd "$ROOT" || exit 1
 MODE=
 LIST_ONLY=0
 LIST_SCHEDULED=0
+ESTIMATE_MS=0
 LIST_FAMILIES=0
 LIST_CONCURRENT_SAFE_FAMILIES=0
 LIST_LANES=0
@@ -276,7 +281,7 @@ family_for_basename() {
   case "$1" in
     fm-arm-pretool-check.test.sh|fm-ask-user-authority.test.sh|\
     fm-bearings-board.test.sh|\
-    fm-brief.test.sh|fm-dod-lib.test.sh|fm-vendor-auth-probe.test.sh|\
+    fm-brief.test.sh|fm-brief-test-scope.test.sh|fm-dod-lib.test.sh|fm-vendor-auth-probe.test.sh|\
     fm-calm-pi-extension.test.sh|fm-cd-pretool-check.test.sh|\
     fm-classify-decision-key.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
@@ -1963,6 +1968,10 @@ while [ "$#" -gt 0 ]; do
       LIST_SCHEDULED=1
       shift
       ;;
+    --estimate-ms)
+      ESTIMATE_MS=1
+      shift
+      ;;
     --list-families)
       LIST_FAMILIES=1
       shift
@@ -2092,10 +2101,11 @@ esac
 # Refuse before any suite is selected or run. The inspection modes execute
 # nothing: --list-families, --list-concurrent-safe-families, --list-lanes,
 # --check-coverage, --concurrent-safe-family-jobs-max and --aggregate-json have
-# already exited above, and --list/--list-scheduled print their selection and
-# exit below. An unset MODE still falls through to the usage error, so a caller
-# who named no selection mode is told that rather than this.
-if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ]; then
+# already exited above, and --list/--list-scheduled/--estimate-ms print their
+# selection or its estimate and exit below. An unset MODE still falls through
+# to the usage error, so a caller who named no selection mode is told that
+# rather than this.
+if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ] && [ "$ESTIMATE_MS" -eq 0 ]; then
   refuse_primary_checkout_for_task
 fi
 
@@ -2140,6 +2150,15 @@ if [ "${#EXCLUDE_FAMILIES[@]}" -gt 0 ]; then
 fi
 if [ -n "$FAIL_ON_GATE_SKIP" ]; then
   SELECTION_DESC="${SELECTION_DESC};fail-on-gate-skip=$FAIL_ON_GATE_SKIP"
+fi
+if [ "$ESTIMATE_MS" -eq 1 ]; then
+  printf '%s\n' "${SCRIPTS[@]+"${SCRIPTS[@]}"}" | awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
+    FILENAME == ARGV[1] { if (NF) { parallel[$1] = $2 }; next }
+    FILENAME == ARGV[2] { if (NF) { serial[$1] = $2 }; next }
+    NF { total += ($1 in parallel) ? parallel[$1] : (($1 in serial) ? serial[$1] : fallback) }
+    END { printf "%d\n", total + 0 }
+  ' <(portable_parallel_weight_hints) <(portable_serial_weight_hints) -
+  exit 0
 fi
 if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   if [ "$LIST_SCHEDULED" -eq 1 ]; then
