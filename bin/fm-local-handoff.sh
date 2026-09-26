@@ -8,7 +8,7 @@
 #   fm-local-handoff.sh offer <task-id>
 #       Run in the SECONDMATE home. Publishes an immutable head-pinned offer
 #       plus a git bundle holding exactly that head, for the task's local-only
-#       branch fm/<task-id>. Refuses a dirty worktree, an unbound project, a
+#       task's recorded branch (or fm/<task-id> if absent). Refuses a dirty worktree, an unbound project, a
 #       missing parent binding, or a project whose parent route has changed.
 #       Re-running with the same head republishes the same identity; a moved
 #       head publishes a NEW offer, so an approval pinned to the old head
@@ -166,7 +166,10 @@ command_offer() {  # <task-id>
     ''|*[!0-9]*) die "task $id records a malformed incarnation" ;;
   esac
 
-  branch="fm/$id"
+  branch=$(meta_field "$meta" branch)
+  [ -n "$branch" ] || branch="fm/$id"
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 \
+    || die "task $id has an invalid recorded ship branch '$branch'"
   git -C "$child_project" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null \
     || die "branch $branch does not exist in $child_project"
   head=$(git -C "$child_project" rev-parse "refs/heads/$branch")
@@ -265,10 +268,10 @@ parent_side_offer_checks() {  # <offer-blob>
 # answer, including "cannot tell", refuses, so the caller states what it is
 # refusing rather than guessing.
 request_hold_status() {  # <landing-id>
-  local landing_id=$1 status=0
-  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    "$SCRIPT_DIR/fm-captain-hold.sh" open "$landing_id" --distinguish-absent || status=$?
-  printf '%s\n' "$status"
+  local landing_id=$1 status=0 identity
+  identity=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-captain-hold.sh" open "$landing_id" --identity --distinguish-absent) || status=$?
+  printf '%s %s\n' "$status" "$identity"
 }
 
 # The one place a published pin is read by `request`. A pin is immutable, so
@@ -294,7 +297,7 @@ request_lock_release() {
 }
 
 command_request() {  # <landing-id> <offer-file>
-  local landing_id=$1 offer_file=$2 blob project head hold_status landing_path
+  local landing_id=$1 offer_file=$2 blob project head hold_status hold_identity hold_after landing_path
 
   fm_local_handoff_valid_slug "$landing_id" \
     || die "landing id must be a privacy-safe slug: $landing_id"
@@ -332,9 +335,12 @@ command_request() {  # <landing-id> <offer-file>
   # The approval itself stays where it has always lived. This only binds the
   # pending call to one exact commit, so it must run while that call is still
   # open; an absent or already released row refuses.
-  hold_status=$(request_hold_status "$landing_id")
+  read -r hold_status hold_identity <<< "$(request_hold_status "$landing_id")"
   case "$hold_status" in
-    0) ;;
+    0)
+      fm_local_handoff_valid_hold_identity "$hold_identity" \
+        || die "landing row $landing_id has no valid captain-call lifecycle identity; refusing to pin"
+      ;;
     1)
       die "landing row $landing_id is not held for the captain; hold it with bin/fm-captain-hold.sh hold $landing_id --reason '<why>' before pinning an offer to it"
       ;;
@@ -346,7 +352,7 @@ command_request() {  # <landing-id> <offer-file>
       ;;
   esac
 
-  if ! fm_local_handoff_landing_pin "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT"; then
+  if ! fm_local_handoff_landing_pin "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT" "$hold_identity"; then
     if [ "$FM_LOCAL_HANDOFF_RECORD_EXISTS" = 1 ]; then
       fm_local_handoff_landing_load "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
       request_report_existing "$landing_id" "$FM_LOCAL_HANDOFF_RECORD" "$blob"
@@ -359,9 +365,9 @@ command_request() {  # <landing-id> <offer-file>
   # this point answered a call this pin was not part of, so the pin is
   # withdrawn and nothing inherits that answer; a release recorded after it
   # genuinely post-dates a durable approval.
-  hold_status=$(request_hold_status "$landing_id")
-  if [ "$hold_status" != 0 ]; then
-    fm_local_handoff_landing_withdraw "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT" \
+  read -r hold_status hold_after <<< "$(request_hold_status "$landing_id")"
+  if [ "$hold_status" != 0 ] || [ "$hold_after" != "$hold_identity" ]; then
+    fm_local_handoff_landing_withdraw "$DATA" "$blob" "$landing_id" "$offer_file" "$PARENT_PROJECT" "$hold_identity" \
       || die "the captain's landing row $landing_id stopped being held while this offer was being pinned, and $FM_LOCAL_HANDOFF_ERROR; reconcile that record by hand before landing anything"
     die "the captain's landing row $landing_id stopped being held while this offer was being pinned, so the pin was withdrawn; this offer needs its own held landing row"
   fi
@@ -418,6 +424,8 @@ command_receipt() {  # <offer-file> <landing-id>
     fm_local_handoff_landing_row_ready "$DATA" "$landing_id" \
       || die "$FM_LOCAL_HANDOFF_ERROR; recovery records nothing without its approval row"
     if [ "$was_landed" = 0 ]; then
+      fm_local_handoff_landing_released_identity "$SCRIPT_DIR" "$FM_HOME" "$STATE" "$landing_id" "$landing" \
+        || die "$FM_LOCAL_HANDOFF_ERROR; recovery records nothing without its pinned captain call"
       fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
         "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
         || die "$FM_LOCAL_HANDOFF_ERROR"

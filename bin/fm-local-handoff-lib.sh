@@ -19,7 +19,7 @@
 #     exactly that head. Immutable: a changed head needs a NEW offer, so an
 #     approval pinned to the old head can never carry over.
 #
-#   fm-local-landing.v1       <parent-home>/data/local-only-landings/<id>.landing
+#   fm-local-landing.v2       <parent-home>/data/local-only-landings/<id>.landing
 #     landing_id secondmate parent_home parent_project project task spawn_gen
 #     head offer state landed_at
 #     Written by bin/fm-local-handoff.sh request in the PRIMARY home while the
@@ -59,12 +59,12 @@ FM_LOCAL_HANDOFF_RECORD=
 
 FM_LOCAL_HANDOFF_BINDING_SCHEMA=fm-local-only-binding.v1
 FM_LOCAL_HANDOFF_OFFER_SCHEMA=fm-local-offer.v1
-FM_LOCAL_HANDOFF_LANDING_SCHEMA=fm-local-landing.v1
+FM_LOCAL_HANDOFF_LANDING_SCHEMA=fm-local-landing.v2
 FM_LOCAL_HANDOFF_RECEIPT_SCHEMA=fm-local-receipt.v1
 
 FM_LOCAL_HANDOFF_BINDING_KEYS='project parent_home parent_project seed_commit seed_branch created'
 FM_LOCAL_HANDOFF_OFFER_KEYS='secondmate child_home parent_home project child_project task spawn_gen branch head bundle created'
-FM_LOCAL_HANDOFF_LANDING_KEYS='landing_id secondmate parent_home parent_project project task spawn_gen head offer state landed_at'
+FM_LOCAL_HANDOFF_LANDING_KEYS='landing_id secondmate parent_home parent_project project task spawn_gen head offer hold_identity state landed_at'
 FM_LOCAL_HANDOFF_RECEIPT_KEYS='secondmate parent_home parent_project project task spawn_gen head default_branch landing_id landed_at'
 
 # Child identity and registry routing have owners already; the identity proof
@@ -114,6 +114,12 @@ fm_local_handoff_valid_epoch() {
   case "$value" in
     ''|*[!0-9]*) return 1 ;;
   esac
+}
+
+# A captain call's hold-set stamp and answer count, as emitted by the hold
+# owner. Keep the count bounded for safe arithmetic when verifying release.
+fm_local_handoff_valid_hold_identity() {
+  [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?#(0|[1-9][0-9]{0,8})$ ]]
 }
 
 # --- record paths -----------------------------------------------------------
@@ -350,8 +356,8 @@ fm_local_handoff_offer_load() {  # <offer-file>
     FM_LOCAL_HANDOFF_ERROR="offer at $path has a malformed identity"
     return 1
   fi
-  if [ "$branch" != "fm/$task" ]; then
-    FM_LOCAL_HANDOFF_ERROR="offer at $path names branch $branch, expected fm/$task"
+  if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    FM_LOCAL_HANDOFF_ERROR="offer at $path names an invalid task branch $branch"
     return 1
   fi
   if ! fm_local_handoff_valid_abs "$(fm_local_handoff_field "$blob" child_home)" \
@@ -401,6 +407,10 @@ fm_local_handoff_landing_load() {  # <parent-data-dir> <landing-id>
     FM_LOCAL_HANDOFF_ERROR="landing record at $path has a malformed path"
     return 1
   fi
+  if ! fm_local_handoff_valid_hold_identity "$(fm_local_handoff_field "$blob" hold_identity)"; then
+    FM_LOCAL_HANDOFF_ERROR="landing record at $path has no valid captain-call identity"
+    return 1
+  fi
   state=$(fm_local_handoff_field "$blob" state)
   case "$state" in
     pinned|landed) ;;
@@ -416,8 +426,9 @@ fm_local_handoff_landing_load() {  # <parent-data-dir> <landing-id>
 # are the same record in two states, so both writers below build it here and
 # the approval's identity can never disagree with the landing's evidence.
 fm_local_handoff_landing_lines() {
-  # <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at>
+  # <identity-blob> <landing-id> <offer-file> <parent-project> <state> <landed-at> [hold-identity]
   local blob=$1 landing_id=$2 offer_file=$3 parent_project=$4 state=$5 landed_at=$6
+  local hold_identity=${7:-$(fm_local_handoff_field "$blob" hold_identity)}
   printf '%s\n' \
     "schema=$FM_LOCAL_HANDOFF_LANDING_SCHEMA" \
     "landing_id=$landing_id" \
@@ -429,6 +440,7 @@ fm_local_handoff_landing_lines() {
     "spawn_gen=$(fm_local_handoff_field "$blob" spawn_gen)" \
     "head=$(fm_local_handoff_field "$blob" head)" \
     "offer=$offer_file" \
+    "hold_identity=$hold_identity" \
     "state=$state" \
     "landed_at=$landed_at"
 }
@@ -456,10 +468,10 @@ fm_local_handoff_landing_publish() {
 # it lost through FM_LOCAL_HANDOFF_RECORD_EXISTS instead of overwriting the
 # record the captain is answering.
 fm_local_handoff_landing_pin() {
-  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project>
-  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 lines rc
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project> <hold-identity>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 hold_identity=$6 lines rc
   lines=$(fm_local_handoff_landing_lines "$blob" "$landing_id" "$offer_file" \
-    "$parent_project" pinned 0) || return 1
+    "$parent_project" pinned 0 "$hold_identity") || return 1
   local IFS=$'\n'
   set -f
   # shellcheck disable=SC2086 # Deliberate word split on the record's own lines.
@@ -475,11 +487,11 @@ fm_local_handoff_landing_pin() {
 # so a record any other writer has since touched is preserved and reported
 # rather than removed.
 fm_local_handoff_landing_withdraw() {
-  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project>
-  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 path lines current
+  # <parent-data-dir> <identity-blob> <landing-id> <offer-file> <parent-project> <hold-identity>
+  local data=$1 blob=$2 landing_id=$3 offer_file=$4 parent_project=$5 hold_identity=$6 path lines current
   path=$(fm_local_handoff_landing_path "$data" "$landing_id")
   lines=$(fm_local_handoff_landing_lines "$blob" "$landing_id" "$offer_file" \
-    "$parent_project" pinned 0) || return 1
+    "$parent_project" pinned 0 "$hold_identity") || return 1
   if [ -L "$path" ] || [ ! -f "$path" ]; then
     FM_LOCAL_HANDOFF_ERROR="the pin at $path is no longer this request's own record"
     return 1
@@ -781,7 +793,13 @@ fm_local_handoff_offer_identity_proves() {
     FM_LOCAL_HANDOFF_ERROR="child task $task is no longer mode=local-only"
     return 1
   fi
-  local meta_gen
+  local meta_gen meta_branch
+  meta_branch=$(grep '^branch=' "$meta" 2>/dev/null | head -1 | cut -d= -f2- || true)
+  [ -n "$meta_branch" ] || meta_branch="fm/$task"
+  if [ "$meta_branch" != "$branch" ]; then
+    FM_LOCAL_HANDOFF_ERROR="child task $task now records branch $meta_branch, not the offered $branch"
+    return 1
+  fi
   meta_gen=$(grep '^spawn_gen=' "$meta" 2>/dev/null | head -1 | cut -d= -f2- || true)
   [ -n "$meta_gen" ] || meta_gen=0
   if [ "$meta_gen" != "$spawn_gen" ]; then
@@ -854,6 +872,29 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-i
 # leaves nothing a later run could mistake for an acknowledged landing. Callers
 # must also source bin/fm-tasks-axi-lib.sh and bin/fm-backlog-transition-lib.sh.
 # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+# Require the captain's recorded release to belong to the exact lifecycle
+# captured at pin time. The hold owner prints the stamp and answer count for a
+# released row on exit 1; one recorded answer must follow the pinned count.
+fm_local_handoff_landing_released_identity() {  # <script-dir> <home> <state> <landing-id> <landing-blob>
+  local script_dir=$1 home=$2 state=$3 id=$4 blob=$5 pinned current status=0
+  pinned=$(fm_local_handoff_field "$blob" hold_identity)
+  if ! fm_local_handoff_valid_hold_identity "$pinned"; then
+    FM_LOCAL_HANDOFF_ERROR="landing $id has no valid pinned captain-call identity"
+    return 1
+  fi
+  current=$(FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
+    "$script_dir/fm-captain-hold.sh" open "$id" --identity \
+      --identity-if-released --distinguish-absent) || status=$?
+  if [ "$status" -ne 1 ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing $id must have a readable, released captain call (hold status $status)"
+    return 1
+  fi
+  if [ "$current" != "${pinned%#*}#$((${pinned##*#} + 1))" ]; then
+    FM_LOCAL_HANDOFF_ERROR="landing $id's captain-call lifecycle or recorded answer differs from the pinned approval"
+    return 1
+  fi
+}
+
 fm_local_handoff_landing_row_ready() {  # <parent-data-dir> <landing-id>
   local data=$1 id=$2
   if ! fm_backlog_row_probe "$data" "$id"; then

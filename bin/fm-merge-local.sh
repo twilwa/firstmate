@@ -268,26 +268,27 @@ if ! git -C "$PROJ" merge-base --is-ancestor "$DEFAULT" "$MERGE_TARGET"; then
 fi
 
 before=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
-hold_status=0
-FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-  "$SCRIPT_DIR/fm-captain-hold.sh" open "$ID" --distinguish-absent || hold_status=$?
-case "$hold_status" in
-  0)
-    echo "error: task $ID is still held for the captain; release it before merging" >&2
+if [ "$DELEGATED" -eq 1 ]; then
+  if ! fm_local_handoff_landing_released_identity "$SCRIPT_DIR" "$FM_HOME" "$STATE" "$ID" "$LANDING_BLOB"; then
+    echo "error: $FM_LOCAL_HANDOFF_ERROR; refusing to merge" >&2
     exit 1
-    ;;
-  1) ;;
-  3)
-    if [ "$DELEGATED" -eq 1 ]; then
-      echo "error: this home has no landing row $ID; a delegated landing is authorized only by the captain-held row its landing record was pinned to" >&2
+  fi
+else
+  hold_status=0
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-captain-hold.sh" open "$ID" --distinguish-absent || hold_status=$?
+  case "$hold_status" in
+    0)
+      echo "error: task $ID is still held for the captain; release it before merging" >&2
       exit 1
-    fi
-    ;;
-  *)
-    echo "error: could not determine whether task $ID is still held for the captain; refusing to merge" >&2
-    exit 1
-    ;;
-esac
+      ;;
+    1|3) ;;
+    *)
+      echo "error: could not determine whether task $ID is still held for the captain; refusing to merge" >&2
+      exit 1
+      ;;
+  esac
+fi
 merge_status=0
 git -C "$PROJ" merge --ff-only "$MERGE_TARGET" >/dev/null || merge_status=$?
 if [ "$DELEGATED" -eq 0 ]; then

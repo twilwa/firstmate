@@ -472,7 +472,7 @@ validate_existing_local_only_binding() {  # <home> <project>
 # child's history cannot be damaged by anything that happens to the parent
 # clone and nothing here can ever publish outward.
 seed_local_only_clone() {  # <project> <src> <dst> <home>
-  local project=$1 src=$2 dst=$3 home=$4 ref branch commit existing_origin cloned_head
+  local project=$1 src=$2 dst=$3 home=$4 ref branch commit existing_remotes cloned_head
   ref=$(local_only_seed_ref "$project" "$src") || return 1
   read -r branch commit <<EOF
 $ref
@@ -481,9 +481,12 @@ EOF
   if [ -e "$dst" ]; then
     [ -d "$dst" ] || { echo "error: seeded project $project exists at $dst but is not a directory" >&2; return 1; }
     git -C "$dst" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "error: seeded project $project at $dst is not a git repo" >&2; return 1; }
-    existing_origin=$(git -C "$dst" remote get-url origin 2>/dev/null || true)
-    [ -z "$existing_origin" ] || {
-      echo "error: seeded local-only project $project at $dst has origin $existing_origin; a local-only clone carries no publication remote" >&2
+    existing_remotes=$(git -C "$dst" remote) || {
+      echo "error: cannot inspect remotes of seeded local-only project $project at $dst" >&2
+      return 1
+    }
+    [ -z "$existing_remotes" ] || {
+      echo "error: seeded local-only project $project at $dst has remotes $existing_remotes; a local-only clone carries no publication remote" >&2
       return 1
     }
     fm_local_handoff_binding_present "$home" "$project" || {
