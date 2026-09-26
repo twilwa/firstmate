@@ -1,0 +1,1 @@
+signal: /tmp/pq-live/pi-keyed-echo/state/task.status /tmp/pq-live/pi-keyed-echo/state/task.turn-ended

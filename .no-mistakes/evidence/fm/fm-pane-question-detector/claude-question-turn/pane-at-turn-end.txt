@@ -1,0 +1,22 @@
+CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings
+ '{"feedbackDrafts":"off"}'
+firstmate@vmi3582798:/tmp/pq-lab-cwd.mi07$ CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claud
+e --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}'
+ ▐▛███▛█   Claude Code v2.1.283
+▝▜██████▀  Opus 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   /tmp/pq-lab-cwd.mi07
+
+
+❯ Reply with exactly the following text and nothing else, no tools: Would you like me to use REST or RPC for the new
+  endpoint?
+
+● Would you like me to use REST or RPC for the new endpoint?
+
+✻ Worked for 2s · done 5:54 PM
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_P…
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+                                            You've used 90% of your weekly limit · resets Sep 30, 6pm (Europe/Berlin)

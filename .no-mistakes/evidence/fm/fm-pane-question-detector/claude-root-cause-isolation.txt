@@ -1,0 +1,2 @@
+real Claude v2.1.283 capture -> fm_pane_question_text: []
+same capture with only the "✻ Worked for 2s · done" row removed -> [● Would you like me to use REST or RPC for the new endpoint?]

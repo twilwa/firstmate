@@ -1,0 +1,40 @@
+
+ $ ls -1 /tmp/pq-live/pi-key-mention-prose/state/task.inbox/*.msg 2>/dev/null | sort -V (timeout 10s)
+
+ /tmp/pq-live/pi-key-mention-prose/state/task.inbox/001.msg
+
+ Took 0.0s
+
+
+
+ read /tmp/pq-live/pi-key-mention-prose/state/task.inbox/001.msg:1
+
+
+ Deciding on database filing approach
+
+
+ $ epoch=$(date +%s)
+ printf 'needs-decision [at=%s] [key=db-choice]: Should I file a needs-decision for the database choice, or just pick
+ Postgres?\n' "$epoch" >> /tmp/pq-live/pi-key-mention-prose/state/task.status
+ mv /tmp/pq-live/pi-key-mention-prose/state/task.inbox/001.msg
+ /tmp/pq-live/pi-key-mention-prose/state/task.inbox/handled/ (timeout 10s)
+
+ (no output)
+
+ Took 0.0s
+
+
+ Done
+
+
+ Reply with exactly the following text and nothing else, no tools: Filed needs-decision [at=1] [key=choice]: Choose
+ REST or RPC?
+
+
+ Filed needs-decision [at=1] [key=choice]: Choose REST or RPC?
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/pq-lab-cwd.mi07
+↑18k ↓977 R50k CH85.2% $0.145 (sub) 1.6%/272k (auto)                                     (openai-codex) gpt-5.5 • medium

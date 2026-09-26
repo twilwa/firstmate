@@ -1,0 +1,13 @@
+watch rc=0
+== .wake-queue
+1790438275	1	signal	task.status	signal: /tmp/pq-live/pi-summary-turn/state/task.status /tmp/pq-live/pi-summary-turn/state/task.turn-ended
+1790438275	2	signal	task.turn-ended	signal: /tmp/pq-live/pi-summary-turn/state/task.status /tmp/pq-live/pi-summary-turn/state/task.turn-ended
+== inbox nudges
+== marker .pane-question-task
+20:1790438271	0	
+== drain
+1790438275	1	signal	task.status	signal: /tmp/pq-live/pi-summary-turn/state/task.status /tmp/pq-live/pi-summary-turn/state/task.turn-ended
+1790438275	2	signal	task.turn-ended	signal: /tmp/pq-live/pi-summary-turn/state/task.status /tmp/pq-live/pi-summary-turn/state/task.turn-ended
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 3915206.1790438275.Ee99Nr
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+SUMMARY pi-summary-turn decision-pending-wakes=0 nudges=0

@@ -1,0 +1,1 @@
+signal: /tmp/pq-live/claude-question-turn/state/task.status /tmp/pq-live/claude-question-turn/state/task.turn-ended
