@@ -1,0 +1,2 @@
+ok - fm-brief.sh help documents the --tests scope choices
+not ok - no-mistakes none scope omitted Test-step timeout guidance

@@ -1,0 +1,13 @@
+no-mistakes  full       ship-instructions: skip=0 timeout=1 | relaunch brief: skip=0 timeout=1 | meta kind=ship
+no-mistakes  safe-suite ship-instructions: skip=0 timeout=1 | relaunch brief: skip=0 timeout=1 | meta kind=ship
+no-mistakes  focused    ship-instructions: skip=1 timeout=1 | relaunch brief: skip=1 timeout=1 | meta kind=ship
+no-mistakes  none       ship-instructions: skip=1 timeout=1 | relaunch brief: skip=1 timeout=1 | meta kind=ship
+direct-PR    full       ship-instructions: skip=0 timeout=0 | relaunch brief: skip=0 timeout=0 | meta kind=ship
+
+=== ship-instructions.md '## Test scope' after fm-promote.sh --mode no-mistakes --tests full ===
+## Test scope
+Scope: full.
+Permits: the full local suite, including tests that drive live Herdr, Codex, or Lavish.
+Expected duration: at least about 126 minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured CI duration hints, not counting live Herdr, Codex, or Lavish runtime, which is unmeasured and can be much longer; record your own estimate in your first status line before starting. Any other repo has no measured figure either.
+If the Test step times out, report needs-decision; never choose fix.
+

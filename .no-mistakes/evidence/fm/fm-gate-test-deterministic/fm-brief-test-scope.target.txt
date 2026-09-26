@@ -1,0 +1,5 @@
+ok - fm-brief.sh help documents the --tests scope choices
+ok - fm-brief.sh generates default and selected scopes through its public interface
+ok - fm-promote.sh renders the selected test scope into ship instructions and the promoted brief
+ok - safe-suite manifest excludes live Herdr, Codex, and Lavish families
+All test-scope brief tests passed.
