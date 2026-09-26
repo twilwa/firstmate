@@ -2,7 +2,8 @@
 # Guard review-step skips against leaving unnamed findings open.
 # Usage: bin/fm-nm-respond.sh [--whole-step] --action ACTION [axi respond flags]
 # --whole-step explicitly authorizes a whole review-step skip; it is removed
-# before forwarding. Every other argument is forwarded unchanged and in order.
+# before forwarding. --yes, --yes=*, -y, and a repeated --findings are refused;
+# every other argument is forwarded unchanged and in order.
 set -euo pipefail
 
 fail() { printf 'fm-nm-respond: %s\n' "$*" >&2; exit 1; }
