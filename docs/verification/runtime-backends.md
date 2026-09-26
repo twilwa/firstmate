@@ -1152,6 +1152,27 @@ Observed 2026-08-19:
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
 
+Measured 2026-09-26 against Claude Code 2.1.283 in private tmux panes with no user settings, hooks, or MCP servers, typing a slash command and never submitting it:
+
+```sh
+tmux -L cap -f /dev/null new-session -d -s cap -x 150 -y 45 "$(type -P claude)" --restricted --strict-mcp-config
+tmux -L cap send-keys -t cap -l /exit
+tmux -L cap capture-pane -p -t cap
+```
+
+Claude drew its completion popup below the composer's closing rule, and the popup's depth followed the pane size rather than the payload:
+
+| Pane | Typed | Composer row, counted up from the popup's last row |
+| --- | --- | --- |
+| 100x30 | `/exit` | 17 |
+| 150x45 | `/exit` | 21 |
+| 200x60 | `/exit` | 21 |
+| 80x80 | `/exit` | 30 |
+| 80x80 | `/` | 42 |
+
+From 150x45 up, a 20-row read held only the popup, which is why the Claude payload proof selects from the whole recent read when the payload-sized read selects no composer.
+`tests/fm-backend-herdr.test.sh` pins that proof with the popup rows of the 150x45 capture, and the `/exit` step of `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh` refreshes it on Herdr.
+
 ### Prune and respawn
 
 The real label-collision reproduction is owned by:
@@ -1654,7 +1675,7 @@ ok - real herdr 0.9.0 + pi 0.85.1: the registration left behind by a quit pi rea
 ```
 
 `tests/fm-control-herdr-smoke.test.sh` proves the same shape through the control plane with no harness launched (the two `stale` lines under "Agent lifecycle control" above): a registration over a real agent-named process reads `alive`, stopping that process makes the pane read `stale-agent` and recover as `dead` while `agent get` still reports the record, `exit` then reports `already-stopped`, and `--relaunch` reuses the same endpoint with the local copy intact.
-`tests/fm-backend-herdr.test.sh` pins the logic portably with canned `process-info` bodies over real processes, driving the signals apart: the identical shell-only foreground reads `stale-agent` for a childless shell and `live` when an agent-named process is still a descendant of that shell, a `working`, `done`, or `blocked` record over a shell-only pane reads the same as `idle`, an unreadable process view reads `unknown` and refuses husk closing, a transient prompt helper beside the shell settles into `stale-agent` on the next shell-only sample while a foreground that never settles within the bound still reads `live`, and `busy_state` verifies a `working` record before reporting busy.
+`tests/fm-backend-herdr.test.sh` pins the logic portably with canned `process-info` bodies over real processes, driving the signals apart: the identical shell-only foreground reads `stale-agent` for a childless shell and `live` when an agent-named process is still a descendant of that shell, a verified harness foreground reads `live` even when `process-info` names no shell pid, as for a directly launched harness with no wrapping shell, a `working`, `done`, or `blocked` record over a shell-only pane reads the same as `idle`, an unreadable process view reads `unknown` and refuses husk closing, a transient prompt helper beside the shell settles into `stale-agent` on the next shell-only sample while a foreground that never settles within the bound still reads `live`, and `busy_state` verifies a `working` record before reporting busy.
 `tests/fm-crew-state.test.sh` pins the recovery classifier: a stale registration over a shell-only pane reports agent gone rather than alive or unreachable, and a stale `working` record never reports the pane working.
 A stale-registration pane is never a husk: create, reclaim, presentation recovery, and session cleanup keep refusing it, and only recovery reuses it.
 
