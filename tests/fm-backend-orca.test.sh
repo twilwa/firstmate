@@ -652,11 +652,62 @@ test_spawn_refuses_orca_nonisolated_worktree() {
   assert_absent "$state/$id.meta" "aborted Orca spawn must not record meta"
   assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''create' \
     "Orca spawn should validate the worktree before creating a terminal"
-  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close'$'\x1f''--terminal'$'\x1f''term-bad'$'\x1f''--json' \
-    "Orca spawn should close the implicit terminal after validation aborts"
-  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-bad::/orca/wt-bad'$'\x1f''--force'$'\x1f''--json' \
-    "Orca spawn should remove the worktree after validation aborts"
-  pass "fm-spawn.sh --backend orca: refuses non-isolated worktrees and closes implicit terminals"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' \
+    "Orca spawn must preserve an unverified implicit terminal"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm' \
+    "Orca spawn must not remove a path that failed custody validation"
+  assert_contains "$out" "preserving unverified Orca allocation id='wt-bad::/orca/wt-bad'" \
+    "Orca refusal should identify the preserved allocation"
+  pass "fm-spawn.sh --backend orca: refuses non-isolated worktrees and preserves unverified resources"
+}
+
+test_spawn_preserves_foreign_orca_allocation() {
+  local proj foreign wt data state config id out status before
+  id='orcaforeigncustody'
+  proj="$TMP_ROOT/foreign-requesting-project"
+  foreign="$TMP_ROOT/foreign-owner"
+  wt="$TMP_ROOT/foreign-slot/repo"
+  data="$TMP_ROOT/foreign-data"
+  state="$TMP_ROOT/foreign-state"
+  config="$TMP_ROOT/foreign-config"
+  fm_git_init_commit "$proj"
+  git clone --quiet "$proj" "$foreign"
+  mkdir -p "$(dirname "$wt")"
+  git -C "$foreign" worktree add --quiet -b fm/previous-task "$wt" HEAD
+  printf 'committed work\n' > "$wt/task.txt"
+  git -C "$wt" add task.txt
+  git -C "$wt" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm task-work
+  printf 'unfinished work\n' >> "$wt/task.txt"
+  before=$(git -C "$wt" rev-parse HEAD)
+  printf 'task=previous-task\nhome=/preserved-owner\n' > "$TMP_ROOT/foreign-slot/.fm-slot-owner"
+  cp "$TMP_ROOT/foreign-slot/.fm-slot-owner" "$TMP_ROOT/foreign-claim-before"
+  mkdir -p "$data/$id" "$state" "$config"
+  printf 'worktree=%s\nkind=ship\n' "$wt" > "$state/previous-task.meta"
+  cp "$state/previous-task.meta" "$TMP_ROOT/foreign-meta-before"
+  write_spawn_brief "$data" "$id"
+  touch "$state/.last-watcher-beat"
+  orca_case foreign-spawn
+  printf '1\n' > "$RESP/1.exit"
+  printf '{"ok":true,"result":{"repo":{"id":"repo-requested"}}}\n' > "$RESP/2.out"
+  printf '{"ok":true,"result":{"worktree":{"id":"wt-foreign","path":"%s"},"terminal":{"handle":"term-foreign"}}}\n' "$wt" > "$RESP/3.out"
+  out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    FM_PROJECTS_OVERRIDE="$TMP_ROOT/unused-projects" FM_SPAWN_NO_GUARD=1 \
+    "$ROOT/bin/fm-spawn.sh" "$id" "$proj" claude --mode no-mistakes --yolo off --backend orca 2>&1 )
+  status=$?
+  expect_code 1 "$status" "Orca spawn should refuse a foreign linked worktree"
+  assert_contains "$out" 'does not belong to the spawning project' 'Orca refusal lost custody cause'
+  assert_contains "$out" "terminal='term-foreign'" 'Orca refusal lost preserved terminal identity'
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' 'Orca closed an unverified terminal'
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm' 'Orca removed a foreign allocation'
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send' 'Orca sent a foreign worker launch'
+  assert_absent "$state/$id.meta" 'refused allocation published task custody'
+  assert_absent "$foreign/.git/FETCH_HEAD" 'refused allocation fetched foreign clone'
+  [ "$(git -C "$wt" rev-parse HEAD)" = "$before" ] || fail 'refusal moved foreign HEAD'
+  assert_grep 'unfinished work' "$wt/task.txt" 'refusal discarded foreign work'
+  cmp -s "$TMP_ROOT/foreign-slot/.fm-slot-owner" "$TMP_ROOT/foreign-claim-before" || fail 'refusal changed foreign claim'
+  cmp -s "$state/previous-task.meta" "$TMP_ROOT/foreign-meta-before" || fail 'refusal changed prior metadata'
+  pass 'fm-spawn.sh --backend orca: foreign allocation refusal preserves work, custody and resources'
 }
 
 test_spawn_removes_orca_worktree_when_terminal_create_fails() {
@@ -1380,6 +1431,7 @@ test_spawn_writes_orca_metadata_and_launches_harness
 test_spawn_refuses_orca_secondmate_before_home_mutation
 test_spawn_refuses_orca_when_runtime_not_ready
 test_spawn_refuses_orca_nonisolated_worktree
+test_spawn_preserves_foreign_orca_allocation
 test_spawn_removes_orca_worktree_when_terminal_create_fails
 test_spawn_preserves_orca_metadata_when_abort_cleanup_fails
 test_spawn_releases_orca_resources_when_metadata_write_fails
