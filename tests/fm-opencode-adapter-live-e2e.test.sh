@@ -5,7 +5,7 @@
 set -u
 # shellcheck source=tests/fixtures.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
-fm_live_gate opt-in FM_OPENCODE_ADAPTER_LIVE herdr jq opencode systemd-run
+fm_live_gate opt-in FM_OPENCODE_ADAPTER_LIVE herdr jq opencode rg systemd-run
 
 LAB_HELPER=${HERDR_LAB_HELPER:-$ROOT/bin/fm-herdr-lab.sh}
 [ -x "$LAB_HELPER" ] || fail "OpenCode lab helper is unavailable: $LAB_HELPER"
@@ -90,7 +90,7 @@ lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: queued E
 queued=0
 for ((i=0; i<70; i++)); do
   screen=$(lab pane read "$pane" --source recent --lines 150 2>/dev/null || true)
-  if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*QUEUED_DONE[[:space:]]*$'; then queued=1; break; fi
+  if printf '%s\n' "$screen" | rg -q '^[[:space:]]*QUEUED_DONE[[:space:]]*$'; then queued=1; break; fi
   sleep 1
 done
 [ "$queued" -eq 1 ] || fail "OpenCode $VERSION: busy-queued Enter never produced a reply"
@@ -122,7 +122,9 @@ for ((i=0; i<40; i++)); do
   case "$(<"$record")" in *'state=idle source=opencode-plugin'*) break ;; esac
   sleep 1
 done
+[ ! -e "$EXITED" ] || fail "OpenCode $VERSION: OpenCode exited before /exit"
 lab pane send-text "$pane" '/exit' >/dev/null || fail "OpenCode $VERSION: cannot type /exit"
+[ ! -e "$EXITED" ] || fail "OpenCode $VERSION: OpenCode exited before /exit was submitted"
 lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: cannot submit /exit"
 exited=0
 for ((i=0; i<20; i++)); do
@@ -143,7 +145,7 @@ lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: cannot s
 resumed=0
 for ((i=0; i<50; i++)); do
   screen=$(lab pane read "$pane" --source recent --lines 160 2>/dev/null || true)
-  if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*RESUME_DONE[[:space:]]*$'; then resumed=1; break; fi
+  if printf '%s\n' "$screen" | rg -q '^[[:space:]]*RESUME_DONE[[:space:]]*$'; then resumed=1; break; fi
   sleep 1
 done
 [ "$resumed" -eq 1 ] || fail "OpenCode $VERSION: --continue did not process a manually submitted instruction"
