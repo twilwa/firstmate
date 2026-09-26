@@ -1,7 +1,7 @@
 # OpenCode
 
 Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
-OpenCode 2.0.16's model-pinned `mini` launch, busy state, interrupt, and exit were verified on 2026-09-26, while its fresh-pane resume check has no recorded run yet; [`runtime-backends.md`](../../../../../docs/verification/runtime-backends.md#opencode-2016-standalone-worker-2026-09-26) holds the version-specific evidence.
+OpenCode 2.0.16's model-pinned `mini` launch, busy state, interrupt, exit, and resume were verified on 2026-09-26 with `FM_OPENCODE_ADAPTER_LIVE=1 tests/fm-opencode-adapter-live-e2e.test.sh`; [`runtime-backends.md`](../../../../../docs/verification/runtime-backends.md#opencode-2016-standalone-worker-2026-09-26) holds the version-specific evidence.
 The worker adapter requires OpenCode 2.0 or later: its launch uses 2.0's `--standalone` and `mini` forms, and its busy-state plugin exports only the 2.0 default definition.
 Primary and secondmate use is unsupported on OpenCode 2.0 until the `fm-primary-*` plugins, which export only the v1 named hook, are ported to the default-definition loader; `../../../bin/fm-spawn.sh` refuses an opencode `--secondmate`.
 
@@ -13,7 +13,7 @@ Primary and secondmate use is unsupported on OpenCode 2.0 until the `fm-primary-
 | Exit command | `/exit`. |
 | Interrupt | Double Escape; verified on 2.0.16 during a shell-tool turn, but a long shell command can delay cancellation, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
-| Resume | Relaunch with `--continue --standalone` in the same directory; the live guard relaunches `mini` without `--prompt` in a fresh pane and requires it to recall a code word given only in the earlier session. Do not assume `--prompt` auto-submits alongside `--continue`. |
+| Resume | Relaunch with `--continue --standalone` in the same directory; on 2.0.16, `mini --model <provider/model> --standalone --continue` without `--prompt`, run in a fresh pane, recalled a code word given only in the earlier session. Do not assume `--prompt` auto-submits alongside `--continue`. |
 | Model flag | On 2.0, the main TUI has no `--model`; pin interactive workers with `opencode mini --model <provider/model> --standalone --prompt`. For an unpinned worker, use `opencode --standalone --prompt`. `run -m provider/model#variant` is headless, not an interactive worker. |
 | Effort flag | None for Firstmate's interactive launches; only the model-pinned `opencode mini` launch has live 2.0.16 evidence, and the unpinned `opencode --standalone --prompt` main-TUI launch is covered only by its launch-string test; `opencode run` has `--variant`, but that is not this path. |
 | Model discovery | On 2.0 `opencode models` accepts no provider positional argument; its empty stdout is not proof an authenticated model is unavailable. Confirm the candidate with a bounded standalone probe. |
@@ -22,7 +22,7 @@ Primary and secondmate use is unsupported on OpenCode 2.0 until the `fm-primary-
 
 OpenCode can auto-upgrade in the background, and the running TUI can exit mid-task.
 That behavior was observed live during an upgrade from 1.15.7 to 1.17.3.
-If the pane shows the exit banner, use the verified resume path above.
+If the pane shows the exit banner, use the 2.0 `mini --continue` resume path verified above.
 
 ## Busy-queued Enter
 
