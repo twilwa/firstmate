@@ -1435,7 +1435,7 @@ fm_pending_reply_tick_one() {  # <state-dir> <corr_id> <busy_state> [secondmate-
 # Never scrapes secondmate conversation; uses only parent status, backend busy
 # state, and optional secondmate-home wrong-home path checks.
 fm_pending_reply_tick() {  # <state-dir>
-  local state=$1 dir rec corr task_id phase delivered meta backend target label busy sm_home harness remote_host
+  local state=$1 dir rec corr task_id phase escalated escalation_closed field delivered meta backend target label busy sm_home harness remote_host
   local observation observation_task found i
   local -a observation_tasks=() observation_values=()
   dir=$(fm_pending_reply_dir "$state")
@@ -1445,14 +1445,25 @@ fm_pending_reply_tick() {  # <state-dir>
     case "$(basename "$rec")" in
       .*) continue ;;
     esac
-    corr=$(fm_pending_reply_get "$rec" corr_id)
+    # Read each record once in this hot path. Historical resolved replies can
+    # number in the hundreds; invoking grep, tail and cut for each field, then
+    # acquiring a lock for every already-closed reply, delays the entire cycle.
+    corr='' task_id='' phase='' escalated='' escalation_closed=''
+    while IFS= read -r field || [ -n "$field" ]; do
+      case "$field" in
+        corr_id=*) corr=${field#corr_id=} ;;
+        task_id=*) task_id=${field#task_id=} ;;
+        phase=*) phase=${field#phase=} ;;
+        escalated_epoch=*) escalated=${field#escalated_epoch=} ;;
+        escalation_closed_epoch=*) escalation_closed=${field#escalation_closed_epoch=} ;;
+      esac
+    done < "$rec"
     [ -n "$corr" ] || corr=$(basename "$rec")
-    task_id=$(fm_pending_reply_get "$rec" task_id)
-    phase=$(fm_pending_reply_get "$rec" phase)
     if [ "$phase" = resolved ]; then
-      # Cheap no-op unless an escalation for this record is still open; this is
-      # the retry that makes the close converge after a transient write failure.
-      fm_pending_reply_close_escalation "$state" "$corr" || true
+      # Only an escalated, not-yet-closed reply can have an open decision to
+      # close. Still retry those closes after transient failures on later cycles.
+      [ -z "$escalated" ] || [ -n "$escalation_closed" ] \
+        || fm_pending_reply_close_escalation "$state" "$corr" || true
       continue
     fi
     fm_pending_reply_reconcile_delivery "$state" "$corr" || true
