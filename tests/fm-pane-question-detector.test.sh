@@ -21,7 +21,7 @@ watch_turn() {  # <case-dir>: one watcher run until it surfaces the turn end
 question_counts() {  # <state> -> "<decision-wakes> <nudges>"
   local wakes nudges
   wakes=$(grep -c 'decision-pending task.turn-ended' "$1/.wake-queue" 2>/dev/null || true)
-  nudges=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$1/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
+  nudges=$(grep -rl --include='*.msg' 'Your last turn ended on a question. If it needs a decision' "$1/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   printf '%s %s' "${wakes:-0}" "$nudges"
 }
 
@@ -34,7 +34,7 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   : > "$state/task.turn-ended"
   watch_turn "$dir" || fail "watcher did not surface turn end in $1"
   out=$(cat "$state/.wake-queue")
-  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
+  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question. If it needs a decision' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   if [ "$4" -eq 1 ]; then
     case "$out" in *'decision-pending task.turn-ended'*) ;; *) fail "missing decision-pending reason in $1: $out" ;; esac
     FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-wake-drain.sh" > "$dir/drain" 2>/dev/null \
@@ -58,7 +58,7 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   wait "$pid" 2>/dev/null || true
   count=$(grep -c 'decision-pending task.turn-ended' "$state/.wake-queue" 2>/dev/null || true)
   [ "${count:-0}" -le 1 ] || fail "repeated decision wake in $1: $(cat "$state/.wake-queue")"
-  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
+  nudge=$(grep -rl --include='*.msg' 'Your last turn ended on a question. If it needs a decision' "$state/task.inbox" 2>/dev/null | wc -l | tr -d '[:space:]')
   [ "$nudge" -eq "$4" ] || fail "repeated nudge in $1"
   pass "$1"
 }
@@ -131,3 +131,26 @@ test_question_once_per_status_position() {
   pass "one decision-pending wake and nudge per status position"
 }
 test_question_once_per_status_position
+
+# The nudge's example line, copied literally from the delivered inbox record,
+# must file a keyed decision under the classifier's status grammar.
+test_nudge_example_parses_as_keyed_decision() {
+  local dir state msg example verb key
+  dir=$(make_case nudge-example); state="$dir/state"
+  printf '%b\n' "$ASK$PI_TAIL" > "$dir/pane"
+  : > "$state/task.status"
+  printf 'window=test:fm-task\nkind=ship\nharness=codex\n' > "$state/task.meta"
+  : > "$state/task.turn-ended"
+  watch_turn "$dir" || fail "nudge-example turn was not surfaced"
+  msg=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" | head -n 1)
+  [ -n "$msg" ] || fail "no nudge delivered for the example check"
+  example=$(grep '^needs-decision ' "$msg")
+  [ "$(printf '%s\n' "$example" | wc -l | tr -d '[:space:]')" -eq 1 ] \
+    || fail "nudge must carry exactly one example status line: $(cat "$msg")"
+  verb=$(bash -c '. "$1/bin/fm-classify-lib.sh"; status_line_verb "$2"' _ "$ROOT" "$example")
+  key=$(bash -c '. "$1/bin/fm-classify-lib.sh"; _fm_decision_key "$2"' _ "$ROOT" "$example")
+  [ "$verb" = needs-decision ] || fail "nudge example verb parsed as '$verb': $example"
+  [ "$key" = api-shape ] || fail "nudge example key parsed as '$key': $example"
+  pass "nudge example line files a keyed needs-decision"
+}
+test_nudge_example_parses_as_keyed_decision
