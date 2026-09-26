@@ -31,7 +31,9 @@ firstmate_minutes() {
 }
 
 test_public_scaffold_renders_default_and_explicit_scopes() {
-  local id scope brief status out safe_minutes full_minutes
+  local id scope brief status out safe_minutes full_minutes test_step_skip test_step_timeout
+  test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
+  test_step_timeout='If the Test step times out, report needs-decision; never choose fix.'
   safe_minutes=$(firstmate_minutes xargs "$ROOT/bin/fm-test-run.sh" --estimate-ms --all < "$ROOT/tests/safe-suite-exclusions.txt")
   full_minutes=$(firstmate_minutes "$ROOT/bin/fm-test-run.sh" --estimate-ms --all)
 
@@ -86,6 +88,27 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
         ;;
     esac
   done
+
+  for scope in none focused safe-suite full; do
+    id="brief-scope-no-mistakes-$scope"
+    FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode no-mistakes --tests "$scope" >/dev/null 2>&1 \
+      || fail "no-mistakes brief rejected --tests $scope"
+    brief="$HOME_ROOT/data/$id/brief.md"
+    assert_grep "$test_step_timeout" "$brief" "no-mistakes $scope scope omitted Test-step timeout guidance"
+    case "$scope" in
+      none|focused)
+        assert_grep "$test_step_skip" "$brief" "no-mistakes $scope scope omitted Test-step skip guidance" ;;
+      *)
+        assert_no_grep "$test_step_skip" "$brief" "no-mistakes $scope scope was told to skip the Test step" ;;
+    esac
+  done
+
+  id='brief-scope-direct-pr-focused'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode direct-PR --tests focused >/dev/null 2>&1 \
+    || fail 'direct-PR brief rejected --tests focused'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_no_grep "$test_step_skip" "$brief" 'direct-PR focused scope received no-mistakes Test-step skip guidance'
+  assert_no_grep "$test_step_timeout" "$brief" 'direct-PR focused scope received no-mistakes Test-step timeout guidance'
 
   id='brief-scope-scout-safe'
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout --tests=safe-suite >/dev/null 2>&1 \
