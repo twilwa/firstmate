@@ -1597,9 +1597,10 @@ EOF
 # composer's envelope (a box's top border, pi's opening separator, the left
 # bar's first row, or the bare glyph row, lifted to an enclosing separator
 # pair), so the harness's composer and footer furniture never stand in for its
-# transcript. A trailing turn-duration status row is also screen furniture,
-# not assistant text: accept it only by its glyph/verb/duration shape, not by
-# a particular status verb or completion timestamp. Returns 1 when no composer
+# transcript. The one turn-duration status row directly above the composer is
+# also screen furniture, not assistant text: accept it only by its non-ASCII
+# glyph/verb/duration shape, not by a particular status verb or completion
+# timestamp. Returns 1 when no composer
 # can be selected: an unsplittable screen has no transcript to offer.
 fm_composer_transcript_above() {  # <screen>
   local plain top
@@ -1622,11 +1623,11 @@ fm_composer_transcript_above() {  # <screen>
     NR <= n { row[NR] = $0; count = NR }
     END {
       while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
-      # A decorated status glyph, one verb, and an elapsed duration. The
+      # A non-ASCII status glyph, one verb, and an elapsed duration. The
       # optional completion timestamp is furniture too. Ordinary assistant
-      # bullets (●, •, ⏺) do not qualify as status glyphs.
-      while (count > 0 && row[count] !~ /^[[:space:]]*(●|•|⏺)/ &&
-             row[count] ~ /^[[:space:]]*[^[:alnum:][:space:]]+[[:space:]]+[[:alpha:]]+[[:space:]]+for[[:space:]]+([0-9]+[.])?[0-9]+(ms|s|m|h)([[:space:]]+[0-9]+(ms|s|m|h))*([[:space:]]*·[[:space:]]*done[[:space:]]+[0-9]+:[0-9]+([[:space:]]*[AP]M)?)?[[:space:]]*$/) {
+      # bullets (●, •, ⏺) and ASCII list markers do not qualify as status glyphs.
+      if (count > 0 && row[count] !~ /^[[:space:]]*(●|•|⏺)/ &&
+          row[count] ~ /^[[:space:]]*[^[:print:][:cntrl:]]+[[:space:]]+[[:alpha:]]+[[:space:]]+for[[:space:]]+([0-9]+[.])?[0-9]+(ms|s|m|h)([[:space:]]+[0-9]+(ms|s|m|h))*([[:space:]]*·[[:space:]]*done[[:space:]]+[0-9]+:[0-9]+([[:space:]]*[AP]M)?)?[[:space:]]*$/) {
         count--
         while (count > 0 && row[count] ~ /^[[:space:]]*$/) count--
       }

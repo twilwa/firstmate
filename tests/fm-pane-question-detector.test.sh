@@ -80,6 +80,9 @@ run_turn claude-question "$ASK$CLAUDE_TAIL" '' 1
 run_turn claude-summary "Implementation complete.$CLAUDE_TAIL" '' 0
 run_turn claude-other-verb "$ASK\n\n✳ Churned for 3s$CLAUDE_PROMPT_TAIL" '' 1
 run_turn claude-assistant-bullet "$ASK\n● Worked for 2s$CLAUDE_PROMPT_TAIL" '' 0
+run_turn list-timings "Next: should I also bump the lockfile?\n- Soaked for 30m\n- Tested for 5m$PI_TAIL" '' 0
+run_turn list-timing-address "Captain, the soak results are in:\n\n* Ran for 2h$PI_TAIL" '' 0
+run_turn claude-two-status-rows "$ASK\n\n✳ Churned for 3s\n\n✻ Worked for 2s · done 5:54 PM$CLAUDE_PROMPT_TAIL" '' 0
 run_turn codex-question "$ASK$CODEX_TAIL" '' 1
 run_turn codex-summary "Implementation complete.$CODEX_TAIL" '' 0
 run_turn unsplittable "$ASK" '' 0
