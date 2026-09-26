@@ -84,3 +84,20 @@ rg -q "^check: task-budget task=$TASK period=2 age=50400s .*last_status_ago=1434
 state_line=$(crew_at "$((START + WALL + 2 * REPEAT))")
 case "$state_line" in *'budget: age=50400s '*'last_status_ago=14340s'*) ;; *) fail "crew-state reset the clock: $state_line" ;; esac
 pass 'replacement endpoint retains the original task budget start'
+
+# A marker write is unsafe when the destination has become a symlink.
+# It must warn on each cycle but not take the fleet watcher down with it.
+: > "$STATE/.wake-queue"
+rm -f "$STATE/.budget-wake-$TASK"
+ln -s /dev/null "$STATE/.budget-wake-$TASK"
+rc=0
+FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE" FM_BUDGET_NOW_EPOCH="$((START + WALL + 2 * REPEAT))" \
+  FM_POLL=1 FM_HEARTBEAT=999999 FM_CHECK_INTERVAL=999999 FM_WATCH_HANDLING_SUCCESSOR=1 \
+  FM_WATCH_TRACE="$TMP_ROOT/marker-error.trace" timeout 3 "$ROOT/bin/fm-watch.sh" > "$TMP_ROOT/marker-error.out" 2> "$TMP_ROOT/marker-error.err" || rc=$?
+[ "$rc" = 124 ] || fail "marker refusal ended watcher before test timeout: rc=$rc stdout=$(cat "$TMP_ROOT/marker-error.out") stderr=$(cat "$TMP_ROOT/marker-error.err")"
+warning_count=$(rg -c 'watcher: task budget check failed; retrying next cycle' "$TMP_ROOT/marker-error.err" || true)
+[ "${warning_count:-0}" -ge 1 ] || fail 'marker-write refusal did not warn'
+rg -q ' task-budget$' "$TMP_ROOT/marker-error.trace" \
+  || fail 'watcher did not advance past the failed budget tick'
+[ "$(count_budget_rows)" = 0 ] || fail 'marker refusal published an unprotected wake'
+pass 'marker-write refusal warns and the watcher continues polling'

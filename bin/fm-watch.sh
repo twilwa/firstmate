@@ -2535,11 +2535,12 @@ rerecord_device_shifted_pr_poll() {  # <id>
 # Lock the queue and the high-water marker together so an acknowledged wake
 # cannot be reissued on a watcher restart. The marker stores the largest period
 # seen for this task's original start, so a backward clock cannot reopen it.
-# A failed marker publication stops the watcher rather than silently losing the
-# only durable proof that the wake was sent. Queue keys include the period so
+# A failed marker publication warns and retries next cycle without stopping
+# supervision; a queued key prevents a duplicate before acknowledgement.
+# Queue keys include the period so
 # distinct four-hour repeats cannot be coalesced by the drain.
 task_budget_tick() {
-  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period
+  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period failed=0
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
     task=${meta##*/}; task=${task%.meta}
@@ -2551,12 +2552,16 @@ task_budget_tick() {
     [ "$period" -ge 0 ] || continue
     marker="$STATE/.budget-wake-$task"
     key="task-budget:$task:$FM_BUDGET_ID:$period"
-    fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
+    if ! fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"; then
+      failed=1
+      continue
+    fi
     recorded_id='' recorded_period=''
     if [ -e "$marker" ] || [ -L "$marker" ]; then
       if [ ! -f "$marker" ] || [ -L "$marker" ]; then
         fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-        return 1
+        failed=1
+        continue
       fi
       read -r recorded_id recorded_period < "$marker" || true
     fi
@@ -2573,22 +2578,26 @@ task_budget_tick() {
     if [ "$queued" -eq 0 ]; then
       fm_wake_append_locked check "$key" "$reason" || {
         fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-        return 1
+        failed=1
+        continue
       }
     fi
     tmp=$(mktemp "$STATE/.budget-wake.XXXXXX") || {
       fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-      return 1
+      failed=1
+      continue
     }
     if ! printf '%s %s\n' "$FM_BUDGET_ID" "$period" > "$tmp" \
       || ! chmod 0600 "$tmp" || ! _fm_atomic_replace "$tmp" "$marker"; then
       rm -f -- "$tmp"
       fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-      return 1
+      failed=1
+      continue
     fi
     fm_lock_release "$FM_WAKE_QUEUE_LOCK"
     wake "$reason"
   done
+  return "$failed"
 }
 
 resurface_after_downtime() {
@@ -2668,7 +2677,7 @@ while :; do
   watch_step_done secondmate-stall
 
   # Check cumulative cost before signal triage; a chatty worker cannot starve it.
-  task_budget_tick || { echo "watcher: task budget check failed" >&2; exit 1; }
+  task_budget_tick || echo "watcher: task budget check failed; retrying next cycle" >&2
   watch_step_done task-budget
 
   # Process-to-event liveness repair. This never discovers a result by polling:
