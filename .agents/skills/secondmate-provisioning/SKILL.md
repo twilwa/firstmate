@@ -181,7 +181,7 @@ No worker record is created or invented for the child.
 The primary alone fast-forwards its local default branch, then completes its own landing record and publishes a durable landing receipt back into the child home.
 Only after that receipt is published does the landing close its `<landing-id>` backlog item; any earlier failure leaves the item open.
 
-Only that receipt permits the child task's ordinary teardown, and `bin/fm-teardown.sh` checks the task branch still points to the offered commit and re-proves that the receipt's commit remains in the primary's default branch, even when the task worktree is missing.
+Only that receipt permits the child task's ordinary teardown, and `bin/fm-teardown.sh` refuses a task branch that has moved off the offered commit (a branch already deleted is not a move) and re-proves that the receipt's commit remains in the primary's default branch, even when the task worktree is missing.
 It derives which repository to ask from the child's own seeded parent route and project binding and from the parent's matching landing record, never from the receipt's own words, and it asks that question even when the child's worktree is already gone.
 A merge inside the child clone, or a branch pushed anywhere, is not that proof and does not substitute for it.
 When a landing succeeds but its receipt, landing record, or backlog item close cannot be completed, the work is landed and safe: re-run the idempotent `bin/fm-local-handoff.sh receipt <offer-file> --landing <landing-id>`, which finishes all three without landing again, before tearing anything down.
