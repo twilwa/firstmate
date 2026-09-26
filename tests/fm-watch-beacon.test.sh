@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # A live watcher completing slow work must renew its beacon before the next wait.
 set -u
+# shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
 
 work=$(fm_test_tmproot fm-watch-beacon)
