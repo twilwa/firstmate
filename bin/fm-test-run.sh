@@ -98,6 +98,16 @@
 #   FM_TEST_SUMMARY_FAMILY family=<name> count=<n> duration_ms=<n> failed=<n>
 #   FM_TEST_SLOWEST rank=<k> script=<path> duration_ms=<n>
 #   FM_TEST_BUDGET max_wall_ms=<n> duration_ms=<n>   (only with --max-wall-ms)
+#   FM_TEST_LISTENER pid=<n> port=<n> test=<script> command=<argv>   (per leak)
+#   FM_TEST_LISTENERS found=<n>
+#
+# Listener guard:
+#   After a run that executed scripts, every process still carrying this
+#   invocation's inherited FM_TEST_RUN_TOKEN and holding a listening TCP socket
+#   is reported as a leak and fails the run; listeners this invocation did not
+#   start are ignored. The guard reports but does not stop leaked servers. Where
+#   it cannot inspect sockets (non-Linux, no /proc/net/tcp, or no python3), it
+#   prints "FM_TEST_LISTENERS unchecked: <reason>" to stderr and does not fail.
 #
 # Placement refusal:
 #   A task worker is assigned an isolated worktree, and that placement is
@@ -110,8 +120,9 @@
 #
 # Exit status is non-zero if any selected script exits non-zero, a configured
 # --fail-on-gate-skip token appears, the measured duration exceeds
-# --max-wall-ms, timing-artifact finalization fails, or a concurrent worker
-# violates its isolation check. Other gate skips (first meaningful line
+# --max-wall-ms, timing-artifact finalization fails, a concurrent worker
+# violates its isolation check, or the listener guard finds a leak or cannot
+# finish its inspection. Other gate skips (first meaningful line
 # matching ^skip:) remain successful and are counted as skipped_gate; each one
 # is logged with its reason and recorded in the timing artifact.
 #
