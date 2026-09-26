@@ -550,7 +550,7 @@ while :; do
     ;;
   --key) break ;;
   --*)
-    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --fire-and-forget, and --key. Nothing was sent." >&2
+    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --defer-until, --fire-and-forget, and --key. Nothing was sent." >&2
     exit 1
     ;;
   *) break ;;
@@ -759,11 +759,12 @@ fi
 # command; the decision then stays open and re-surfaces, never silently lost.
 # All of one answer's closes are this home's own bookkeeping, written by the
 # very turn that answered the decisions, so they go through ONE guarded
-# self-announced append (bin/fm-wake-lib.sh) and do not wake this same session
-# again, including when this home already folded those bytes through OPEN
-# DECISIONS without a matching watcher seen marker; any concurrent foreign
-# status bytes, or a worker line the fold read but never listed, leave the
-# watcher's wake path untouched.
+# self-announced append (bin/fm-wake-lib.sh). That records the appended byte
+# range so separate --resolve-key answers do not each wake this same session,
+# including when this home already folded those bytes through OPEN DECISIONS
+# without a matching watcher seen marker; any concurrent foreign status bytes,
+# or a worker line the fold read but never listed, leave the watcher's wake
+# path untouched.
 fm_send_close_resolved_keys() { # <answer-text>
   local note=$1 k close_note append_rc still manual_close_cmd close_lines=() i=0
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')

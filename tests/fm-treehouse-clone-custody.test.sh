@@ -8,7 +8,7 @@ set -eu
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 fm_live_gate default-on FM_TREEHOUSE_CLONE_CUSTODY treehouse git jq
 TMP_ROOT=$(fm_test_tmproot fm-treehouse-clone-custody)
-TREEHOUSE_BIN=$(command -v treehouse)
+TREEHOUSE_BIN=$(type -P treehouse)
 export HOME="$TMP_ROOT/user" XDG_CONFIG_HOME="$TMP_ROOT/config" XDG_DATA_HOME="$TMP_ROOT/data"
 mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
 export TREEHOUSE_ROOT="$TMP_ROOT/legacy pool"
@@ -63,6 +63,7 @@ fi
 exec "$(dirname "$0")/tmux-fixture" "$@"
 SH
 chmod +x "$FAKEBIN/tmux"
+head -n2 "$FAKEBIN/tmux" >/dev/null
 HOME_DIR="$TMP_ROOT/home"
 fm_test_spawn_home "$HOME_DIR" codex
 

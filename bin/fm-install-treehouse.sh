@@ -9,7 +9,8 @@
 # Usage:
 #   fm-install-treehouse.sh <destination-directory>
 #
-# Pins Treehouse v2.3.0, the version exercised by the local real-Herdr suite.
+# Pins Treehouse v2.3.0, the version exercised by the local real-Herdr suite
+# and a release with the global --root flag bin/fm-spawn.sh passes.
 set -eu
 
 FM_TREEHOUSE_CI_VERSION=2.3.0

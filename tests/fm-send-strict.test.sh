@@ -253,7 +253,7 @@ test_unknown_flag_is_refused_before_anything_is_recorded() {
   [ "$rc" -ne 0 ] || fail "an unrecognised flag was accepted instead of refused"
   assert_contains "$(cat "$err")" "unknown flag '--not-a-real-flag'" \
     "the refusal should name the offending token"
-  assert_contains "$(cat "$err")" "--resolve-key, --fire-and-forget, and --key" \
+  assert_contains "$(cat "$err")" "--resolve-key, --defer-until, --fire-and-forget, and --key" \
     "the refusal should name the flags fm-send actually accepts"
   [ ! -e "$home/state/lane-uf.inbox" ] \
     || fail "the refused flag still created a steering record"$'\n'"$(ls -R "$home/state/lane-uf.inbox")"

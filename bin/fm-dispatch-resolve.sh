@@ -16,16 +16,24 @@
 #   a file descriptor, never on argv; nothing logs or writes it.
 #
 # What it does when on with at least one rule: one POST to
-#   https://api.typesafe.ai/v1/systemone with the project name and the whole brief as
-#   state and ONE Choice question whose
-#   options are every rule's `when` from config/crew-dispatch.json plus one
-#   fixed generic none option. Jev returns the matched rule, a probability per
-#   option, and a confidence. Everything after that is jq: the confidence
-#   floor, the rule's declared `approval` and `floor`, each profile's declared
-#   `provider` and `floor`, the quota rows from ONE quota-axi --json snapshot,
-#   and the spendPriority argmax over the eligible candidates. The model never
-#   sees quota, catalogs, approvals, `why`, or `use`. With no rules, it returns
-#   a non-clear result so firstmate keeps using the existing intake.
+#   https://api.typesafe.ai/v1/systemone with the project name and the brief's
+#   `## Captain's intent` and `## Firstmate spec` sections, tagged when it is a
+#   scout brief (the whole brief when it has neither section), as state and
+#   ONE Choice question whose options are every rule's `when` from
+#   config/crew-dispatch.json plus one fixed generic none option. Jev returns
+#   the matched rule, a probability per option, and a confidence. Everything
+#   after that is jq: the confidence floor (0.6 on the answer confidence, or a
+#   rule's declared `min_confidence` on that rule's probability, falling to the
+#   most probable other option that clears its own floor), the rule's declared
+#   `approval` and `floor`, each profile's declared `provider` and `floor`, the
+#   quota rows from ONE quota-axi --json snapshot (schema 5 or 6; each
+#   candidate binds to one row through quota_row in
+#   bin/fm-quota-axi-lib.sh, so a Pi lane such as openai-codex-work/...
+#   reads its own account's row and an expanded provider with no row for the
+#   candidate is unmeasured, never blocked), and the spendPriority argmax over
+#   the eligible candidates. The model never sees quota, catalogs, approvals,
+#   confidence floors, `why`, or `use`. With no rules, it returns a non-clear
+#   result so firstmate keeps using the existing intake.
 #   docs/configuration.md "Crew dispatch profiles" owns the declared fields and
 #   "Typed dispatch resolution" owns this tool's operator contract.
 #
@@ -33,6 +41,7 @@
 #   dispatch-resolve:
 #     status: clear | ambiguous | escalate | error
 #     model/latency_ms/tokens, rule (when excerpt) and confidence, probabilities
+#     fallback: <runner-up rule taken when the picked rule missed its own floor>
 #     reason: <why the status is not clear>
 #     candidate: <harness>:<model> provider=.. scope=.. remaining=..% spendPriority=.. runway=.. -> eligible | eligible, unranked: <reason> | not eligible: <reason>
 #     profile: --harness <h> [--model <m>] [--effort <e>]     (status clear only)
@@ -42,7 +51,8 @@
 #   error     -> API, network, response, or quota-axi failure; decide as today
 #   Every outcome exits 0 so an intake is never blocked by this tool.
 #   A keyed run appends one best-effort resolution receipt to
-#   $FM_HOME/state/dispatch-receipts.jsonl after the block above is printed.
+#   dispatch-receipts.jsonl in the state directory ($FM_STATE_OVERRIDE, else
+#   $FM_HOME/state) after the block above is printed.
 #   On clear only, once fm-spawn has accepted the dispatched profile, a
 #   separate --record-dispatch run appends a second receipt joined to the
 #   latest resolution for the same brief content hash, and names on stderr
@@ -82,6 +92,8 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 . "$SCRIPT_DIR/fm-env-lib.sh"
 # shellcheck source=bin/fm-timing-lib.sh
 . "$SCRIPT_DIR/fm-timing-lib.sh"
+# shellcheck source=bin/fm-brief-heading-lib.sh
+. "$SCRIPT_DIR/fm-brief-heading-lib.sh"
 
 CONFIDENCE_FLOOR=0.6
 TS_MODEL=jev-1.13.0
@@ -90,10 +102,11 @@ TS_TIMEOUT=5
 DEFAULT_WHEN="No listed rule applies to this task."
 RESOLVE_LOCK_ATTEMPTS=7
 DISPATCH_LOCK_ATTEMPTS=21
-RECEIPTS="$FM_HOME/state/dispatch-receipts.jsonl"
-RECEIPT_LOCK="$FM_HOME/state/.dispatch-receipts.lock"
+STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+RECEIPTS="$STATE/dispatch-receipts.jsonl"
+RECEIPT_LOCK="$STATE/.dispatch-receipts.lock"
 
-RULES='' BRIEF_SNAPSHOT='' RESP_FILE='' RESP_HEADERS='' QUOTA=''
+RULES='' BRIEF_SNAPSHOT='' RESP_FILE='' RESP_HEADERS='' QUOTA='' TASK_TEXT=''
 RULES_SHA256='' BRIEF_SHA256='' REQUEST_ID=''
 LAT_MS=null RECEIPT_LOCK_HELD=0
 
@@ -104,9 +117,8 @@ cleanup() {
   [ -z "$RESP_FILE" ] || rm -f -- "$RESP_FILE"
   [ -z "$RESP_HEADERS" ] || rm -f -- "$RESP_HEADERS"
   [ -z "$QUOTA" ] || rm -f -- "$QUOTA"
-  if [ "$RECEIPT_LOCK_HELD" -eq 1 ]; then
-    rm -f -- "$RECEIPT_LOCK" 2>/dev/null || true
-  fi
+  [ -z "$TASK_TEXT" ] || rm -f -- "$TASK_TEXT"
+  receipt_lock_release || true
 }
 trap cleanup EXIT
 
@@ -131,18 +143,17 @@ sha256_text() { # <text>
 }
 
 receipt_lock_acquire() { # <attempt-budget>
-  local budget=$1 attempt=0 owner
-  mkdir -p "$FM_HOME/state" 2>/dev/null || return 1
+  local budget=$1 attempt=0
+  mkdir -p "$STATE" 2>/dev/null || return 1
+  if ! command -v fm_lock_try_acquire >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$SCRIPT_DIR/fm-wake-lib.sh" 2>/dev/null || return 1
+  fi
   while [ "$attempt" -lt "$budget" ]; do
-    if ln -s "$$" "$RECEIPT_LOCK" 2>/dev/null; then
+    if fm_lock_try_acquire "$RECEIPT_LOCK" 2>/dev/null; then
       RECEIPT_LOCK_HELD=1
       return 0
     fi
-    owner=$(readlink "$RECEIPT_LOCK" 2>/dev/null) || owner=''
-    case "$owner" in
-      ''|*[!0-9]*) : ;;
-      *) kill -0 "$owner" 2>/dev/null || rm -f -- "$RECEIPT_LOCK" 2>/dev/null || true ;;
-    esac
     attempt=$((attempt + 1))
     sleep 0.005
   done
@@ -151,7 +162,7 @@ receipt_lock_acquire() { # <attempt-budget>
 
 receipt_lock_release() {
   [ "$RECEIPT_LOCK_HELD" -eq 1 ] || return 0
-  rm -f -- "$RECEIPT_LOCK" 2>/dev/null || return 1
+  fm_lock_release "$RECEIPT_LOCK" 2>/dev/null || return 1
   RECEIPT_LOCK_HELD=0
 }
 
@@ -162,6 +173,9 @@ receipt_append_locked() { # <one-line-json>
   [ ! -L "$RECEIPTS" ] || return 1
   if [ -e "$RECEIPTS" ]; then
     [ -f "$RECEIPTS" ] || return 1
+  fi
+  if [ -s "$RECEIPTS" ] && [ -n "$(tail -c 1 "$RECEIPTS" 2>/dev/null)" ]; then
+    printf '\n' >> "$RECEIPTS" 2>/dev/null || return 1
   fi
   (umask 077; printf '%s\n' "$record" >> "$RECEIPTS") 2>/dev/null
 }
@@ -230,8 +244,9 @@ record_actual_dispatch() {
     join_failed "this home has no resolution receipts yet"
     return 1
   fi
-  base=$(jq -sc --arg brief_sha "$BRIEF_SHA256" '
-    [.[] | select(.receipt_type == "resolution" and .brief_sha256 == $brief_sha)]
+  base=$(jq -Rnc --arg brief_sha "$BRIEF_SHA256" '
+    [inputs | fromjson? | objects
+      | select(.receipt_type == "resolution" and .brief_sha256 == $brief_sha)]
     | last // empty' "$RECEIPTS" 2>/dev/null) || base=''
   if [ -z "$base" ]; then
     receipt_lock_release || true
@@ -357,6 +372,7 @@ rules_err=$(jq -r --argjson verified_harnesses "$VERIFIED_HARNESSES" --arg provi
   elif any((.rules // [])[]; (.when | type) != "string" or (.when | length) == 0) then "each rule needs non-empty when"
   elif any((.rules // [])[]; (profiles(.use) | length) == 0) then "each rule needs at least one use profile"
   elif any((.rules // [])[]; has("approval") and .approval != "captain") then "approval must be \"captain\" when present"
+  elif any((.rules // [])[]; has("min_confidence") and ((.min_confidence | type) != "number" or .min_confidence < 0 or .min_confidence > 1)) then "min_confidence must be a number from 0 through 1 when present"
   elif any((.rules // [])[]; has("select") and ((.select | type) != "string" or (.select | length) == 0)) then "select must be a non-empty string"
   elif any((.rules // [])[]; has("select") and .select != "quota-balanced") then
     "unknown select: " + ([.rules[] | select(has("select") and .select != "quota-balanced") | .select] | unique | join(", "))
@@ -432,8 +448,31 @@ fi
 RESP_FILE=$(mktemp) || die "mktemp failed"
 RESP_HEADERS=$(mktemp) || die "mktemp failed"
 QUOTA=$(mktemp) || die "mktemp failed"
+TASK_TEXT=$(mktemp) || die "mktemp failed"
+
+# Send Jev only the task-specific sections parsed by the shared brief-heading library.
+# A brief with neither section goes whole. Ship delivery mode is deliberately not sent.
+brief_kind() {
+  if grep -qxF 'This is a SCOUT task: the deliverable is a written report, not a PR.' "$BRIEF_SNAPSHOT"; then
+    printf 'Brief kind: scout (report only)\n\n'
+  fi
+}
+task_sections() {
+  local heading
+  for heading in "## Captain's intent" "## Firstmate spec"; do
+    fm_brief_task_heading_present "$BRIEF_SNAPSHOT" "$heading" || continue
+    printf '%s\n%s\n\n' "$heading" "$(fm_brief_task_heading_body "$BRIEF_SNAPSHOT" "$heading")"
+  done
+}
+SECTIONS=$(task_sections)
+if [ -n "$SECTIONS" ]; then
+  { brief_kind; printf '%s\n' "$SECTIONS"; } > "$TASK_TEXT" || die "could not read brief: $BRIEF"
+else
+  cp "$BRIEF_SNAPSHOT" "$TASK_TEXT" || die "could not read brief snapshot: $BRIEF"
+fi
+LAT_MS=null
 command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
-  REQUEST=$(jq -n --rawfile brief "$BRIEF_SNAPSHOT" --arg project "$PROJECT" --arg model "$TS_MODEL" \
+  REQUEST=$(jq -n --rawfile brief "$TASK_TEXT" --arg project "$PROJECT" --arg model "$TS_MODEL" \
     --arg none_criterion "$DEFAULT_WHEN" --slurpfile rules "$RULES" '
     ($rules[0]) as $cfg |
     ($cfg.rules | to_entries | map({key: ("rule_" + ((.key + 1) | tostring)), value: .value.when}) | from_entries) as $criteria |
@@ -486,25 +525,26 @@ fm_quota_json_valid < "$QUOTA" || emit_error "quota-axi --json returned an inval
 
 # ---- resolution: declared gates + quota evidence + argmax, all in jq ------------
 RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg none_criterion "$DEFAULT_WHEN" --argjson pmap "$PMAP" \
-  --slurpfile resp "$RESP_FILE" --slurpfile rules "$RULES" --slurpfile quota "$QUOTA" '
+  --slurpfile resp "$RESP_FILE" --slurpfile rules "$RULES" --slurpfile quota "$QUOTA" "$FM_QUOTA_ROW_JQ"'
   ($resp[0]) as $r | ($rules[0]) as $cfg | ($quota[0]) as $q | ($r.answers.rule) as $a |
   def profiles($v): if ($v | type) == "array" then $v elif ($v | type) == "object" then [$v] else [] end;
-  def prov($p): ([$q.providers[] | select(.provider == $p)] | first) // null;
-  def rows($p): (prov($p) | .quotaSemantics.effectiveAvailability // []);
+  def prov($p; $lane): quota_row($q; $p; $lane);
+  def rows($p; $lane): (prov($p; $lane) | .quotaSemantics.effectiveAvailability // []);
   def bare($m): ($m | split("/") | last);
   def provider_of($c): ($c.provider // $pmap[$c.harness] // null);
-  def measured($p):
-    (prov($p) != null and (["known", "partial"] | index(prov($p).quotaSemantics.status)) != null);
-  def applicable($p; $m):
+  def lane_of($c): quota_lane($c.harness; $c.model);
+  def measured($p; $lane):
+    (prov($p; $lane) != null and (["known", "partial"] | index(prov($p; $lane).quotaSemantics.status)) != null);
+  def applicable($p; $lane; $m):
     (bare($m)) as $bare |
-    [rows($p)[] | select(
+    [rows($p; $lane)[] | select(
       .scope == "all_models" or .scope == "all_products" or
       ($m != "" and (.scope == ("model:" + $bare) or .scope == ("product:" + $bare)))
     )];
-  def floor_state($f; $p):
+  def floor_state($f; $p; $lane):
     if $f == null then "none"
-    elif prov($p) == null or (measured($p) | not) then "unknown"
-    else [rows($p)[] | select(.scope == $f.scope)] as $matches
+    elif prov($p; $lane) == null or (measured($p; $lane) | not) then "unknown"
+    else [rows($p; $lane)[] | select(.scope == $f.scope)] as $matches
       | if ($matches | length) == 0 or any($matches[]; .status != "known") then "unknown"
         elif any($matches[]; .effectivePercentRemaining < $f.min_percent) then "below"
         else "ok"
@@ -513,13 +553,17 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   def evidence($rows):
     $rows | map({scope, status, pct: (.effectivePercentRemaining // null), runway: (.runway.status // null), spendPriority: (.selection.spendPriority // null)});
   def evaluate($c):
-    (provider_of($c)) as $p |
+    (provider_of($c)) as $p | (lane_of($c)) as $lane |
     if $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
-    elif prov($p) == null then {profile: $c, provider: $p, eligible: true, unranked: true, reason: "provider \($p) not in the quota snapshot"}
+    elif prov($p; $lane) == null then
+      {profile: $c, provider: $p, eligible: true, unranked: true,
+       reason: (if any($q.providers[]; .provider == $p)
+                then "provider \($p) has no quota row for account \(if $lane == "" then "default" else $lane end)"
+                else "provider \($p) not in the quota snapshot" end)}
     else
-      (applicable($p; ($c.model // ""))) as $rows |
+      (applicable($p; $lane; ($c.model // ""))) as $rows |
       (evidence($rows)) as $bounds |
-      (floor_state($c.floor; $p)) as $profile_floor_state |
+      (floor_state($c.floor; $p; $lane)) as $profile_floor_state |
       if any($rows[]; (.runway.status // "") == "exhausted_now") then
         ($rows | map(select((.runway.status // "") == "exhausted_now")) | first) as $bad |
         {profile: $c, provider: $p, bounds: $bounds, scope: $bad.scope, pct: ($bad.effectivePercentRemaining // null), runway: $bad.runway.status, eligible: false, reason: "runway exhausted_now at \($bad.scope)"}
@@ -527,18 +571,18 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
         ($rows | map(select(.status == "known" and (.effectivePercentRemaining | type) == "number" and .effectivePercentRemaining <= 0)) | first) as $bad |
         {profile: $c, provider: $p, bounds: $bounds, scope: $bad.scope, pct: $bad.effectivePercentRemaining, runway: $bad.runway.status, eligible: false, reason: "0% remaining at \($bad.scope)"}
       elif $profile_floor_state == "below" then
-        ([rows($p)[] | select(
+        ([rows($p; $lane)[] | select(
           .scope == $c.floor.scope and
           .effectivePercentRemaining < $c.floor.min_percent
         )] | first) as $floor_row |
         {profile: $c, provider: $p, bounds: $bounds, scope: ($floor_row.scope // $c.floor.scope), pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: false, reason: "profile floor \($c.floor.scope) below \($c.floor.min_percent)%"}
-      elif (measured($p) | not) then
+      elif (measured($p; $lane) | not) then
         ($rows | first) as $row |
-        {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, reason: "provider \($p) unmeasured (\(prov($p).quotaSemantics.status))"}
+        {profile: $c, provider: $p, bounds: $bounds, scope: ($row.scope // null), pct: ($row.effectivePercentRemaining // null), runway: ($row.runway.status // null), eligible: true, unranked: true, unknown: true, reason: "provider \($p) unmeasured (\(prov($p; $lane).quotaSemantics.status))"}
       elif ($rows | length) == 0 then
         {profile: $c, provider: $p, bounds: $bounds, eligible: true, unranked: true, unknown: true, reason: "no applicable quota row for provider \($p)"}
       elif $profile_floor_state == "unknown" then
-        ([rows($p)[] | select(.scope == $c.floor.scope)] | first) as $floor_row |
+        ([rows($p; $lane)[] | select(.scope == $c.floor.scope)] | first) as $floor_row |
         {profile: $c, provider: $p, bounds: $bounds, scope: $c.floor.scope, pct: ($floor_row.effectivePercentRemaining // null), runway: ($floor_row.runway.status // null), eligible: true, unranked: true, unknown: true, reason: "profile floor \($c.floor.scope) is unverifiable: not rankable"}
       elif any($rows[]; .status != "known") then
         ($rows | map(select(.status != "known")) | first) as $bad |
@@ -552,14 +596,33 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
          spendPriority: $limiting.selection.spendPriority, runway: $limiting.runway.status, eligible: true, reason: "ok"}
       end
     end;
-  ($a.choice) as $choice |
-  (if ($choice | test("^rule_[1-9][0-9]*$"))
-   then ($choice | ltrimstr("rule_") | tonumber)
-   else null end) as $rule_number |
-  (if $choice == "default" then null
-   elif $rule_number != null and $rule_number <= (($cfg.rules // []) | length) then $cfg.rules[$rule_number - 1]
-   else null end) as $rule |
-  (if $rule == null then "none" else floor_state($rule.floor; $rule.floor.provider) end) as $rule_floor_state |
+  def rule_at($c):
+    if ($c | test("^rule_[1-9][0-9]*$")) then
+      ($c | ltrimstr("rule_") | tonumber) as $n |
+      if $n <= (($cfg.rules // []) | length) then $cfg.rules[$n - 1] else null end
+    else null end;
+  def declared_confidence($c): rule_at($c) as $x | $x != null and ($x | has("min_confidence"));
+  def confidence_floor($c): if declared_confidence($c) then rule_at($c).min_confidence else ($floor | tonumber) end;
+  ($a.choice) as $picked |
+  (confidence_floor($picked)) as $picked_floor |
+  # A declared floor is checked against the probability of that option whether
+  # it is the pick or a runner-up, so a runner-up never needs weaker support
+  # than it would as the pick. Only a rule that declares its own floor falls
+  # through to a runner-up, so a file with no declared floors keeps the single
+  # global floor on the answer confidence exactly.
+  (if declared_confidence($picked) | not then
+     (if $a.confidence >= $picked_floor then {below: false} else {below: true, global: true} end)
+   elif $a.probabilities[$picked] >= $picked_floor then {below: false}
+   else
+     ([$a.probabilities | to_entries[] | select(.key != $picked and .value >= confidence_floor(.key))]
+       | sort_by(-.value)) as $ok |
+     if ($ok | length) == 0 then {below: true, why: "no other option clears its own floor"}
+     elif ($ok | length) > 1 and $ok[1].value == $ok[0].value then {below: true, why: "runner-up tie"}
+     else {below: true, to: $ok[0].key, p: $ok[0].value, to_floor: confidence_floor($ok[0].key)} end
+   end) as $fb |
+  (if $fb.to then $fb.to else $picked end) as $choice |
+  (rule_at($choice)) as $rule |
+  (if $rule == null then "none" else floor_state($rule.floor; $rule.floor.provider; "") end) as $rule_floor_state |
   (if $choice != "default" and $rule == null then []
    elif $rule == null then profiles($cfg.default // null)
    else profiles($rule.use)
@@ -571,15 +634,20 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
    elif $rule_floor_state == "below"
      then {source: "default", use: profiles($cfg.default // null), note: "rule \($choice) floor \($rule.floor.scope) below \($rule.floor.min_percent)%: fall through to default"}
    else {source: $choice, use: profiles($rule.use), note: "rule matched"} end) as $sel |
+  def when_of($c): (if rule_at($c) == null then $none_criterion else rule_at($c).when end | .[0:60]);
   {
     model: $r.model, latency_ms: $lat, tokens: ($r.usage // null),
-    rule: $choice,
-    rule_when: (if $rule == null then $none_criterion else $rule.when end | .[0:60]),
+    rule: $picked,
+    rule_when: when_of($picked),
     confidence: $a.confidence, probabilities: $a.probabilities
-  } as $ev |
+  }
+  + (if $fb.to then {fallback: "\($choice) (\(when_of($choice))) probability \($fb.p) clears its floor \($fb.to_floor); \($picked) probability \($a.probabilities[$picked]) is below its floor \($picked_floor)"} else {} end)
+  as $ev |
   if $sel.invalid then $ev + {status: "error", reason: $sel.invalid}
-  elif $a.confidence < ($floor | tonumber) then
+  elif $fb.below and $fb.global then
     $ev + {status: "ambiguous", reason: "confidence \($a.confidence) below floor \($floor)", candidates: ($answer_use | map(evaluate(.)))}
+  elif $fb.below and ($fb.to | not) then
+    $ev + {status: "ambiguous", reason: "\($picked) probability \($a.probabilities[$picked]) below its floor \($picked_floor); \($fb.why)", candidates: ($answer_use | map(evaluate(.)))}
   elif $sel.escalate then
     $ev + {status: "escalate", reason: $sel.escalate, candidates: ($answer_use | map(evaluate(.)))}
   elif ($sel.use | length) == 0 then $ev + {status: "escalate", reason: "no profiles configured for \($sel.source)", note: $sel.note, candidates: []}
@@ -609,6 +677,7 @@ TEXT=$(jq -r '
   "  model: \(show(.model))   latency_ms: \(show(.latency_ms))   tokens: \(show(.tokens.input_tokens))/\(show(.tokens.output_tokens))",
   "  rule: \(.rule | flat) (\(.rule_when | flat))   confidence: \(.confidence | flat)",
   "  probabilities: \([.probabilities | to_entries[] | "\(.key | flat)=\(.value | flat)"] | join(" "))",
+  (if .fallback then "  fallback: \(.fallback | flat)" else empty end),
   (if .reason then "  reason: \(.reason | flat)" else empty end),
   (if .note then "  note: \(.note | flat)" else empty end),
   (if .unranked_note then "  note: \(.unranked_note | flat)" else empty end),
