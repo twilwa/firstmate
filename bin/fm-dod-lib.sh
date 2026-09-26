@@ -155,7 +155,7 @@ fm_test_scope_valid() {  # <scope>
 
 fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout>
   local scope=$1 flow=$2 lib_dir estimate_ms no_figure
-  local test_step_rule='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite. If the Test step times out, report needs-decision; never choose fix.'
+  local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
   printf '## Test scope\nScope: %s.\n' "$scope"
@@ -168,7 +168,7 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
           printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
       esac
       if [ "$flow" = no-mistakes ]; then
-        printf '%s\n' "$test_step_rule"
+        printf '%s\n' "$test_step_skip"
       fi
       printf '%s\n' 'Expected duration: 0 minutes.'
       ;;
@@ -177,7 +177,7 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
         'Permits: only the tests covering the behavior you touch; never the full local suite.' \
         'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
       if [ "$flow" = no-mistakes ]; then
-        printf '%s\n' "$test_step_rule"
+        printf '%s\n' "$test_step_skip"
       fi
       ;;
     safe-suite)
@@ -194,6 +194,9 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
         "Expected duration: at least about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured CI duration hints, not counting live Herdr, Codex, or Lavish runtime, which is unmeasured and can be much longer; record your own estimate in your first status line before starting. Any other repo has no measured figure either."
       ;;
   esac
+  if [ "$flow" = no-mistakes ]; then
+    printf '%s\n' 'If the Test step times out, report needs-decision; never choose fix.'
+  fi
 }
 
 fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id> [branch] [<forge>]
