@@ -17,7 +17,8 @@
 # while the away-posture record (state/.afk-contract) exists an
 # item held for the captain is never rechecked at all, in either posture.
 # While state/.afk exists, the daemon owns triage and this watcher queues and exits
-# on every wake. Printed reason lines:
+# on every wake. Per-task budget cadence and persisted dedupe are owned below by task_budget_tick.
+# Printed reason lines:
 #   signal: <file>...      status/turn-end signals, surfaced when a listed status
 #                          span has a captain-relevant event OR a no-verb signal lacks
 #                          positive execution evidence, unless afk is active
@@ -201,6 +202,8 @@ mkdir -p "$STATE"
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
 # Steering-inbox loss detection: bin/fm-task-inbox-lib.sh owns the record,
 # doorbell, re-ring ladder, and unavailable-endpoint contracts; this watcher
 # supplies their live endpoint and busy checks plus wake emission
@@ -2527,6 +2530,67 @@ rerecord_device_shifted_pr_poll() {  # <id>
   return 0
 }
 
+# A budget is independent of pane liveness and status events: inspect every
+# recorded ship/scout task on every cycle, even if a different signal is due.
+# Lock the queue and the high-water marker together so an acknowledged wake
+# cannot be reissued on a watcher restart. The marker stores the largest period
+# seen for this task's original start, so a backward clock cannot reopen it.
+# A failed marker publication stops the watcher rather than silently losing the
+# only durable proof that the wake was sent. Queue keys include the period so
+# distinct four-hour repeats cannot be coalesced by the drain.
+task_budget_tick() {
+  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    task=${meta##*/}; task=${task%.meta}
+    case "$task" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    kind=$(fm_task_budget_meta_value "$meta" kind)
+    case "$kind" in ship|scout) ;; *) continue ;; esac
+    fm_task_budget_snapshot "$meta" "$STATE/$task.status" || continue
+    period=$FM_BUDGET_PERIOD
+    [ "$period" -ge 0 ] || continue
+    marker="$STATE/.budget-wake-$task"
+    key="task-budget:$task:$FM_BUDGET_ID:$period"
+    fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
+    recorded_id='' recorded_period=''
+    if [ -e "$marker" ] || [ -L "$marker" ]; then
+      if [ ! -f "$marker" ] || [ -L "$marker" ]; then
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        return 1
+      fi
+      read -r recorded_id recorded_period < "$marker" || true
+    fi
+    if [ "$recorded_id" = "$FM_BUDGET_ID" ] \
+      && [[ "$recorded_period" =~ ^[0-9]+$ ]] && [ "$recorded_period" -ge "$period" ]; then
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      continue
+    fi
+    reason="check: task-budget task=$task period=$period $(fm_task_budget_detail)"
+    queued=0
+    while IFS= read -r queued_key; do
+      [ "$queued_key" = "$key" ] && queued=1
+    done < <(fm_wake_queued_keys_locked check)
+    if [ "$queued" -eq 0 ]; then
+      fm_wake_append_locked check "$key" "$reason" || {
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        return 1
+      }
+    fi
+    tmp=$(mktemp "$STATE/.budget-wake.XXXXXX") || {
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      return 1
+    }
+    if ! printf '%s %s\n' "$FM_BUDGET_ID" "$period" > "$tmp" \
+      || ! chmod 0600 "$tmp" || ! _fm_atomic_replace "$tmp" "$marker"; then
+      rm -f -- "$tmp"
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      return 1
+    fi
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    wake "$reason"
+  done
+}
+
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
   # Re-announcing from this cycle is what turned a lost handshake into an
@@ -2602,6 +2666,10 @@ while :; do
     exit 1
   }
   watch_step_done secondmate-stall
+
+  # Check cumulative cost before signal triage; a chatty worker cannot starve it.
+  task_budget_tick || { echo "watcher: task budget check failed" >&2; exit 1; }
+  watch_step_done task-budget
 
   # Process-to-event liveness repair. This never discovers a result by polling:
   # each registered source has its own child blocking on that source, and this
