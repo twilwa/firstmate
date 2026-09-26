@@ -128,7 +128,9 @@ else
 fi
 
 MERGE_CONTROL_LOCK=
+IMPORT_REF=
 merge_control_cleanup() {
+  [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
   [ -z "$MERGE_CONTROL_LOCK" ] || fm_lock_release "$MERGE_CONTROL_LOCK" || true
 }
 trap merge_control_cleanup EXIT
@@ -148,7 +150,6 @@ fi
 PARENT_HOME=$(cd "$FM_HOME" && pwd -P)
 OFFER_BLOB=
 LANDING_BLOB=
-IMPORT_REF=
 if [ "$DELEGATED" -eq 1 ]; then
   [ -d "$PROJECTS" ] || { echo "error: projects directory $PROJECTS is not present" >&2; exit 1; }
   PROJECTS_ABS=$(cd "$PROJECTS" && pwd -P)
@@ -232,7 +233,6 @@ if [ "$DELEGATED" -eq 1 ]; then
   fi
   IMPORTED=$(git -C "$PROJ" rev-parse --verify --quiet "$IMPORT_REF" 2>/dev/null || true)
   if [ "$IMPORTED" != "$EXPECT_HEAD" ]; then
-    git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
     echo "error: the imported bundle left ${IMPORTED:-no commit} in $PROJ, not the approved $EXPECT_HEAD" >&2
     exit 1
   fi
@@ -262,7 +262,6 @@ fi
 
 # Clean fast-forward only: DEFAULT must be an ancestor of BRANCH.
 if ! git -C "$PROJ" merge-base --is-ancestor "$DEFAULT" "$MERGE_TARGET"; then
-  [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
   echo "REFUSED: $BRANCH is not a fast-forward of $DEFAULT (it has diverged)." >&2
   echo "Have the crewmate rebase $BRANCH onto $DEFAULT, then retry." >&2
   exit 1
@@ -280,13 +279,11 @@ case "$hold_status" in
   1) ;;
   3)
     if [ "$DELEGATED" -eq 1 ]; then
-      [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
       echo "error: this home has no landing row $ID; a delegated landing is authorized only by the captain-held row its landing record was pinned to" >&2
       exit 1
     fi
     ;;
   *)
-    [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
     echo "error: could not determine whether task $ID is still held for the captain; refusing to merge" >&2
     exit 1
     ;;
@@ -298,7 +295,6 @@ if [ "$DELEGATED" -eq 0 ]; then
   MERGE_CONTROL_LOCK=
 fi
 if [ "$merge_status" -ne 0 ]; then
-  [ -z "$IMPORT_REF" ] || git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
   exit "$merge_status"
 fi
 after=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
@@ -306,7 +302,6 @@ after=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
 [ ! -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE "$SCRIPT_DIR/fm-fleet-ledger.sh" merged "$ID" local || true
 
 if [ "$DELEGATED" -eq 1 ]; then
-  git -C "$PROJ" update-ref -d "$IMPORT_REF" >/dev/null 2>&1 || true
   # The receipt is a plain record written into the child home's state
   # directory. It deliberately takes no lock in that home, because this path
   # already holds this home's landing lock and waiting on another home's lock
@@ -321,14 +316,10 @@ if [ "$DELEGATED" -eq 1 ]; then
     landing_failure="its landing row could not be closed"
   fi
   if [ -n "$landing_failure" ]; then
-    fm_lock_release "$MERGE_CONTROL_LOCK" || true
-    MERGE_CONTROL_LOCK=
     echo "error: $CHILD_TASK landed in $DEFAULT ($before -> $after) but $landing_failure: $FM_LOCAL_HANDOFF_ERROR" >&2
     echo "The work is landed and nothing is lost. Finish acknowledging it with bin/fm-local-handoff.sh receipt $OFFER_FILE --landing $ID, which is safe to repeat, and do not tear the child task down until it succeeds." >&2
     exit 1
   fi
-  fm_lock_release "$MERGE_CONTROL_LOCK" || true
-  MERGE_CONTROL_LOCK=
   echo "landed $CHILD_TASK at $EXPECT_HEAD into local $DEFAULT ($before -> $after) in $PROJ"
   echo "receipt=$(fm_local_handoff_receipt_path "$(fm_local_handoff_field "$OFFER_BLOB" child_home)/state" "$CHILD_TASK")"
 else

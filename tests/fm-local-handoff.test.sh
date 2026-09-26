@@ -113,9 +113,10 @@ record_field() {  # <file> <key>
 
 # The approval owner for every delegated landing is a real captain-held
 # backlog row in the primary home, so these cases drive the actual
-# bin/fm-captain-hold.sh lifecycle instead of simulating one. Reports 1 when
-# this host's tasks-axi cannot host the row, so a case can skip that half
-# rather than assert against a capability it does not have.
+# bin/fm-captain-hold.sh lifecycle instead of simulating one. Reports 1 only
+# when this host has no tasks-axi at all, so a case can skip that half rather
+# than assert against a capability it does not have; any setup failure with
+# tasks-axi installed fails the case.
 FX_LANDING=
 FX_LANDING_RECORD=
 prepare_landing_row() {  # <landing-id>
@@ -128,8 +129,8 @@ prepare_landing_row() {  # <landing-id>
   [ -f "$FX_MAIN/data/backlog.md" ] \
     || printf '%s\n' '## In flight' '' '## Queued' '' '## Done' > "$FX_MAIN/data/backlog.md"
   (cd "$FX_MAIN" && tasks-axi add "$FX_LANDING" "Land the child's offered work" \
-    --kind ship --start) >/dev/null 2>&1 || return 1
-  hold_landing_row
+    --kind ship --start) >/dev/null 2>&1 || fail "filing the landing row $FX_LANDING failed"
+  hold_landing_row || fail "holding the landing row $FX_LANDING for the captain failed"
 }
 
 hold_landing_row() {
@@ -423,7 +424,7 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (delegated landing)"; return 0; }
+    || { echo "skip: tasks-axi not found (delegated landing)"; return 0; }
   approve_current_offer
   before=$(git -C "$FX_MAIN/projects/app" rev-parse HEAD)
 
@@ -465,6 +466,8 @@ test_delegated_landing_fast_forwards_and_publishes_a_receipt() {
 
   assert_equals "done" "$(landing_row_state)" \
     "the landing did not close its parent-owned landing row"
+  assert_equals "" "$(git -C "$FX_MAIN/projects/app" for-each-ref refs/fm-local-handoff)" \
+    "the landing left its private import ref behind"
 
   out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
     || fail "cleanup refused a task whose genuine receipt was published"$'\n'"$out"
@@ -555,7 +558,7 @@ test_a_released_approval_covers_only_the_head_it_pinned() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (reused approval)"; return 0; }
+    || { echo "skip: tasks-axi not found (reused approval)"; return 0; }
   approve_current_offer
   err="$TMP_ROOT/reused-approval.err"
 
@@ -586,7 +589,7 @@ test_a_released_approval_covers_only_the_head_it_pinned() {
   assert_equals "$first" "$(record_field "$FX_LANDING_RECORD" head)" \
     "a refused re-pin changed the record the captain answered"
 
-  prepare_landing_row land-app-2 || fail "filing a second landing row failed"
+  prepare_landing_row land-app-2 || fail "tasks-axi vanished before the second landing row"
   approve_current_offer
   run_home "$FX_MAIN" "$MERGE" land-app-2 --offer "$FX_OFFER" --expect-head "$second" \
     >/dev/null 2>"$err" || fail "a freshly approved head failed to land"$'\n'"$(cat "$err")"
@@ -623,7 +626,7 @@ test_pinning_an_offer_needs_an_open_captain_call() {
       "the refusal did not name the closed captain call"
     assert_absent "$landing" "a refused pin wrote a landing record anyway"
   else
-    echo "skip: tasks-axi cannot host the landing row (released-row pin)"
+    echo "skip: tasks-axi not found (released-row pin)"
   fi
   pass "an offer can only be pinned while its captain call is still open"
 }
@@ -638,7 +641,7 @@ test_a_refused_landing_leaves_no_imported_ref() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (non-fast-forward)"; return 0; }
+    || { echo "skip: tasks-axi not found (non-fast-forward)"; return 0; }
   approve_current_offer
   err="$TMP_ROOT/non-fast-forward.err"
 
@@ -673,7 +676,7 @@ test_landing_refuses_a_project_moved_off_local_only() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (changed delivery mode)"; return 0; }
+    || { echo "skip: tasks-axi not found (changed delivery mode)"; return 0; }
   approve_current_offer
   err="$TMP_ROOT/mode-changed.err"
   before=$(git -C "$FX_MAIN/projects/app" rev-parse main)
@@ -704,7 +707,7 @@ test_receipt_recovery_is_idempotent_and_proves_the_landing() {
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   err="$TMP_ROOT/receipt-recovery.err"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (receipt recovery)"; return 0; }
+    || { echo "skip: tasks-axi not found (receipt recovery)"; return 0; }
   approve_current_offer
 
   run_home "$FX_MAIN" "$HANDOFF" receipt "$FX_OFFER" --landing land-app \
@@ -778,7 +781,7 @@ test_a_failed_receipt_keeps_the_landing_row_open_until_recovery() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (failed receipt)"; return 0; }
+    || { echo "skip: tasks-axi not found (failed receipt)"; return 0; }
   approve_current_offer
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   err="$TMP_ROOT/receipt-failure.err"
@@ -829,7 +832,7 @@ test_recovery_refuses_a_missing_landing_row_without_writing() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (missing row recovery)"; return 0; }
+    || { echo "skip: tasks-axi not found (missing row recovery)"; return 0; }
   approve_current_offer
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   err="$TMP_ROOT/missing-row-recovery.err"
@@ -884,7 +887,7 @@ test_recovery_of_a_failed_receipt_refuses_without_its_row() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (failed receipt, missing row)"; return 0; }
+    || { echo "skip: tasks-axi not found (failed receipt, missing row)"; return 0; }
   approve_current_offer
   receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
   err="$TMP_ROOT/failed-receipt-missing-row.err"
@@ -944,7 +947,7 @@ test_teardown_requires_the_parent_receipt() {
     "the refusal did not name the missing landing proof"
 
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (teardown gate)"; return 0; }
+    || { echo "skip: tasks-axi not found (teardown gate)"; return 0; }
   approve_current_offer
   run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
     || fail "the delegated landing failed"
@@ -1023,7 +1026,7 @@ test_the_receipt_gate_survives_a_missing_worktree() {
   assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
 
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (absent worktree)"; return 0; }
+    || { echo "skip: tasks-axi not found (absent worktree)"; return 0; }
   approve_current_offer
   run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>&1 \
     || fail "the delegated landing failed"
@@ -1124,7 +1127,7 @@ test_damaged_records_fail_closed() {
       "the refusal did not name the receipt's disagreement with the offer"
     assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
   else
-    echo "skip: tasks-axi cannot host the landing row (damaged landing record and receipt)"
+    echo "skip: tasks-axi not found (damaged landing record and receipt)"
   fi
   pass "damaged offer, landing, and receipt records refuse instead of landing or proving anything"
 }
@@ -1139,7 +1142,7 @@ test_a_held_landing_row_blocks_the_delegated_landing() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (held landing row)"; return 0; }
+    || { echo "skip: tasks-axi not found (held landing row)"; return 0; }
 
   out=$(run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER") \
     || fail "pinning an offer to the held landing row failed"
@@ -1162,6 +1165,8 @@ test_a_held_landing_row_blocks_the_delegated_landing() {
     "a refused landing recorded itself as landed"
   assert_not_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
     "a held landing still moved the primary's default branch"
+  assert_equals "" "$(git -C "$FX_MAIN/projects/app" for-each-ref refs/fm-local-handoff)" \
+    "a landing refused for its held row left the offered commit in a private import ref"
   pass "a landing record still held for the captain blocks the delegated landing"
 }
 
@@ -1177,7 +1182,7 @@ test_overlapping_requests_never_replace_a_pin() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (overlapping pins)"; return 0; }
+    || { echo "skip: tasks-axi not found (overlapping pins)"; return 0; }
   err_a="$TMP_ROOT/overlapping-pins.a.err"
   err_b="$TMP_ROOT/overlapping-pins.b.err"
   out_b="$TMP_ROOT/overlapping-pins.b.out"
@@ -1229,7 +1234,7 @@ test_a_captains_answer_waits_for_a_pin_in_flight() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-baseline \
-    || { echo "skip: tasks-axi cannot host the landing row (answer during pin)"; return 0; }
+    || { echo "skip: tasks-axi not found (answer during pin)"; return 0; }
   err="$TMP_ROOT/pin-before-answer.err"
   released="$TMP_ROOT/pin-before-answer.answered"
 
@@ -1240,7 +1245,7 @@ test_a_captains_answer_waits_for_a_pin_in_flight() {
   started=$SECONDS
   release_landing_row || fail "the uncontended baseline answer failed"
   baseline=$((SECONDS - started))
-  prepare_landing_row land-app || fail "filing the pinned landing row failed"
+  prepare_landing_row land-app || fail "tasks-axi vanished before the pinned landing row"
 
   install_pin_pause_shim pin-before-answer before
   run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" \
@@ -1318,7 +1323,7 @@ test_a_pin_is_withdrawn_when_its_row_is_released_underneath_it() {
   run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
     || fail "publishing the landing offer failed"
   prepare_landing_row land-app \
-    || { echo "skip: tasks-axi cannot host the landing row (overtaken pin)"; return 0; }
+    || { echo "skip: tasks-axi not found (overtaken pin)"; return 0; }
   err="$TMP_ROOT/pin-overtaken.err"
   land_err="$TMP_ROOT/pin-overtaken.land.err"
 

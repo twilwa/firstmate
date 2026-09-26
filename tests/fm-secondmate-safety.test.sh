@@ -873,9 +873,9 @@ test_home_seed_refuses_missing_projects_without_signal() {
 }
 
 # A registry entry whose forge token the parser cannot resolve yields no posture
-# at all. Reading that refusal as an empty mode would walk straight past the
-# local-only routing refusal above and clone the project into a secondmate home,
-# so the seed must stop instead.
+# at all. Reading that refusal as an empty mode would seed a possibly local-only
+# project as an ordinary published clone instead of a parent-bound local-only
+# copy, so the seed must stop instead.
 test_home_seed_refuses_an_unresolvable_registry_posture() {
   local home subhome err
   home="$TMP_ROOT/unresolvable-posture-home"
