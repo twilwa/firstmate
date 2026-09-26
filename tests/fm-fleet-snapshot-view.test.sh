@@ -92,6 +92,8 @@ EOF
     "worktree=$home/projects/alpha-worktree" \
     "project=alpha" \
     "harness=claude" \
+    "model=anthropic/claude-opus-4" \
+    "effort=high" \
     "kind=ship" \
     "mode=ship" \
     "yolo=off" \
@@ -161,6 +163,12 @@ test_fixture_snapshot_json() {
   ids=$(printf '%s' "$out" | jq -r '.tasks | map(.id) | join(",")')
   [ "$ids" = "cmux-task,scout-task,secondmate-task,ship-task" ] \
     || fail "task ordering must be stable by id, got $ids"
+  printf '%s' "$out" | jq -e '
+    (.tasks[] | select(.id == "ship-task") | {harness,model,effort}) ==
+      {harness:"claude",model:"anthropic/claude-opus-4",effort:"high"}
+    and (.tasks[] | select(.id == "scout-task") | {harness,model,effort}) ==
+      {harness:"codex",model:null,effort:null}
+  ' >/dev/null || fail "model and effort must reflect task metadata or null when absent"
   printf '%s' "$out" | jq -e '
     .tasks[] | select(.id == "ship-task")
     | .current_state.state == "working"
