@@ -2364,10 +2364,11 @@ cleanup_run() {
 trap cleanup_run EXIT
 
 RUN_ID="fm-test-run-${RUN_STARTED_MS}-$$"
-# Override any outer runner's marker: only descendants of this invocation
-# inherit this token. Each script exports its own source path as well.
+# Preserve enclosing run markers so nested runs remain attributable to each
+# ancestor. Each script exports its own source path as well.
 FM_TEST_RUN_TOKEN="${RUN_ID}-${RANDOM}-${RANDOM}"
-export FM_TEST_RUN_TOKEN
+FM_TEST_RUN_TOKENS="${FM_TEST_RUN_TOKENS:+${FM_TEST_RUN_TOKENS}:}${FM_TEST_RUN_TOKEN}"
+export FM_TEST_RUN_TOKEN FM_TEST_RUN_TOKENS
 TOTAL=0
 FAILED=0
 SKIPPED_GATE=0
@@ -2724,7 +2725,8 @@ import os
 import re
 import sys
 
-marker = b'FM_TEST_RUN_TOKEN=' + sys.argv[1].encode()
+token = sys.argv[1].encode()
+marker_prefix = b'FM_TEST_RUN_TOKENS='
 try:
     listening = {}
     tables = ['/proc/net/tcp']
@@ -2746,7 +2748,9 @@ try:
         try:
             with open(pid_dir + '/environ', 'rb') as env_file:
                 env = env_file.read().split(b'\0')
-            if marker not in env:
+            chain = next((item[len(marker_prefix):] for item in env
+                          if item.startswith(marker_prefix)), b'')
+            if token not in chain.split(b':'):
                 continue
             script = next((item.split(b'=', 1)[1] for item in env
                            if item.startswith(b'FM_TEST_RUN_SCRIPT=')), b'unknown')
@@ -2754,22 +2758,23 @@ try:
                 command = command_file.read().replace(b'\0', b' ').decode(errors='replace').strip()
             try:
                 fds = os.listdir(pid_dir + '/fd')
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 continue  # Exited during inspection.
             for fd in fds:
                 try:
                     target = os.readlink(pid_dir + '/fd/' + fd)
-                except FileNotFoundError:
+                except (FileNotFoundError, ProcessLookupError):
                     continue
                 match = re.fullmatch(r'socket:\[(\d+)\]', target)
                 if match and match[1] in listening:
                     leaks.add((name, listening[match[1]], command, script.decode(errors='replace')))
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             continue  # Exited during inspection.
         except PermissionError:
             # Other users' processes have private environments. A marked
             # process whose descriptors are inaccessible is not a clean run.
-            if marker in env:
+            if token in next((item[len(marker_prefix):] for item in env
+                              if item.startswith(marker_prefix)), b'').split(b':'):
                 raise
             continue
     for pid, port, command, script in sorted(leaks):

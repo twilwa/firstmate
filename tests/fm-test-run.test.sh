@@ -1811,6 +1811,113 @@ SH
   pass "runner rejects its leaked listener, accepts cleanup, and ignores external listeners"
 }
 
+# Simulate a procfs process exiting at each per-process access. The injected
+# module only hooks the runner's Python listener scan, never the real /proc.
+test_listener_exited_during_scan() {
+  [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ] || return 0
+  local tmp fixture out rc mode
+  tmp=$(fm_test_tmproot fm-test-run-esrch)
+  mkdir -p "$tmp/py"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/clean.test.sh"
+  fixture="$tmp/clean.test.sh"
+  chmod +x "$fixture"
+  cat >"$tmp/py/sitecustomize.py" <<'PY'
+import builtins
+import io
+import os
+import sys
+
+if len(sys.argv) == 2 and sys.argv[0] == '-' and sys.argv[1].startswith('fm-test-run-'):
+    mode = os.environ.get('FM_FAKE_ESRCH_MODE')
+    pid = '/proc/99999999'
+    original_open = builtins.open
+    original_listdir = os.listdir
+    original_readlink = os.readlink
+
+    def open_proc(path, *args, **kwargs):
+        if path == pid + '/environ':
+            if mode == 'environ':
+                raise ProcessLookupError(3, 'gone', path)
+            return io.BytesIO(b'FM_TEST_RUN_TOKENS=' + os.environ['FM_TEST_RUN_TOKENS'].encode() + b'\0')
+        if path == pid + '/cmdline':
+            if mode == 'cmdline':
+                raise ProcessLookupError(3, 'gone', path)
+            return io.BytesIO(b'fake\0')
+        return original_open(path, *args, **kwargs)
+
+    def list_proc(path):
+        if path == '/proc':
+            return original_listdir(path) + ['99999999']
+        if path == pid + '/fd':
+            if mode == 'fd':
+                raise ProcessLookupError(3, 'gone', path)
+            return ['3']
+        return original_listdir(path)
+
+    def readlink_proc(path, *args, **kwargs):
+        if path == pid + '/fd/3' and mode == 'readlink':
+            raise ProcessLookupError(3, 'gone', path)
+        return original_readlink(path, *args, **kwargs)
+
+    builtins.open = open_proc
+    os.listdir = list_proc
+    os.readlink = readlink_proc
+PY
+  for mode in environ cmdline fd readlink; do
+    set +e
+    FM_FAKE_ESRCH_MODE="$mode" PYTHONPATH="$tmp/py" "$RUNNER" "$fixture" >"$tmp/$mode.out" 2>&1
+    rc=$?
+    set -e
+    out=$(<"$tmp/$mode.out")
+    [ "$rc" -eq 0 ] || fail "exited process at $mode must not fail clean run: $out"
+    assert_contains "$out" 'FM_TEST_LISTENERS found=0' "exited process at $mode ignored"
+  done
+  pass "runner ignores processes exiting during procfs accesses"
+}
+
+test_nested_listener_guard() {
+  [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ] || return 0
+  local tmp out rc
+  tmp=$(fm_test_tmproot fm-test-run-nested-listener)
+  cat >"$tmp/listen.py" <<'PY'
+import socket
+import sys
+import time
+
+with socket.socket() as server:
+    server.bind(('127.0.0.1', 0))
+    server.listen()
+    with open(sys.argv[1], 'w') as result:
+        result.write(str(server.getsockname()[1]))
+    time.sleep(12)
+PY
+  cat >"$tmp/inner.test.sh" <<'SH'
+#!/usr/bin/env bash
+python3 "$NESTED_LISTENER" "$NESTED_PORT" >/dev/null 2>&1 &
+for ((i=0; i<100; i++)); do
+  [ -s "$NESTED_PORT" ] && break
+  sleep 0.02
+done
+[ -s "$NESTED_PORT" ]
+SH
+  cat >"$tmp/outer.test.sh" <<'SH'
+#!/usr/bin/env bash
+"$NESTED_RUNNER" "$NESTED_INNER" >/dev/null 2>&1 || true
+SH
+  chmod +x "$tmp/inner.test.sh" "$tmp/outer.test.sh"
+  set +e
+  NESTED_RUNNER="$RUNNER" NESTED_INNER="$tmp/inner.test.sh" \
+    NESTED_LISTENER="$tmp/listen.py" NESTED_PORT="$tmp/port" \
+    "$RUNNER" "$tmp/outer.test.sh" >"$tmp/outer.out" 2>&1
+  rc=$?
+  set -e
+  out=$(<"$tmp/outer.out")
+  [ "$rc" -ne 0 ] || fail "outer run missed nested leaked listener: $out"
+  assert_contains "$out" "port=$(cat "$tmp/port")" "nested listener port reported by outer runner"
+  assert_contains "$out" "test=$tmp/inner.test.sh" "nested listener attributed to inner fixture"
+  pass "outer runner catches a nested run's ignored listener failure"
+}
+
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
@@ -1851,3 +1958,5 @@ test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout
 test_aggregate_json
 test_live_listener_guard
+test_listener_exited_during_scan
+test_nested_listener_guard
