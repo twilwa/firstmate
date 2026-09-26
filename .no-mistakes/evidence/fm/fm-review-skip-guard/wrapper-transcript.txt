@@ -1,0 +1,84 @@
+wrapper: /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh   bash: 5.2.21(1)-release   cwd for calls: a non-Firstmate project dir
+gate fixture (review, 2 open findings):
+  | gate: review
+  | note: Review auto-fix is disabled by default (auto_fix.review: 0; a repo or global auto_fix.review > 0 override re-enables it), so blocking and ask-user review findings park for your decision rather than being silently self-fixed.
+  | findings[2]{id,severity,file,line,action,description}:
+  |   r1,warning,internal/pipeline/executor.go,,auto-fix,Error from os.Remove is ignored
+  |   r2,error,cmd/no-mistakes/main.go,,ask-user,New --force flag bypasses the confirm prompt
+  | help[6]:
+  |   Run `no-mistakes axi respond --action approve` to accept this step and continue
+  |   Run `no-mistakes axi respond --action fix --findings <ids>` to have the pipeline fix the selected findings (do not edit files yourself)
+  |   Run `no-mistakes axi respond --action skip` to skip this step
+  |   Run `no-mistakes axi logs --step review --full` to read the full step log
+  |   A long-running call is working, not stalled - background it if your harness needs to, but the run never advances past a gate on its own. Read every return; on a `gate:`, respond; loop until an `outcome:`.
+  |   Commit post-pipeline follow-up work on top of the existing branch so every pipeline fix commit remains present. Never abort-and-restart, reset, or replace the branch in a way that drops prior gate-fix commits.
+
+### S1 incident replay: help-line whole-step skip with r1 decided, r2 undecided
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip
+fm-nm-respond: review skip leaves unnamed open findings: r1,r2 (name each with --findings or use --whole-step)
+exit=1
+
+### S1b skip naming only r1 leaves r2 open
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip --findings r1
+fm-nm-respond: review skip leaves unnamed open findings: r2 (name each with --findings or use --whole-step)
+exit=1
+
+### S1c mixed case / = forms cannot dodge the guard
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action=SKIP --step=Review --findings=r1
+fm-nm-respond: review skip leaves unnamed open findings: r2 (name each with --findings or use --whole-step)
+exit=1
+
+### S1d repeated --findings (axi keeps last) cannot name both
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip --findings r1 --findings r2
+fm-nm-respond: pass --findings once; axi keeps only the last value
+exit=1
+
+### S2 one-by-one: skip naming every open finding is forwarded
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip --findings r1\,r2
+FORWARDED to no-mistakes axi respond: [--action] [skip] [--findings] [r1,r2]
+exit=0
+
+### S3 explicit --whole-step skip is forwarded, flag stripped
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --whole-step --action skip --step review
+FORWARDED to no-mistakes axi respond: [--action] [skip] [--step] [review]
+exit=0
+
+### S4 non-skip actions pass through (fix one finding)
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action fix --findings r1 --instructions -y\ keep\ it\ small
+FORWARDED to no-mistakes axi respond: [--action] [fix] [--findings] [r1] [--instructions] [-y keep it small]
+exit=0
+
+### S4b approve passes through
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action approve
+FORWARDED to no-mistakes axi respond: [--action] [approve]
+exit=0
+
+### S5 skip on a non-review gate is not blocked
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip
+FORWARDED to no-mistakes axi respond: [--action] [skip]
+exit=0
+
+### S5b empty review gate skip is allowed
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip
+FORWARDED to no-mistakes axi respond: [--action] [skip]
+exit=0
+
+### S6 unreadable status refuses skip (fail closed)
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action skip
+fm-nm-respond: cannot read open review findings from axi status; refusing skip
+exit=1
+
+### S7 --yes refused
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --action approve --yes
+fm-nm-respond: --yes and -y are forbidden for every action
+exit=1
+
+### S7b -y refused
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh -y --action fix --findings r1
+fm-nm-respond: --yes and -y are forbidden for every action
+exit=1
+
+### S7c --yes=true refused
+$ cd other-project && /home/firstmate/.treehouse/firstmate-e3a38d/13/firstmate/data/fm-review-skip-guard/opus-gate/worktrees/1d1d806f1f3a/01M3EY2AKHFXNVX42TGMGS8QM5/bin/fm-nm-respond.sh --yes=true --action skip --step test
+fm-nm-respond: --yes and -y are forbidden for every action
+exit=1
