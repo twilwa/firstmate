@@ -1736,10 +1736,21 @@ assert len(doc["scripts"])==3
   pass "aggregate-json merges lane timing artifacts"
 }
 
+# Release a listen.py fixture by its <prefix>.stop file and wait until it has
+# closed its socket and removed <prefix>.port.
+release_test_listener() {  # <prefix>
+  local i
+  touch "$1.stop"
+  for ((i=0; i<300; i++)); do
+    [ -e "$1.port" ] || return 0
+    sleep 0.05
+  done
+}
+
 # The runner rejects a leaked listener, accepts registered cleanup, and ignores
 # listeners it did not start.
 test_live_listener_guard() {
-  local tmp fixture outside out rc before
+  local tmp fixture outside out rc before leak_rc leaked untouched
   tmp=$(fm_test_tmproot fm-test-run-listeners)
   cat >"$tmp/listen.py" <<'PY'
 import os
@@ -1756,6 +1767,7 @@ with socket.socket() as server:
     deadline = time.monotonic() + 12
     while not os.path.exists(release) and time.monotonic() < deadline:
         time.sleep(0.05)
+os.remove(ready)
 PY
   fixture="$tmp/probe.test.sh"
   cat >"$fixture" <<'SH'
@@ -1778,36 +1790,39 @@ SH
     [ -s "$tmp/outside.port" ] && break
     sleep 0.02
   done
-  [ -s "$tmp/outside.port" ] || fail "outside listener did not start"
+  [ -s "$tmp/outside.port" ] || { release_test_listener "$tmp/outside"; fail "outside listener did not start"; }
   before=$(cat "$tmp/outside.port")
   set +e
   LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/leaked.port" \
     FIXTURE_RELEASE="$tmp/leaked.stop" "$RUNNER" "$fixture" >"$tmp/leak.out" 2>&1
-  rc=$?
+  leak_rc=$?
   set -e
-  out=$(<"$tmp/leak.out")
-  if [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ]; then
-    [ "$rc" -ne 0 ] || fail "runner accepted a live listener: $out"
-    assert_contains "$out" "port=$(cat "$tmp/leaked.port")" "leak port reported"
-    assert_contains "$out" "test=$fixture" "leaking test reported"
-    assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
-  else
-    assert_contains "$out" "FM_TEST_LISTENERS unchecked:" "unsupported listener check is explicit"
-  fi
-  touch "$tmp/leaked.stop"
+  leaked=$(cat "$tmp/leaked.port" 2>/dev/null || true)
+  release_test_listener "$tmp/leaked"
   set +e
   LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/clean.port" \
     FIXTURE_RELEASE="$tmp/clean.stop" FIXTURE_CLEANUP=1 \
     "$RUNNER" "$fixture" >"$tmp/clean.out" 2>&1
   rc=$?
   set -e
+  untouched=0
+  [ "$before" = "$(cat "$tmp/outside.port")" ] && [ ! -e "$tmp/outside.stop" ] && untouched=1
+  release_test_listener "$tmp/outside"
+  wait "$outside" || true
+  out=$(<"$tmp/leak.out")
+  if [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ]; then
+    [ "$leak_rc" -ne 0 ] || fail "runner accepted a live listener: $out"
+    [ -n "$leaked" ] || fail "leaked listener did not start: $out"
+    assert_contains "$out" "port=$leaked" "leak port reported"
+    assert_contains "$out" "test=$fixture" "leaking test reported"
+    assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
+  else
+    assert_contains "$out" "FM_TEST_LISTENERS unchecked:" "unsupported listener check is explicit"
+  fi
   out=$(<"$tmp/clean.out")
   [ "$rc" -eq 0 ] || fail "registered cleanup must pass: $out"
   assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
-  [ "$before" = "$(cat "$tmp/outside.port")" ] && [ ! -e "$tmp/outside.stop" ] \
-    || fail "runner touched outside listener"
-  touch "$tmp/outside.stop"
-  wait "$outside" || true
+  [ "$untouched" = 1 ] || fail "runner touched outside listener"
   pass "runner rejects its leaked listener, accepts cleanup, and ignores external listeners"
 }
 
@@ -1877,23 +1892,28 @@ PY
 
 test_nested_listener_guard() {
   [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ] || return 0
-  local tmp out rc
+  local tmp out rc port
   tmp=$(fm_test_tmproot fm-test-run-nested-listener)
   cat >"$tmp/listen.py" <<'PY'
+import os
 import socket
 import sys
 import time
 
+ready, release = sys.argv[1:]
 with socket.socket() as server:
     server.bind(('127.0.0.1', 0))
     server.listen()
-    with open(sys.argv[1], 'w') as result:
+    with open(ready, 'w') as result:
         result.write(str(server.getsockname()[1]))
-    time.sleep(12)
+    deadline = time.monotonic() + 12
+    while not os.path.exists(release) and time.monotonic() < deadline:
+        time.sleep(0.05)
+os.remove(ready)
 PY
   cat >"$tmp/inner.test.sh" <<'SH'
 #!/usr/bin/env bash
-python3 "$NESTED_LISTENER" "$NESTED_PORT" >/dev/null 2>&1 &
+python3 "$NESTED_LISTENER" "$NESTED_PORT" "$NESTED_RELEASE" >/dev/null 2>&1 &
 for ((i=0; i<100; i++)); do
   [ -s "$NESTED_PORT" ] && break
   sleep 0.02
@@ -1907,13 +1927,17 @@ SH
   chmod +x "$tmp/inner.test.sh" "$tmp/outer.test.sh"
   set +e
   NESTED_RUNNER="$RUNNER" NESTED_INNER="$tmp/inner.test.sh" \
-    NESTED_LISTENER="$tmp/listen.py" NESTED_PORT="$tmp/port" \
+    NESTED_LISTENER="$tmp/listen.py" NESTED_PORT="$tmp/nested.port" \
+    NESTED_RELEASE="$tmp/nested.stop" \
     "$RUNNER" "$tmp/outer.test.sh" >"$tmp/outer.out" 2>&1
   rc=$?
   set -e
+  port=$(cat "$tmp/nested.port" 2>/dev/null || true)
+  release_test_listener "$tmp/nested"
   out=$(<"$tmp/outer.out")
   [ "$rc" -ne 0 ] || fail "outer run missed nested leaked listener: $out"
-  assert_contains "$out" "port=$(cat "$tmp/port")" "nested listener port reported by outer runner"
+  [ -n "$port" ] || fail "nested listener did not start: $out"
+  assert_contains "$out" "port=$port" "nested listener port reported by outer runner"
   assert_contains "$out" "test=$tmp/inner.test.sh" "nested listener attributed to inner fixture"
   pass "outer runner catches a nested run's ignored listener failure"
 }
