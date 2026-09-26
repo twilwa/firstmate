@@ -140,6 +140,50 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
   return 0
 }
 
+# Single owner of the task test-scope declaration: bin/fm-brief.sh renders it
+# into ship and scout briefs and bin/fm-promote.sh into promoted ship
+# instructions, both defaulting to none. The Firstmate figures are
+# bin/fm-test-run.sh --estimate-ms over the selections the section names.
+fm_test_scope_valid() {  # <scope>
+  case "$1" in
+    none|focused|safe-suite|full) return 0 ;;
+  esac
+  echo "error: --tests must be one of none, focused, safe-suite, full (got '$1')" >&2
+  return 1
+}
+
+fm_test_scope_section() {  # <none|focused|safe-suite|full>
+  local scope=$1 lib_dir estimate_ms no_figure
+  lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
+  printf '## Test scope\nScope: %s.\n' "$scope"
+  case "$scope" in
+    none)
+      printf '%s\n' \
+        'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' \
+        'Expected duration: 0 minutes.'
+      ;;
+    focused)
+      printf '%s\n' \
+        'Permits: only the tests covering the behavior you touch; never the full local suite.' \
+        'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
+      ;;
+    safe-suite)
+      estimate_ms=$(xargs "$lib_dir/fm-test-run.sh" --estimate-ms --all < "$lib_dir/../tests/safe-suite-exclusions.txt") || return 1
+      printf '%s\n' \
+        "Permits: the suite minus the committed exclusion manifest \`tests/safe-suite-exclusions.txt\`; never the full local suite. If the target repo has no such manifest, say so in your first status line and run focused tests instead." \
+        "Expected duration: about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured duration hints; $no_figure" \
+        "Exclusion manifest: in the Firstmate repo, run \`xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt\`."
+      ;;
+    full)
+      estimate_ms=$("$lib_dir/fm-test-run.sh" --estimate-ms --all) || return 1
+      printf '%s\n' \
+        'Permits: the full local suite, including tests that drive live Herdr, Codex, or Lavish.' \
+        "Expected duration: about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured duration hints; $no_figure"
+      ;;
+  esac
+}
+
 fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id> [branch] [<forge>]
   local mode=$1 id=$2 forge=${4:-none}
   local branch=${3:-fm/$id}

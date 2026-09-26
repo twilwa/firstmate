@@ -76,7 +76,8 @@
 # Because the scaffold has no reliable signal for upstream-bound work, it defaults
 # to none; firstmate must pass --tests full explicitly for upstream-bound work.
 # safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
-# owned by bin/fm-test-run.sh. Only ship and scout task briefs accept this flag.
+# owned by bin/fm-test-run.sh; bin/fm-dod-lib.sh owns the rendered section, which
+# bin/fm-promote.sh shares. Only ship and scout task briefs accept this flag.
 # The generated ship brief records the chosen mode as a fixed machine-readable
 # "Delivery contract: mode=<mode>" line, followed by " forge=gerrit shape=squash"
 # on that forge. bin/fm-spawn.sh reads that line and refuses to launch a ship task
@@ -251,10 +252,7 @@ if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
   echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
   exit 1
 fi
-case "$TEST_SCOPE" in
-  none|focused|safe-suite|full) ;;
-  *) echo "error: --tests must be one of none, focused, safe-suite, full (got '$TEST_SCOPE')" >&2; exit 1 ;;
-esac
+fm_test_scope_valid "$TEST_SCOPE" || exit 1
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
 # decision, but it still only makes sense where a branch is actually created.
@@ -466,33 +464,7 @@ fi
 
 REPO=${POS[1]}
 
-case "$TEST_SCOPE" in
-  none)
-    printf -v TEST_SCOPE_SECTION '%s\n' \
-      '## Test scope' \
-      'Scope: none.' \
-      'Expected duration: 0 minutes.'
-    ;;
-  focused)
-    printf -v TEST_SCOPE_SECTION '%s\n' \
-      '## Test scope' \
-      'Scope: focused.' \
-      "Expected duration: estimate from the target repo's recent timings for the selected tests before running."
-    ;;
-  safe-suite)
-    printf -v TEST_SCOPE_SECTION '%s\n' \
-      '## Test scope' \
-      'Scope: safe-suite.' \
-      "Expected duration: estimate from the target repo's recent safe-suite timings before running; local serial runs may take longer than parallel CI." \
-      "For Firstmate, run \`xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt\`; elsewhere use the target repo safe-suite exclusions."
-    ;;
-  full)
-    printf -v TEST_SCOPE_SECTION '%s\n' \
-      '## Test scope' \
-      'Scope: full.' \
-      "Expected duration: estimate from the target repo's recent full-suite timings before running; local serial runs may take longer than parallel CI."
-    ;;
-esac
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE")
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")

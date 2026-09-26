@@ -25,8 +25,16 @@ test_help_documents_default_and_scope_choices() {
   pass 'fm-brief.sh help documents explicit upstream full-suite selection'
 }
 
+firstmate_minutes() {
+  local ms
+  ms=$("$@") || fail "fm-test-run.sh --estimate-ms failed: $*"
+  printf '%s\n' "$(((ms + 59999) / 60000))"
+}
+
 test_public_scaffold_renders_default_and_explicit_scopes() {
-  local id scope brief status out
+  local id scope brief status out safe_minutes full_minutes
+  safe_minutes=$(firstmate_minutes xargs "$ROOT/bin/fm-test-run.sh" --estimate-ms --all < "$ROOT/tests/safe-suite-exclusions.txt")
+  full_minutes=$(firstmate_minutes "$ROOT/bin/fm-test-run.sh" --estimate-ms --all)
 
   id='brief-scope-default-ship'
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --mode local-only >/dev/null 2>&1 \
@@ -35,6 +43,7 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
   assert_present "$brief" 'default ship brief was not written'
   assert_grep 'Scope: none.' "$brief" 'ship default is not none'
   assert_grep 'Expected duration: 0 minutes.' "$brief" 'default scope duration is missing'
+  assert_grep 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' "$brief" 'none scope omitted what it permits'
 
   id='brief-scope-default-scout'
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1 \
@@ -50,15 +59,18 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
     assert_grep 'Expected duration:' "$brief" "--tests $scope omitted expected duration"
     case "$scope" in
       focused)
-        assert_grep 'recent timings for the selected tests before running' "$brief" 'focused scope omitted its duration estimate instruction'
+        assert_grep 'Permits: only the tests covering the behavior you touch; never the full local suite.' "$brief" 'focused scope omitted what it permits'
+        assert_grep 'record your own estimate in your first status line before running anything' "$brief" 'focused scope omitted its estimate instruction'
         ;;
       safe-suite)
-        assert_grep 'recent safe-suite timings before running' "$brief" 'safe-suite omitted its duration estimate instruction'
-        assert_grep 'tests/safe-suite-exclusions.txt' "$brief" 'safe-suite omitted the exclusion manifest'
+        assert_grep 'never the full local suite. If the target repo has no such manifest, say so in your first status line and run focused tests instead.' "$brief" 'safe-suite omitted its missing-manifest fallback'
+        assert_grep "Expected duration: about $safe_minutes minutes run serially in the Firstmate repo" "$brief" 'safe-suite duration does not match the measured estimate'
+        assert_grep 'any other repo has no measured figure, so record your own estimate in your first status line' "$brief" 'safe-suite omitted the other-repo estimate instruction'
         assert_grep 'xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt' "$brief" 'safe-suite omitted its invocation'
         ;;
       full)
-        assert_grep 'recent full-suite timings before running' "$brief" 'full scope omitted the full-suite duration guidance'
+        assert_grep 'Permits: the full local suite' "$brief" 'full scope omitted what it permits'
+        assert_grep "Expected duration: about $full_minutes minutes run serially in the Firstmate repo" "$brief" 'full duration does not match the measured estimate'
         ;;
     esac
   done
@@ -121,8 +133,33 @@ EOF
   pass 'safe-suite manifest excludes live Herdr, Codex, and Lavish families'
 }
 
+test_promotion_renders_selected_scope() {
+  local id=promote-scope-full brief instructions status out
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null 2>&1 \
+    || fail 'scout brief for promotion failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' "$brief"
+  mkdir -p "$HOME_ROOT/state"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$HOME_ROOT/state/$id.meta"
+
+  out=$(FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-promote.sh" "$id" --mode direct-PR --yolo off --tests nope 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail 'promotion accepted an invalid --tests value'
+  fail_unless_contains "$out" '--tests must be one of none, focused, safe-suite, full' 'invalid promotion scope refusal'
+  assert_grep 'kind=scout' "$HOME_ROOT/state/$id.meta" 'invalid promotion scope changed the task record'
+
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-promote.sh" "$id" --mode direct-PR --yolo off --tests full >/dev/null 2>&1 \
+    || fail 'promotion with --tests full failed'
+  instructions="$HOME_ROOT/data/$id/ship-instructions.md"
+  assert_grep 'Scope: full.' "$instructions" 'promoted ship instructions omitted the selected scope'
+  assert_grep 'Permits: the full local suite' "$instructions" 'promoted ship instructions omitted what full permits'
+  assert_grep 'Scope: full.' "$brief" 'promoted brief omitted the selected scope for relaunch'
+  pass 'fm-promote.sh renders the selected test scope into ship instructions and the promoted brief'
+}
+
 test_help_documents_default_and_scope_choices
 test_public_scaffold_renders_default_and_explicit_scopes
+test_promotion_renders_selected_scope
 test_manifest_excludes_classified_and_live_gated_tests
 
 printf 'All test-scope brief tests passed.\n'
