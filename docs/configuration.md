@@ -460,6 +460,13 @@ When the file exists, `bin/fm-brief.sh` appends its text verbatim as the scaffol
 An absent or blank file changes nothing, while a present path that is not a readable regular file, or text carrying its own `Delivery contract: mode=` line, stops the scaffold before anything is written.
 The text is static and never executed or expanded; secondmate charters never take it, and the file is local to each home rather than part of secondmate inherited configuration.
 `bin/fm-brief.sh`'s header owns the placement rule and its safety argument.
+The generated shared-host safety rules apply without this include; homes still carrying those rules here will see both copies until the home include is trimmed.
+
+## Contained worker experiments
+
+The worker-facing risk gate and containment rule are owned by `bin/fm-brief.sh` and generated for ship and scout briefs.
+For an approved experiment, the user-scope command shape is `systemd-run --user --scope -p TasksMax=<n> -p MemoryMax=<size> -p MemorySwapMax=0 -p RuntimeMaxSec=<seconds> -- <command>`; size each placeholder to the job, not as host-wide limits.
+Script authors must resolve a binary's real path with `type -P <name>` before any wrapper directory is prepended to PATH, not `command -v`, which may return a shell function's bare name rather than an executable path.
 
 ## Worker launch environment (config/launch-env-allowlist)
 

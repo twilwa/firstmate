@@ -520,6 +520,18 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
+# Shared worker safety text is generated for both ship and scout even when no
+# home brief include exists. The optional include remains additive.
+IFS= read -r -d '' SHARED_HOST_SAFETY <<EOF || true
+# Shared-host safety
+Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use \`type -P <name>\`, never \`command -v\`.
+
+Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
+
+Run anything approved from this gate inside a systemd-run user scope, sized to the job; see \`$FM_ROOT/docs/configuration.md\` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with \`type -P\` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with \`head -n2\` before use. A self-referencing shim can trigger uncontrolled process recursion.
+EOF
+SHARED_HOST_SAFETY=${SHARED_HOST_SAFETY%$'\n'}
+
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.'
@@ -565,6 +577,8 @@ The report is the only thing that survives, so anything worth keeping must be in
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
+$SHARED_HOST_SAFETY
 
 $INBOX_SECTION
 
@@ -646,6 +660,8 @@ $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
+$SHARED_HOST_SAFETY
 
 $INBOX_SECTION
 
