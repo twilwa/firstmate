@@ -847,24 +847,18 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-i
     "landed_at=$(date +%s)"
 }
 
-# Close the parent-owned landing row once its landing is complete: the offered
-# head is in the primary's default branch, the landing record says `landed`,
-# and the child's receipt is published. The close goes through the backlog
-# transition owner, so callers must also source bin/fm-tasks-axi-lib.sh and
-# bin/fm-backlog-transition-lib.sh.
-# An already closed row is left alone, which is what lets receipt recovery
-# repeat, and a row held for the captain again is the captain's to resolve, so
-# it refuses rather than closing an open call. A row the backlog no longer
-# shows is accepted only with --completed, which the caller passes when this
-# landing was already fully acknowledged before it ran, because a closed row is
-# later archived out of the live backlog.
+# Establish that the parent-owned landing row can still authorize recording its
+# landing: the backlog shows it, and it is closed or open without being held
+# for the captain again, which only the captain resolves. Receipt recovery asks
+# this before it writes any landed record or receipt, so a refused recovery
+# leaves nothing a later run could mistake for an acknowledged landing. Callers
+# must also source bin/fm-tasks-axi-lib.sh and bin/fm-backlog-transition-lib.sh.
 # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
-fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id> [--completed]
-  local data=$1 id=$2 completed=${3:-}
+fm_local_handoff_landing_row_ready() {  # <parent-data-dir> <landing-id>
+  local data=$1 id=$2
   if ! fm_backlog_row_probe "$data" "$id"; then
     if [ "$FM_BACKLOG_ROW_RESULT" = not_found ]; then
-      [ "$completed" != --completed ] || return 0
-      FM_LOCAL_HANDOFF_ERROR="this home has no landing row $id to close"
+      FM_LOCAL_HANDOFF_ERROR="this home has no landing row $id"
     else
       FM_LOCAL_HANDOFF_ERROR="cannot read landing row $id: $FM_BACKLOG_ROW_ERROR"
     fi
@@ -875,6 +869,28 @@ fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id> [--comp
     FM_LOCAL_HANDOFF_ERROR="landing row $id is held for the captain again; only bin/fm-captain-hold.sh answer resolves it"
     return 1
   fi
+}
+
+# Close the parent-owned landing row once its landing is complete: the offered
+# head is in the primary's default branch, the landing record says `landed`,
+# and the child's receipt is published. The close goes through the backlog
+# transition owner under the same row checks as
+# fm_local_handoff_landing_row_ready.
+# An already closed row is left alone, which is what lets receipt recovery
+# repeat. A row the backlog no longer shows is accepted only with --completed,
+# which the caller passes when this landing was already fully acknowledged
+# before it ran, because a closed row is later archived out of the live
+# backlog.
+# shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+fm_local_handoff_landing_row_close() {  # <parent-data-dir> <landing-id> [--completed]
+  local data=$1 id=$2 completed=${3:-}
+  if ! fm_local_handoff_landing_row_ready "$data" "$id"; then
+    if [ "$completed" = --completed ] && [ "$FM_BACKLOG_ROW_RESULT" = not_found ]; then
+      return 0
+    fi
+    return 1
+  fi
+  [ "${FM_BACKLOG_ROW_STATE%% *}" != "done" ] || return 0
   if ! fm_backlog_done "$data" "$id" --note "local main"; then
     FM_LOCAL_HANDOFF_ERROR="cannot close landing row $id: $FM_BACKLOG_TRANSITION_ERROR"
     return 1

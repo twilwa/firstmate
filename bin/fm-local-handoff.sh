@@ -34,7 +34,9 @@
 #       Run in the PRIMARY home. Re-proves that the offered head is contained
 #       in the primary clone's default branch, completes the parent's own
 #       landing record, publishes (or confirms) the landing receipt in the
-#       child home, then closes the landing row <landing-id>. This is the
+#       child home, then closes the landing row <landing-id>. Unless the
+#       landing was already fully acknowledged, nothing is written while that
+#       row is missing, unreadable, or held for the captain. This is the
 #       idempotent recovery path for a fast-forward that landed but whose
 #       evidence publication or row close failed; it NEVER merges anything, so
 #       a retry cannot land a second time.
@@ -69,7 +71,7 @@ SUB_HOME_MARKER=.fm-secondmate-home
 SUB_HOME_PARENT_MARKER=.fm-secondmate-parent
 
 usage() {
-  sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -402,31 +404,28 @@ command_receipt() {  # <offer-file> <landing-id>
   fm_local_handoff_head_in_default "$PARENT_PROJECT" "$head" \
     || die "$FM_LOCAL_HANDOFF_ERROR"
 
-  if [ "$(fm_local_handoff_field "$landing" state)" = landed ]; then
-    was_landed=1
-  else
-    if ! fm_backlog_row_probe "$DATA" "$landing_id"; then
-      [ "$FM_BACKLOG_ROW_RESULT" != not_found ] \
-        || die "this home has no landing row $landing_id; recovery records nothing for a landing whose approval row is gone"
-      die "cannot read landing row $landing_id: $FM_BACKLOG_ROW_ERROR"
-    fi
-    fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
-      "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
-      || die "$FM_LOCAL_HANDOFF_ERROR"
-  fi
-
+  [ "$(fm_local_handoff_field "$landing" state)" != landed ] || was_landed=1
   existing=$(fm_local_handoff_receipt_path "${child_home%/}/state" "$task")
   unchanged=0
   if [ -e "$existing" ] \
     && fm_local_handoff_landed_proof "$child_home" "$blob" "$existing" "$child_project"; then
     unchanged=1
-  else
-    fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
-      || die "$FM_LOCAL_HANDOFF_ERROR"
   fi
+
   if [ "$was_landed" = 1 ] && [ "$unchanged" = 1 ]; then
     fm_local_handoff_landing_row_close "$DATA" "$landing_id" --completed || die "$FM_LOCAL_HANDOFF_ERROR"
   else
+    fm_local_handoff_landing_row_ready "$DATA" "$landing_id" \
+      || die "$FM_LOCAL_HANDOFF_ERROR; recovery records nothing without its approval row"
+    if [ "$was_landed" = 0 ]; then
+      fm_local_handoff_landing_publish "$DATA" "$landing" "$landing_id" \
+        "$(fm_local_handoff_field "$landing" offer)" "$PARENT_PROJECT" landed "$(date +%s)" \
+        || die "$FM_LOCAL_HANDOFF_ERROR"
+    fi
+    if [ "$unchanged" = 0 ]; then
+      fm_local_handoff_publish_receipt "$blob" "$PARENT_PROJECT" "$landing_id" \
+        || die "$FM_LOCAL_HANDOFF_ERROR"
+    fi
     fm_local_handoff_landing_row_close "$DATA" "$landing_id" || die "$FM_LOCAL_HANDOFF_ERROR"
   fi
   printf 'receipt=%s\n' "$existing"
