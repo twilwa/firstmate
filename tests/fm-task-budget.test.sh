@@ -11,6 +11,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 HOME_DIR="$TMP_ROOT/home"
 STATE="$HOME_DIR/state"
 mkdir -p "$STATE" "$HOME_DIR/config" "$HOME_DIR/data"
+REPEAT=14400
 FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" budget-default sample --mode local-only > /dev/null
 rg -q '^Task budget: wall_secs=21600 output_tokens=1000000$' "$HOME_DIR/data/budget-default/brief.md" \
   || fail 'default brief budget is missing'
@@ -18,15 +19,20 @@ FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" budget-override sample --scout \
   --budget-wall-secs 3600 --budget-output-tokens 5000 > /dev/null
 rg -q '^Task budget: wall_secs=3600 output_tokens=5000$' "$HOME_DIR/data/budget-override/brief.md" \
   || fail 'per-brief budget override is missing'
-rg -q 'needs-decision.*\[key=task-budget\]' "$HOME_DIR/data/budget-override/brief.md" \
-  || fail 'scout brief lacks keyed worker backup'
-rg -q 'needs-decision.*\[key=task-budget\]' "$HOME_DIR/data/budget-default/brief.md" \
-  || fail 'ship brief lacks keyed worker backup'
-pass 'ship and scout briefs expose defaults, overrides and the keyed backup'
+budget_rules() { # <brief>; rule 5, the budget backup and rule 6, in order
+  awk '/^5\. /{five=NR} /\[key=task-budget/{print NR - five ": " $0} /^6\. /{print NR - five ": " $0; exit}' "$1"
+}
+for kind_brief in "scout:budget-override:to a human" "ship:budget-default:above the implementation worker"; do
+  kind=${kind_brief%%:*}; rest=${kind_brief#*:}; brief="$HOME_DIR/data/${rest%%:*}/brief.md"
+  rules=$(budget_rules "$brief")
+  expected="1:    If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / $REPEAT rounded down; once per period, append \`needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?\` and stop; firstmate decides.
+2: 6. If a decision belongs ${rest#*:} (product choices, destructive actions),"
+  [ "$rules" = "$expected" ] || fail "$kind brief budget backup or rule 6 is wrong: $rules"
+done
+pass 'ship and scout briefs keep rule 6 and key the worker backup per budget period'
 TASK=budget-fixture
 START=1700000000
 WALL=21600
-REPEAT=14400
 printf 'window=fm-%s\nworktree=%s/no-local-copy\nkind=scout\nspawn_gen=first\nbudget_id=b-fixture\nbudget_start_epoch=%s\nbudget_wall_secs=%s\nbudget_output_tokens=1000000\n' \
   "$TASK" "$TMP_ROOT" "$START" "$WALL" > "$STATE/$TASK.meta"
 printf 'working [at=%s]: initial work\n' "$((START + 3600))" > "$STATE/$TASK.status"

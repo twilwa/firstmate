@@ -285,8 +285,10 @@ if [ "$KIND" != secondmate ]; then
     exit 1
   fi
   TASK_BUDGET_LINE="Task budget: wall_secs=$BUDGET_WALL output_tokens=$BUDGET_OUTPUT"
+  TASK_BUDGET_RULE="   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / $FM_BUDGET_REPEAT_SECS rounded down; once per period, append \`needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?\` and stop; firstmate decides."
 else
   TASK_BUDGET_LINE=
+  TASK_BUDGET_RULE=
 fi
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
@@ -630,7 +632,7 @@ The report is the only thing that survives, so anything worth keeping must be in
    \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) and firstmate rechecks at that time instead.
    Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
-   If you see the current task budget crossed, append \`needs-decision [at=<epoch>] [key=task-budget]: budget crossed; continue or stop?\` and stop; firstmate decides.
+$TASK_BUDGET_RULE
 6. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
@@ -715,7 +717,8 @@ $RULE1
    firstmate then leaves your idle pane alone and rechecks it on a long
    cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
-   If you see the current task budget crossed, append \`needs-decision [at=<epoch>] [key=task-budget]: budget crossed; continue or stop?\` and stop; firstmate decides. (product choices, destructive actions),
+$TASK_BUDGET_RULE
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
 $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
