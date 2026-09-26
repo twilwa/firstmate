@@ -522,13 +522,13 @@ SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
 # Shared worker safety text is generated for both ship and scout even when no
 # home brief include exists. The optional include remains additive.
-IFS= read -r -d '' SHARED_HOST_SAFETY <<'EOF' || true
+IFS= read -r -d '' SHARED_HOST_SAFETY <<EOF || true
 # Shared-host safety
-Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use `type -P <name>`, never `command -v`.
+Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use \`type -P <name>\`, never \`command -v\`.
 
 Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
 
-Run anything approved from this gate inside a systemd-run user scope, sized to the job; see docs/configuration.md for the illustrative scope recipe. For any shim or wrapper, resolve its target to an absolute path with `type -P` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with `head -n2` before use. A self-referencing shim can trigger uncontrolled process recursion.
+Run anything approved from this gate inside a systemd-run user scope, sized to the job; see \`$FM_ROOT/docs/configuration.md\` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with \`type -P\` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with \`head -n2\` before use. A self-referencing shim can trigger uncontrolled process recursion.
 EOF
 SHARED_HOST_SAFETY=${SHARED_HOST_SAFETY%$'\n'}
 

@@ -1329,6 +1329,7 @@ test_shared_host_safety_without_home_include() {
     assert_grep 'run a Jev risk check with jev-cli or jevhelper on the exact command or diff' "$brief" "$id: risk gate absent"
     assert_grep 'If Jev rates it risky or uncertain, stop and ask your supervisor for approval' "$brief" "$id: escalation absent"
     assert_grep 'Run anything approved from this gate inside a systemd-run user scope' "$brief" "$id: containment absent"
+    assert_grep "see \`$ROOT/docs/configuration.md\` for the scope recipe" "$brief" "$id: scope recipe pointer is not absolute"
     # shellcheck disable=SC2016 # The brief's backticks are literal prose.
     assert_grep 'resolve its target to an absolute path with `type -P` before prepending' "$brief" "$id: shim protection absent"
   done
