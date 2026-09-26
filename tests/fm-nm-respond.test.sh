@@ -65,6 +65,9 @@ accept --action skip --step review --whole-step
 printf '%s\n' '--action' 'skip' '--step' 'review' > "$tmp/expected"
 diff -u "$tmp/expected" "$FM_NM_ARGS"
 accept --action skip --step test
+refuse --action SKIP --step Review --findings review-1
+grep -q 'review-2' "$tmp/out"
+accept --action=Skip --step=TEST
 accept --action skip --findings review-1,review-2
 refuse --action skip --findings review-1
 grep -q 'review-2' "$tmp/out"

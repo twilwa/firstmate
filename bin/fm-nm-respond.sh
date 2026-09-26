@@ -23,28 +23,26 @@ while (($#)); do
   shift
   case $arg in
     --yes|--yes=*|-y) fail '--yes and -y are forbidden for every action' ;;
-    --whole-step) whole_step=1 ;;
+    --whole-step) whole_step=1; continue ;;
     --action|--step|--findings)
       (($#)) || fail "missing value for $arg"
+      name=$arg
       value=$1
       shift
       args+=("$arg" "$value")
-      case $arg in
-        --action) if [[ ${value,,} == skip ]]; then skip=1; fi ;;
-        --step) step_given=1; if [[ ${value,,} == review ]]; then review=1; fi ;;
-        --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
-      esac
       ;;
     --action=*|--step=*|--findings=*)
-      args+=("$arg")
+      name=${arg%%=*}
       value=${arg#*=}
-      case ${arg%%=*} in
-        --action) if [[ ${value,,} == skip ]]; then skip=1; fi ;;
-        --step) step_given=1; if [[ ${value,,} == review ]]; then review=1; fi ;;
-        --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
-      esac
+      args+=("$arg")
       ;;
-    *) args+=("$arg") ;;
+    *) args+=("$arg"); continue ;;
+  esac
+  lower=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')
+  case $name in
+    --action) if [ "$lower" = skip ]; then skip=1; fi ;;
+    --step) step_given=1; if [ "$lower" = review ]; then review=1; fi ;;
+    --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
   esac
 done
 
@@ -98,4 +96,4 @@ if ((skip && !whole_step && (!step_given || review))); then
     [ -z "$missing" ] || fail "review skip leaves unnamed open findings: $missing (name each with --findings or use --whole-step)"
   fi
 fi
-exec "$nm" axi respond "${args[@]}"
+exec "$nm" axi respond ${args[@]+"${args[@]}"}
