@@ -97,6 +97,7 @@ wt="$case_dir/wt"
 fm_test_spawn_home "$home" devin
 fm_git_worktree "$proj" "$wt" devin-test
 fm_test_spawn_brief "$home" devin-worker
+# shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
 devin() { return 97; }
 export -f devin
 if ! out=$(FM_FAKE_LAUNCH_LOG="$case_dir/launch" fm_test_run_spawn "$home" "$wt" "$fakebin" devin-worker "$proj" --scout --harness devin --model fusion-claude-fable-5-1-high-sidekick-swe-2-medium --effort xhigh 2>&1)

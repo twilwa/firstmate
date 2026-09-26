@@ -409,7 +409,9 @@ pass "a missing herdr CLI is a human gap that --fix never claims to close"
 
 new_case Linux with-herdr no-gui
 CASE_REMOTE_JOB_ACTIVE=1
+# shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
 treehouse() { return 97; }
+# shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
 herdr() { return 97; }
 export -f treehouse herdr
 doctor

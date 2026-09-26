@@ -126,6 +126,7 @@ test_operator_tool_ignores_a_shadowing_function() {
   mkdir -p "$bin"
   printf '#!/bin/sh\nexit 0\n' > "$bin/fm_remote_job_path_probe"
   chmod +x "$bin/fm_remote_job_path_probe"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   fm_remote_job_path_probe() { return 97; }
   FM_REMOTE_JOB_OPERATOR_PATH="$bin:/usr/bin:/bin"
   resolved=$(fm_remote_job_operator_tool fm_remote_job_path_probe) \

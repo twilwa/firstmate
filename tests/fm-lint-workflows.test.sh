@@ -215,6 +215,7 @@ test_actionlint_path_ignores_an_exported_function() {
 if [ "${1:-}" = -version ]; then printf '1.7.12\n'; else exit 0; fi
 SH
   chmod +x "$fakebin/actionlint"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   actionlint() { printf 'shadowed actionlint function invoked\n' >&2; return 97; }
   export -f actionlint
   out=$(PATH="$fakebin:$PATH" "$LINT_WF" --root "$tmp" 2>&1) || rc=$?

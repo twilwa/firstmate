@@ -143,6 +143,7 @@ test_resolve_binary_prefers_stable_path() {
   # through canonicalization.
   local tree bin out
   tree="$TMP_ROOT/tree4"; bin=$(make_cursor_tree "$tree")
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   cursor-agent() { return 97; }
   out=$(HOME="$TMP_ROOT/no-cursor-home" PATH="$bin:$PATH" fm_cursor_resolve_binary) \
     || fail "resolve must succeed when cursor-agent is on PATH despite a shadowing function"

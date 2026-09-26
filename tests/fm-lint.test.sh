@@ -363,7 +363,9 @@ printf '%s\n' ok
 SH
   chmod +x "$fixture"
   fm_lint_stub_shellcheck "$fakebin" "$log"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   shellcheck() { printf 'version: 0.0.0\n'; }
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   perl() { printf 'shadowed perl function invoked\n' >&2; return 97; }
   export -f shellcheck perl
   out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 \

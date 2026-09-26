@@ -104,6 +104,7 @@ test_engine_resolves_executable_past_a_shadowing_function() {
   mkdir -p "$bin"
   printf '#!/bin/sh\nexit 0\n' > "$bin/claude"
   chmod +x "$bin/claude"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
   claude() { return 97; }
   resolved=$(PATH="$bin:$PATH" FM_SUPERVISION_ENGINE_CLAUDE_BIN='' \
     fm_supervision_engine_bin claude) \
