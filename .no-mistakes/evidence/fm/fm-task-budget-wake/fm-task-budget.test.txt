@@ -1,0 +1,9 @@
+ok - ship and scout briefs keep rule 6 and key the worker backup per budget period
+ok - first threshold wakes with cumulative age and crew-state fields
+ok - watcher restart does not duplicate an acknowledged budget wake
+ok - four-hour repeat has a distinct durable queue key
+ok - replacement endpoint retains the original task budget start
+ok - marker-write refusal warns and the watcher continues polling
+ok - done task past budget produces no budget wake
+ok - a later working event resumes budget wakes against the original start
+ok - a paused task past budget still wakes

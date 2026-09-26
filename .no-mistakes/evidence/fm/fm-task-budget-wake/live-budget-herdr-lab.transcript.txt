@@ -1,0 +1,93 @@
+== lab session: fm-lab-budget-wake-438914-1862
+
+### S1 default ship brief -> spawn records default budget
+Task budget: wall_secs=21600 output_tokens=1000000
+spawn rc=0
+notice: bdef ships mode=local-only while the standing posture for proj is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned bdef harness=sh kind=ship mode=local-only yolo=off window=fm-lab-budget-wake-438914-1862:w1:p2 worktree=/home/firstmate/.treehouse-fm/faf3e55efb4d/.treehouse/proj-8c9c03/1/proj
+kind=ship
+spawn_gen=s1790423037.439228.4683
+budget_id=b1790423035.439228.1379
+budget_start_epoch=1790423035
+budget_wall_secs=21600
+budget_output_tokens=1000000
+-- launch-brief (worker-facing) budget lines:
+62:   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / 14400 rounded down; once per period, append `needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?` and stop; firstmate decides.
+63:6. If a decision belongs above the implementation worker (product choices, destructive actions),
+120:Current task budget: start_epoch=1790423035 wall_secs=21600 output_tokens=1000000 (spawn record is authoritative).
+
+### S2 per-brief override (scout --budget-wall-secs 7200 --budget-output-tokens 250000)
+Task budget: wall_secs=7200 output_tokens=250000
+spawn rc=0
+spawned bscout harness=sh kind=scout window=fm-lab-budget-wake-438914-1862:w1:p3 worktree=/home/firstmate/.treehouse-fm/faf3e55efb4d/.treehouse/proj-8c9c03/2/proj
+kind=scout
+spawn_gen=s1790423044.444741.1260
+budget_id=b1790423041.444741.29943
+budget_start_epoch=1790423041
+budget_wall_secs=7200
+budget_output_tokens=250000
+106:Current task budget: start_epoch=1790423041 wall_secs=7200 output_tokens=250000 (spawn record is authoritative).
+
+### S3 spawn-time override beats brief (--budget-wall-secs 900)
+spawn rc=0
+kind=ship
+spawn_gen=s1790423051.451251.31579
+budget_id=b1790423048.451251.422
+budget_start_epoch=1790423048
+budget_wall_secs=900
+budget_output_tokens=1000000
+
+### S4 adversarial: invalid overrides / malformed brief budget are refused before any endpoint
+[--budget-wall-secs 0] rc=1 :: error: --budget-wall-secs requires a positive integer
+[--budget-wall-secs abc] rc=1 :: error: --budget-wall-secs requires a positive integer
+[--budget-output-tokens 012] rc=1 :: error: --budget-output-tokens requires a positive integer
+[malformed Task budget line] rc=1 :: error: invalid Task budget line in /tmp/fm-budget-live.bns8Cs/home/data/bbad/brief.md
+no bbad.meta written (refused before endpoint)
+[relaunch + override] rc=1 :: error: budget overrides apply only to fresh ship/scout spawns
+
+### S5 relaunch keeps the original budget start/id
+before:
+budget_id=b1790423035.439228.1379
+budget_start_epoch=1790423035
+relaunch rc=0
+notice: bdef ships mode=local-only while the standing posture for proj is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned bdef harness=codex kind=ship mode=local-only yolo=off window=fm-lab-budget-wake-438914-1862:w1:p2 worktree=/home/firstmate/.treehouse-fm/faf3e55efb4d/.treehouse/proj-8c9c03/1/proj
+replacement harness launched
+after (unique):
+budget_id=b1790423035.439228.1379
+budget_start_epoch=1790423035
+spawn_gen=s1790423061.458603.22725
+120:Current task budget: start_epoch=1790423035 wall_secs=21600 output_tokens=1000000 (spawn record is authoritative).
+RESULT: original budget start/id retained
+
+### S6 watcher wakes main at first crossing on the real spawned record, crew-state carries fields
+-- 1s before budget:
+Terminated
+0
+(budget wakes before crossing, rc=1)
+-- at budget:
+check: task-budget task=bdef period=0 age=21600s wall_budget=21600s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=21000s
+(watch rc=0)
+-- queue rows:
+1790423070	1	check	task-budget:bdef:b1790423035.439228.1379:0	check: task-budget task=bdef period=0 age=21600s wall_budget=21600s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=21000s
+-- marker:
+b1790423035.439228.1379 0
+-- crew-state:
+state: unknown · source: pane · harness state unavailable (unknown codex-unverified) · budget: age=21600s wall_budget=21600s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=21000s
+
+### S7 acknowledged wake is not re-sent after watcher restart in the same period; next 4h period wakes
+Terminated
+restart watch rc=124 (124 = kept polling, no wake)
+0
+0
+-- +4h:
+check: task-budget task=bdef period=1 age=36000s wall_budget=21600s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=35400s
+(watch rc=0)
+
+### S8 done task past budget stays quiet; later working line resumes on original clock
+Terminated
+done watch rc=124; budget lines: 0
+check: task-budget task=bdef period=2 age=50460s wall_budget=21600s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=50s
+(watch rc=0)
+== teardown fm-lab-budget-wake-438914-1862
+teardown rc=0
