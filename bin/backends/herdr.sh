@@ -3268,16 +3268,32 @@ fm_backend_herdr_proof_lines() {  # <text>
 # fm_backend_herdr_composer_content: the selected composer's visible text.
 # Styled capture is preferred. An empty or failed styled read falls through to
 # the plain capture so a missing ANSI format does not look like an empty draft.
-fm_backend_herdr_composer_content() {  # <target> [lines]
-  local target=$1 lines=${2:-$FM_COMPOSER_CAPTURE_LINES} cap caps
-  if cap=$(fm_backend_herdr_capture_ansi "$target" "$lines" 2>/dev/null) && [ -n "$cap" ]; then
-    caps=$(printf 'styled=1\ncursor=0\nidentity=0\nrows=%s' "$lines")
-  elif cap=$(fm_backend_herdr_capture "$target" "$lines") && [ -n "$cap" ]; then
-    caps=$(printf 'styled=0\ncursor=0\nidentity=0\nrows=%s' "$lines")
+# With <widen> set to 1, a [lines]-row tail that selects no composer is read
+# again over the adapter's whole 200-row fetch from the same capture. Claude
+# draws its slash-command completion popup below the composer, sized by the
+# pane rather than the payload (measured on claude 2.1.283, the composer row
+# sat 17 rows above the popup's last row on a 100x30 pane, 21 on 150x45, and
+# 30 for `/exit` or 42 for `/` on 80x80), so a tail sized to the payload can
+# hold only the popup. The shared selector's
+# bottom-most shape still wins, so an older prompt row in the transcript
+# cannot outrank the live composer.
+fm_backend_herdr_composer_content() {  # <target> [lines] [widen]
+  local target=$1 lines=${2:-$FM_COMPOSER_CAPTURE_LINES} widen=${3:-0} fetch cap styled=1
+  fetch=$lines
+  [ "$widen" != 1 ] || [ "$fetch" -ge 200 ] || fetch=200
+  if cap=$(fm_backend_herdr_capture_ansi "$target" "$fetch" 2>/dev/null) && [ -n "$cap" ]; then
+    :
+  elif cap=$(fm_backend_herdr_capture "$target" "$fetch") && [ -n "$cap" ]; then
+    styled=0
   else
     return 1
   fi
-  fm_composer_extract_selected_content "$caps" "$cap"
+  fm_composer_extract_selected_content \
+    "$(printf 'styled=%s\ncursor=0\nidentity=0\nrows=%s' "$styled" "$lines")" \
+    "$(printf '%s\n' "$cap" | tail -n "$lines")" && return 0
+  [ "$fetch" -gt "$lines" ] || return 1
+  fm_composer_extract_selected_content \
+    "$(printf 'styled=%s\ncursor=0\nidentity=0\nrows=%s' "$styled" "$fetch")" "$cap"
 }
 
 # fm_backend_herdr_composer_payload_shown: 0 when <after>, read from a
@@ -3346,7 +3362,7 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
   fm_backend_herdr_send_literal "$target" "$text" || { printf 'send-failed'; return 0; }
   sleep "$settle"
   if [ "$proof" = 1 ]; then
-    if ! content=$(fm_backend_herdr_composer_content "$target" "$proof_lines") \
+    if ! content=$(fm_backend_herdr_composer_content "$target" "$proof_lines" 1) \
       || ! fm_backend_herdr_composer_payload_shown "$text" "$content"; then
       if fm_backend_herdr_composer_clear "$target" "$text"; then
         printf 'send-failed'

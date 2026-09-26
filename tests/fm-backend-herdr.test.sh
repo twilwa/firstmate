@@ -4957,6 +4957,88 @@ test_send_text_submit_three_paste_placeholders_submit_the_long_payload() {
   pass "fm_backend_herdr_send_text_submit: three paste placeholders with no literal remainder submit the long payload"
 }
 
+# herdr_claude_slash_popup_screen: real claude 2.1.283 on a 150x45 pane
+# (captured 2026-09-26) after `/exit` was typed and before Enter. The
+# slash-command completion popup and the composer's closing rule fill the 20
+# rows under the composer row, so a 20-row proof tail holds no composer.
+# <above> is the transcript above the composer and <composer> its prompt row.
+herdr_claude_slash_popup_screen() {  # <above> <composer>
+  local rule
+  rule=$(printf '─%.0s' $(seq 1 150))
+  printf '%s\n' \
+    ' ▐▛███▛█   Claude Code v2.1.283' \
+    '▝▜██████▀  Opus 5.5 (1M context) · Claude Max' \
+    ' ▝▝   ▝▝   ~/firstmate' \
+    "$1" \
+    '' \
+    "$rule" \
+    "$2" \
+    "$rule" \
+    '  /exit                         Exit the CLI' \
+    '  /context                      Visualize current context usage as a colored grid' \
+    '  /usage-credits                Configure usage credits or request them from your admin when you hit a limit' \
+    "  /doctor                       Health-check the user's Claude Code setup and fix issues: diagnose installation health — what the \`claude doctor\`" \
+    '                                terminal diagnostics cover — from local data (duplicate or leftover installs, PATH, unparseable settings files, bro…' \
+    '  /claude-in-chrome             Automates your Chrome browser to interact with web pages - clicking elements, filling forms, capturing screenshots,' \
+    '                                reading console logs, and navigating sites. Opens pages in new tabs within your existing Chrome session. Requires s…' \
+    '  /artifact-capabilities        Runtime capabilities a published Artifact page can be granted — behavior static HTML cannot provide on its own, such' \
+    '                                as the page reading live or connected data, remembering what people do on it (a poll, a sign-up sheet, a checklist,…' \
+    "  /verify                       Verify that a code change actually does what it's supposed to by exercising it end-to-end and observing behavior —" \
+    '                                drive the affected flow, not just tests or typecheck. Run before committing nontrivial changes; bootstraps this rep…' \
+    '  /memory                       Edit CLAUDE.md files and memory settings' \
+    '  /passes                       Share a free week of Claude Code with friends and earn usage credits' \
+    '  /autocompact                  Set how full the context gets before auto-summarizing' \
+    '  /subtask                      Send a subagent off with your full context; its result comes back here' \
+    '  /clear                        Start a new session with empty context; previous session stays on disk (resumable with /resume)' \
+    '  /compact                      Free up context by summarizing the conversation so far' \
+    '  /model                        Set the AI model for Claude Code (currently Opus 5.5 (1M context))' \
+    '  /skill-doctor                 Show which loaded skills are unused and costing context'
+}
+
+# bin/fm-control.sh exits a Claude second mate by typing `/exit`. The popup
+# pushed the composer out of the payload proof's tail, so the proof cleared
+# the draft and every live mate's exit and relaunch reported the exit command
+# could not be sent. The proof must still find the composer above the popup.
+test_send_text_submit_claude_slash_popup_below_the_proof_tail_submits() {
+  local dir log resp fb out enter_count
+  dir="$TMP_ROOT/submit-claude-slash-popup"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent_status":"working"}}}\n' > "$resp/4.out"
+  herdr_submit_claude_prefix "$resp" /exit
+  herdr_claude_slash_popup_screen '' '❯ /exit' > "$resp/4.out"
+  [ "$(tail -n 20 "$resp/4.out" | grep -c '❯')" -eq 0 ] \
+    || fail "the popup fixture must keep the composer row outside a 20-row tail"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_text_submit default:w1:p2 /exit 3 0.01 0.01' "$ROOT" )
+  [ "$out" = empty ] || fail "a Claude composer holding /exit above its completion popup should be submitted, got '$out'"
+  enter_count=$(grep -c $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''enter' "$log")
+  [ "$enter_count" -eq 1 ] || fail "the proven /exit should be submitted once, sent $enter_count Enter(s)"
+  [ "$(herdr_ctrl_u_count "$log")" -eq 0 ] || fail "a proven /exit under its completion popup must not be cleared"
+  [ "$(grep -c $'\x1f''pane'$'\x1f''read' "$log")" -eq 2 ] \
+    || fail "the widened proof must reuse its one post-send capture, read $(grep -c $'\x1f''pane'$'\x1f''read' "$log") times"
+  pass "fm_backend_herdr_send_text_submit: a Claude /exit whose completion popup fills the proof tail is still proven and submitted"
+}
+
+# The wider read still proves only the live composer. A truncated draft under
+# the same popup is refused even when an older prompt row in the transcript
+# above it shows the whole payload.
+test_send_text_submit_claude_slash_popup_still_refuses_a_truncated_composer() {
+  local dir log resp fb out enter_count
+  dir="$TMP_ROOT/submit-claude-slash-popup-truncated"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  herdr_submit_claude_prefix "$resp" /exit
+  herdr_claude_slash_popup_screen '❯ /exit' '❯ xit' > "$resp/4.out"
+  printf '  \xe2\x9d\xaf\n' > "$resp/6.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_text_submit default:w1:p2 /exit 3 0.01 0.01' "$ROOT" )
+  [ "$out" = send-failed ] || fail "a truncated composer under the popup should be cleared and report send-failed, got '$out'"
+  enter_count=$(grep -c $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''enter' "$log")
+  [ "$enter_count" -eq 0 ] || fail "a truncated composer must not be submitted, sent $enter_count Enter(s)"
+  [ "$(herdr_ctrl_u_count "$log")" -eq 1 ] || fail "the refused draft should be cleared with one Ctrl+U, sent $(herdr_ctrl_u_count "$log")"
+  pass "fm_backend_herdr_send_text_submit: under a completion popup, an older full prompt in the transcript does not prove a truncated composer"
+}
+
 # A non-Claude harness keeps the unproven type-then-Enter path: its composer
 # is never read before Enter, so a harness-specific placeholder or an
 # unselectable composer cannot turn a landed send into send-failed.
@@ -5785,6 +5867,8 @@ test_send_text_submit_lone_paste_placeholder_submits_the_long_payload
 test_send_text_submit_multiline_paste_placeholder_submits_the_long_payload
 test_send_text_submit_refuses_placeholder_followed_by_a_literal_remainder
 test_send_text_submit_three_paste_placeholders_submit_the_long_payload
+test_send_text_submit_claude_slash_popup_below_the_proof_tail_submits
+test_send_text_submit_claude_slash_popup_still_refuses_a_truncated_composer
 test_send_text_submit_non_claude_skips_the_payload_proof
 test_dispatch_routes_herdr_backend
 test_dispatch_busy_state_unknown_for_tmux

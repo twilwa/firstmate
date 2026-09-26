@@ -1152,6 +1152,27 @@ Observed 2026-08-19:
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
 
+Measured 2026-09-26 against Claude Code 2.1.283 in private tmux panes with no user settings, hooks, or MCP servers, typing a slash command and never submitting it:
+
+```sh
+tmux -L cap -f /dev/null new-session -d -s cap -x 150 -y 45 "$(type -P claude)" --restricted --strict-mcp-config
+tmux -L cap send-keys -t cap -l /exit
+tmux -L cap capture-pane -p -t cap
+```
+
+Claude drew its completion popup below the composer's closing rule, and the popup's depth followed the pane size rather than the payload:
+
+| Pane | Typed | Composer row, counted up from the popup's last row |
+| --- | --- | --- |
+| 100x30 | `/exit` | 17 |
+| 150x45 | `/exit` | 21 |
+| 200x60 | `/exit` | 21 |
+| 80x80 | `/exit` | 30 |
+| 80x80 | `/` | 42 |
+
+From 150x45 up, a 20-row read held only the popup, which is why the Claude payload proof selects from the whole recent read when the payload-sized read selects no composer.
+`tests/fm-backend-herdr.test.sh` pins that proof with the popup rows of the 150x45 capture, and the `/exit` step of `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh` refreshes it on Herdr.
+
 ### Prune and respawn
 
 The real label-collision reproduction is owned by:
