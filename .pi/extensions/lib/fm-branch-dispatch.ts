@@ -343,7 +343,7 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean, afk = fals
     let task = "";
     if (kind === "signal") {
       const payload = fields[4] ?? "";
-      if (/^needs-decision:/.test(payload)) {
+      if (/^(?:needs-decision:|signal: decision-pending )/.test(payload)) {
         // Main-owned exactly like a check-kind row above while attended: a
         // needs-decision status append surfaced through the actionable signal
         // path is excluded from what the branch may claim without vetoing the
