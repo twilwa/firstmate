@@ -1,19 +1,20 @@
 # OpenCode
 
 Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
+OpenCode 2.0.16's model-pinned `mini` launch and isolated worker lifecycle were verified on 2026-09-26; [`runtime-backends.md`](../../../../../docs/verification/runtime-backends.md#opencode-2016-standalone-worker-2026-09-26) holds the version-specific evidence.
 
 ## Operating facts
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned plugin's semantic `session.status`: `busy` and `retry` are active, `idle` is inactive, latched to the worker's own session. |
+| Busy state | The Firstmate-owned plugin latches the worker session; v1 uses `session.status` busy/retry/idle, while 2.0 uses the v2 `session.execution.started` and `session.execution.succeeded`/`interrupted` event stream. |
 | Exit command | `/exit`. |
-| Interrupt | Double Escape; it is known to be flaky while a long shell command runs, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
+| Interrupt | Double Escape; verified on 2.0.16 during a shell-tool turn, but a long shell command can delay cancellation, so use `../../../bin/fm-control.sh <task-id> relaunch` for a wedged pane. |
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
-| Resume | Relaunch with `--continue` to resume the most recent session for the current directory, then send the next instruction after the TUI is ready because `--prompt` does not auto-submit alongside `--continue`. |
-| Model flag | `--model <provider/model>`. |
+| Resume | Relaunch with `--continue --standalone` in the same directory; on 2.0.16 `mini` restored earlier messages and processed a manually sent next instruction. Do not assume `--prompt` auto-submits alongside `--continue`. |
+| Model flag | On 2.0, the main TUI has no `--model`; pin interactive workers with `opencode mini --model <provider/model> --standalone --prompt`. For an unpinned worker, use `opencode --standalone --prompt`. `run -m provider/model#variant` is headless, not an interactive worker. |
 | Effort flag | None for Firstmate's interactive `opencode --prompt` launch verified on 1.17.6; `opencode run` has `--variant`, but that is not this path. |
-| Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |
+| Model discovery | On 2.0 `opencode models` accepts no provider positional argument; its empty stdout is not proof an authenticated model is unavailable. Confirm the candidate with a bounded standalone probe. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
 
@@ -26,10 +27,12 @@ If the pane shows the exit banner, use the verified resume path above.
 While OpenCode 1.18.4 is mid-turn, its composer accepts Enter as a "send when the turn ends" keystroke but does not clear the typed text until the turn finishes.
 Without a conversion, every typed-plane send to a busy OpenCode pane falsely reports "Enter swallowed", and a daemon escalation that lands while the primary is mid-turn appears wedged.
 
+On 2.0.16 `mini`, a queued Enter during a live turn delivered and received its answer in the isolated Herdr lab.
 Tmux and Herdr delegate this exception to the one `fm_composer_queued_enter_verdict` policy in `../../../bin/fm-composer-lib.sh`.
 Backend-specific signals are documented in `../../../docs/tmux-backend.md` and `../../../docs/herdr-backend.md`.
 Regression coverage is `../../../tests/fm-tmux-submit-busy.test.sh`, `../../../tests/fm-composer-lib.test.sh`, and `../../../tests/fm-backend-herdr.test.sh`.
 The live Herdr guard is `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 ../../../tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
+For the OpenCode 2.0 worker and plugin, run `FM_OPENCODE_ADAPTER_LIVE=1 ../../../tests/fm-opencode-adapter-live-e2e.test.sh` after an upgrade.
 
 ## Primary integration
 

@@ -205,6 +205,9 @@ harness_process_verdict() {  # <pid>
     # command carrying a harness name in its arguments claim an identity.
     *claude*) echo "comm claude"; return ;;
     *codex*) echo "comm codex"; return ;;
+    # OpenCode 2.0's model-pinned interactive path is `opencode mini`.
+    # The executable keeps the same comm as the main TUI; a child shell must
+    # resolve the nearest OpenCode ancestor rather than the mini subcommand.
     *opencode*) echo "comm opencode"; return ;;
     *grok*) echo "comm grok"; return ;;
     kimi) echo "comm kimi"; return ;;

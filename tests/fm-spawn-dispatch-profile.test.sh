@@ -634,12 +634,24 @@ test_opencode_threads_model_and_ignores_effort_axis() {
   expect_code 0 "$status" "opencode spawn with model and ignored effort should succeed"
   assert_meta_profile "$HOME_DIR/state/$id.meta" opencode anthropic/claude-sonnet-4-5 high
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "opencode --model 'anthropic/claude-sonnet-4-5' --prompt" \
-    "opencode launch did not thread model"
+  assert_contains "$launch" "opencode mini --model 'anthropic/claude-sonnet-4-5' --standalone --prompt" \
+    "opencode launch did not pin the model in the standalone interactive mini TUI"
+  assert_not_contains "$launch" "opencode --model" "2.0 top-level OpenCode has no model flag"
   assert_not_contains "$launch" "--effort" "opencode launch must not pass unsupported --effort"
   assert_not_contains "$launch" "--variant" "opencode launch must not pass run-only --variant"
   assert_not_contains "$launch" "--thinking" "opencode launch must not pass pi thinking flag"
-  pass "opencode receives --model and omits the unsupported effort axis"
+  id=profile-opencode-default-z7b
+  rec=$(make_spawn_case profile-opencode-default opencode "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "unpinned opencode spawn should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" 'opencode --standalone --prompt' \
+    "unpinned opencode launch lost the private server"
+  assert_not_contains "$launch" 'opencode mini' \
+    "unpinned opencode must preserve its main TUI"
+  pass "opencode pins the model only in mini; both launch paths stay standalone"
 }
 
 test_native_effort_validator_keeps_axes_separate() {
