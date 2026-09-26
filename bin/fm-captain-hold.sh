@@ -895,7 +895,8 @@ command_hold() {
     else
       previous_hold_set=$(body_answered_hold_set_timestamp "$(show_field_value "$show" body)")
       if [ -n "$previous_hold_set" ] && [[ ! $hold_set > $previous_hold_set ]]; then
-        hold_set=$(date -u -d "$previous_hold_set + 1 second" +%Y-%m-%dT%H:%M:%SZ) \
+        hold_set=$(date -u -j -v+1S -f %Y-%m-%dT%H:%M:%SZ "$previous_hold_set" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+          || date -u -d "$previous_hold_set + 1 second" +%Y-%m-%dT%H:%M:%SZ) \
           || fail "cannot mint a distinct hold-set stamp for $id"
       fi
     fi

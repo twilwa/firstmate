@@ -1825,8 +1825,8 @@ validate_bound_local_only_landed() {
   branch=$(fm_local_handoff_field "$blob" branch)
   child_project=$(fm_local_handoff_field "$blob" child_project)
   branch_head=$(git -C "$child_project" rev-parse --verify --quiet "refs/heads/$branch" 2>/dev/null || true)
-  if [ -z "$branch_head" ] || [ "$branch_head" != "$offered" ]; then
-    echo "REFUSED: $ID's offered branch $branch is now at ${branch_head:-no verifiable commit}, not the offered $offered." >&2
+  if [ -n "$branch_head" ] && [ "$branch_head" != "$offered" ]; then
+    echo "REFUSED: $ID's offered branch $branch is now at $branch_head, not the offered $offered." >&2
     echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi

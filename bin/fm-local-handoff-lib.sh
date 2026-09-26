@@ -865,16 +865,11 @@ fm_local_handoff_publish_receipt() {  # <offer-blob> <parent-project> <landing-i
     "landed_at=$(date +%s)"
 }
 
-# Establish that the parent-owned landing row can still authorize recording its
-# landing: the backlog shows it, and it is closed or open without being held
-# for the captain again, which only the captain resolves. Receipt recovery asks
-# this before it writes any landed record or receipt, so a refused recovery
-# leaves nothing a later run could mistake for an acknowledged landing. Callers
-# must also source bin/fm-tasks-axi-lib.sh and bin/fm-backlog-transition-lib.sh.
-# shellcheck disable=SC2034 # Output global, read by the sourcing caller.
 # Require the captain's recorded release to belong to the exact lifecycle
 # captured at pin time. The hold owner prints the stamp and answer count for a
-# released row on exit 1; one recorded answer must follow the pinned count.
+# released row on exit 1. The release must answer the pinned stamp and follow
+# the pinned count; deferrals of that same call may precede it, while a re-held
+# call is always answered under a later stamp.
 fm_local_handoff_landing_released_identity() {  # <script-dir> <home> <state> <landing-id> <landing-blob>
   local script_dir=$1 home=$2 state=$3 id=$4 blob=$5 pinned current status=0
   pinned=$(fm_local_handoff_field "$blob" hold_identity)
@@ -889,12 +884,21 @@ fm_local_handoff_landing_released_identity() {  # <script-dir> <home> <state> <l
     FM_LOCAL_HANDOFF_ERROR="landing $id must have a readable, released captain call (hold status $status)"
     return 1
   fi
-  if [ "$current" != "${pinned%#*}#$((${pinned##*#} + 1))" ]; then
+  if ! fm_local_handoff_valid_hold_identity "$current" \
+    || [ "${current%#*}" != "${pinned%#*}" ] \
+    || [ "${current##*#}" -le "${pinned##*#}" ]; then
     FM_LOCAL_HANDOFF_ERROR="landing $id's captain-call lifecycle or recorded answer differs from the pinned approval"
     return 1
   fi
 }
 
+# Establish that the parent-owned landing row can still authorize recording its
+# landing: the backlog shows it, and it is closed or open without being held
+# for the captain again, which only the captain resolves. Receipt recovery asks
+# this before it writes any landed record or receipt, so a refused recovery
+# leaves nothing a later run could mistake for an acknowledged landing. Callers
+# must also source bin/fm-tasks-axi-lib.sh and bin/fm-backlog-transition-lib.sh.
+# shellcheck disable=SC2034 # Output global, read by the sourcing caller.
 fm_local_handoff_landing_row_ready() {  # <parent-data-dir> <landing-id>
   local data=$1 id=$2
   if ! fm_backlog_row_probe "$data" "$id"; then

@@ -1106,6 +1106,29 @@ test_missing_worktree_refuses_a_later_unlanded_branch_head() {
   pass "a missing worktree cannot hide a later unlanded branch commit"
 }
 
+# Cleanup deletes the task branch itself before it returns the worktree, so a
+# retry after that point meets a receipted landing with no branch. A deleted
+# branch has not advanced; the detached worktree and the receipt still decide.
+test_a_deleted_task_branch_after_a_receipted_landing_tears_down() {
+  local head out
+  make_bound_fixture deleted-branch
+  commit_child_work 'offered change'
+  head=$(git -C "$FX_WT" rev-parse HEAD)
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (deleted task branch)"; return 0; }
+  approve_current_offer
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null \
+    || fail "landing the offered commit failed"
+  git -C "$FX_WT" checkout -q --detach || fail "detaching the task worktree failed"
+  git -C "$FX_WT" branch -q -D "fm/$FX_TASK" || fail "deleting the task branch failed"
+  out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
+    || fail "cleanup refused a receipted landing whose task branch it had already deleted"$'\n'"$out"
+  assert_absent "$FX_CHILD/state/$FX_TASK.meta" "cleanup left the task record behind"
+  pass "a receipted landing tears down after its task branch was already deleted"
+}
+
 # One damaged record must never be read as a weaker version of a good one.
 # The landing is the strictest consumer, so it drives the offer cases; the
 # cleanup gate drives the receipt case.
@@ -1195,8 +1218,6 @@ test_damaged_records_fail_closed() {
   pass "damaged offer, landing, and receipt records refuse instead of landing or proving anything"
 }
 
-# The delegated landing's authority is the parent-owned landing row, read
-# through the same captain-hold check every local landing runs.
 # A release belongs to the exact call captured by the pin. Replacing the row
 # under the same id (or re-holding and answering it again) cannot confer its
 # new, unrelated answer on the old offered commit.
@@ -1251,6 +1272,36 @@ test_landing_checks_its_pinned_call_identity() {
   pass "only the pinned captain-call lifecycle and its answer can authorize landing"
 }
 
+# A deferral continues the pinned call rather than opening another, so the
+# captain's later release of that same call still authorizes the pinned head.
+test_a_deferred_then_released_call_lands_its_pin() {
+  local head words out
+  make_bound_fixture deferred-approval
+  commit_child_work 'change awaiting approval'
+  head=$(git -C "$FX_WT" rev-parse HEAD)
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (deferred approval)"; return 0; }
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" >/dev/null \
+    || fail "pinning the held call failed"
+  words="$TMP_ROOT/deferred-approval.defer"
+  printf 'Revisit this landing later.\n' > "$words"
+  run_home "$FX_MAIN" "$ROOT/bin/fm-captain-hold.sh" answer land-app \
+    --decision-file "$words" --defer-until 2099-12-31 >/dev/null \
+    || fail "deferring the pinned call failed"
+  release_landing_row || fail "releasing the deferred call failed"
+  out=$(run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" 2>&1) \
+    || fail "a deferred then released call did not authorize its pinned head"$'\n'"$out"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the deferred then released call did not land the pinned head"
+  assert_present "$FX_CHILD/state/$FX_TASK.local-receipt" \
+    "the deferred then released landing published no receipt"
+  pass "a deferral before the release keeps the pinned call's approval"
+}
+
+# The delegated landing's authority is the parent-owned landing row, read
+# through the same captain-hold check every local landing runs.
 test_a_held_landing_row_blocks_the_delegated_landing() {
   local head out err status
   make_bound_fixture held-landing
@@ -1496,8 +1547,10 @@ test_teardown_requires_the_parent_receipt
 test_a_substituted_parent_clone_proves_nothing
 test_the_receipt_gate_survives_a_missing_worktree
 test_missing_worktree_refuses_a_later_unlanded_branch_head
+test_a_deleted_task_branch_after_a_receipted_landing_tears_down
 test_damaged_records_fail_closed
 test_landing_checks_its_pinned_call_identity
+test_a_deferred_then_released_call_lands_its_pin
 test_a_held_landing_row_blocks_the_delegated_landing
 test_overlapping_requests_never_replace_a_pin
 test_a_captains_answer_waits_for_a_pin_in_flight
