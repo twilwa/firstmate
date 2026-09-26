@@ -76,7 +76,7 @@ A missing dependency, authentication failure, unsupported backend, or version re
 ## Write the brief
 
 [`bin/fm-brief.sh`](../../../bin/fm-brief.sh) and its help own scaffold syntax, generated variants, status protocol, delivery-mode definitions of done, and exact safety mechanics.
-Use its scaffold as the contract, then fill `## Captain's intent` (`{TASK}`) with the captain's own ask and any boundary the captain stated, plus the context needed to read it, including the substance of any report, decision, or PR the ask refers to.
+Use its scaffold as the contract, then choose a test scope with `--tests` for every task brief and explicitly pass `--tests full` for upstream-bound work; `bin/fm-brief.sh` owns other defaults and generated details. Fill `## Captain's intent` (`{TASK}`) with the captain's own ask and any boundary the captain stated, plus the context needed to read it, including the substance of any report, decision, or PR the ask refers to.
 Never widen the ask there into a general goal or an enumerated coverage list, because the reviewer treats that subsection as acceptance criteria.
 Fill `## Firstmate spec` (`{FIRSTMATE_SPEC}`) with only the build instructions that ask requires, naming what stays out of scope when the ask is narrow.
 A generalization, consistency sweep, or extra hardening the captain did not ask for is follow-up work to note, not scope to add.

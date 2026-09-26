@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout [--tests <none|focused|safe-suite|full>] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -72,6 +72,11 @@
 # membership pinned when its watch is armed, because the merge watch follows one
 # change.
 # It defaults to squash on gerrit and is refused without it.
+# --tests selects the task's local test scope: none, focused, safe-suite, or full.
+# Because the scaffold has no reliable signal for upstream-bound work, it defaults
+# to none; firstmate must pass --tests full explicitly for upstream-bound work.
+# safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
+# owned by bin/fm-test-run.sh. Only ship and scout task briefs accept this flag.
 # The generated ship brief records the chosen mode as a fixed machine-readable
 # "Delivery contract: mode=<mode>" line, followed by " forge=gerrit shape=squash"
 # on that forge. bin/fm-spawn.sh reads that line and refuses to launch a ship task
@@ -84,7 +89,7 @@
 # charter omits it: that home allocates and returns slots for its own crewmates.
 # --mode, --forge, and --shape are refused on scout and secondmate scaffolds: a
 # scout's deliverable is a report rather than a merge, and a charter is not a
-# delivery contract.
+# delivery contract. --tests applies to ship and scout task briefs, not charters.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
@@ -174,6 +179,8 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+TEST_SCOPE=none
+TEST_SCOPE_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
 FORGE=none
@@ -192,6 +199,7 @@ for a in "$@"; do
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
+      tests) TEST_SCOPE=$a; TEST_SCOPE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -210,6 +218,8 @@ for a in "$@"; do
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
     --shape=*) SHAPE=${a#--shape=}; SHAPE_SET=1 ;;
+    --tests) want_value=tests ;;
+    --tests=*) TEST_SCOPE=${a#--tests=}; TEST_SCOPE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -237,6 +247,14 @@ elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
 fi
+if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
+  echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
+  exit 1
+fi
+case "$TEST_SCOPE" in
+  none|focused|safe-suite|full) ;;
+  *) echo "error: --tests must be one of none, focused, safe-suite, full (got '$TEST_SCOPE')" >&2; exit 1 ;;
+esac
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
 # decision, but it still only makes sense where a branch is actually created.
@@ -448,6 +466,34 @@ fi
 
 REPO=${POS[1]}
 
+case "$TEST_SCOPE" in
+  none)
+    printf -v TEST_SCOPE_SECTION '%s\n' \
+      '## Test scope' \
+      'Scope: none.' \
+      'Expected duration: 0 minutes.'
+    ;;
+  focused)
+    printf -v TEST_SCOPE_SECTION '%s\n' \
+      '## Test scope' \
+      'Scope: focused.' \
+      "Expected duration: estimate from the target repo's recent timings for the selected tests before running."
+    ;;
+  safe-suite)
+    printf -v TEST_SCOPE_SECTION '%s\n' \
+      '## Test scope' \
+      'Scope: safe-suite.' \
+      "Expected duration: estimate from the target repo's recent safe-suite timings before running; local serial runs may take longer than parallel CI." \
+      "For Firstmate, run \`xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt\`; elsewhere use the target repo safe-suite exclusions."
+    ;;
+  full)
+    printf -v TEST_SCOPE_SECTION '%s\n' \
+      '## Test scope' \
+      'Scope: full.' \
+      "Expected duration: estimate from the target repo's recent full-suite timings before running; local serial runs may take longer than parallel CI."
+    ;;
+esac
+
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -489,6 +535,9 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 {FIRSTMATE_SPEC}
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
+TASK_SECTION="$TASK_SECTION
+
+$TEST_SCOPE_SECTION"
 
 # One shared string keeps the ship and scout infrastructure rule identical.
 # Rule 2 governs file edits, so it does not prohibit pool administration.
