@@ -10,8 +10,7 @@ fm_live_gate opt-in FM_OPENCODE_ADAPTER_LIVE herdr jq opencode systemd-run
 LAB_HELPER=${HERDR_LAB_HELPER:-$ROOT/bin/fm-herdr-lab.sh}
 [ -x "$LAB_HELPER" ] || fail "OpenCode lab helper is unavailable: $LAB_HELPER"
 VERSION=$(systemd-run --user --scope -q -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- opencode --version) || fail "cannot read scoped OpenCode version"
-case "$VERSION" in *'2.0.'*) ;; *) fail "OpenCode $VERSION: this guard requires a 2.0 release" ;; esac
-ORIGINAL_PATH=$PATH
+[[ $VERSION =~ ([0-9]+)\.[0-9]+ ]] && [ "${BASH_REMATCH[1]}" -ge 2 ] || fail "OpenCode $VERSION: this guard requires OpenCode 2.0 or later"
 SESSION=$("$LAB_HELPER" name fm-opencode-2-adapter)
 TMP_ROOT=$(mktemp -d "$ROOT/.fm-opencode-adapter-live.XXXXXX")
 cleanup() {
@@ -43,7 +42,8 @@ esac
 [ -f "$WT/.opencode/plugins/fm-busy-state.js" ] || fail "OpenCode $VERSION: fm-spawn omitted busy plugin"
 # A shell script preserves fm-spawn's quoting through Herdr's keyboard input.
 # Only the OpenCode process (and its private server child) runs in this scope.
-printf '#!/bin/bash\nexec systemd-run --user --scope -q -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- /bin/bash -lc %q\n' "$launch" > "$TMP_ROOT/launch.sh"
+EXITED=$TMP_ROOT/launch.exited
+printf '#!/bin/bash\nsystemd-run --user --scope -q -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- /bin/bash -lc %q\n: > %q\n' "$launch" "$EXITED" > "$TMP_ROOT/launch.sh"
 "$LAB_HELPER" provision "$SESSION" || fail "OpenCode $VERSION: Herdr lab provision refused"
 lab() { "$LAB_HELPER" run "$SESSION" "$@"; }
 ws=$(lab workspace create --cwd "$WT" --label opencode-adapter --no-focus) || fail "OpenCode $VERSION: lab workspace create failed"
@@ -90,7 +90,7 @@ lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: queued E
 queued=0
 for ((i=0; i<70; i++)); do
   screen=$(lab pane read "$pane" --source recent --lines 150 2>/dev/null || true)
-  if printf '%s\n' "$screen" | rg -q '^[[:space:]]*QUEUED_DONE[[:space:]]*$'; then queued=1; break; fi
+  if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*QUEUED_DONE[[:space:]]*$'; then queued=1; break; fi
   sleep 1
 done
 [ "$queued" -eq 1 ] || fail "OpenCode $VERSION: busy-queued Enter never produced a reply"
@@ -126,11 +126,10 @@ lab pane send-text "$pane" '/exit' >/dev/null || fail "OpenCode $VERSION: cannot
 lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: cannot submit /exit"
 exited=0
 for ((i=0; i<20; i++)); do
-  screen=$(lab pane read "$pane" --source visible 2>/dev/null || true)
-  case "$screen" in *'firstmate@'*'/worker$'*) exited=1; break ;; esac
+  [ ! -e "$EXITED" ] || { exited=1; break; }
   sleep 1
 done
-[ "$exited" -eq 1 ] || fail "OpenCode $VERSION: /exit did not return the pane to its shell; visible: $screen"
+[ "$exited" -eq 1 ] || fail "OpenCode $VERSION: /exit did not end the OpenCode process"
 printf 'ok - OpenCode %s: /exit closed the private-server worker\n' "$VERSION"
 
 resume=${launch/--prompt/--continue --prompt}
@@ -144,7 +143,7 @@ lab pane send-keys "$pane" Enter >/dev/null || fail "OpenCode $VERSION: cannot s
 resumed=0
 for ((i=0; i<50; i++)); do
   screen=$(lab pane read "$pane" --source recent --lines 160 2>/dev/null || true)
-  if printf '%s\n' "$screen" | rg -q '^[[:space:]]*RESUME_DONE[[:space:]]*$'; then resumed=1; break; fi
+  if printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*RESUME_DONE[[:space:]]*$'; then resumed=1; break; fi
   sleep 1
 done
 [ "$resumed" -eq 1 ] || fail "OpenCode $VERSION: --continue did not process a manually submitted instruction"
