@@ -1300,6 +1300,33 @@ test_a_deferred_then_released_call_lands_its_pin() {
   pass "a deferral before the release keeps the pinned call's approval"
 }
 
+# A row held before hold stamps carried a time keeps its legacy date-only
+# stamp, and the release of that call must still authorize the pinned head.
+test_a_legacy_date_only_call_lands_its_pin() {
+  local head body out
+  make_bound_fixture legacy-stamp
+  commit_child_work 'change awaiting approval'
+  head=$(git -C "$FX_WT" rev-parse HEAD)
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (legacy date-only stamp)"; return 0; }
+  body="$TMP_ROOT/legacy-stamp.body"
+  printf 'Captain hold set: 2026-01-05\n' > "$body"
+  (cd "$FX_MAIN" && tasks-axi update land-app --body-file "$body" --archive-body) >/dev/null \
+    || fail "restoring the legacy date-only hold stamp failed"
+  run_home "$FX_MAIN" "$HANDOFF" request land-app --offer "$FX_OFFER" >/dev/null \
+    || fail "pinning the legacy date-only call failed"
+  assert_equals '2026-01-05#0' "$(record_field "$FX_LANDING_RECORD" hold_identity)" \
+    "the pin did not capture the legacy date-only call"
+  release_landing_row || fail "releasing the legacy date-only call failed"
+  out=$(run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" 2>&1) \
+    || fail "a released legacy date-only call did not authorize its pinned head"$'\n'"$out"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the released legacy date-only call did not land the pinned head"
+  pass "a released legacy date-only call lands the head it pinned"
+}
+
 # The delegated landing's authority is the parent-owned landing row, read
 # through the same captain-hold check every local landing runs.
 test_a_held_landing_row_blocks_the_delegated_landing() {
@@ -1551,6 +1578,7 @@ test_a_deleted_task_branch_after_a_receipted_landing_tears_down
 test_damaged_records_fail_closed
 test_landing_checks_its_pinned_call_identity
 test_a_deferred_then_released_call_lands_its_pin
+test_a_legacy_date_only_call_lands_its_pin
 test_a_held_landing_row_blocks_the_delegated_landing
 test_overlapping_requests_never_replace_a_pin
 test_a_captains_answer_waits_for_a_pin_in_flight

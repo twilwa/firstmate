@@ -797,7 +797,9 @@ body_hold_set_timestamp() {  # <decoded-task-body>
 # the newest resolution retains the answered call's stamp for pinned readers.
 body_answered_hold_set_timestamp() {  # <decoded-task-body>
   printf '%s\n' "$1" \
-    | sed -n 's/^Captain hold answered: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z\)$/\1/p' \
+    | sed -n \
+      -e 's/^Captain hold answered: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z\)$/\1/p' \
+      -e 's/^Captain hold answered: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)$/\1/p' \
     | head -1
 }
 
