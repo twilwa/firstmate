@@ -1,0 +1,5 @@
+== HEAD ==
+watcher pid 1782602 alive=yes, mid-cycle inside b-slow check
+beacon age now: 3s  (derived grace: 300)
+--- fm-watch-arm.sh (FM_POLL=20, FM_GUARD_GRACE unset -> derived) ---
+watcher: attached pid=1782602 (beacon 3s)

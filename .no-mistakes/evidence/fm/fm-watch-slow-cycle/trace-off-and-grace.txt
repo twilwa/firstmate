@@ -1,0 +1,12 @@
+== FM_WATCH_TRACE unset: one real watcher cycle, then list new files ==
+watcher alive: yes; beacon age: 4s
+files under the throwaway home matching *trace*: 0 (the single find hit was the fm-notrace.XXXX temp dir itself; re-checked with find -mindepth 1)
+stray step-trace lines in watcher cwd/home: 0
+
+== fm_poll_derived_grace (liveness floor unchanged) ==
+FM_POLL=1    -> grace 300
+FM_POLL=15   -> grace 300
+FM_POLL=20   -> grace 300
+FM_POLL=240  -> grace 300
+FM_POLL=300  -> grace 360
+FM_POLL=900  -> grace 960

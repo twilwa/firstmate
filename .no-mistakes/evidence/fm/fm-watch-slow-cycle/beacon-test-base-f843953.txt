@@ -1,0 +1,6 @@
+not ok - completed slow check left a stale beacon
+
+real	0m17.485s
+user	0m2.005s
+sys	0m6.487s
+rc=1

@@ -1,0 +1,29 @@
+== HEAD-hung-check: 1 checks x 1000s, check-timeout 10s, watcher pid 1738994 ==
+t=  2.1s beacon_age=1s alive=yes
+t=  3.1s beacon_age=1s alive=yes
+t=  4.1s beacon_age=2s alive=yes
+t=  5.2s beacon_age=3s alive=yes
+t=  6.2s beacon_age=4s alive=yes
+t=  7.2s beacon_age=5s alive=yes
+t=  8.3s beacon_age=6s alive=yes
+t=  9.3s beacon_age=7s alive=yes
+t= 10.4s beacon_age=8s alive=yes
+t= 11.4s beacon_age=9s alive=yes
+t= 12.4s beacon_age=10s alive=yes
+t= 13.5s beacon_age=1s alive=yes
+t= 14.6s beacon_age=2s alive=yes
+MAX beacon age during run: 10s
+-- FM_WATCH_TRACE step log (epoch pid step) --
+1790400782 1738994 cycle-start
+1790400782 1738994 fleet-ledger
+1790400782 1738994 home-summary
+1790400782 1738994 reconcile-requests
+1790400782 1738994 pending-replies
+1790400782 1738994 secondmate-liveness
+1790400782 1738994 secondmate-stall
+1790400782 1738994 procevent
+1790400783 1738994 inactive-outcomes
+1790400783 1738994 check:slow1.check.sh
+1790400793 1738994 checks
+1790400793 1738994 signal-scan
+1790400793 1738994 heartbeat

@@ -1,0 +1,44 @@
+== HEAD: 5 checks x 4s, check-timeout 30s, watcher pid 1704268 ==
+t=  1.0s beacon_age=0s alive=yes
+t=  2.1s beacon_age=0s alive=yes
+t=  3.1s beacon_age=2s alive=yes
+t=  4.2s beacon_age=3s alive=yes
+t=  5.2s beacon_age=4s alive=yes
+t=  6.2s beacon_age=5s alive=yes
+t=  7.3s beacon_age=1s alive=yes
+t=  8.3s beacon_age=2s alive=yes
+t=  9.3s beacon_age=3s alive=yes
+t= 10.4s beacon_age=4s alive=yes
+t= 11.4s beacon_age=1s alive=yes
+t= 12.4s beacon_age=2s alive=yes
+t= 13.4s beacon_age=3s alive=yes
+t= 14.5s beacon_age=4s alive=yes
+t= 15.5s beacon_age=1s alive=yes
+t= 16.5s beacon_age=2s alive=yes
+t= 17.6s beacon_age=3s alive=yes
+t= 18.6s beacon_age=4s alive=yes
+t= 19.7s beacon_age=0s alive=yes
+t= 20.7s beacon_age=1s alive=yes
+t= 21.8s beacon_age=2s alive=yes
+t= 22.8s beacon_age=3s alive=yes
+t= 23.9s beacon_age=4s alive=yes
+t= 24.9s beacon_age=1s alive=yes
+MAX beacon age during run: 5s
+-- FM_WATCH_TRACE step log (epoch pid step) --
+1790400749 1704268 cycle-start
+1790400749 1704268 fleet-ledger
+1790400749 1704268 home-summary
+1790400749 1704268 reconcile-requests
+1790400749 1704268 pending-replies
+1790400749 1704268 secondmate-liveness
+1790400749 1704268 secondmate-stall
+1790400750 1704268 procevent
+1790400750 1704268 inactive-outcomes
+1790400750 1704268 check:slow1.check.sh
+1790400755 1704268 check:slow2.check.sh
+1790400759 1704268 check:slow3.check.sh
+1790400763 1704268 check:slow4.check.sh
+1790400768 1704268 check:slow5.check.sh
+1790400772 1704268 checks
+1790400772 1704268 signal-scan
+1790400772 1704268 heartbeat

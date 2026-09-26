@@ -1,0 +1,4 @@
+fm_pending_reply_tick over 400 resolved records (200 escalated+closed, 200 never escalated); function-level timing, NOT a live watcher run
+HEAD             2.81s
+BASE-f843953   103.03s
+load at measurement: 13.82 13.75 14.65

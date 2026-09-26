@@ -1,0 +1,6 @@
+ok - slow completed step refreshes beacon and arm attaches to the live watcher
+
+real	0m34.684s
+user	0m1.865s
+sys	0m7.555s
+rc=0

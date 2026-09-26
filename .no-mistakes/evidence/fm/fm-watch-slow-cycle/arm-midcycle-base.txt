@@ -1,0 +1,6 @@
+== BASE-f843953 ==
+watcher pid 1782596 alive=yes, mid-cycle inside b-slow check
+beacon age now: 843719625s  (derived grace: 300)
+--- fm-watch-arm.sh (FM_POLL=20, FM_GUARD_GRACE unset -> derived) ---
+watcher: lock held by live pid 1782596 but heartbeat is stale for 843719625s (>300s); inspect or stop that watcher before re-arming.
+watcher: FAILED - watcher cycle exited 1 without an actionable reason

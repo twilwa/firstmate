@@ -1,0 +1,27 @@
+== BASE-f843953: 5 checks x 4s, check-timeout 30s, watcher pid 1704248 ==
+t=  1.1s beacon_age=0s alive=yes
+t=  2.1s beacon_age=1s alive=yes
+t=  3.1s beacon_age=3s alive=yes
+t=  4.2s beacon_age=4s alive=yes
+t=  5.2s beacon_age=5s alive=yes
+t=  6.3s beacon_age=6s alive=yes
+t=  7.3s beacon_age=7s alive=yes
+t=  8.3s beacon_age=8s alive=yes
+t=  9.4s beacon_age=9s alive=yes
+t= 10.4s beacon_age=10s alive=yes
+t= 11.4s beacon_age=11s alive=yes
+t= 12.5s beacon_age=12s alive=yes
+t= 13.5s beacon_age=13s alive=yes
+t= 14.5s beacon_age=14s alive=yes
+t= 15.6s beacon_age=15s alive=yes
+t= 16.6s beacon_age=16s alive=yes
+t= 17.6s beacon_age=17s alive=yes
+t= 18.6s beacon_age=18s alive=yes
+t= 19.7s beacon_age=19s alive=yes
+t= 20.8s beacon_age=20s alive=yes
+t= 21.8s beacon_age=21s alive=yes
+t= 22.8s beacon_age=22s alive=yes
+t= 23.9s beacon_age=23s alive=yes
+t= 25.0s beacon_age=24s alive=yes
+MAX beacon age during run: 24s
+-- no FM_WATCH_TRACE output (hook absent in this build) --

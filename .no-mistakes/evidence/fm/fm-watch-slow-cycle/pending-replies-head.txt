@@ -1,0 +1,7 @@
+== HEAD: 400 historical resolved records + 1 resolved-with-open-escalation ==
+open escalation before cycle: pending-reply-d2ea8598517323af
+pending-replies step (FM_WATCH_TRACE epochs): 4s
+escalation_closed_epoch on open record after cycle: '1790400972'
+-- hibit.status lines appended by the watcher --
+  resolved [key=pending-reply-d2ea8598517323af] [at=1790400972]: pending-reply-resolved: task=hibit pending-reply-id=d2ea8598517323af via=
+historical closed records untouched: 200/200 still closed at 4710; lock files left: 0

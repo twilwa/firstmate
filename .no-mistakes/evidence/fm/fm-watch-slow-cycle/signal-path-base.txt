@@ -1,0 +1,35 @@
+== BASE-f843953: 5 direct reports in private tmux (/tmp/fm-perrep.SxGG/tmux), capture latency 4s ==
+  tmux window fm-r1
+  tmux window fm-r2
+  tmux window fm-r3
+  tmux window fm-r4
+  tmux window fm-r5
+t= 1s beacon_age=0s alive=yes
+t= 2s beacon_age=1s alive=yes
+t= 3s beacon_age=2s alive=yes
+t= 4s beacon_age=3s alive=yes
+t= 5s beacon_age=4s alive=yes
+t= 6s beacon_age=5s alive=yes
+t= 7s beacon_age=6s alive=yes
+t= 8s beacon_age=7s alive=yes
+t= 9s beacon_age=8s alive=yes
+t=10s beacon_age=9s alive=yes
+t=11s beacon_age=10s alive=yes
+t=12s beacon_age=11s alive=yes
+t=13s beacon_age=12s alive=yes
+t=14s beacon_age=13s alive=yes
+t=15s beacon_age=14s alive=no
+t=16s beacon_age=15s alive=no
+t=17s beacon_age=16s alive=no
+t=18s beacon_age=17s alive=no
+t=19s beacon_age=18s alive=no
+t=20s beacon_age=20s alive=no
+t=21s beacon_age=21s alive=no
+t=22s beacon_age=22s alive=no
+t=23s beacon_age=23s alive=no
+t=24s beacon_age=24s alive=no
+t=25s beacon_age=25s alive=no
+t=26s beacon_age=26s alive=no
+MAX beacon age during run: 26s
+-- no FM_WATCH_TRACE output --
+-- watcher stderr (tail) --
