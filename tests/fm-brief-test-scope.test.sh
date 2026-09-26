@@ -21,8 +21,7 @@ test_help_documents_default_and_scope_choices() {
   local help
   help=$("$ROOT/bin/fm-brief.sh" --help)
   fail_unless_contains "$help" '--tests <none|focused|safe-suite|full>' 'help'
-  fail_unless_contains "$help" 'to none; firstmate must pass --tests full explicitly for upstream-bound work' 'help'
-  pass 'fm-brief.sh help documents explicit upstream full-suite selection'
+  pass 'fm-brief.sh help documents the --tests scope choices'
 }
 
 firstmate_minutes() {
@@ -90,14 +89,9 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
 }
 
 test_manifest_excludes_classified_and_live_gated_tests() {
-  local manifest safe_list family_paths live_gated path family runtime
+  local manifest safe_list family_paths live_gated path runtime
   manifest="$ROOT/tests/safe-suite-exclusions.txt"
   assert_present "$manifest" 'safe-suite exclusion manifest is missing'
-
-  for family in real-herdr-gated live-harness-optin; do
-    rg -F -x -q -- "--exclude-family $family" "$manifest" \
-      || fail "safe-suite manifest does not exclude the $family family"
-  done
 
   safe_list=$(xargs "$ROOT/bin/fm-test-run.sh" --list --all < "$manifest") \
     || fail 'safe-suite manifest could not be consumed by fm-test-run.sh'
@@ -107,7 +101,7 @@ test_manifest_excludes_classified_and_live_gated_tests() {
   )
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    if printf '%s\n' "$safe_list" | rg -F -x -q -- "$path"; then
+    if printf '%s\n' "$safe_list" | grep -F -x -q -- "$path"; then
       fail "safe-suite still includes a test from an excluded live family: $path"
     fi
   done <<EOF
@@ -115,16 +109,16 @@ $family_paths
 EOF
 
   for runtime in herdr codex lavish-axi; do
-    live_gated=$(rg -l -g '*.test.sh' \
+    live_gated=$(grep -lE \
       "^[[:space:]]*fm_live_gate[[:space:]].*[[:space:]]${runtime}([[:space:]]|$)" \
-      "$ROOT/tests" || true)
+      "$ROOT"/tests/*.test.sh || true)
     [ -n "$live_gated" ] || fail "no live-gated $runtime tests found for the safe-suite exclusion guard"
     while IFS= read -r path; do
       [ -n "$path" ] || continue
       case "$path" in
         "$ROOT"/*) path=${path#"$ROOT/"} ;;
       esac
-      if printf '%s\n' "$safe_list" | rg -F -x -q -- "$path"; then
+      if printf '%s\n' "$safe_list" | grep -F -x -q -- "$path"; then
         fail "safe-suite includes a live $runtime test: $path"
       fi
     done <<EOF

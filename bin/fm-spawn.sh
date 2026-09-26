@@ -2945,6 +2945,8 @@ if [ "$KIND" = ship ]; then
     else
       forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE"
     fi
+    BRIEF_TEST_SCOPE=$(awk 'prev == "## Test scope" && /^Scope: [a-z-]+\.$/ { scope = substr($0, 8, length($0) - 8) } { prev = $0 } END { print scope }' "$SOURCE_BRIEF")
+    [ -z "$BRIEF_TEST_SCOPE" ] || forge_scaffold="$forge_scaffold --tests $BRIEF_TEST_SCOPE"
     echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent and ## Firstmate spec bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those two subsections, so the worker's publication matches the project's forge" >&2
     exit 1
   fi
