@@ -1736,6 +1736,86 @@ assert len(doc["scripts"])==3
   pass "aggregate-json merges lane timing artifacts"
 }
 
+# A focused public-interface probe can run independently of the scheduler's
+# broader integration coverage.
+test_live_listener_guard() {
+  local tmp fixture outside out rc before
+  tmp=$(fm_test_tmproot fm-test-run-listeners)
+  cat >"$tmp/listen.py" <<'PY'
+import os
+import socket
+import sys
+import time
+
+ready, release = sys.argv[1:]
+with socket.socket() as server:
+    server.bind(('127.0.0.1', 0))
+    server.listen()
+    with open(ready, 'w') as result:
+        result.write(str(server.getsockname()[1]))
+    deadline = time.monotonic() + 12
+    while not os.path.exists(release) and time.monotonic() < deadline:
+        time.sleep(0.05)
+PY
+  fixture="$tmp/probe.test.sh"
+  cat >"$fixture" <<'SH'
+#!/usr/bin/env bash
+python3 "$LISTENER_SCRIPT" "$FIXTURE_READY" "$FIXTURE_RELEASE" >/dev/null 2>&1 &
+listener=$!
+for ((i=0; i<100; i++)); do
+  [ -s "$FIXTURE_READY" ] && break
+  sleep 0.02
+done
+[ -s "$FIXTURE_READY" ] || exit 1
+if [ "${FIXTURE_CLEANUP:-0}" = 1 ]; then
+  trap 'touch "$FIXTURE_RELEASE"; wait "$listener"' EXIT
+fi
+SH
+  chmod +x "$fixture"
+  python3 "$tmp/listen.py" "$tmp/outside.port" "$tmp/outside.stop" &
+  outside=$!
+  for ((i=0; i<100; i++)); do
+    [ -s "$tmp/outside.port" ] && break
+    sleep 0.02
+  done
+  [ -s "$tmp/outside.port" ] || fail "outside listener did not start"
+  before=$(cat "$tmp/outside.port")
+  set +e
+  LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/leaked.port" \
+    FIXTURE_RELEASE="$tmp/leaked.stop" "$RUNNER" "$fixture" >"$tmp/leak.out" 2>&1
+  rc=$?
+  set -e
+  out=$(<"$tmp/leak.out")
+  if [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ]; then
+    [ "$rc" -ne 0 ] || fail "runner accepted a live listener: $out"
+    assert_contains "$out" "port=$(cat "$tmp/leaked.port")" "leak port reported"
+    assert_contains "$out" "test=$fixture" "leaking test reported"
+    assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
+  else
+    assert_contains "$out" "FM_TEST_LISTENERS unchecked:" "unsupported listener check is explicit"
+  fi
+  touch "$tmp/leaked.stop"
+  set +e
+  LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/clean.port" \
+    FIXTURE_RELEASE="$tmp/clean.stop" FIXTURE_CLEANUP=1 \
+    "$RUNNER" "$fixture" >"$tmp/clean.out" 2>&1
+  rc=$?
+  set -e
+  out=$(<"$tmp/clean.out")
+  [ "$rc" -eq 0 ] || fail "registered cleanup must pass: $out"
+  assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
+  [ "$before" = "$(cat "$tmp/outside.port")" ] && [ ! -e "$tmp/outside.stop" ] \
+    || fail "runner touched outside listener"
+  touch "$tmp/outside.stop"
+  wait "$outside" || true
+  pass "runner rejects its leaked listener, accepts cleanup, and ignores external listeners"
+}
+
+if [ "${FM_TEST_RUN_LISTENER_ONLY:-0}" = 1 ]; then
+  test_live_listener_guard
+  exit 0
+fi
+
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
@@ -1775,3 +1855,4 @@ test_max_wall_ms_is_a_result_not_advice
 test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout
 test_aggregate_json
+test_live_listener_guard
