@@ -3,6 +3,7 @@
 Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue behavior re-verified on 2026-07-20 using 1.18.4.
 OpenCode 2.0.16's model-pinned `mini` launch and isolated worker lifecycle were verified on 2026-09-26; [`runtime-backends.md`](../../../../../docs/verification/runtime-backends.md#opencode-2016-standalone-worker-2026-09-26) holds the version-specific evidence.
 The worker adapter requires OpenCode 2.0 or later: its launch uses 2.0's `--standalone` and `mini` forms, and its busy-state plugin exports only the 2.0 default definition.
+Primary and secondmate use is unsupported on OpenCode 2.0 until the `fm-primary-*` plugins, which export only the v1 named hook, are ported to the default-definition loader; `../../../bin/fm-spawn.sh` refuses an opencode `--secondmate`.
 
 ## Operating facts
 

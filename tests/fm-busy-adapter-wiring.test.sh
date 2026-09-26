@@ -406,6 +406,19 @@ test_gemini_is_refused_as_a_secondmate() {
   pass "gemini is refused as a secondmate because it has no primary supervision protocol"
 }
 
+test_opencode_is_refused_as_a_secondmate() {
+  local rec id=busy-oc-3 out
+  rec=$(make_spawn_case opencode-secondmate opencode "$id")
+  read_case_record "$rec"
+  out=$(fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" --secondmate "$id" opencode) && {
+    fail "an opencode secondmate must be refused, its primary plugins do not load on 2.0: $out"
+  }
+  assert_contains "$out" 'crewmate/scout adapter only' \
+    "refusing an opencode secondmate must name the crewmate/scout boundary: $out"
+  [ ! -e "$WT_DIR/.opencode/plugins/fm-busy-state.js" ] || fail "a refused opencode secondmate still wrote the worker plugin"
+  pass "opencode is refused as a secondmate until its primary plugins load on 2.0"
+}
+
 test_kimi_and_grok_install_no_unverified_wiring() {
   local state out
   state="$TMP_ROOT/gates/state"
@@ -432,6 +445,7 @@ test_gemini_hooks_semantic_lifecycle
 test_gemini_hooks_stale_incarnation_harmless
 test_raw_gemini_launch_has_no_semantic_wiring
 test_gemini_is_refused_as_a_secondmate
+test_opencode_is_refused_as_a_secondmate
 test_codex_unverified_until_a_semantic_source_exists
 
 echo "all fm-busy-adapter-wiring tests passed"
