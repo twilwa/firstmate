@@ -143,8 +143,11 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # Single owner of the task test-scope declaration: bin/fm-brief.sh renders it
 # into ship and scout briefs and bin/fm-promote.sh into promoted ship
 # instructions; each caller owns its default. Only no-mistakes and direct-PR
-# reach CI, so none promises CI only there. The Firstmate figures are
-# bin/fm-test-run.sh --estimate-ms over the selections the section names.
+# reach CI, so none promises CI only there. The no-mistakes Test-step skip
+# answer is limited to none and focused because safe-suite and full ask for the
+# suite to run, while the timeout-means-needs-decision rule holds at every
+# scope. The Firstmate figures are bin/fm-test-run.sh --estimate-ms over the
+# selections the section names.
 fm_test_scope_valid() {  # <scope>
   case "$1" in
     none|focused|safe-suite|full) return 0 ;;
