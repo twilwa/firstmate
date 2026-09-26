@@ -215,6 +215,8 @@ mkdir -p "$STATE"
 # (inbox_steer_check below).
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
+# shellcheck source=bin/fm-pane-question-lib.sh
+. "$SCRIPT_DIR/fm-pane-question-lib.sh"
 # The away-posture record (state/.afk-contract) is the posture in both the
 # attended and the afk session; bin/fm-afk-contract.sh owns its schema and this
 # watcher reads only its presence (afk_record_present below).
@@ -2856,7 +2858,10 @@ EOF
   watch_step_done signal-scan
   if [ -n "$pending" ]; then
     sleep "$SIGNAL_GRACE"
-    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)")
+    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)" | awk -F '\t' '
+      NF >= 3 { if (!seen[$3]++) order[++n] = $3; row[$3] = $0 }
+      END { for (i = 1; i <= n; i++) print row[order[i]] }
+    ')
     # The final coalesced signal set is the watcher-carried status-change
     # trigger for this home's published summary. Start it before either
     # surfacing or absorbing the signal, but never wait on it: see
@@ -2896,6 +2901,30 @@ EOF
     # status span, and the capture only once the authoritative verdict comes up short.
     FM_SIGNAL_SURFACE_ENDPOINTS=''
     FM_SIGNAL_NEEDS_DECISION_FILES=''
+    FM_PANE_QUESTION_FILES=''
+    FM_PANE_QUESTION_OFFSETS=''
+    while IFS=$(printf '\t') read -r sf sig f; do
+      case "$f" in *.turn-ended) ;; *) continue ;; esac
+      task=${f##*/}; task=${task%.turn-ended}
+      meta="$STATE/$task.meta"
+      [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+      [ "$(fm_meta_get "$meta" kind)" != secondmate ] || continue
+      w=$(fm_meta_get "$meta" window)
+      [ -n "$w" ] || continue
+      backend=$(fm_backend_of_meta "$meta")
+      capture=$(fm_backend_capture "$backend" "$w" 40 "$(window_label "$w")" 2>/dev/null) || continue
+      if fm_pane_question_turn "$STATE" "$task" "$sig" "$capture"; then
+        FM_PANE_QUESTION_FILES="${FM_PANE_QUESTION_FILES} $f"
+        FM_PANE_QUESTION_OFFSETS="${FM_PANE_QUESTION_OFFSETS}${f}"$'\t'"${FM_PANE_QUESTION_SIZE}"$'\n'
+        # The signature identifies this one turn in the durable inbox body.
+        # An interrupted queue write may be retried without duplicating a nudge.
+        nudge="Your last turn ended on a question; if it needs a decision, append needs-decision [at=<epoch>] [key=<short-key>]: <question> to your status file. (turn $sig)"
+        rec=$(fm_task_inbox_write_idempotent "$STATE" "$task" "$nudge") || exit 1
+        fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || true
+      fi
+    done <<EOF
+$pending
+EOF
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
@@ -2911,13 +2940,25 @@ EOF
     # passes it to handle_wake (see the comment above handle_wake in
     # bin/fm-supervise-daemon.sh).
     # shellcheck disable=SC2086  # same space-separated status-path list
-    if afk_present || [ "$signal_actionable" -eq 0 ] \
+    if afk_present || [ -n "$FM_PANE_QUESTION_FILES" ] || [ "$signal_actionable" -eq 0 ] \
       || { ! signal_crew_provably_working $files && ! signal_turnend_panes_churned $files; }; then
       while IFS=$(printf '\t') read -r sf sig f; do
         [ -n "$sf" ] || continue
         file_reason="$reason"
         case " $FM_SIGNAL_NEEDS_DECISION_FILES " in *" $f "*) file_reason="needs-decision:$files" ;; esac
+        case " $FM_PANE_QUESTION_FILES " in *" $f "*) file_reason="signal: decision-pending ${f##*/}" ;; esac
         fm_wake_append signal "$(basename "$f")" "$file_reason" || exit 1
+        case " $FM_PANE_QUESTION_FILES " in
+          *" $f "*)
+            task=${f##*/}; task=${task%.turn-ended}
+            while IFS=$(printf '\t') read -r question_file question_size; do
+              [ "$question_file" = "$f" ] || continue
+              printf '%s\t%s\n' "$sig" "$question_size" > "$STATE/.pane-question-$task" || exit 1
+            done <<OFFSETS
+$FM_PANE_QUESTION_OFFSETS
+OFFSETS
+            ;;
+        esac
       done <<EOF
 $pending
 EOF
