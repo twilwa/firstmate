@@ -6,7 +6,9 @@
 # No reliable per-task output-token, compaction or restart feed exists yet: report
 # unknown rather than guessing from pane text or an aggregate session counter.
 
+# shellcheck disable=SC2034 # Default, read by the sourcing caller.
 FM_BUDGET_DEFAULT_WALL_SECS=21600
+# shellcheck disable=SC2034 # Default, read by the sourcing caller.
 FM_BUDGET_DEFAULT_OUTPUT_TOKENS=1000000
 FM_BUDGET_REPEAT_SECS=14400
 
@@ -53,6 +55,7 @@ fm_task_budget_snapshot() { # <meta> <status-file>; sets FM_BUDGET_* globals
   FM_BUDGET_STATUS_LINE=
   if [ -f "$status" ]; then
     line=$(last_status_line "$status")
+    # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
     FM_BUDGET_STATUS_LINE=$line
     if at=$(status_line_at_epoch "$line") && [ "$at" -le "$now" ]; then
       FM_BUDGET_STATUS_GAP_SECS=$(( now - at ))
@@ -60,6 +63,7 @@ fm_task_budget_snapshot() { # <meta> <status-file>; sets FM_BUDGET_* globals
   fi
   FM_BUDGET_PERIOD=-1
   if [ "$FM_BUDGET_AGE_SECS" -ge "$FM_BUDGET_WALL_SECS" ]; then
+    # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
     FM_BUDGET_PERIOD=$(( (FM_BUDGET_AGE_SECS - FM_BUDGET_WALL_SECS) / FM_BUDGET_REPEAT_SECS ))
   fi
 }

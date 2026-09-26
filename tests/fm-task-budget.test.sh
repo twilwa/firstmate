@@ -13,11 +13,11 @@ STATE="$HOME_DIR/state"
 mkdir -p "$STATE" "$HOME_DIR/config" "$HOME_DIR/data"
 REPEAT=14400
 FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" budget-default sample --mode local-only > /dev/null
-rg -q '^Task budget: wall_secs=21600 output_tokens=1000000$' "$HOME_DIR/data/budget-default/brief.md" \
+grep -qE '^Task budget: wall_secs=21600 output_tokens=1000000$' "$HOME_DIR/data/budget-default/brief.md" \
   || fail 'default brief budget is missing'
 FM_HOME="$HOME_DIR" "$ROOT/bin/fm-brief.sh" budget-override sample --scout \
   --budget-wall-secs 3600 --budget-output-tokens 5000 > /dev/null
-rg -q '^Task budget: wall_secs=3600 output_tokens=5000$' "$HOME_DIR/data/budget-override/brief.md" \
+grep -qE '^Task budget: wall_secs=3600 output_tokens=5000$' "$HOME_DIR/data/budget-override/brief.md" \
   || fail 'per-brief budget override is missing'
 budget_rules() { # <brief>; rule 5, the budget backup and rule 6, in order
   awk '/^5\. /{five=NR} /\[key=task-budget/{print NR - five ": " $0} /^6\. /{print NR - five ": " $0; exit}' "$1"
@@ -52,7 +52,7 @@ count_budget_rows() {
 
 # First threshold (not a transient pane-staleness result) and crew-state fields.
 watch_at "$((START + WALL))" "$TMP_ROOT/first.out"
-rg -q "^check: task-budget task=$TASK period=0 age=21600s .*tokens=unknown compactions=unknown restarts=unknown last_status_ago=18000s" "$TMP_ROOT/first.out" \
+grep -qE "^check: task-budget task=$TASK period=0 age=21600s .*tokens=unknown compactions=unknown restarts=unknown last_status_ago=18000s" "$TMP_ROOT/first.out" \
   || fail "first crossing missing age and unknown telemetry: $(cat "$TMP_ROOT/first.out")"
 [ "$(count_budget_rows)" = 1 ] || fail 'first crossing did not queue exactly one budget wake'
 state_line=$(crew_at "$((START + WALL))")
@@ -74,7 +74,7 @@ FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE" FM_BUDGET_NOW_EPOCH="$((START + W
 pass 'watcher restart does not duplicate an acknowledged budget wake'
 
 watch_at "$((START + WALL + REPEAT))" "$TMP_ROOT/repeat.out"
-rg -q "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/repeat.out" \
+grep -qE "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/repeat.out" \
   || fail "four-hour repeat missing: $(cat "$TMP_ROOT/repeat.out")"
 [ "$(count_budget_rows)" = 1 ] || fail 'four-hour repeat missing or coalesced'
 pass 'four-hour repeat has a distinct durable queue key'
@@ -85,7 +85,7 @@ pass 'four-hour repeat has a distinct durable queue key'
 printf 'spawn_gen=replacement\n' >> "$STATE/$TASK.meta"
 printf 'working [at=%s]: replacement resumed\n' "$((START + WALL + REPEAT + 60))" >> "$STATE/$TASK.status"
 watch_at "$((START + WALL + 2 * REPEAT))" "$TMP_ROOT/relaunch.out"
-rg -q "^check: task-budget task=$TASK period=2 age=50400s .*last_status_ago=14340s" "$TMP_ROOT/relaunch.out" \
+grep -qE "^check: task-budget task=$TASK period=2 age=50400s .*last_status_ago=14340s" "$TMP_ROOT/relaunch.out" \
   || fail "relaunch reset cumulative age: $(cat "$TMP_ROOT/relaunch.out")"
 state_line=$(crew_at "$((START + WALL + 2 * REPEAT))")
 case "$state_line" in *'budget: age=50400s '*'last_status_ago=14340s'*) ;; *) fail "crew-state reset the clock: $state_line" ;; esac
@@ -101,9 +101,9 @@ FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE" FM_BUDGET_NOW_EPOCH="$((START + W
   FM_POLL=1 FM_HEARTBEAT=999999 FM_CHECK_INTERVAL=999999 FM_WATCH_HANDLING_SUCCESSOR=1 \
   FM_WATCH_TRACE="$TMP_ROOT/marker-error.trace" timeout 3 "$ROOT/bin/fm-watch.sh" > "$TMP_ROOT/marker-error.out" 2> "$TMP_ROOT/marker-error.err" || rc=$?
 [ "$rc" = 124 ] || fail "marker refusal ended watcher before test timeout: rc=$rc stdout=$(cat "$TMP_ROOT/marker-error.out") stderr=$(cat "$TMP_ROOT/marker-error.err")"
-warning_count=$(rg -c 'watcher: task budget check failed; retrying next cycle' "$TMP_ROOT/marker-error.err" || true)
+warning_count=$(grep -c 'watcher: task budget check failed; retrying next cycle' "$TMP_ROOT/marker-error.err" || true)
 [ "${warning_count:-0}" -ge 1 ] || fail 'marker-write refusal did not warn'
-rg -q ' task-budget$' "$TMP_ROOT/marker-error.trace" \
+grep -qE ' task-budget$' "$TMP_ROOT/marker-error.trace" \
   || fail 'watcher did not advance past the failed budget tick'
 [ "$(count_budget_rows)" = 0 ] || fail 'marker refusal published an unprotected wake'
 pass 'marker-write refusal warns and the watcher continues polling'
@@ -121,13 +121,13 @@ FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE" FM_BUDGET_NOW_EPOCH="$((START + W
   FM_POLL=1 FM_HEARTBEAT=999999 FM_CHECK_INTERVAL=999999 \
   timeout 3 "$ROOT/bin/fm-watch.sh" > "$TMP_ROOT/done.out" || rc=$?
 [ "$(count_budget_rows)" = 0 ] || fail "done task past budget queued a budget wake: $(cat "$TMP_ROOT/done.out")"
-rg -q 'task-budget' "$TMP_ROOT/done.out" && fail "done task past budget woke main: $(cat "$TMP_ROOT/done.out")"
+grep -qE 'task-budget' "$TMP_ROOT/done.out" && fail "done task past budget woke main: $(cat "$TMP_ROOT/done.out")"
 pass 'done task past budget produces no budget wake'
 
 : > "$STATE/.wake-queue"
 printf 'working [at=%s]: addressing review feedback\n' "$((START + WALL + REPEAT - 60))" >> "$STATE/$TASK.status"
 watch_at "$((START + WALL + REPEAT))" "$TMP_ROOT/resumed.out"
-rg -q "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/resumed.out" \
+grep -qE "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/resumed.out" \
   || fail "working after done did not resume the original budget clock: $(cat "$TMP_ROOT/resumed.out")"
 pass 'a later working event resumes budget wakes against the original start'
 
@@ -137,6 +137,6 @@ printf 'window=fm-%s\nworktree=%s/no-local-copy\nkind=ship\nbudget_id=b-paused\n
   "$TASK" "$TMP_ROOT" "$START" "$WALL" > "$STATE/$TASK.meta"
 printf 'paused [at=%s]: waiting on upstream CI\n' "$((START + 3600))" > "$STATE/$TASK.status"
 watch_at "$((START + WALL + REPEAT))" "$TMP_ROOT/paused.out"
-rg -q "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/paused.out" \
+grep -qE "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/paused.out" \
   || fail "paused task past budget did not wake: $(cat "$TMP_ROOT/paused.out")"
 pass 'a paused task past budget still wakes'
