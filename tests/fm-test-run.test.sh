@@ -1811,11 +1811,6 @@ SH
   pass "runner rejects its leaked listener, accepts cleanup, and ignores external listeners"
 }
 
-if [ "${FM_TEST_RUN_LISTENER_ONLY:-0}" = 1 ]; then
-  test_live_listener_guard
-  exit 0
-fi
-
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
