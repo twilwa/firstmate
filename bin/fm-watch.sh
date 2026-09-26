@@ -2539,8 +2539,10 @@ rerecord_device_shifted_pr_poll() {  # <id>
 # supervision; a queued key prevents a duplicate before acknowledgement.
 # Queue keys include the period so
 # distinct four-hour repeats cannot be coalesced by the drain.
+# A task whose latest event is done or failed is waiting on firstmate, not
+# spending budget; a later event resumes the original clock and marker.
 task_budget_tick() {
-  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period failed=0
+  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period status_verb failed=0
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
     task=${meta##*/}; task=${task%.meta}
@@ -2550,6 +2552,8 @@ task_budget_tick() {
     fm_task_budget_snapshot "$meta" "$STATE/$task.status" || continue
     period=$FM_BUDGET_PERIOD
     [ "$period" -ge 0 ] || continue
+    status_line_verb "$FM_BUDGET_STATUS_LINE" status_verb
+    case "$status_verb" in done|failed) continue ;; esac
     marker="$STATE/.budget-wake-$task"
     key="task-budget:$task:$FM_BUDGET_ID:$period"
     if ! fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"; then

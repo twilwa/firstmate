@@ -37,8 +37,6 @@ fm_task_budget_snapshot() { # <meta> <status-file>; sets FM_BUDGET_* globals
   [ -f "$meta" ] || return 1
   FM_BUDGET_START=$(fm_task_budget_meta_value "$meta" budget_start_epoch)
   FM_BUDGET_ID=$(fm_task_budget_meta_value "$meta" budget_id)
-  # Early budget records without an id remain readable under their start epoch.
-  [ -n "$FM_BUDGET_ID" ] || FM_BUDGET_ID=$FM_BUDGET_START
   case "$FM_BUDGET_ID" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
   FM_BUDGET_WALL_SECS=$(fm_task_budget_meta_value "$meta" budget_wall_secs)
   FM_BUDGET_OUTPUT_TOKENS=$(fm_task_budget_meta_value "$meta" budget_output_tokens)
@@ -52,8 +50,10 @@ fm_task_budget_snapshot() { # <meta> <status-file>; sets FM_BUDGET_* globals
   FM_BUDGET_COMPACTIONS=unknown
   FM_BUDGET_RESTARTS=unknown
   FM_BUDGET_STATUS_GAP_SECS=unknown
+  FM_BUDGET_STATUS_LINE=
   if [ -f "$status" ]; then
     line=$(last_status_line "$status")
+    FM_BUDGET_STATUS_LINE=$line
     if at=$(status_line_at_epoch "$line") && [ "$at" -le "$now" ]; then
       FM_BUDGET_STATUS_GAP_SECS=$(( now - at ))
     fi

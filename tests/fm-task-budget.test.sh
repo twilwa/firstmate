@@ -101,3 +101,36 @@ rg -q ' task-budget$' "$TMP_ROOT/marker-error.trace" \
   || fail 'watcher did not advance past the failed budget tick'
 [ "$(count_budget_rows)" = 0 ] || fail 'marker refusal published an unprotected wake'
 pass 'marker-write refusal warns and the watcher continues polling'
+
+# A done task waits on firstmate, so its budget stays quiet; a later working
+# event resumes the original clock. A declared pause keeps its budget wakes.
+rm -f "$STATE/$TASK.meta" "$STATE/$TASK.status" "$STATE/.budget-wake-$TASK"
+: > "$STATE/.wake-queue"
+TASK=budget-terminal
+printf 'window=fm-%s\nworktree=%s/no-local-copy\nkind=ship\nbudget_id=b-terminal\nbudget_start_epoch=%s\nbudget_wall_secs=%s\nbudget_output_tokens=1000000\n' \
+  "$TASK" "$TMP_ROOT" "$START" "$WALL" > "$STATE/$TASK.meta"
+printf 'done [at=%s]: PR opened\n' "$((START + 3600))" > "$STATE/$TASK.status"
+rc=0
+FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE" FM_BUDGET_NOW_EPOCH="$((START + WALL))" \
+  FM_POLL=1 FM_HEARTBEAT=999999 FM_CHECK_INTERVAL=999999 \
+  timeout 3 "$ROOT/bin/fm-watch.sh" > "$TMP_ROOT/done.out" || rc=$?
+[ "$(count_budget_rows)" = 0 ] || fail "done task past budget queued a budget wake: $(cat "$TMP_ROOT/done.out")"
+rg -q 'task-budget' "$TMP_ROOT/done.out" && fail "done task past budget woke main: $(cat "$TMP_ROOT/done.out")"
+pass 'done task past budget produces no budget wake'
+
+: > "$STATE/.wake-queue"
+printf 'working [at=%s]: addressing review feedback\n' "$((START + WALL + REPEAT - 60))" >> "$STATE/$TASK.status"
+watch_at "$((START + WALL + REPEAT))" "$TMP_ROOT/resumed.out"
+rg -q "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/resumed.out" \
+  || fail "working after done did not resume the original budget clock: $(cat "$TMP_ROOT/resumed.out")"
+pass 'a later working event resumes budget wakes against the original start'
+
+: > "$STATE/.wake-queue"
+TASK=budget-paused
+printf 'window=fm-%s\nworktree=%s/no-local-copy\nkind=ship\nbudget_id=b-paused\nbudget_start_epoch=%s\nbudget_wall_secs=%s\nbudget_output_tokens=1000000\n' \
+  "$TASK" "$TMP_ROOT" "$START" "$WALL" > "$STATE/$TASK.meta"
+printf 'paused [at=%s]: waiting on upstream CI\n' "$((START + 3600))" > "$STATE/$TASK.status"
+watch_at "$((START + WALL + REPEAT))" "$TMP_ROOT/paused.out"
+rg -q "^check: task-budget task=$TASK period=1 age=36000s" "$TMP_ROOT/paused.out" \
+  || fail "paused task past budget did not wake: $(cat "$TMP_ROOT/paused.out")"
+pass 'a paused task past budget still wakes'
