@@ -6,6 +6,8 @@
 # split yields no question. No backend-specific UI strings are interpreted here.
 # shellcheck source=bin/fm-composer-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/fm-composer-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-classify-lib.sh"
 
 fm_pane_question_text() {  # <capture>
   local transcript
@@ -19,7 +21,7 @@ fm_pane_question_text() {  # <capture>
       || /^[[:space:]]*$/ { brk = 1; next }
     { if (brk) first = $0; brk = 0; last = $0 }
     END {
-      if (last ~ /(needs-decision|blocked)[[:space:]]*\[key=[^]]+\]:/) exit
+      if (last ~ /(needs-decision|blocked)([[:space:]]*\[[^]]*\])*[[:space:]]*:?[[:space:]]*\[key=[^]]+\]/) exit
       gsub(/`[^`]*`/, "", last)
       sub(/[[:space:]]+$/, "", last)
       sub(/^[[:space:]]*([^[:alnum:][:space:]]+[[:space:]]+)?/, "", first)
@@ -47,8 +49,9 @@ fm_pane_question_turn() {  # <state> <task> <turn-signature> <capture>
     [ "$prior" -le "$size" ] || prior=0
     if [ "$size" -gt "$prior" ]; then
       while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-          needs-decision\ *|blocked\ *)
+        status_line_verb "$line" verb
+        case "$verb" in
+          needs-decision|blocked)
             case "$line" in *'[key='*']'*)
               printf '%s\t%s\t%s\n' "$sig" "$size" "$nudged" > "$marker"
               return 1 ;;

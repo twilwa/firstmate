@@ -79,6 +79,9 @@ run_turn codex-question "$ASK$CODEX_TAIL" '' 1
 run_turn codex-summary "Implementation complete.$CODEX_TAIL" '' 0
 run_turn unsplittable "$ASK" '' 0
 run_turn keyed "$ASK$PI_TAIL" 'needs-decision [at=123] [key=choice]: Choose the path\n' 0
+run_turn colon-first-keyed "$ASK$PI_TAIL" 'needs-decision: [key=choice] Choose the path\n' 0
+run_turn colon-first-blocked "$ASK$PI_TAIL" 'blocked: [key=creds] Need the deploy token\n' 0
+run_turn colon-first-echo "Filed needs-decision: [key=choice] Choose REST or RPC?$PI_TAIL" '' 0
 run_turn fenced "\`\`\`\n$ASK\n\`\`\`$PI_TAIL" '' 0
 run_turn quoted "> $ASK$PI_TAIL" '' 0
 run_turn log-quote "\"$ASK\"$PI_TAIL" '' 0
