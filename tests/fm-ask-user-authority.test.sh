@@ -21,7 +21,7 @@ test_primary_and_secondmate_instruction_generation() {
   assert_grep "Firstmate applies \`ask-user-authority\` and obtains any required captain decision" "$ship" \
     "generated implementation brief bypasses the primary authority owner"
   # shellcheck disable=SC2016 # Backticks are literal generated Markdown.
-  assert_grep 'NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.' "$ship" \
+  assert_grep 'NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `bin/fm-nm-respond.sh`. It is banned fleet-wide.' "$ship" \
     "generated implementation brief does not prohibit silent ask-user auto-resolution"
   # shellcheck disable=SC2016 # Backticks are literal generated Markdown.
   assert_grep 'Ask-user gates must return to firstmate as `needs-decision`; the worker never answers its own finding.' "$ship" \

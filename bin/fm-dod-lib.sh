@@ -338,6 +338,7 @@ fm_nm_driving_block() {  # <forge>
   cat <<EOF
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
+Send every \`no-mistakes axi respond\` call, including a skip taken from an \`axi\` \`help\` line, through \`bin/fm-nm-respond.sh\` with the same arguments.
 When starting no-mistakes, pass \`--intent\` as only this brief's \`## Captain's intent\` subsection body, not its heading, plus any later words the captain actually said.
 Preserve the actual words without adding speaker labels or direct address; the subsection heading supplies provenance outside the pipeline input.
 For a legacy brief with no such subsection, include only words on lines marked \`[captain] \`, excluding that metadata prefix; never copy its mixed \`# Task\` wholesale.
@@ -359,7 +360,7 @@ Two firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`bin/fm-nm-respond.sh\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
-- NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
+- NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`bin/fm-nm-respond.sh\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
   Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding.
 EOF

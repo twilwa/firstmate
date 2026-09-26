@@ -72,6 +72,10 @@ rg -q 'cannot read axi status' "$tmp/out"
 refuse --action approve --yes
 refuse --yes=true --action skip --step test
 refuse -y --action fix
+refuse --action approve -y
+accept --action fix --instructions '-y something'
+printf '%s\n' '--action' 'fix' '--instructions' '-y something' > "$tmp/expected"
+diff -u "$tmp/expected" "$FM_NM_ARGS"
 # An unreadable findings section is not evidence of an empty review gate.
 FM_NM_STATUS='gate:
   step: review

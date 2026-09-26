@@ -21,7 +21,7 @@ while (($#)); do
   arg=$1
   shift
   case $arg in
-    --yes|--yes=*|-y|-y*) fail '--yes and -y are forbidden for every action' ;;
+    --yes|--yes=*|-y) fail '--yes and -y are forbidden for every action' ;;
     --whole-step) whole_step=1 ;;
     --action|--step|--findings)
       (($#)) || fail "missing value for $arg"
