@@ -1,0 +1,12 @@
+$ G=/tmp/fm-guard-live.sDthNU bin/fm-test-run.sh /tmp/fm-guard-live.sDthNU/leak-daemon.test.sh
+FM_TEST_BEGIN 2026-09-26T21:27:48Z /tmp/fm-guard-live.sDthNU/leak-daemon.test.sh family=unclassified expected_gate_skip=none
+ok - daemon fixture (listener detached with setsid -f)
+FM_TEST_END 2026-09-26T21:27:48Z /tmp/fm-guard-live.sDthNU/leak-daemon.test.sh exit=0 duration_ms=89 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=215
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=89 failed=0
+FM_TEST_SLOWEST rank=1 script=/tmp/fm-guard-live.sDthNU/leak-daemon.test.sh duration_ms=89
+FM_TEST_LISTENER pid=2324082 port=37323 test=/tmp/fm-guard-live.sDthNU/leak-daemon.test.sh command=python3 /tmp/fm-guard-live.sDthNU/listen.py 4 127.0.0.1 /tmp/fm-guard-live.sDthNU/daemon.port /tmp/fm-guard-live.sDthNU/daemon.stop
+FM_TEST_LISTENERS found=1
+[runner exit=1]
+leaked port: 37323
+listener pid=2324082 ppid=3656334 sid=2324082 (runner pid gone; reparented)
