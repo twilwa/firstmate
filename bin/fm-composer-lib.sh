@@ -1593,6 +1593,32 @@ EOF
   printf '%s\n' "$joined" | LC_ALL=C awk '{$1=$1; printf "%s", $0}'
 }
 
+# fm_composer_transcript_above: the plain rows above the cursorless-selected
+# composer's envelope (a box's top border, pi's opening separator, the left
+# bar's first row, or the bare glyph row, lifted to an enclosing separator
+# pair), so the harness's composer and footer furniture never stand in for its
+# transcript. Returns 1 when no composer can be selected: an unsplittable
+# screen has no transcript to offer.
+fm_composer_transcript_above() {  # <screen>
+  local plain top
+  plain=$(printf '%s\n' "$1" | fm_composer_strip_ansi)
+  _fm_composer_scan_screen "$plain" ''
+  _fm_composer_select_cursorless "$plain" || return 1
+  case "$FM_COMPOSER_SELECTED_KIND" in
+    box) top=$FM_COMPOSER_SCAN_BOX_TOP ;;
+    pi) top=$FM_COMPOSER_SCAN_PI_OPEN ;;
+    *)
+      top=$FM_COMPOSER_SELECTED_FIRST
+      if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
+         && [ "$top" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
+         && [ "$top" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
+        top=$FM_COMPOSER_SCAN_PI_OPEN
+      fi
+      ;;
+  esac
+  printf '%s\n' "$plain" | awk -v n="$top" 'NR <= n'
+}
+
 fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
   local caps=$1 screen=$2 cy=${3:-} identity=${4:-}
   local styled=0 cursor=0 has_identity=0 kv plain

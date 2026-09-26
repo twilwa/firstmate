@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Conservative pane fallback for a worker's final assistant text. A fenced or
 # quoted question and an echoed status line are evidence, not an assistant ask.
-# Only the final eligible paragraph is examined; no backend-specific UI strings
-# are interpreted here.
+# The transcript is split from the harness's prompt and footer rows by the
+# composer owner's prompt detection (bin/fm-composer-lib.sh); a pane it cannot
+# split yields no question. No backend-specific UI strings are interpreted here.
+# shellcheck source=bin/fm-composer-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-composer-lib.sh"
+
 fm_pane_question_text() {  # <capture>
-  printf '%s\n' "$1" | awk '
+  local transcript
+  transcript=$(fm_composer_transcript_above "$1") || return 0
+  printf '%s\n' "$transcript" | awk '
     /^[[:space:]]*```/ { fence = !fence; next }
     fence { next }
     /^[[:space:]]*(>|\||[[:alnum:]_-]+[[:space:]]*\[.*\]:)/ { next }
@@ -16,7 +22,7 @@ fm_pane_question_text() {  # <capture>
       if (last ~ /(needs-decision|blocked)[[:space:]]*\[key=[^]]+\]:/) exit
       gsub(/`[^`]*`/, "", last)
       sub(/[[:space:]]+$/, "", last)
-      if (last ~ /\?$/ || tolower(last) ~ /(^|[^[:alpha:]])captain([^[:alpha:]]|$)/) print last
+      if (last ~ /\?$/ || tolower(last) ~ /^[[:space:]]*captain,/) print last
     }
   '
 }

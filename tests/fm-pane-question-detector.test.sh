@@ -49,11 +49,26 @@ run_turn() {  # <name> <pane-text> <status-text> <expected-question:0|1>
   pass "$1"
 }
 
-run_turn question 'Would you like me to change this?' '' 1
-run_turn keyed 'Would you like me to change this?' 'needs-decision [at=123] [key=choice]: Choose the path\n' 0
-run_turn summary 'Implementation complete.' '' 0
-# shellcheck disable=SC2016 # Backticks are literal fixture content.
-run_turn fenced '```\nWould you like me to change this?\n```' '' 0
-run_turn quoted '> Would you like me to change this?' '' 0
-run_turn log-quote '"Would you like me to change this?"' '' 0
-run_turn address 'Captain, please pick one.' '' 1
+# Trailing prompt and footer rows as each harness draws them at turn end, in
+# the shapes tests/fm-composer-lib.test.sh pins for the composer owner.
+NBSP=$(printf '\302\240')
+RULE='────────────────────────'
+PI_TAIL="\n$RULE\n\n$RULE\n ~/repo (fm/branch)\n ↑1.2k ↓3.4k \$0.05 12%/200k"
+CLAUDE_TAIL="\n$RULE\n❯$NBSP\n$RULE\n  ⏵⏵ bypass permissions on (shift+tab to cycle)"
+CODEX_TAIL='\n\n› Use /skills to list available skills\n\n  gpt-5.5 high · ~/repo'
+ASK='Would you like me to change this?'
+
+run_turn pi-question "$ASK$PI_TAIL" '' 1
+run_turn pi-summary "Implementation complete.$PI_TAIL" '' 0
+run_turn claude-question "$ASK$CLAUDE_TAIL" '' 1
+run_turn claude-summary "Implementation complete.$CLAUDE_TAIL" '' 0
+run_turn codex-question "$ASK$CODEX_TAIL" '' 1
+run_turn codex-summary "Implementation complete.$CODEX_TAIL" '' 0
+run_turn unsplittable "$ASK" '' 0
+run_turn keyed "$ASK$PI_TAIL" 'needs-decision [at=123] [key=choice]: Choose the path\n' 0
+run_turn fenced "\`\`\`\n$ASK\n\`\`\`$PI_TAIL" '' 0
+run_turn quoted "> $ASK$PI_TAIL" '' 0
+run_turn log-quote "\"$ASK\"$PI_TAIL" '' 0
+run_turn address "Captain, please pick one.$PI_TAIL" '' 1
+run_turn captain-possessive "The captain's requested change is implemented.$PI_TAIL" '' 0
+run_turn captain-mention "Ready for the captain to review.$PI_TAIL" '' 0
