@@ -1,0 +1,7 @@
+
+==================== K1 ADVERSARIAL: Kimi scout handed a PRIMARY-owned slot; global hook must not be installed ====================
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime': its common git dir '/tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git' does not belong to the spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git'; spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime'); inspect window lab:fm-kimi-foreign2
+exit=1
+config.toml unchanged: yes
+hook script installed: no
+task meta written: no

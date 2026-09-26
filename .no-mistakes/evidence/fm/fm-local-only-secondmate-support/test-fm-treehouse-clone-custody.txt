@@ -1,0 +1,24 @@
+# Treehouse under test: v2.3.0
+🌳 Setting up worktree...
+🌳 Leased worktree at /tmp/fm-treehouse-clone-custody.gY0vvI/legacy pool/.treehouse/repo-7a2bb2/1/repo. Run 'treehouse return /tmp/fm-treehouse-clone-custody.gY0vvI/legacy pool/.treehouse/repo-7a2bb2/1/repo' to release it.
+🌳 Worktree returned to pool.
+trusted: /tmp/fm-treehouse-clone-custody.gY0vvI/spawn-user/.treehouse-fm/1f3eb2983565/.treehouse/repo-7a2bb2/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.gY0vvI/primary/repo
+ok - real Treehouse spawn custody-a owns its clone and passes unchanged trust
+trusted: /tmp/fm-treehouse-clone-custody.gY0vvI/spawn-user/.treehouse-fm/7233a8291550/.treehouse/repo-7a2bb2/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.gY0vvI/secondmate with ' quote/repo
+ok - real Treehouse spawn custody-b owns its clone and passes unchanged trust
+trusted: /tmp/fm-treehouse-clone-custody.gY0vvI/spawn-user/.treehouse-fm/7233a8291550/.treehouse/repo-7a2bb2/1/repo
+trusted (project root): /tmp/fm-treehouse-clone-custody.gY0vvI/secondmate with ' quote/repo
+ok - real Treehouse spawn custody-linked owns its clone and passes unchanged trust
+A new version of treehouse is available: v2.3.0 → v3.0.1
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Leased worktree at /tmp/fm-treehouse-clone-custody.gY0vvI/spawn-user/.treehouse-fm/7233a8291550/.treehouse/repo-7a2bb2/1/repo. Run 'treehouse return /tmp/fm-treehouse-clone-custody.gY0vvI/spawn-user/.treehouse-fm/7233a8291550/.treehouse/repo-7a2bb2/1/repo' to release it.
+A new version of treehouse is available: v2.3.0 → v3.0.1
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+ok - real allocations and exact returns preserve the existing pool and its unlanded work
+# all fm-treehouse-clone-custody tests passed

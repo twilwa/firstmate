@@ -1,0 +1,16 @@
+
+==================== K1 ADVERSARIAL: Kimi scout handed a PRIMARY-owned slot; global hook must not be installed ====================
+error: kimi did not show a verified ready signal before brief delivery; inspect window lab:fm-kimi-foreign
+warning: leaving task kimi-foreign's slot claim on /tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/2/story-to-anime in place; the Treehouse project lock is no longer held, so the next spawn's claim replaces it
+exit=1
+config.toml unchanged: NO
+hook script installed: YES
+task meta written: no
+
+==================== K2 Kimi scout from its own clone with a malformed global config: late refusal names the window ====================
+fm-kimi-turnend-hook: refused: config.toml is malformed TOML: Expected ']' at the end of a table declaration (at line 1, column 8).
+error: refusing Kimi spawn because the global turn-end hook could not be installed safely; inspect window lab:fm-kimi-bad
+exit=1
+config.toml unchanged: yes
+task meta written: no
+window left for inspection (no automatic endpoint cleanup): lab:fm-kimi-bad

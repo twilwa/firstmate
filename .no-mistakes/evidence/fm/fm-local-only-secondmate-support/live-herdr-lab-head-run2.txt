@@ -1,0 +1,25 @@
+lab session: fm-lab-custody-2210007-27522
+lab socket: /home/firstmate/.config/herdr/sessions/fm-lab-custody-2210007-27522/herdr.sock
+
+== H1 herdr: secondmate-home scout from a same-origin clone allocates under its own custody root
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+spawned h-sm harness=sh kind=scout window=fm-lab-custody-2210007-27522:w1:p2 worktree=/tmp/fm-custody-live/herdr/user/.treehouse-fm/545dbc6100a1/.treehouse/story-to-anime-4cce92/1/story-to-anime
+exit=0
+recorded worktree=/tmp/fm-custody-live/herdr/user/.treehouse-fm/545dbc6100a1/.treehouse/story-to-anime-4cce92/1/story-to-anime
+common dir: /tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime/.git  (sm clone: /tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime/.git; primary clone: /tmp/fm-custody-live/herdr/primary-home/projects/story-to-anime/.git)
+
+== H2 herdr ADVERSARIAL: allocator hands the secondmate a PRIMARY-owned ambient slot
+primary-owned slot: /tmp/fm-custody-live/herdr/user/ambient-pool/.treehouse/story-to-anime-4cce92/1/story-to-anime (/tmp/fm-custody-live/herdr/primary-home/projects/story-to-anime/.git)
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/fm-custody-live/herdr/user/ambient-pool/.treehouse/story-to-anime-4cce92/1/story-to-anime': its common git dir '/tmp/fm-custody-live/herdr/primary-home/projects/story-to-anime/.git' does not belong to the spawning project '/tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime/.git'; spawning project '/tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime'); inspect window fm-lab-custody-2210007-27522:w2:p2
+warning: herdr presentation cleanup could not verify the exact pane; refusing focus-unsafe pane close
+exit=1
+task meta written: no; foreign HEAD unchanged: yes; status: ''
+
+== H3 herdr relaunch: tampered recorded custody is refused without reallocation
+error: relaunch did not yield an isolated worktree (resolved '/tmp/fm-custody-live/herdr/user/ambient-pool/.treehouse/story-to-anime-4cce92/1/story-to-anime'; worktree root '/tmp/fm-custody-live/herdr/user/ambient-pool/.treehouse/story-to-anime-4cce92/1/story-to-anime'; spawning project '/tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime'; its common git dir '/tmp/fm-custody-live/herdr/primary-home/projects/story-to-anime/.git' does not belong to the spawning project '/tmp/fm-custody-live/herdr/sm-home/projects/story-to-anime/.git'); refusing to launch to avoid tangling the primary checkout. Inspect target fm-lab-custody-2210007-27522:w1:p2
+exit=1
+slots before=1 after=1; foreign HEAD unchanged: yes
+
+== lab teardown
+teardown ok (default-session tripwire verified)
+{"lab_sessions_remaining":0}

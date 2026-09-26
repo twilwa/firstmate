@@ -1,0 +1,73 @@
+fm-root: /tmp/fm-lsm-nm/worktrees/e92e165697f5/01M3DS1A6BZQB2NFPNNN3TD1S8 (5c59b45)
+treehouse: v2.3.0   tmux: tmux 3.4
+ambient TREEHOUSE_ROOT for every spawn: /tmp/fm-custody-live/head/user/ambient-pool
+
+==================== S1 secondmate-home scout from a clone sharing primary's origin (the sm-story-to-anime incident shape) ====================
+spawned sm-scout harness=claude kind=scout window=lab:fm-sm-scout worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+exit=0
+recorded worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+worktree common dir = /tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git
+sm clone common dir = /tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git
+primary clone common dir = /tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git
+claude trust entries for slot: /tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+slot is outside both Firstmate homes
+stub worker log:
+stub-claude cwd=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+ambient pool exists? no
+
+==================== S2 primary-home scout from the same origin gets a distinct custody root ====================
+spawned pr-scout harness=claude kind=scout window=lab:fm-pr-scout worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/418903b17a75/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+exit=0
+recorded worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/418903b17a75/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+worktree common dir = /tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git
+distinct roots? sm=c851c3368f74 primary=418903b17a75
+ambient pool exists? no
+
+==================== S3 symlinked linked-worktree spelling of the secondmate clone stays in the secondmate clone's root ====================
+spawned sm-linked harness=claude kind=scout window=lab:fm-sm-linked worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/2/story-to-anime
+exit=0
+recorded worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/2/story-to-anime
+worktree common dir = /tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git
+
+==================== S4 ADVERSARIAL: allocator ignores --root and hands the secondmate a PRIMARY-owned slot from the ambient origin-keyed pool ====================
+A new version of treehouse is available: v2.3.0 → v3.0.0
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Leased worktree at /tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime. Run 'treehouse return /tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime' to release it.
+A new version of treehouse is available: v2.3.0 → v3.0.0
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+primary-owned ambient slot: /tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime (common dir /tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git)
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime': its common git dir '/tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git' does not belong to the spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git'; spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime'); inspect window lab:fm-sm-foreign
+exit=1
+elapsed: 66s
+task meta written? no
+claude trust entries for foreign slot: (none)
+stub worker launched in foreign slot? 0
+foreign slot HEAD unchanged: yes; status: ''
+fm-sm-foreign window still present (no automatic endpoint cleanup): 1
+
+==================== S5 ADVERSARIAL: allocator lands the pane in the secondmate clone's own primary checkout (spawned from a linked worktree) ====================
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime': it is the repository's primary checkout (its git dir is its common git dir); spawning project '/tmp/fm-custody-live/head/sm-linked'); inspect window lab:fm-sm-primary
+exit=1
+task meta written? no
+claude trust entries for primary checkout: /tmp/fm-custody-live/head/sm-home/projects/story-to-anime
+
+==================== S6 relaunch validates recorded custody: own slot reused, foreign recorded slot refused without reallocation ====================
+(stub agent stopped; pane now runs bash)
+-- relaunch sm-scout onto its own recorded slot
+spawned sm-scout harness=claude kind=scout window=lab:fm-sm-scout worktree=/tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+exit=0
+recorded worktree after relaunch: /tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1/story-to-anime
+slot: /tmp/fm-custody-live/head/user/.treehouse-fm/418903b17a75/.treehouse/story-to-anime-31b0e5/1
+slot: /tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/1
+slot: /tmp/fm-custody-live/head/user/.treehouse-fm/c851c3368f74/.treehouse/story-to-anime-31b0e5/2
+(stub agent stopped; pane now runs bash)
+-- tamper: record the primary-owned ambient slot as sm-scout's worktree and move its pane there
+error: relaunch did not yield an isolated worktree (resolved '/tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime'; worktree root '/tmp/fm-custody-live/head/user/ambient-pool/.treehouse/story-to-anime-31b0e5/1/story-to-anime'; spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime'; its common git dir '/tmp/fm-custody-live/head/primary-home/projects/story-to-anime/.git' does not belong to the spawning project '/tmp/fm-custody-live/head/sm-home/projects/story-to-anime/.git'); refusing to launch to avoid tangling the primary checkout. Inspect target lab:fm-sm-scout
+exit=1
+slots before=3 after=3 (no reallocation)
+foreign slot HEAD unchanged: yes
+claude trust entries for foreign slot: (none)
