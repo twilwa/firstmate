@@ -132,10 +132,10 @@ test_question_once_per_status_position() {
 }
 test_question_once_per_status_position
 
-# The nudge's example line, copied literally from the delivered inbox record,
-# must file a keyed decision under the classifier's status grammar.
-test_nudge_example_parses_as_keyed_decision() {
-  local dir state msg example verb key
+# The nudge's example command, run as delivered in the inbox record, must
+# append one keyed decision stamped with the time it runs.
+test_nudge_command_files_keyed_decision() {
+  local dir state msg cmd line verb key at before after
   dir=$(make_case nudge-example); state="$dir/state"
   printf '%b\n' "$ASK$PI_TAIL" > "$dir/pane"
   : > "$state/task.status"
@@ -144,13 +144,23 @@ test_nudge_example_parses_as_keyed_decision() {
   watch_turn "$dir" || fail "nudge-example turn was not surfaced"
   msg=$(grep -rl --include='*.msg' 'Your last turn ended on a question' "$state/task.inbox" | head -n 1)
   [ -n "$msg" ] || fail "no nudge delivered for the example check"
-  example=$(grep '^needs-decision ' "$msg")
-  [ "$(printf '%s\n' "$example" | wc -l | tr -d '[:space:]')" -eq 1 ] \
-    || fail "nudge must carry exactly one example status line: $(cat "$msg")"
-  verb=$(bash -c '. "$1/bin/fm-classify-lib.sh"; status_line_verb "$2"' _ "$ROOT" "$example")
-  key=$(bash -c '. "$1/bin/fm-classify-lib.sh"; _fm_decision_key "$2"' _ "$ROOT" "$example")
-  [ "$verb" = needs-decision ] || fail "nudge example verb parsed as '$verb': $example"
-  [ "$key" = api-shape ] || fail "nudge example key parsed as '$key': $example"
-  pass "nudge example line files a keyed needs-decision"
+  cmd=$(grep '^echo ' "$msg")
+  [ "$(printf '%s\n' "$cmd" | wc -l | tr -d '[:space:]')" -eq 1 ] \
+    || fail "nudge must carry exactly one example command: $(cat "$msg")"
+  before=$(date +%s)
+  bash -c "$cmd" || fail "nudge example command failed: $cmd"
+  after=$(date +%s)
+  [ "$(wc -l < "$state/task.status" | tr -d '[:space:]')" -eq 1 ] \
+    || fail "nudge command must append one line: $(cat "$state/task.status")"
+  line=$(cat "$state/task.status")
+  verb=$(bash -c '. "$1/bin/fm-classify-lib.sh"; status_line_verb "$2"' _ "$ROOT" "$line")
+  key=$(bash -c '. "$1/bin/fm-classify-lib.sh"; _fm_decision_key "$2"' _ "$ROOT" "$line")
+  at=$(bash -c '. "$1/bin/fm-classify-lib.sh"; status_line_at_epoch "$2"' _ "$ROOT" "$line") \
+    || fail "nudge command line has no at= epoch: $line"
+  [ "$verb" = needs-decision ] || fail "nudge command verb parsed as '$verb': $line"
+  [ "$key" = api-shape ] || fail "nudge command key parsed as '$key': $line"
+  [ "$at" -ge $((before - 2)) ] && [ "$at" -le $((after + 2)) ] \
+    || fail "nudge command at=$at is not the run time ($before-$after): $line"
+  pass "nudge example command files a keyed needs-decision stamped now"
 }
-test_nudge_example_parses_as_keyed_decision
+test_nudge_command_files_keyed_decision

@@ -2918,11 +2918,12 @@ EOF
         FM_PANE_QUESTION_OFFSETS="${FM_PANE_QUESTION_OFFSETS}${f}"$'\t'"${FM_PANE_QUESTION_SIZE}"$'\n'
         # The signature identifies this one turn in the durable inbox body.
         # An interrupted queue write may be retried without duplicating a nudge.
-        # The example is one literal line: placeholder brackets were read as
-        # template markers and dropped, which the keyed-status grammar rejects.
-        nudge="Your last turn ended on a question. If it needs a decision, append one line to your status file exactly like this example:
-needs-decision [at=1790446770] [key=api-shape]: Should I use REST or RPC?
-The square brackets are literal and must be kept; change only the key and the question text. (turn $sig)"
+        # The example is one copyable command: placeholder brackets were read as
+        # template markers and dropped, and a fixed at= epoch was copied verbatim.
+        status_q=$(printf '%s' "$STATE/$task.status" | sed "s/'/'\\\\''/g")
+        nudge="Your last turn ended on a question. If it needs a decision, file it by running this command:
+echo \"needs-decision [at=\$(date +%s)] [key=api-shape]: Should I use REST or RPC?\" >> '$status_q'
+Keep the square brackets and the \$(date +%s) stamp exactly as written; change only the key and the question. (turn $sig)"
         rec=$(fm_task_inbox_write_idempotent "$STATE" "$task" "$nudge") || exit 1
         fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || true
       fi
