@@ -21,7 +21,7 @@ fm_pane_question_text() {  # <capture>
       || /^[[:space:]]*$/ { brk = 1; next }
     { if (brk) first = $0; brk = 0; last = $0 }
     END {
-      if (last ~ /(needs-decision|blocked)([[:space:]]*\[[^]]*\])*[[:space:]]*:?[[:space:]]*\[key=[^]]+\]/) exit
+      if (last ~ /(needs-decision|blocked)(([[:space:]]*\[[^]]*\])*[[:space:]]*\[key=[^]]+\][[:space:]]*:|[[:space:]]*:[[:space:]]*\[key=[^]]+\])/) exit
       gsub(/`[^`]*`/, "", last)
       sub(/[[:space:]]+$/, "", last)
       sub(/^[[:space:]]*([^[:alnum:][:space:]]+[[:space:]]+)?/, "", first)

@@ -82,6 +82,8 @@ run_turn keyed "$ASK$PI_TAIL" 'needs-decision [at=123] [key=choice]: Choose the 
 run_turn colon-first-keyed "$ASK$PI_TAIL" 'needs-decision: [key=choice] Choose the path\n' 0
 run_turn colon-first-blocked "$ASK$PI_TAIL" 'blocked: [key=creds] Need the deploy token\n' 0
 run_turn colon-first-echo "Filed needs-decision: [key=choice] Choose REST or RPC?$PI_TAIL" '' 0
+run_turn key-mention "Should I file needs-decision [key=db-choice] for this, or just pick Postgres?$PI_TAIL" '' 1
+run_turn keyed-echo "Filed needs-decision [at=1] [key=choice]: Choose REST or RPC?$PI_TAIL" '' 0
 run_turn fenced "\`\`\`\n$ASK\n\`\`\`$PI_TAIL" '' 0
 run_turn quoted "> $ASK$PI_TAIL" '' 0
 run_turn log-quote "\"$ASK\"$PI_TAIL" '' 0
