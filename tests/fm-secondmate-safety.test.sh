@@ -872,28 +872,10 @@ test_home_seed_refuses_missing_projects_without_signal() {
   pass "home seeding fails loudly on accidental project omission and rejects mixed --no-projects"
 }
 
-test_home_seed_refuses_local_only_project() {
-  local home subhome err
-  home="$TMP_ROOT/local-only-seed-home"
-  subhome="$TMP_ROOT/local-only-seed-subhome"
-  err="$TMP_ROOT/local-only-seed.err"
-  mkdir -p "$home/projects" "$home/data" "$home/state"
-  fm_git_init_commit "$home/projects/alpha"
-  printf '%s\n' '- alpha [local-only] - alpha project (added 2026-06-22)' > "$home/data/projects.md"
-
-  if FM_HOME="$home" "$ROOT/bin/fm-home-seed.sh" design "$subhome" alpha >/dev/null 2>"$err"; then
-    fail "seed allowed a local-only project into a secondmate home"
-  fi
-  grep -F 'project alpha is local-only; secondmate routes support only no-mistakes and direct-PR projects' "$err" >/dev/null \
-    || fail "seed did not explain local-only project rejection"
-  [ ! -e "$subhome" ] || fail "seed created a subhome before rejecting a local-only project"
-  pass "home seeding refuses local-only projects"
-}
-
 # A registry entry whose forge token the parser cannot resolve yields no posture
-# at all. Reading that refusal as an empty mode would walk straight past the
-# local-only routing refusal above and clone the project into a secondmate home,
-# so the seed must stop instead.
+# at all. Reading that refusal as an empty mode would seed a possibly local-only
+# project as an ordinary published clone instead of a parent-bound local-only
+# copy, so the seed must stop instead.
 test_home_seed_refuses_an_unresolvable_registry_posture() {
   local home subhome err
   home="$TMP_ROOT/unresolvable-posture-home"
@@ -3015,7 +2997,6 @@ test_home_seed_refuses_projectless_home_with_symlinked_projects
 test_home_seed_refuses_projectless_home_with_non_directory_projects
 test_home_seed_refuses_projectless_home_with_uninspectable_registry
 test_home_seed_refuses_missing_projects_without_signal
-test_home_seed_refuses_local_only_project
 test_home_seed_refuses_an_unresolvable_registry_posture
 test_home_seed_refuses_registry_delimiter_home
 test_home_seed_refuses_active_home_and_root

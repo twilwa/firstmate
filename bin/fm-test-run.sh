@@ -331,6 +331,7 @@ family_for_basename() {
     fm-remote-transport-lanes.test.sh|\
     fm-remote-reply.test.sh|fm-remote-secondmate-lifecycle-e2e.test.sh|\
     fm-remote-secondmate-trace-context.test.sh|\
+    fm-local-handoff.test.sh|\
     fm-secondmate-harness.test.sh|fm-secondmate-lifecycle-e2e.test.sh|\
     fm-secondmate-liveness.test.sh|fm-secondmate-reconcile.test.sh|\
     fm-secondmate-restart.test.sh|\
@@ -1446,6 +1447,12 @@ families_for_changed_path() {
       printf '%s\n' secondmate
       printf '%s\n' session-bootstrap
       ;;
+    bin/fm-local-handoff*)
+      # Local-only child custody is seeded by the secondmate path and consumed
+      # by the landing and cleanup guards, so both families prove a change here.
+      printf '%s\n' secondmate
+      printf '%s\n' pr-forge
+      ;;
     bin/fm-secondmate*|bin/fm-remote*|bin/fm-on.sh|bin/fm-home-seed.sh|\
     bin/fm-backlog-handoff.sh|bin/fm-backlog-receive.sh|bin/fm-procevent-remote-reply.sh|\
     bin/fm-config-inherit-lib.sh|bin/fm-config-push.sh|bin/fm-shared*|\
@@ -1551,7 +1558,14 @@ families_for_changed_path() {
       printf '%s\n' watcher-wake-lock
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
       ;;
-    bin/fm-pr-*|bin/fm-merge-local.sh|bin/fm-teardown.sh|bin/fm-review-diff.sh|\
+    bin/fm-merge-local.sh|bin/fm-teardown.sh)
+      # Both carry local-only child custody - the guarded delegated landing and
+      # the receipt-gated cleanup - beside their ordinary forge paths, so each
+      # is proven by the custody suite as well as its own family.
+      printf '%s\n' pr-forge
+      printf '%s\n' "__script__:fm-local-handoff.test.sh"
+      ;;
+    bin/fm-pr-*|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*)
       printf '%s\n' pr-forge
       ;;

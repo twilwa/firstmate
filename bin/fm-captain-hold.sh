@@ -30,7 +30,7 @@
 #   fm-captain-hold.sh binding <source-id>
 #   fm-captain-hold.sh complete <origin-id> (--none | <task-id>...)
 #   fm-captain-hold.sh verify <origin-id>
-#   fm-captain-hold.sh open <task-id> [--identity] [--distinguish-absent]
+#   fm-captain-hold.sh open <task-id> [--identity] [--identity-if-released] [--distinguish-absent]
 #   fm-captain-hold.sh diverged
 #   fm-captain-hold.sh reconcile list
 #   fm-captain-hold.sh reconcile close <task-id> --evidence-file <path>
@@ -186,7 +186,10 @@
 # with no backlog file counts as absent, because it records no captain calls.
 # It prints nothing on these predicate results and mutates nothing, unless
 # `--identity` asks it to print this call's
-# LIFECYCLE identity, which it does on an exit 0 only. That identity - the
+# LIFECYCLE identity, which it does on an exit 0 only. The explicit
+# `--identity-if-released` also prints it for an existing released row on exit
+# 1, so a pin can verify the same call after the captain records an answer.
+# That identity - the
 # hold-set stamp and the count of recorded answers - is what distinguishes two
 # successive calls on one task id: re-holding released work starts a new
 # lifecycle without necessarily touching the task's status log, so a consumer
@@ -528,12 +531,13 @@ closed_answer_replay_mode_compatible() {  # <mode> <task-body>
 # The record's label is what keeps an evidence-backed reconciliation from
 # reading as the captain's own words. `reconciled` closes a call that went moot
 # and carries verified evidence; every other mode carries what the captain said.
-resolution_block() {  # <mode> [defer-until]
-  local mode=$1 defer_until=${2:-} label='Captain decision:'
+resolution_block() {  # <mode> [defer-until] [hold-set-stamp]
+  local mode=$1 defer_until=${2:-} hold_set=${3:-} label='Captain decision:'
   [ "$1" != reconciled ] || label='Reconciliation evidence:'
   printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\n' \
     "$DECISION_DIGEST" "$mode"
   [ "$mode" != deferred ] || printf 'Deferred until: %s\n' "$defer_until"
+  [ -z "$hold_set" ] || printf 'Captain hold answered: %s\n' "$hold_set"
   printf '\n%s\n%s\n' "$label" "$DECISION_TEXT"
 }
 
@@ -789,6 +793,16 @@ body_hold_set_timestamp() {  # <decoded-task-body>
     | head -1
 }
 
+# A released call loses its active stamp to restore resolution-first ordering;
+# the newest resolution retains the answered call's stamp for pinned readers.
+body_answered_hold_set_timestamp() {  # <decoded-task-body>
+  printf '%s\n' "$1" \
+    | sed -n \
+      -e 's/^Captain hold answered: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z\)$/\1/p' \
+      -e 's/^Captain hold answered: \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)$/\1/p' \
+    | head -1
+}
+
 write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existing-0-or-1>
   local id=$1 body=$2 hold_set=$3 preserve=$4 existing new_body tmp
   body=$(decode_shown_value "$body") \
@@ -841,7 +855,7 @@ verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how>"
 
 command_hold() {
   local id=${1:-} title='' reason='' repo='' origin='' until='' show state existing_title body='' hold_kind hold_set occurrence
-  local existing_hold_kind='' existing_held='' preserve_hold_set=0
+  local existing_hold_kind='' existing_held='' preserve_hold_set=0 previous_hold_set
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -880,6 +894,13 @@ command_hold() {
     existing_held=$(show_field_value "$show" held)
     if [ "$existing_hold_kind" = captain ] && [ "$existing_held" = yes ]; then
       preserve_hold_set=1
+    else
+      previous_hold_set=$(body_answered_hold_set_timestamp "$(show_field_value "$show" body)")
+      if [ -n "$previous_hold_set" ] && [[ ! $hold_set > $previous_hold_set ]]; then
+        hold_set=$(date -u -j -v+1S -f %Y-%m-%dT%H:%M:%SZ "$previous_hold_set" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+          || date -u -d "$previous_hold_set + 1 second" +%Y-%m-%dT%H:%M:%SZ) \
+          || fail "cannot mint a distinct hold-set stamp for $id"
+      fi
     fi
     if [ -n "$title" ]; then
       existing_title=$(show_field_value "$show" title)
@@ -938,10 +959,10 @@ command_hold() {
 # Successful closure removes the stamp to restore resolution-first ordering.
 write_resolution_record() {  # <task-id> <mode> <shown-body> [defer-until]
   local id=$1 mode=$2 body=$3 defer_until=${4:-} new_body tmp hold_set
-  new_body=$(resolution_block "$mode" "$defer_until")
   body=$(decode_shown_value "$body") \
     || fail "could not decode the existing body for $id"
   hold_set=$(body_hold_set_timestamp "$body")
+  new_body=$(resolution_block "$mode" "$defer_until" "$hold_set")
   if [ -n "$hold_set" ]; then
     body=${body#"Captain hold set: $hold_set"}
     case "$body" in
@@ -1160,7 +1181,9 @@ command_answer() {
 
   if [ "$hold_kind" = captain ]; then
     if body_has_resolution_record "$body" \
-      && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
+      && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
+      && { [ -z "$(body_answered_hold_set_timestamp "$(decode_shown_value "$body")")" ] \
+        || [ "$(body_hold_set_timestamp "$(decode_shown_value "$body")")" = "$(body_answered_hold_set_timestamp "$(decode_shown_value "$body")")" ]; }; then
       recorded_mode=$(recorded_resolution_mode "$body" || true)
       case "$recorded_mode" in
         released) [ "$release" = 1 ] || fail "task $id records this answer as a release; retry with --release" ;;
@@ -2002,11 +2025,12 @@ EOF
 # exist holds nothing. Every read failure over a record that DOES exist is a 2,
 # printed to stderr, because a mechanical closer must never read "cannot tell"
 # as permission to close.
-command_open() {  # <task-id> [--identity] [--distinguish-absent]
-  local id='' identity=0 distinguish_absent=0 data state root file backend show shown_body
+command_open() {  # <task-id> [--identity] [--identity-if-released] [--distinguish-absent]
+  local id='' identity=0 identity_if_released=0 distinguish_absent=0 data state root file backend show shown_body
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --identity) identity=1 ;;
+      --identity-if-released) identity_if_released=1 ;;
       --distinguish-absent) distinguish_absent=1 ;;
       -*) usage >&2; exit 2 ;;
       *)
@@ -2016,6 +2040,10 @@ command_open() {  # <task-id> [--identity] [--distinguish-absent]
     esac
     shift
   done
+  [ "$identity_if_released" = 0 ] || [ "$identity" = 1 ] || {
+    printf 'fm-captain-hold: --identity-if-released requires --identity\n' >&2
+    exit 2
+  }
   case "$id" in
     ''|*[!A-Za-z0-9._-]*)
       printf 'fm-captain-hold: task id must be a non-empty privacy-safe slug: %s\n' "$id" >&2
@@ -2044,20 +2072,26 @@ command_open() {  # <task-id> [--identity] [--distinguish-absent]
   fm_tasks_axi_compatible || { printf 'fm-captain-hold: compatible tasks-axi is required\n' >&2; exit 2; }
   if fm_backlog_row_probe "$data" "$id"; then
     state=${FM_BACKLOG_ROW_STATE%% *}
-    if [ "$state" != "done" ] && [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; then
-      if [ "$identity" -eq 1 ]; then
-        task_show "$id" || {
-          printf 'fm-captain-hold: captain call %s is open but its record could not be read\n' "$id" >&2
-          exit 2
-        }
-        show=$TASK_SHOW_OUTPUT
-        shown_body=$(show_field "$show" body)
+    if [ "$identity" -eq 1 ] \
+      && { { [ "$state" != "done" ] && [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; } \
+        || [ "$identity_if_released" -eq 1 ]; }; then
+      task_show "$id" || {
+        printf 'fm-captain-hold: captain call %s exists but its record could not be read\n' "$id" >&2
+        exit 2
+      }
+      show=$TASK_SHOW_OUTPUT
+      shown_body=$(show_field "$show" body)
+      if [ "$state" != "done" ] && [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; then
         printf '%s#%s\n' \
           "$(body_hold_set_timestamp "$(decode_shown_value "$shown_body")")" \
           "$(resolution_record_count "$shown_body")"
+      elif [ "$(recorded_resolution_mode "$(decode_shown_value "$shown_body")")" = released ]; then
+        printf '%s#%s\n' \
+          "$(body_answered_hold_set_timestamp "$(decode_shown_value "$shown_body")")" \
+          "$(resolution_record_count "$shown_body")"
       fi
-      return 0
     fi
+    [ "$state" = "done" ] || [ "$FM_BACKLOG_ROW_HOLD_KIND" != captain ] || return 0
     return 1
   fi
   if [ "$FM_BACKLOG_ROW_RESULT" = not_found ]; then

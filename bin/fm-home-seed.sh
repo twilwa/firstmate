@@ -9,6 +9,16 @@
 #       no live process and is never recycled until the lease is released with
 #       "treehouse return". Projects are cloned
 #       from the active home into the secondmate home's projects/ directory.
+#       A no-mistakes or direct-PR project is cloned from its origin. A
+#       local-only project is instead cloned as an independent local copy from
+#       this home's clone of it, pinned to that clone's current default-branch
+#       commit, with no origin remote, no hardlinked or borrowed objects, and no
+#       no-mistakes initialization; the seed records that provenance as a
+#       fm-local-only-binding.v1 record under the secondmate home's
+#       data/local-only-bindings/, which is what makes the child clone a bound
+#       copy whose work only the primary may land. A preexisting local-only
+#       clone is accepted only when it still has no remote and its binding still
+#       names this parent; an unbound one is refused rather than adopted.
 #       That project list is non-exclusive provisioning data. Pass --no-projects
 #       instead of a project list to seed a project-less home for a domain whose
 #       subject is the firstmate repo itself; it is mutually exclusive with a
@@ -47,6 +57,11 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
 # shellcheck source=bin/fm-secondmate-charter-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-charter-lib.sh"
+# The local-only project binding this seed publishes is one of three records
+# owned by fm-local-handoff-lib.sh; the seed writes it through that owner
+# rather than hand-formatting a second copy of the format.
+# shellcheck source=bin/fm-local-handoff-lib.sh
+. "$SCRIPT_DIR/fm-local-handoff-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
@@ -387,6 +402,122 @@ seeded_origin_url() {
   normalize_origin_url "$dst" "$url"
 }
 
+# A local-only project has no forge transport, so its secondmate clone comes
+# from the primary clone's own default-branch commit instead of an origin URL.
+# Prints "<branch>\t<commit>".
+local_only_seed_ref() {  # <project> <src>
+  local project=$1 src=$2 branch commit
+  branch=$(fm_local_handoff_default_branch "$src") || {
+    echo "error: project $project is local-only but $src has no default branch; expected main or master" >&2
+    return 1
+  }
+  commit=$(git -C "$src" rev-parse --verify --quiet "refs/heads/$branch^{commit}" 2>/dev/null || true)
+  [ -n "$commit" ] || {
+    echo "error: project $project has no commit on $branch in $src to seed a local-only clone from" >&2
+    return 1
+  }
+  printf '%s %s\n' "$branch" "$commit"
+}
+
+# Record the versioned project/parent binding that makes a clone a BOUND
+# local-only copy: the child may not land it, and its tasks need a primary
+# landing receipt before teardown. Written inside the seed transaction, after
+# backing up whatever the home had, so a later failure restores it.
+seed_write_local_only_binding() {  # <home> <project> <branch> <commit>
+  local home=$1 project=$2 branch=$3 commit=$4 path existed=0 parent_home
+  path=$(fm_local_handoff_binding_path "$home" "$project")
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    existed=1
+    cp "$path" "$SEED_BACKUP_DIR/binding-files/$project.binding" 2>/dev/null || {
+      echo "error: cannot back up the existing local-only binding at $path" >&2
+      return 1
+    }
+  fi
+  printf '%s %s\n' "$existed" "$project" >> "$SEED_BINDINGS_FILE"
+  parent_home=$(resolved_path "$FM_HOME")
+  fm_local_handoff_write_record "$path" \
+    "schema=$FM_LOCAL_HANDOFF_BINDING_SCHEMA" \
+    "project=$project" \
+    "parent_home=$parent_home" \
+    "parent_project=$(resolved_path "$PROJECTS")/$project" \
+    "seed_commit=$commit" \
+    "seed_branch=$branch" \
+    "created=$(date +%s)" || {
+    echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2
+    return 1
+  }
+}
+
+# A preexisting local-only clone is accepted only when its binding still names
+# this parent and this clone, so re-seeding never silently rebinds a home that
+# was provisioned from somewhere else.
+validate_existing_local_only_binding() {  # <home> <project>
+  local home=$1 project=$2 blob parent_home
+  fm_local_handoff_binding_load "$home" "$project" || {
+    echo "error: seeded local-only project $project in $home has an unusable binding: $FM_LOCAL_HANDOFF_ERROR" >&2
+    return 1
+  }
+  blob=$FM_LOCAL_HANDOFF_RECORD
+  parent_home=$(resolved_path "$FM_HOME")
+  if [ "$(fm_local_handoff_field "$blob" parent_home)" != "$parent_home" ] \
+    || [ "$(fm_local_handoff_field "$blob" parent_project)" != "$(resolved_path "$PROJECTS")/$project" ]; then
+    echo "error: seeded local-only project $project in $home is bound to a different parent clone; retire or clean that home before reseeding" >&2
+    return 1
+  fi
+}
+
+# Clone a local-only project into the secondmate home as an INDEPENDENT local
+# copy. --no-hardlinks and the removed origin are the whole point: no forge
+# transport, no publication remote, and no shared object storage, so the
+# child's history cannot be damaged by anything that happens to the parent
+# clone and nothing here can ever publish outward.
+seed_local_only_clone() {  # <project> <src> <dst> <home>
+  local project=$1 src=$2 dst=$3 home=$4 ref branch commit existing_remotes cloned_head
+  ref=$(local_only_seed_ref "$project" "$src") || return 1
+  read -r branch commit <<EOF
+$ref
+EOF
+
+  if [ -e "$dst" ]; then
+    [ -d "$dst" ] || { echo "error: seeded project $project exists at $dst but is not a directory" >&2; return 1; }
+    git -C "$dst" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "error: seeded project $project at $dst is not a git repo" >&2; return 1; }
+    existing_remotes=$(git -C "$dst" remote) || {
+      echo "error: cannot inspect remotes of seeded local-only project $project at $dst" >&2
+      return 1
+    }
+    [ -z "$existing_remotes" ] || {
+      echo "error: seeded local-only project $project at $dst has remotes $existing_remotes; a local-only clone carries no publication remote" >&2
+      return 1
+    }
+    fm_local_handoff_binding_present "$home" "$project" || {
+      echo "error: seeded local-only project $project at $dst has no local-only binding; refusing to adopt a preexisting clone, retire or clean that home before reseeding" >&2
+      return 1
+    }
+    validate_existing_local_only_binding "$home" "$project" || return 1
+    return 0
+  fi
+
+  git clone --quiet --no-hardlinks --single-branch --branch "$branch" "$src" "$dst" || {
+    echo "error: could not clone local-only project $project from $src" >&2
+    return 1
+  }
+  git -C "$dst" remote remove origin >/dev/null 2>&1 || true
+  if [ -n "$(git -C "$dst" remote 2>/dev/null | head -1)" ]; then
+    echo "error: local-only clone $dst still carries a remote after seeding" >&2
+    return 1
+  fi
+  if [ -e "$dst/.git/objects/info/alternates" ]; then
+    echo "error: local-only clone $dst borrows objects from another repository; it must be independent" >&2
+    return 1
+  fi
+  cloned_head=$(git -C "$dst" rev-parse --verify --quiet "refs/heads/$branch" 2>/dev/null || true)
+  [ "$cloned_head" = "$commit" ] || {
+    echo "error: local-only clone $dst is at ${cloned_head:-no commit}, not the seeded $commit" >&2
+    return 1
+  }
+  seed_write_local_only_binding "$home" "$project" "$branch" "$commit" || return 1
+}
+
 acquire_treehouse_home() {
   local id=$1 home
   # Durably lease a firstmate worktree from the pool. The lease persists with no
@@ -480,8 +611,8 @@ clone_project() {
 $mode_line
 EOF
   if [ "$mode" = local-only ]; then
-    echo "error: project $project is local-only; secondmate routes support only no-mistakes and direct-PR projects" >&2
-    return 1
+    seed_local_only_clone "$project" "$src" "$dst" "$home"
+    return
   fi
   if [ -e "$dst" ]; then
     [ -d "$dst" ] || { echo "error: seeded project $project exists at $dst but is not a directory" >&2; return 1; }
@@ -508,8 +639,8 @@ validate_seed_project() {
 $mode_line
 EOF
   if [ "$mode" = local-only ]; then
-    echo "error: project $project is local-only; secondmate routes support only no-mistakes and direct-PR projects" >&2
-    return 1
+    local_only_seed_ref "$project" "$src" >/dev/null || return 1
+    return 0
   fi
   url=$(git -C "$src" remote get-url origin 2>/dev/null || true)
   [ -n "$url" ] || { echo "error: project $project is $mode but has no origin remote" >&2; return 1; }
@@ -537,6 +668,7 @@ SEED_HOME_CREATED=0
 SEED_HOME_BACKED_UP=0
 SEED_BACKUP_DIR=
 SEED_CREATED_PROJECTS_FILE=
+SEED_BINDINGS_FILE=
 SEED_PARENT_REG_EXISTED=0
 SEED_PARENT_BRIEF=
 SEED_PARENT_BRIEF_CREATED=0
@@ -639,7 +771,7 @@ seed_project_was_created() {
 }
 
 seed_rollback() {
-  local project_path
+  local project_path binding_existed binding_project
   [ "${SEED_ROLLBACK_ACTIVE:-0}" = 1 ] || return 0
   [ "${SEED_COMMITTED:-0}" = 0 ] || return 0
 
@@ -667,6 +799,14 @@ seed_rollback() {
         restore_seed_file "$SEED_PARENT_MARKER_EXISTED" "$SEED_BACKUP_DIR/parent-marker" "$SEED_HOME/$SUB_HOME_PARENT_MARKER"
         restore_seed_file "$SEED_CHARTER_EXISTED" "$SEED_BACKUP_DIR/charter.md" "$SEED_HOME/data/charter.md"
         restore_seed_file "$SEED_SUB_REG_EXISTED" "$SEED_BACKUP_DIR/sub-projects.md" "$SEED_HOME/data/projects.md"
+        if [ -n "${SEED_BINDINGS_FILE:-}" ] && [ -f "$SEED_BINDINGS_FILE" ]; then
+          while read -r binding_existed binding_project; do
+            [ -n "$binding_project" ] || continue
+            restore_seed_file "$binding_existed" \
+              "$SEED_BACKUP_DIR/binding-files/$binding_project.binding" \
+              "$(fm_local_handoff_binding_path "$SEED_HOME" "$binding_project")"
+          done < "$SEED_BINDINGS_FILE"
+        fi
       fi
     fi
   fi
@@ -863,6 +1003,9 @@ seed_home() {
   SEED_BACKUP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-home-seed.XXXXXX")
   SEED_CREATED_PROJECTS_FILE="$SEED_BACKUP_DIR/created-projects"
   : > "$SEED_CREATED_PROJECTS_FILE"
+  SEED_BINDINGS_FILE="$SEED_BACKUP_DIR/bindings"
+  : > "$SEED_BINDINGS_FILE"
+  mkdir -p "$SEED_BACKUP_DIR/binding-files"
   SEED_PARENT_REG_EXISTED=0
   SEED_PARENT_BRIEF="$DATA/$id/brief.md"
   SEED_PARENT_BRIEF_CREATED=0
