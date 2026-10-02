@@ -126,6 +126,28 @@ FM_TEST_OWNER_IDENTITY=$(fm_test_pid_identity "$$") || {
 # into another home's live runners.
 
 FM_TEST_PROCEVENT_REGISTRY=$(mktemp "${TMPDIR:-/tmp}/.fm-test-procevent.$$.XXXXXX") || return 1
+FM_TEST_LIVE_SERVER_REGISTRY=$(mktemp "${TMPDIR:-/tmp}/.fm-test-live-server.$$.XXXXXX") || return 1
+
+# Register an exact Lavish instance before any fixture root is removed.
+# The vendor's stop command checks the state directory's identity against the
+# server on this port; a different installation occupying the port is rejected.
+fm_test_register_lavish_server() {  # <state-dir> <port>
+  local state_dir=$1 port=$2
+  [ -n "$state_dir" ] || return 1
+  case "$port" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s\t%s\n' "$state_dir" "$port" >> "$FM_TEST_LIVE_SERVER_REGISTRY"
+}
+
+fm_test_stop_live_servers() {
+  local state_dir port
+  [ -f "$FM_TEST_LIVE_SERVER_REGISTRY" ] || return 0
+  while IFS=$'\t' read -r state_dir port; do
+    [ -n "$state_dir" ] && [ -n "$port" ] || continue
+    LAVISH_AXI_STATE_DIR="$state_dir" LAVISH_AXI_PORT="$port" \
+      lavish-axi stop --port "$port" >/dev/null 2>&1 || true
+  done < "$FM_TEST_LIVE_SERVER_REGISTRY"
+  rm -f "$FM_TEST_LIVE_SERVER_REGISTRY"
+}
 
 fm_test_track_procevent_home() {  # <home> [claim-root]
   [ -n "${1:-}" ] || return 1
@@ -163,6 +185,7 @@ export FM_TEST_STUB_MAX_BLOCK_SECONDS
 
 fm_test_cleanup() {
   local d
+  fm_test_stop_live_servers
   fm_test_reap_procevent_homes
   for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"; do
     [ -n "$d" ] && rm -rf "$d"

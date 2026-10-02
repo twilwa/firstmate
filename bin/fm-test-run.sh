@@ -98,6 +98,17 @@
 #   FM_TEST_SUMMARY_FAMILY family=<name> count=<n> duration_ms=<n> failed=<n>
 #   FM_TEST_SLOWEST rank=<k> script=<path> duration_ms=<n>
 #   FM_TEST_BUDGET max_wall_ms=<n> duration_ms=<n>   (only with --max-wall-ms)
+#   FM_TEST_LISTENER pid=<n> port=<n> test=<script> command=<argv>   (per leak)
+#   FM_TEST_LISTENERS found=<n>
+#
+# Listener guard:
+#   After a run that executed scripts, every process whose inherited
+#   FM_TEST_RUN_TOKENS chain includes this invocation's FM_TEST_RUN_TOKEN (so
+#   nested runs count) and that holds a listening TCP socket is reported as a
+#   leak and fails the run; listeners this invocation did not start are ignored.
+#   The guard reports but does not stop leaked servers. Where it cannot inspect
+#   sockets (non-Linux, no /proc/net/tcp, or no python3), it prints
+#   "FM_TEST_LISTENERS unchecked: <reason>" to stderr and does not fail.
 #
 # Placement refusal:
 #   A task worker is assigned an isolated worktree, and that placement is
@@ -110,8 +121,9 @@
 #
 # Exit status is non-zero if any selected script exits non-zero, a configured
 # --fail-on-gate-skip token appears, the measured duration exceeds
-# --max-wall-ms, timing-artifact finalization fails, or a concurrent worker
-# violates its isolation check. Other gate skips (first meaningful line
+# --max-wall-ms, timing-artifact finalization fails, a concurrent worker
+# violates its isolation check, or the listener guard finds a leak or cannot
+# finish its inspection. Other gate skips (first meaningful line
 # matching ^skip:) remain successful and are counted as skipped_gate; each one
 # is logged with its reason and recorded in the timing artifact.
 #
@@ -2353,6 +2365,11 @@ cleanup_run() {
 trap cleanup_run EXIT
 
 RUN_ID="fm-test-run-${RUN_STARTED_MS}-$$"
+# Preserve enclosing run markers so nested runs remain attributable to each
+# ancestor. Each script exports its own source path as well.
+FM_TEST_RUN_TOKEN="${RUN_ID}-${RANDOM}-${RANDOM}"
+FM_TEST_RUN_TOKENS="${FM_TEST_RUN_TOKENS:+${FM_TEST_RUN_TOKENS}:}${FM_TEST_RUN_TOKEN}"
+export FM_TEST_RUN_TOKEN FM_TEST_RUN_TOKENS
 TOTAL=0
 FAILED=0
 SKIPPED_GATE=0
@@ -2441,7 +2458,9 @@ run_script_bounded() {  # <script> <out> <stream> <id>
   local GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
   # shellcheck source=tests/git-config-helpers.sh
   . "$ROOT/tests/git-config-helpers.sh" || return
-  local rc
+  local rc FM_TEST_RUN_SCRIPT
+  FM_TEST_RUN_SCRIPT=$script
+  export FM_TEST_RUN_SCRIPT
   : "$id"
   set +e
   if [ "$stream" -eq 1 ]; then
@@ -2694,4 +2713,80 @@ if [ -n "$MAX_WALL_MS" ]; then
   fi
 fi
 
+# Inspect only processes carrying this invocation's inherited marker. On
+# non-Linux hosts (and hosts without procfs/Python), say explicitly that the
+# socket check is unavailable; the portable test result remains meaningful.
+check_run_listeners() {
+  if [ "$(uname -s)" != Linux ] || [ ! -r /proc/net/tcp ] || ! type -P python3 >/dev/null 2>&1; then
+    printf 'FM_TEST_LISTENERS unchecked: listener inspection unavailable on this platform\n' >&2
+    return 0
+  fi
+  python3 - "$FM_TEST_RUN_TOKEN" <<'PY'
+import os
+import re
+import sys
+
+token = sys.argv[1].encode()
+marker_prefix = b'FM_TEST_RUN_TOKENS='
+try:
+    listening = {}
+    tables = ['/proc/net/tcp']
+    if os.path.exists('/proc/net/tcp6'):
+        tables.append('/proc/net/tcp6')
+    for table in tables:
+        with open(table, encoding='ascii') as rows:
+            next(rows)
+            for row in rows:
+                fields = row.split()
+                if fields[3] == '0A':
+                    listening[fields[9]] = int(fields[1].split(':')[1], 16)
+    leaks = set()
+    for name in os.listdir('/proc'):
+        if not name.isdigit():
+            continue
+        pid_dir = '/proc/' + name
+        env = []
+        try:
+            with open(pid_dir + '/environ', 'rb') as env_file:
+                env = env_file.read().split(b'\0')
+            chain = next((item[len(marker_prefix):] for item in env
+                          if item.startswith(marker_prefix)), b'')
+            if token not in chain.split(b':'):
+                continue
+            script = next((item.split(b'=', 1)[1] for item in env
+                           if item.startswith(b'FM_TEST_RUN_SCRIPT=')), b'unknown')
+            with open(pid_dir + '/cmdline', 'rb') as command_file:
+                command = command_file.read().replace(b'\0', b' ').decode(errors='replace').strip()
+            try:
+                fds = os.listdir(pid_dir + '/fd')
+            except (FileNotFoundError, ProcessLookupError):
+                continue  # Exited during inspection.
+            for fd in fds:
+                try:
+                    target = os.readlink(pid_dir + '/fd/' + fd)
+                except (FileNotFoundError, ProcessLookupError):
+                    continue
+                match = re.fullmatch(r'socket:\[(\d+)\]', target)
+                if match and match[1] in listening:
+                    leaks.add((name, listening[match[1]], command, script.decode(errors='replace')))
+        except (FileNotFoundError, ProcessLookupError):
+            continue  # Exited during inspection.
+        except PermissionError:
+            # Other users' processes have private environments. A marked
+            # process whose descriptors are inaccessible is not a clean run.
+            if token in next((item[len(marker_prefix):] for item in env
+                              if item.startswith(marker_prefix)), b'').split(b':'):
+                raise
+            continue
+    for pid, port, command, script in sorted(leaks):
+        print(f'FM_TEST_LISTENER pid={pid} port={port} test={script} command={command}', flush=True)
+    print(f'FM_TEST_LISTENERS found={len(leaks)}', flush=True)
+    sys.exit(bool(leaks))
+except OSError as error:
+    print(f'FM_TEST_LISTENERS unchecked: {error}', file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
+check_run_listeners || AGG_RC=1
 exit "$AGG_RC"

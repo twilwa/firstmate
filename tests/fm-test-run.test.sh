@@ -1736,6 +1736,212 @@ assert len(doc["scripts"])==3
   pass "aggregate-json merges lane timing artifacts"
 }
 
+# Release a listen.py fixture by its <prefix>.stop file and wait until it has
+# closed its socket and removed <prefix>.port.
+release_test_listener() {  # <prefix>
+  local i
+  touch "$1.stop"
+  for ((i=0; i<300; i++)); do
+    [ -e "$1.port" ] || return 0
+    sleep 0.05
+  done
+}
+
+# The runner rejects a leaked listener, accepts registered cleanup, and ignores
+# listeners it did not start.
+test_live_listener_guard() {
+  local tmp fixture outside out rc before leak_rc leaked untouched
+  tmp=$(fm_test_tmproot fm-test-run-listeners)
+  cat >"$tmp/listen.py" <<'PY'
+import os
+import socket
+import sys
+import time
+
+ready, release = sys.argv[1:]
+with socket.socket() as server:
+    server.bind(('127.0.0.1', 0))
+    server.listen()
+    with open(ready, 'w') as result:
+        result.write(str(server.getsockname()[1]))
+    deadline = time.monotonic() + 12
+    while not os.path.exists(release) and time.monotonic() < deadline:
+        time.sleep(0.05)
+os.remove(ready)
+PY
+  fixture="$tmp/probe.test.sh"
+  cat >"$fixture" <<'SH'
+#!/usr/bin/env bash
+python3 "$LISTENER_SCRIPT" "$FIXTURE_READY" "$FIXTURE_RELEASE" >/dev/null 2>&1 &
+listener=$!
+for ((i=0; i<100; i++)); do
+  [ -s "$FIXTURE_READY" ] && break
+  sleep 0.02
+done
+[ -s "$FIXTURE_READY" ] || exit 1
+if [ "${FIXTURE_CLEANUP:-0}" = 1 ]; then
+  trap 'touch "$FIXTURE_RELEASE"; wait "$listener"' EXIT
+fi
+SH
+  chmod +x "$fixture"
+  python3 "$tmp/listen.py" "$tmp/outside.port" "$tmp/outside.stop" &
+  outside=$!
+  for ((i=0; i<100; i++)); do
+    [ -s "$tmp/outside.port" ] && break
+    sleep 0.02
+  done
+  [ -s "$tmp/outside.port" ] || { release_test_listener "$tmp/outside"; fail "outside listener did not start"; }
+  before=$(cat "$tmp/outside.port")
+  set +e
+  LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/leaked.port" \
+    FIXTURE_RELEASE="$tmp/leaked.stop" "$RUNNER" "$fixture" >"$tmp/leak.out" 2>&1
+  leak_rc=$?
+  set -e
+  leaked=$(cat "$tmp/leaked.port" 2>/dev/null || true)
+  release_test_listener "$tmp/leaked"
+  set +e
+  LISTENER_SCRIPT="$tmp/listen.py" FIXTURE_READY="$tmp/clean.port" \
+    FIXTURE_RELEASE="$tmp/clean.stop" FIXTURE_CLEANUP=1 \
+    "$RUNNER" "$fixture" >"$tmp/clean.out" 2>&1
+  rc=$?
+  set -e
+  untouched=0
+  [ "$before" = "$(cat "$tmp/outside.port")" ] && [ ! -e "$tmp/outside.stop" ] && untouched=1
+  release_test_listener "$tmp/outside"
+  wait "$outside" || true
+  out=$(<"$tmp/leak.out")
+  if [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ]; then
+    [ "$leak_rc" -ne 0 ] || fail "runner accepted a live listener: $out"
+    [ -n "$leaked" ] || fail "leaked listener did not start: $out"
+    assert_contains "$out" "port=$leaked" "leak port reported"
+    assert_contains "$out" "test=$fixture" "leaking test reported"
+    assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
+  else
+    assert_contains "$out" "FM_TEST_LISTENERS unchecked:" "unsupported listener check is explicit"
+  fi
+  out=$(<"$tmp/clean.out")
+  [ "$rc" -eq 0 ] || fail "registered cleanup must pass: $out"
+  assert_not_contains "$out" "port=$before test=" "outside listener must not be reported"
+  [ "$untouched" = 1 ] || fail "runner touched outside listener"
+  pass "runner rejects its leaked listener, accepts cleanup, and ignores external listeners"
+}
+
+# Simulate a procfs process exiting at each per-process access. The injected
+# module only hooks the runner's Python listener scan, never the real /proc.
+test_listener_exited_during_scan() {
+  [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ] || return 0
+  local tmp fixture out rc mode
+  tmp=$(fm_test_tmproot fm-test-run-esrch)
+  mkdir -p "$tmp/py"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/clean.test.sh"
+  fixture="$tmp/clean.test.sh"
+  chmod +x "$fixture"
+  cat >"$tmp/py/sitecustomize.py" <<'PY'
+import builtins
+import io
+import os
+import sys
+
+if len(sys.argv) == 2 and sys.argv[0] == '-' and sys.argv[1].startswith('fm-test-run-'):
+    mode = os.environ.get('FM_FAKE_ESRCH_MODE')
+    pid = '/proc/99999999'
+    original_open = builtins.open
+    original_listdir = os.listdir
+    original_readlink = os.readlink
+
+    def open_proc(path, *args, **kwargs):
+        if path == pid + '/environ':
+            if mode == 'environ':
+                raise ProcessLookupError(3, 'gone', path)
+            return io.BytesIO(b'FM_TEST_RUN_TOKENS=' + os.environ['FM_TEST_RUN_TOKENS'].encode() + b'\0')
+        if path == pid + '/cmdline':
+            if mode == 'cmdline':
+                raise ProcessLookupError(3, 'gone', path)
+            return io.BytesIO(b'fake\0')
+        return original_open(path, *args, **kwargs)
+
+    def list_proc(path):
+        if path == '/proc':
+            return original_listdir(path) + ['99999999']
+        if path == pid + '/fd':
+            if mode == 'fd':
+                raise ProcessLookupError(3, 'gone', path)
+            return ['3']
+        return original_listdir(path)
+
+    def readlink_proc(path, *args, **kwargs):
+        if path == pid + '/fd/3' and mode == 'readlink':
+            raise ProcessLookupError(3, 'gone', path)
+        return original_readlink(path, *args, **kwargs)
+
+    builtins.open = open_proc
+    os.listdir = list_proc
+    os.readlink = readlink_proc
+PY
+  for mode in environ cmdline fd readlink; do
+    set +e
+    FM_FAKE_ESRCH_MODE="$mode" PYTHONPATH="$tmp/py" "$RUNNER" "$fixture" >"$tmp/$mode.out" 2>&1
+    rc=$?
+    set -e
+    out=$(<"$tmp/$mode.out")
+    [ "$rc" -eq 0 ] || fail "exited process at $mode must not fail clean run: $out"
+    assert_contains "$out" 'FM_TEST_LISTENERS found=0' "exited process at $mode ignored"
+  done
+  pass "runner ignores processes exiting during procfs accesses"
+}
+
+test_nested_listener_guard() {
+  [ "$(uname -s)" = Linux ] && [ -r /proc/net/tcp ] || return 0
+  local tmp out rc port
+  tmp=$(fm_test_tmproot fm-test-run-nested-listener)
+  cat >"$tmp/listen.py" <<'PY'
+import os
+import socket
+import sys
+import time
+
+ready, release = sys.argv[1:]
+with socket.socket() as server:
+    server.bind(('127.0.0.1', 0))
+    server.listen()
+    with open(ready, 'w') as result:
+        result.write(str(server.getsockname()[1]))
+    deadline = time.monotonic() + 12
+    while not os.path.exists(release) and time.monotonic() < deadline:
+        time.sleep(0.05)
+os.remove(ready)
+PY
+  cat >"$tmp/inner.test.sh" <<'SH'
+#!/usr/bin/env bash
+python3 "$NESTED_LISTENER" "$NESTED_PORT" "$NESTED_RELEASE" >/dev/null 2>&1 &
+for ((i=0; i<100; i++)); do
+  [ -s "$NESTED_PORT" ] && break
+  sleep 0.02
+done
+[ -s "$NESTED_PORT" ]
+SH
+  cat >"$tmp/outer.test.sh" <<'SH'
+#!/usr/bin/env bash
+"$NESTED_RUNNER" "$NESTED_INNER" >/dev/null 2>&1 || true
+SH
+  chmod +x "$tmp/inner.test.sh" "$tmp/outer.test.sh"
+  set +e
+  NESTED_RUNNER="$RUNNER" NESTED_INNER="$tmp/inner.test.sh" \
+    NESTED_LISTENER="$tmp/listen.py" NESTED_PORT="$tmp/nested.port" \
+    NESTED_RELEASE="$tmp/nested.stop" \
+    "$RUNNER" "$tmp/outer.test.sh" >"$tmp/outer.out" 2>&1
+  rc=$?
+  set -e
+  port=$(cat "$tmp/nested.port" 2>/dev/null || true)
+  release_test_listener "$tmp/nested"
+  out=$(<"$tmp/outer.out")
+  [ "$rc" -ne 0 ] || fail "outer run missed nested leaked listener: $out"
+  [ -n "$port" ] || fail "nested listener did not start: $out"
+  assert_contains "$out" "port=$port" "nested listener port reported by outer runner"
+  assert_contains "$out" "test=$tmp/inner.test.sh" "nested listener attributed to inner fixture"
+  pass "outer runner catches a nested run's ignored listener failure"
+}
+
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
@@ -1775,3 +1981,6 @@ test_max_wall_ms_is_a_result_not_advice
 test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout
 test_aggregate_json
+test_live_listener_guard
+test_listener_exited_during_scan
+test_nested_listener_guard
