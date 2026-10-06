@@ -7,8 +7,8 @@
 #        fm-secondmate-sleep.sh status [<id>...]
 #
 # Run it from the PARENT home with FM_HOME explicit, exactly like bin/fm-send.sh.
-# Each <id> is a mate registered in this home's data/secondmates.md; its fm-<id>
-# selector is accepted too.
+# Each <id> is a mate registered in this home's data/secondmates.md. An fm-<id>
+# selector names <id> only when it is not itself a registered id and <id> is.
 #
 # Why this exists. Every home runs its own agent and its own supervision watcher,
 # so an idle mate still spends a watcher cycle - fleet snapshot, per-task reads,
@@ -39,7 +39,9 @@
 # writes no marker and names the step that refused:
 #   registered  the id is a LOCAL route in data/secondmates.md whose home carries
 #               its own seed marker; a remote route is refused for now.
-#   idle        the mate's own home holds no in-flight work (no state/*.meta).
+#   idle        the mate's own home holds no in-flight work (no state/*.meta),
+#               checked at admission and again under the liveness lock just
+#               before its agent is stopped.
 #   agent       a running agent is asked to write down the open work it holds only
 #               in its conversation, with the same request, gate, and bound that
 #               bin/fm-secondmate-restart.sh uses (bin/fm-secondmate-restart-lib.sh,
@@ -50,13 +52,15 @@
 #               every later step run under this home's per-mate liveness lock, so
 #               no liveness check relaunches the mate before its marker lands.
 #   watcher     the home's own bin/fm-watch-arm.sh --stop stops its watcher.
-#   listeners   the home's own bin/fm-procevent.sh sweep-home retires its
-#               registered process-event listeners, so board pollers stop too.
-#               That sweep is the owner-matched home retirement path: an extension
-#               registration is retired only by its own token, and an
-#               unacknowledged task-owned round refuses. A retired listener's
-#               captain-call answer binding goes with it; the held call itself
-#               stays in the mate's backlog for it to re-present after waking.
+#   listeners   each process-event source registered in the home is asked about
+#               through the home's own bin/fm-captain-hold.sh binding <source-id>.
+#               A decision-bound source stays armed with its binding, so its
+#               runner still feeds a captain's board answer into the held call
+#               while the mate sleeps. Every unbound source is retired through
+#               the home's own bin/fm-procevent.sh retire <source-id>, owner
+#               matched: an extension registration only with its exact
+#               --if-owner token, and an unacknowledged task-owned round
+#               refuses. A refusal names the source.
 #   marker      state/<id>.asleep is written.
 # A mate already asleep is a no-op that says so. Every persist request goes out
 # before any stop, so one slow answer delays only its own mate.
@@ -87,7 +91,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,83{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,87{s/^# \{0,1\}//;p;}' "$0"
 }
 
 VERB=${1:-}
@@ -99,7 +103,7 @@ esac
 
 BY=""
 REASON_TEXT=""
-IDS=()
+RAW_IDS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --by|--reason)
@@ -113,9 +117,8 @@ while [ $# -gt 0 ]; do
       ;;
     -*) echo "error: unexpected argument '$1'" >&2; exit 2 ;;
     *)
-      id=${1#fm-}
-      case "$id" in ''|*[!A-Za-z0-9._-]*) echo "error: invalid second mate id: $1" >&2; exit 2 ;; esac
-      case " ${IDS[*]:-} " in *" $id "*) ;; *) IDS+=("$id") ;; esac
+      case "$1" in ''|*[!A-Za-z0-9._-]*) echo "error: invalid second mate id: $1" >&2; exit 2 ;; esac
+      RAW_IDS+=("$1")
       shift
       ;;
   esac
@@ -124,7 +127,7 @@ if [ "$VERB" = sleep ]; then
   [ -n "$BY" ] && [ -n "$REASON_TEXT" ] \
     || { echo "error: sleep records who asked and why: pass --by <who> and --reason <text>" >&2; exit 2; }
 fi
-if [ "$VERB" != status ] && [ "${#IDS[@]}" -eq 0 ]; then
+if [ "$VERB" != status ] && [ "${#RAW_IDS[@]}" -eq 0 ]; then
   echo "error: $VERB needs at least one second mate id" >&2
   exit 2
 fi
@@ -144,6 +147,23 @@ REG="${FM_DATA_OVERRIDE:-$FM_HOME/data}/secondmates.md"
 . "$SCRIPT_DIR/fm-secondmate-liveness-lib.sh"
 # shellcheck source=bin/fm-secondmate-restart-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-procevent-lib.sh
+. "$SCRIPT_DIR/fm-procevent-lib.sh"
+
+IDS=()
+for raw in "${RAW_IDS[@]+"${RAW_IDS[@]}"}"; do
+  id=$raw
+  case "$raw" in
+    fm-?*)
+      secondmate_registry_line_for_id "$REG" "$raw" \
+        || ! secondmate_registry_line_for_id "$REG" "${raw#fm-}" \
+        || id=${raw#fm-}
+      ;;
+  esac
+  case " ${IDS[*]:-} " in *" $id "*) ;; *) IDS+=("$id") ;; esac
+done
 
 failures=0
 
@@ -200,6 +220,55 @@ run_in_mate_home() {  # <home> <script> <args...>
     FM_HOME="$home" "$home/bin/$script" "$@" < /dev/null 2>&1
 }
 
+# The task ids of the in-flight work the mate's own home holds, space-led.
+inflight_work() {  # <home>
+  local meta pending=""
+  for meta in "$1"/state/*.meta; do
+    [ -e "$meta" ] || continue
+    meta=${meta##*/}
+    pending="$pending ${meta%.meta}"
+  done
+  printf '%s' "$pending"
+}
+
+# Retire every process-event source in the mate's home that no held captain
+# call is bound to, each through the home's own owner-matched retire. A
+# decision-bound source stays armed. Prints why on the first refusal.
+retire_unbound_listeners() {  # <home>
+  local home=$1 path id out owner_state guard
+  for path in "$(fm_procevent_registry_dir "$home/state")"/*.source; do
+    [ -e "$path" ] || [ -L "$path" ] || continue
+    id=${path##*/}
+    id=${id%.source}
+    if out=$(run_in_mate_home "$home" fm-captain-hold.sh binding "$id"); then
+      continue
+    elif [ -n "$out" ]; then
+      printf '%s: %s\n' "$id" "$(first_line "$out")"
+      return 1
+    fi
+    guard=()
+    if ! fm_procevent_source_lock_acquire "$id"; then
+      printf '%s: cannot lock the source\n' "$id"
+      return 1
+    fi
+    fm_procevent_extension_registration_load_locked "$home/state" "$id"
+    owner_state=$?
+    fm_procevent_source_lock_release "$id"
+    case "$owner_state" in
+      0) guard=(--if-owner "$FM_PROCEVENT_EXTENSION_REGISTRATION_TOKEN") ;;
+      1) ;;
+      *)
+        printf '%s: cannot safely read its registration owner\n' "$id"
+        return 1
+        ;;
+    esac
+    if ! out=$(run_in_mate_home "$home" fm-procevent.sh retire "$id" "${guard[@]+"${guard[@]}"}"); then
+      printf '%s: %s\n' "$id" "$(first_line "$out")"
+      return 1
+    fi
+  done
+}
+
 # --- sleep -------------------------------------------------------------------
 
 # Per-mate pass state, parallel indexed arrays so this stays bash-3.2 safe.
@@ -216,12 +285,19 @@ refuse() {  # <index> <step> <reason>
   failures=$((failures + 1))
 }
 
-# Steps agent (the stop half), watcher, listeners, and marker, under the lock.
+# Steps idle (again), agent (the stop half), watcher, listeners, and marker,
+# under the lock.
 stop_and_mark() {  # <index>
-  local i=$1 id out
+  local i=$1 id out pending
   id=${IDS[$i]}
   if ! take_liveness_lock "$id"; then
     refuse "$i" agent "another liveness check kept holding this mate"
+    return
+  fi
+  pending=$(inflight_work "${HOME_OF[i]}")
+  if [ -n "$pending" ]; then
+    fm_secondmate_liveness_unlock "$id"
+    refuse "$i" idle "its home has in-flight work:$pending; nothing was stopped"
     return
   fi
   if [ "${NEEDS_EXIT[i]}" = 1 ] && ! out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
@@ -235,9 +311,9 @@ stop_and_mark() {  # <index>
     refuse "$i" watcher "$(first_line "$out")"
     return
   fi
-  if ! out=$(run_in_mate_home "${HOME_OF[i]}" fm-procevent.sh sweep-home); then
+  if ! out=$(retire_unbound_listeners "${HOME_OF[i]}"); then
     fm_secondmate_liveness_unlock "$id"
-    refuse "$i" listeners "$(first_line "$out")"
+    refuse "$i" listeners "$out"
     return
   fi
   if ! fm_secondmate_asleep_write "$STATE" "$id" "$BY" "$REASON_TEXT"; then
@@ -254,7 +330,7 @@ stop_and_mark() {  # <index>
 # Admit one mate: every check before anything moves, then the persist request
 # when its agent is running. Leaves PLAN at stop, persist-pending, or done.
 admit_for_sleep() {  # <index> <persist-request>
-  local i=$1 request=$2 id meta pending=""
+  local i=$1 request=$2 id meta pending
   id=${IDS[$i]}
   PLAN[i]="done" HOME_OF[i]="" NEEDS_EXIT[i]=0 CORR[i]="" DEADLINE[i]=""
   if fm_secondmate_asleep "$STATE" "$id"; then
@@ -266,11 +342,7 @@ admit_for_sleep() {  # <index> <persist-request>
     return
   fi
   HOME_OF[i]=$MATE_HOME
-  for meta in "$MATE_HOME"/state/*.meta; do
-    [ -e "$meta" ] || continue
-    meta=${meta##*/}
-    pending="$pending ${meta%.meta}"
-  done
+  pending=$(inflight_work "$MATE_HOME")
   if [ -n "$pending" ]; then
     refuse "$i" idle "its home has in-flight work:$pending"
     return

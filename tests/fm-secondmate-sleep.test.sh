@@ -7,13 +7,18 @@
 # provider shared with the restart suite, plus a mate home whose own watcher and
 # listener scripts record when they were called:
 #   1. sleep writes the marker only after the agent stopped, then its watcher
-#      stopped, then its listeners were retired; a refusal at any of those steps
-#      leaves no marker and names the step, and an asleep mate is a no-op.
+#      stopped, then its unbound listeners were retired; a refusal at any of
+#      those steps leaves no marker and names the step, and an asleep mate is a
+#      no-op.
 #   2. sleep refuses a home with in-flight work, an unregistered id, and a remote
 #      route before anything is sent or stopped.
 #   3. wake removes the marker, relaunches the mate, and confirms it live; a wake
 #      with no marker is a no-op.
 #   4. status reads each registered mate as asleep or awake.
+#   5. through the home's real process-event and captain-hold scripts, a
+#      decision-bound listener stays registered with its binding while an
+#      unbound one is retired.
+#   6. a registered id that itself begins with fm- is addressed as itself.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -30,17 +35,31 @@ trap 'rm -rf -- "$TMP_ROOT"' EXIT
 # shellcheck source=tests/secondmate-persist-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/secondmate-persist-helpers.sh"
 
-# register_mate <case-dir> <id>: the parent's registry line for a mate added by
-# add_local_mate, and that home's own watcher and listener scripts. Each records
-# its argv, the FM_HOME it ran under, whether the agent had already been sent its
-# exit command, and how many sleep markers the parent held at that moment; it
-# refuses when FM_TEST_FAIL_STEP names its step.
+# register_mate <case-dir> <id> [real]: the parent's registry line for a mate
+# added by add_local_mate, and that home's own watcher, binding, and listener
+# scripts. Each records its argv, the FM_HOME it ran under, whether the agent had
+# already been sent its exit command, and how many sleep markers the parent held
+# at that moment; it refuses when FM_TEST_FAIL_STEP names its step. The home
+# holds one registered process-event source, board, that no captain call is
+# bound to. With real, the home instead carries this checkout's own scripts and
+# no source, and only its watcher is recorded.
 register_mate() {
-  local dir=$1 id=$2 smhome="$1/$2-home" script step
+  local dir=$1 id=$2 smhome="$1/$2-home" script step ok scripts="fm-watch-arm.sh"
   printf -- '- %s - test mate (home: %s; scope: tests; projects: none; added 2026-10-06)\n' \
     "$id" "$smhome" >> "$dir/home/data/secondmates.md"
-  for script in fm-watch-arm.sh fm-procevent.sh; do
-    case "$script" in fm-watch-arm.sh) step=watcher ;; *) step=listeners ;; esac
+  if [ "${3:-}" = real ]; then
+    cp -R "$ROOT/bin/." "$smhome/bin/"
+  else
+    scripts="$scripts fm-captain-hold.sh fm-procevent.sh"
+    mkdir -p "$smhome/state/procevent"
+    printf 'adapter=when\nowner=builtin\n' > "$smhome/state/procevent/board.source"
+  fi
+  for script in $scripts; do
+    case "$script" in
+      fm-watch-arm.sh) step=watcher ok=0 ;;
+      fm-captain-hold.sh) step=binding ok=1 ;;
+      *) step=listeners ok=0 ;;
+    esac
     cat > "$smhome/bin/$script" <<SH
 #!/usr/bin/env bash
 exited=no
@@ -50,9 +69,9 @@ printf '%s %s FM_HOME=%s exited=%s markers=%s\n' "\${0##*/}" "\$*" "\$FM_HOME" "
   >> "\$FM_FAKE_DIR/home-calls"
 if [ "\${FM_TEST_FAIL_STEP:-}" = $step ]; then
   echo "$step: FAILED - refused by the test"
-  exit 1
+  exit 2
 fi
-exit 0
+exit $ok
 SH
     chmod +x "$smhome/bin/$script"
   done
@@ -70,7 +89,7 @@ run_sleep() {  # <case-dir> <args...>
   env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
     -u HERDR_SOCKET_PATH -u HERDR_SESSION FM_BACKEND=tmux \
     PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    FM_TEST_PARENT_STATE="$dir/home/state" \
+    FM_TEST_PARENT_STATE="$dir/home/state" FM_PROCEVENT_CLAIM_ROOT="$dir/claims" \
     FM_SPAWN_NO_GUARD=1 FM_SECONDMATE_PERSIST_POLL=1 \
     FM_SECONDMATE_PERSIST_WAIT="${FM_TEST_PERSIST_WAIT:-30}" \
     FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
@@ -102,11 +121,12 @@ test_sleep_marks_only_after_every_stop() {
     || fail "the agent must be asked to persist and only then stopped: $(cat "$dir/fake/literal")"
   assert_contains "$(cat "$dir/home/state/sm1.inbox"/*.msg)" "Open-record persistence" \
     "the persist request must be the restart's open-record request"
-  # Watcher, then listeners, each run in the mate's own home after the agent
-  # stopped and before any marker existed.
+  # Watcher, then the unbound listener, each run in the mate's own home after
+  # the agent stopped and before any marker existed.
   calls=$(cat "$dir/fake/home-calls")
   [ "$calls" = "fm-watch-arm.sh --stop FM_HOME=$dir/sm1-home exited=yes markers=0
-fm-procevent.sh sweep-home FM_HOME=$dir/sm1-home exited=yes markers=0" ] \
+fm-captain-hold.sh binding board FM_HOME=$dir/sm1-home exited=yes markers=0
+fm-procevent.sh retire board FM_HOME=$dir/sm1-home exited=yes markers=0" ] \
     || fail "the watcher and listeners must stop in the mate's home after its agent and before the marker: $calls"
 
   # Sleeping an asleep mate changes nothing.
@@ -114,7 +134,7 @@ fm-procevent.sh sweep-home FM_HOME=$dir/sm1-home exited=yes markers=0" ] \
   expect_code 0 "$rc" "sleeping an asleep mate is a no-op"$'\n'"$out"
   assert_contains "$out" "sm1: already asleep since " "a repeat sleep should say the mate is already asleep"
   grep -qx 'reason=outside the current focus' "$marker" || fail "a repeat sleep rewrote the marker: $(cat "$marker")"
-  [ "$(wc -l < "$dir/fake/home-calls" | tr -d ' ')" -eq 2 ] \
+  [ "$(wc -l < "$dir/fake/home-calls" | tr -d ' ')" -eq 3 ] \
     || fail "a repeat sleep stopped something again: $(cat "$dir/fake/home-calls")"
   pass "T1 sleep persists, then stops the agent, watcher, and listeners, and only then writes the marker"
 }
@@ -135,6 +155,8 @@ test_sleep_refusal_leaves_no_marker() {
 
     expect_code 3 "$rc" "a refused $step step must not report a sleep"$'\n'"$out"
     assert_contains "$out" "sm1: refused at $step:" "the refusal must name the $step step"
+    [ "$step" != listeners ] || assert_contains "$out" "sm1: refused at listeners: board: " \
+      "a listener refusal must name the source"
     assert_absent "$dir/home/state/sm1.asleep" "a sleep refused at $step left a marker"
     case "$step" in
       agent)
@@ -222,10 +244,57 @@ sm2: asleep since 2026-10-06T12:00:00Z (by captain): parked" ] \
   pass "T5 status reads each registered mate as asleep or awake"
 }
 
+# --- T6: a decision-bound listener stays armed; an unbound one is retired ----
+test_sleep_keeps_decision_bound_listeners() {
+  local dir out rc smhome src
+  dir=$(new_case bound-listeners)
+  add_local_mate "$dir" sm1
+  register_mate "$dir" sm1 real
+  arm_answer "$dir" sm1
+  smhome="$dir/sm1-home"
+  for src in held-call-board idle-board; do
+    FM_HOME="$smhome" FM_PROCEVENT_CLAIM_ROOT="$dir/claims" \
+      "$smhome/bin/fm-procevent.sh" register when "$src" -- true >/dev/null 2>&1 \
+      || fail "could not register $src in the mate's home"
+  done
+  FM_HOME="$smhome" "$smhome/bin/fm-captain-hold.sh" bind held-call-board >/dev/null 2>&1 \
+    || fail "could not bind held-call-board in the mate's home"
+
+  out=$(run_sleep "$dir" sleep sm1 --by captain --reason parked); rc=$?
+
+  expect_code 0 "$rc" "a mate with only owner-retirable unbound listeners should sleep"$'\n'"$out"
+  assert_contains "$out" "sm1: asleep since " "the result should say the mate is asleep"
+  assert_present "$smhome/state/procevent/held-call-board.source" \
+    "sleep retired a listener a held captain call is bound to"
+  [ "$(FM_HOME="$smhome" "$smhome/bin/fm-captain-hold.sh" binding held-call-board 2>&1)" = '(any)' ] \
+    || fail "sleep dropped the held call's answer binding"
+  assert_absent "$smhome/state/procevent/idle-board.source" "sleep left an unbound listener registered"
+  pass "T6 sleep keeps decision-bound listeners armed with their binding and retires unbound ones"
+}
+
+# --- T7: a registered id beginning with fm- is addressed as itself ------------
+test_fm_prefixed_registered_id_is_its_own() {
+  local dir out rc
+  dir=$(new_case fm-prefixed)
+  add_local_mate "$dir" fm-sm2
+  register_mate "$dir" fm-sm2
+  arm_answer "$dir" fm-sm2
+
+  out=$(run_sleep "$dir" sleep fm-sm2 --by captain --reason parked); rc=$?
+
+  expect_code 0 "$rc" "a registered fm- id should sleep under its own id"$'\n'"$out"
+  assert_contains "$out" "fm-sm2: asleep since " "the result should name the registered id"
+  assert_present "$dir/home/state/fm-sm2.asleep" "the marker must be written under the registered id"
+  assert_absent "$dir/home/state/sm2.asleep" "the registered id was rewritten as a selector"
+  pass "T7 a registered id that begins with fm- is addressed as itself"
+}
+
 test_sleep_marks_only_after_every_stop
 test_sleep_refusal_leaves_no_marker
 test_sleep_refuses_busy_unregistered_and_remote_mates
 test_wake_relaunches_and_clears_marker
 test_status_reads_each_registered_mate
+test_sleep_keeps_decision_bound_listeners
+test_fm_prefixed_registered_id_is_its_own
 
 echo "# all fm-secondmate-sleep tests passed"
