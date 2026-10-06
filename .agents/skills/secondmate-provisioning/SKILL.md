@@ -273,7 +273,7 @@ It never initiates a survey or audit during recovery.
 A persistent secondmate that should cost nothing until it is needed is put to sleep, not retired: `FM_HOME=<this-firstmate-home> bin/fm-secondmate-sleep.sh sleep <id>... --by <who> --reason <text>` stops its agent, watcher, and process-event listeners and leaves its home untouched, and `bin/fm-secondmate-sleep.sh wake <id>...` relaunches it.
 Sleep and wake are always explicit captain or main-firstmate actions, never automatic.
 `bin/fm-secondmate-sleep.sh status` reads every registered mate as asleep or awake.
-Sleep retires only the process-event sources no held captain call is bound to: a decision-bound source stays armed with its binding, so the captain's board answer still lands in the held call while the mate sleeps.
+Sleep retires only the process-event sources no held captain call is bound to: a decision-bound source stays registered with its binding but does not run while the mate sleeps, so a board answer given meanwhile is queued by Lavish and captured once wake relaunches that listener.
 The script's `--help` owns the marker, every step and its refusals, and which fleet paths leave a sleeping mate alone; never hand-write or delete its marker.
 An asleep mate is not dead: liveness recovery never relaunches it, never respawn it by hand under Recovery above, and `bin/fm-send.sh` refuses to steer it; only a wake brings it back.
 

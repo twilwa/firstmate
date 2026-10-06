@@ -16,8 +16,8 @@
 # home shares. Retirement (bin/fm-teardown.sh) removes the home, and merely
 # exiting the agent is undone by the liveness sweep's relaunch. Sleep is the
 # durable middle: the mate's agent, watcher, and process-event listeners stop,
-# while its home - data, backlog, held captain calls, clones, and worktrees - is
-# left exactly as it was until an explicit wake. Nothing schedules or automates
+# while its home - data, backlog, held captain calls and their answer bindings,
+# clones, and worktrees - is left exactly as it was until an explicit wake. Nothing schedules or automates
 # either direction; sleep and wake are always deliberate captain or primary
 # firstmate actions.
 #
@@ -54,9 +54,13 @@
 #   watcher     the home's own bin/fm-watch-arm.sh --stop stops its watcher.
 #   listeners   each process-event source registered in the home is asked about
 #               through the home's own bin/fm-captain-hold.sh binding <source-id>.
-#               A decision-bound source stays armed with its binding, so its
-#               runner still feeds a captain's board answer into the held call
-#               while the mate sleeps. Every unbound source is retired through
+#               A decision-bound source stays registered with its binding, but
+#               its runner does not keep running while the mate sleeps: a runner
+#               stops once its home shows no activity for the process-event owner
+#               lease, and sleep stops everything in the home that would renew
+#               it. A board answer given while the mate sleeps is queued by Lavish
+#               and captured once the mate wakes and that listener relaunches,
+#               never while it sleeps. Every unbound source is retired through
 #               the home's own bin/fm-procevent.sh retire <source-id>, owner
 #               matched: an extension registration only with its exact
 #               --if-owner token, and an unacknowledged task-owned round
@@ -70,8 +74,12 @@
 # a stopped endpoint is cleared first, then bin/fm-spawn.sh <id> --secondmate,
 # which converges the home's tracked files and inherited material and clears
 # reread generations the new agent no longer needs), and the agent is confirmed
-# live. The new agent's own session start arms its watcher and listeners. A mate
-# with no marker is a no-op that says so. A failed relaunch is reported as
+# live. Then the home's own bin/fm-procevent.sh reconcile runs once, so every
+# listener still registered there - a decision-bound one kept through sleep -
+# relaunches and collects its queued answer at once rather than at the new
+# watcher's first cycle; a refused reconcile is reported on the wake line and
+# never undoes the wake. The new agent's own session start arms its watcher. A
+# mate with no marker is a no-op that says so. A failed relaunch is reported as
 # failed; the marker stays removed, so ordinary liveness recovery owns the mate
 # from there.
 #
@@ -91,7 +99,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,87{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,95{s/^# \{0,1\}//;p;}' "$0"
 }
 
 VERB=${1:-}
@@ -370,7 +378,7 @@ admit_for_sleep() {  # <index> <persist-request>
 run_sleep() {
   local i request now next_wait remaining pending
   fm_secondmate_persist_bounds || exit 2
-  request=$(fm_secondmate_persist_request 'I am about to put you to sleep: your agent, your watcher, and your process-event listeners will stop and stay stopped until the captain or firstmate wakes you on purpose, which drops your conversation but keeps your home and every durable record.')
+  request=$(fm_secondmate_persist_request 'I am about to put you to sleep: your agent and your watcher will stop and stay stopped until the captain or firstmate wakes you on purpose, which drops your conversation but keeps your home and every durable record. Every process-event listener with no held captain call bound to it is retired; a decision-bound listener stays registered with its binding but does not run while you sleep, so a board answer given meanwhile is queued by Lavish and captured once you are woken and that listener relaunches.')
 
   # Every mate is admitted first, so the fleet persists together.
   i=0
@@ -409,16 +417,30 @@ run_sleep() {
 
 # --- wake --------------------------------------------------------------------
 
+# Report a woken mate awake once its own home has relaunched every listener
+# still registered there, through that home's own process-event reconcile, so a
+# decision-bound source kept through sleep collects its queued board answer now
+# rather than at its new watcher's first cycle. A refused reconcile is reported
+# on the same line and never undoes the wake.
+report_awake() {  # <id> <home> <how>
+  local out
+  if out=$(run_in_mate_home "$2" fm-procevent.sh reconcile); then
+    echo "$1: awake; $3"
+  else
+    echo "$1: awake; $3; its listeners were not all relaunched yet: $(first_line "$out")"
+  fi
+}
+
 # Bring a just-woken mate up through the liveness recovery path and confirm it
 # live. The caller holds its liveness lock and has already removed its marker.
-relaunch_woken_mate() {  # <id>
-  local id=$1 meta="$STATE/$1.meta" out="" rc=0
+relaunch_woken_mate() {  # <id> <home>
+  local id=$1 home=$2 meta="$STATE/$1.meta" out="" rc=0
   FM_SM_LIVE_STATUS=silent
   FM_SM_LIVE_REASON=""
   [ ! -f "$meta" ] || fm_secondmate_liveness_probe "$meta" "$id" poll
   case "$FM_SM_LIVE_STATUS" in
     alive)
-      echo "$id: awake; its agent was already running"
+      report_awake "$id" "$home" "its agent was already running"
       return 0
       ;;
     relaunchable)
@@ -430,7 +452,7 @@ relaunch_woken_mate() {  # <id>
         out=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate 2>&1) || rc=$?
       else
         out=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" \
-          "$SECONDMATE_REGISTRY_HOME" --secondmate 2>&1) || rc=$?
+          "$home" --secondmate 2>&1) || rc=$?
       fi
       ;;
     *)
@@ -447,11 +469,11 @@ relaunch_woken_mate() {  # <id>
     echo "$id: wake failed: relaunched, but its agent is not confirmed live (state: $FM_SM_LIVE_STATE); liveness recovery owns it now"
     return 1
   fi
-  echo "$id: awake; relaunched"
+  report_awake "$id" "$home" relaunched
 }
 
 wake_one() {  # <id>
-  local id=$1 rc=0
+  local id=$1 home rc=0
   if ! fm_secondmate_asleep "$STATE" "$id"; then
     echo "$id: not asleep; nothing to wake"
     return 0
@@ -460,12 +482,13 @@ wake_one() {  # <id>
     echo "$id: wake failed: not a second mate registered in $REG; the marker was left in place"
     return 1
   fi
+  home=$SECONDMATE_REGISTRY_HOME
   if ! take_liveness_lock "$id"; then
     echo "$id: wake failed: another liveness check kept holding this mate; it is still asleep"
     return 1
   fi
   if fm_secondmate_asleep_clear "$STATE" "$id"; then
-    relaunch_woken_mate "$id" || rc=$?
+    relaunch_woken_mate "$id" "$home" || rc=$?
   else
     echo "$id: wake failed: could not remove $STATE/$id.asleep; it is still asleep"
     rc=1

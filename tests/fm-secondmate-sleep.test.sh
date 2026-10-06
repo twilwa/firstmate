@@ -12,7 +12,8 @@
 #      no-op.
 #   2. sleep refuses a home with in-flight work, an unregistered id, and a remote
 #      route before anything is sent or stopped.
-#   3. wake removes the marker, relaunches the mate, and confirms it live; a wake
+#   3. wake removes the marker, relaunches the mate and its still-registered
+#      decision-bound listeners, and confirms it live; a wake
 #      with no marker is a no-op.
 #   4. status reads each registered mate as asleep or awake.
 #   5. through the home's real process-event and captain-hold scripts, a
@@ -198,14 +199,28 @@ test_sleep_refuses_busy_unregistered_and_remote_mates() {
 }
 
 # --- T4: wake relaunches and clears the marker; no marker is a no-op ----------
+# The mate's home carries a decision-bound listener that sleep keeps registered.
+# Its command leaves a file each time it runs, so the file appearing only after
+# the wake shows the wake itself relaunched it rather than a later watcher cycle;
+# the command lingers a few seconds so its launch can prove it took the claim.
 test_wake_relaunches_and_clears_marker() {
-  local dir out rc
+  local dir out rc smhome ran i=0
   dir=$(new_case wake)
   add_local_mate "$dir" sm1
-  register_mate "$dir" sm1
+  register_mate "$dir" sm1 real
   arm_answer "$dir" sm1
+  smhome="$dir/sm1-home"
+  ran="$dir/held-call-board.ran"
+  # shellcheck disable=SC2016 # $1 expands in the listener's own shell.
+  FM_HOME="$smhome" FM_PROCEVENT_CLAIM_ROOT="$dir/claims" \
+    "$smhome/bin/fm-procevent.sh" register when held-call-board -- \
+    sh -c 'touch "$1"; sleep 3' sh "$ran" >/dev/null 2>&1 \
+    || fail "could not register held-call-board in the mate's home"
+  FM_HOME="$smhome" "$smhome/bin/fm-captain-hold.sh" bind held-call-board >/dev/null 2>&1 \
+    || fail "could not bind held-call-board in the mate's home"
   out=$(run_sleep "$dir" sleep sm1 --by captain --reason parked); rc=$?
   expect_code 0 "$rc" "the fixture mate should fall asleep"$'\n'"$out"
+  assert_absent "$ran" "the fixture's bound listener ran before the wake"
 
   out=$(run_sleep "$dir" wake sm1); rc=$?
 
@@ -214,11 +229,19 @@ test_wake_relaunches_and_clears_marker() {
   assert_absent "$dir/home/state/sm1.asleep" "the wake left the marker in place"
   assert_grep 'relaunched' "$dir/home/state/.secondmate-relaunch-sm1" \
     "the wake should relaunch through the guarded liveness path"
+  while [ ! -e "$ran" ] && [ "$i" -lt 100 ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  assert_present "$ran" "the wake did not relaunch the mate's still-registered decision-bound listener"
+  FM_HOME="$smhome" FM_PROCEVENT_CLAIM_ROOT="$dir/claims" \
+    "$smhome/bin/fm-procevent.sh" retire held-call-board >/dev/null 2>&1 \
+    || fail "could not stop the relaunched fixture listener"
 
   out=$(run_sleep "$dir" wake sm1); rc=$?
   expect_code 0 "$rc" "waking an awake mate is a no-op"$'\n'"$out"
   assert_contains "$out" "sm1: not asleep; nothing to wake" "a wake with no marker should say so"
-  pass "T4 wake clears the marker, relaunches the mate, and confirms it live; no marker is a no-op"
+  pass "T4 wake clears the marker, relaunches the mate and its decision-bound listeners, and confirms it live; no marker is a no-op"
 }
 
 # --- T5: status reads every registered mate ----------------------------------
