@@ -644,6 +644,8 @@ SH
     secondmate_stall_watch_leg "$dir" "second" cleared
   [ ! -s "$state/.wake-queue" ] \
     || fail "an asleep mate's queue fed the secondmate wake-loop escalation: $(cat "$state/.wake-queue")"
+  [ "$(cat "$sub/state/.wake-queue" 2>/dev/null)" = "$(printf '100\t7\tcheck\trouted\tcheck: routed row')" ] \
+    || fail "the asleep mate's own queued row was not kept for its wake: $(cat "$sub/state/.wake-queue" 2>&1)"
   ! grep -F 'secondmate wake-loop stalled' "$dir/watch-first.out" "$dir/watch-second.out" >/dev/null \
     || fail "an asleep mate was reported as a stalled wake loop"
   [ ! -s "$dir/sent" ] || fail "an asleep mate's pane was rung: $(cat "$dir/sent")"

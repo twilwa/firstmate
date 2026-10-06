@@ -1007,7 +1007,10 @@ remote_secondmate_teardown() {
   fm_backlog_atomic_transition remove "$STATE/$ID.meta" "task record" "$STATE" || return 1
   rm -f -- "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
     "$STATE/.secondmate-relaunch-$ID" "$STATE/.secondmate-relaunch-bound-$ID"
-  fm_secondmate_asleep_clear "$STATE" "$ID" || true
+  if ! fm_secondmate_asleep_clear "$STATE" "$ID"; then
+    echo "error: $ID is retired, but its sleep marker $STATE/$ID.asleep could not be removed; remove it before reusing this id, or a new mate under it starts asleep" >&2
+    return 1
+  fi
   printf 'teardown %s complete (remote %s:%s)\n' "$ID" "$remote_host" "$remote_home"
   return 0
 }
@@ -3766,7 +3769,10 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
   "$STATE/.budget-wake-$ID" "$STATE/.pane-question-$ID" \
   "$STATE/.$ID.branch-outcome-index" \
   "$STATE/.secondmate-relaunch-$ID" "$STATE/.secondmate-relaunch-bound-$ID"
-fm_secondmate_asleep_clear "$STATE" "$ID" || true
+if ! fm_secondmate_asleep_clear "$STATE" "$ID"; then
+  echo "error: $ID's endpoint and local copy are cleaned up, but its sleep marker $STATE/$ID.asleep could not be removed; remove it before reusing this id, or a new mate under it starts asleep" >&2
+  exit 1
+fi
 # The steering inbox (bin/fm-task-inbox-lib.sh) is runtime state for the
 # retired endpoint; teardown only runs after landing is confirmed, so any
 # leftover unhandled steer here is moot rather than unlanded work.

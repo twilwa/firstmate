@@ -65,8 +65,16 @@ fm_secondmate_asleep_write() {  # <state-dir> <id> <by> <reason>
   return 1
 }
 
+# Remove whatever sits at exactly the marker path - a file, a symlink (never its
+# target), or a directory - and succeed only once nothing is left there, since
+# any leftover still reads as asleep.
 fm_secondmate_asleep_clear() {  # <state-dir> <id>
   local marker
   marker=$(fm_secondmate_asleep_path "$1" "$2") || return 1
-  rm -f -- "$marker"
+  if [ -d "$marker" ] && [ ! -L "$marker" ]; then
+    rm -rf -- "$marker" 2>/dev/null
+  else
+    rm -f -- "$marker" 2>/dev/null
+  fi
+  [ ! -e "$marker" ] && [ ! -L "$marker" ]
 }

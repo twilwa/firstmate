@@ -279,6 +279,33 @@ test_asleep_mate_is_left_asleep() {
   pass "T4b an asleep mate named by hand is reported asleep and never asked, nudged, or restarted"
 }
 
+# --- T4c: a sleep that lands after the persist answer wins over the restart ---
+# The mate passes the restart's first asleep check, answers its persist request,
+# and is put to sleep before its relaunch; the relaunch must see the marker under
+# the liveness lock and leave the mate asleep rather than start a new agent.
+test_sleep_after_persist_answer_blocks_relaunch() {
+  local dir out rc
+  dir=$(new_case asleep-late)
+  add_local_mate "$dir" sm1
+  arm_answer "$dir" sm1
+  cat > "$dir/fake/on-doorbell" <<SH
+#!/bin/sh
+printf 'since=2026-10-06T12:00:00Z\\nby=captain\\nreason=parked\\n' > '$dir/home/state/sm1.asleep'
+SH
+  chmod +x "$dir/fake/on-doorbell"
+
+  out=$(run_restart "$dir" sm1); rc=$?
+
+  expect_code 0 "$rc" "leaving a mate that fell asleep mid-restart asleep is not a failure"$'\n'"$out"
+  assert_contains "$out" "asleep: sm1: asleep since 2026-10-06T12:00:00Z (by captain): parked; not restarted" \
+    "the restart must report the mate asleep"
+  assert_contains "$out" "summary: 0 of 1 restarted, 0 nudged, 0 unreached, 1 asleep" \
+    "the summary must count the mate as asleep, not restarted"
+  ! grep -qx '/exit' "$dir/fake/literal" || fail "the restart stopped an agent the sleep marker now covers"
+  assert_absent "$dir/home/state/sm1.control-relaunch" "the restart launched behind the sleep marker"
+  pass "T4c a sleep that lands after the persist answer keeps the restart from relaunching the mate"
+}
+
 # --- T5: a refused restart leaves the mate running and says so ---------------
 test_refused_restart_falls_back_without_claiming_a_reload() {
   local dir out rc before
@@ -725,6 +752,7 @@ test_answer_between_resolution_and_timeout_wins
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for
 test_asleep_mate_is_left_asleep
+test_sleep_after_persist_answer_blocks_relaunch
 test_refused_restart_falls_back_without_claiming_a_reload
 test_local_restart_uses_the_home_pin_and_reports_what_ran
 test_native_ultra_restart_keeps_local_and_remote_profiles

@@ -41,7 +41,9 @@
 # clean reload. Once a relaunch is attempted, any failed or ambiguous result is
 # reported as unknown rather than attributing it to either incarnation.
 # A mate that is asleep (bin/fm-secondmate-sleep.sh) is never asked, nudged,
-# or restarted: it is reported as asleep and left so until an explicit wake.
+# or restarted: it is reported as asleep and left so until an explicit wake. The
+# relaunch runs under the mate's per-mate liveness lock, the one sleep holds while
+# it stops the agent and writes its marker, and rechecks that marker inside it.
 #
 # Placement changes the transport and nothing else. A local mate is restarted
 # with bin/fm-control.sh <id> relaunch; a remote mate is restarted by running THAT
@@ -71,7 +73,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,67{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,69{s/^# \{0,1\}//;p;}' "$0"
 }
 
 case "${1:-}" in
@@ -91,8 +93,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
 # shellcheck source=bin/fm-secondmate-nudge-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
-# shellcheck source=bin/fm-secondmate-sleep-lib.sh
-. "$SCRIPT_DIR/fm-secondmate-sleep-lib.sh"
+# shellcheck source=bin/fm-secondmate-liveness-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-liveness-lib.sh"
 
 fm_secondmate_persist_bounds || exit 2
 PERSIST_WAIT=$FM_SECONDMATE_PERSIST_WAIT_SECS
@@ -162,6 +164,28 @@ report_unreached() {  # <id> <reason>
 }
 
 restart_mate() {  # <array-index>
+  local i=$1 id tries=0
+  id=${IDS[$i]}
+  until fm_secondmate_liveness_lock "$id"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 120 ]; then
+      printf 'unreached: %s: another liveness check kept holding this mate, so it was not restarted\n' "$id"
+      return
+    fi
+    sleep 1
+  done
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    printf 'asleep: %s: %s; not restarted\n' "$id" "$(fm_secondmate_asleep_line)"
+  else
+    relaunch_mate "$i"
+  fi
+  fm_secondmate_liveness_unlock "$id"
+}
+
+# The relaunch itself, run under the mate's liveness lock with its sleep marker
+# rechecked, so a sleep that lands after the persist answer can never be left
+# with a running agent behind its marker.
+relaunch_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
   if [ "${PLACEMENT[i]}" = remote ]; then
@@ -234,6 +258,7 @@ harvest_restarts() {
     case "$out" in
       restarted:*) restarted_count=$((restarted_count + 1)) ;;
       nudged:*) nudged_count=$((nudged_count + 1)) ;;
+      asleep:*) asleep_count=$((asleep_count + 1)) ;;
       *) unreached_count=$((unreached_count + 1)) ;;
     esac
     PLAN[i]="done"

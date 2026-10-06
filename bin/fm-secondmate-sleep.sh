@@ -50,9 +50,10 @@
 #               answer lands. An agent that is already stopped has nothing to
 #               persist; one whose state cannot be read is refused. The stop and
 #               every later step run under this home's per-mate liveness lock, so
-#               no liveness check relaunches the mate before its marker lands; an
-#               agent that was stopped at admission is probed again under that
-#               lock, and one that came back up meanwhile is refused unstopped.
+#               no liveness check relaunches the mate before its marker lands.
+#               The agent is probed again under that lock, and only the
+#               incarnation that was asked (the same spawn_gen) is stopped: one
+#               that came back up or was replaced meanwhile is refused unstopped.
 #   watcher     the home's own bin/fm-watch-arm.sh --stop stops its watcher.
 #   listeners   each process-event source registered in the home is asked about
 #               through the home's own bin/fm-captain-hold.sh binding <source-id>.
@@ -68,6 +69,11 @@
 #               --if-owner token, and an unacknowledged task-owned round
 #               refuses. A refusal names the source.
 #   marker      state/<id>.asleep is written.
+# A refusal undoes nothing already done; there is no rollback. A sleep refused
+# after the agent or watcher step leaves them stopped with no marker, so ordinary
+# liveness recovery relaunches the mate. A sleep refused at the listeners step may
+# leave the unbound board listeners it already retired retired: re-arming one is
+# a manual step for the operator, since nothing relaunches a retired source.
 # A mate already asleep is a no-op that says so. Every persist request goes out
 # before any stop, so one slow answer delays only its own mate.
 #
@@ -101,7 +107,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,97{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,103{s/^# \{0,1\}//;p;}' "$0"
 }
 
 VERB=${1:-}
@@ -295,6 +301,7 @@ retire_unbound_listeners() {  # <home>
 PLAN=()
 HOME_OF=()
 NEEDS_EXIT=()
+ASKED_GEN=()
 CORR=()
 DEADLINE=()
 
@@ -319,22 +326,25 @@ stop_and_mark() {  # <index>
     refuse "$i" idle "its home has in-flight work:$pending; nothing was stopped"
     return
   fi
-  if [ "${NEEDS_EXIT[i]}" = 0 ]; then
-    probe_agent "$id"
-    case "$FM_SM_LIVE_STATUS" in
-      relaunchable|silent) ;;
-      alive)
+  # Probe again under the lock: only the incarnation that was asked to write
+  # down its open work may be stopped, and one that is already gone needs no stop.
+  probe_agent "$id"
+  case "$FM_SM_LIVE_STATUS" in
+    relaunchable|silent) NEEDS_EXIT[i]=0 ;;
+    alive)
+      if [ "${NEEDS_EXIT[i]}" = 0 ] \
+        || [ "$(fm_meta_get "$STATE/$id.meta" spawn_gen)" != "${ASKED_GEN[i]}" ]; then
         fm_secondmate_liveness_unlock "$id"
-        refuse "$i" agent "its agent came back up after it was checked and was never asked to write down its open work; nothing was stopped"
+        refuse "$i" agent "an agent that was never asked to write down its open work is running now; nothing was stopped"
         return
-        ;;
-      *)
-        fm_secondmate_liveness_unlock "$id"
-        refuse "$i" agent "cannot tell whether its agent is running: $FM_SM_LIVE_REASON; nothing was stopped"
-        return
-        ;;
-    esac
-  fi
+      fi
+      ;;
+    *)
+      fm_secondmate_liveness_unlock "$id"
+      refuse "$i" agent "cannot tell whether its agent is running: $FM_SM_LIVE_REASON; nothing was stopped"
+      return
+      ;;
+  esac
   if [ "${NEEDS_EXIT[i]}" = 1 ] && ! out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
     "$SCRIPT_DIR/fm-control.sh" "$id" exit < /dev/null 2>&1); then
     fm_secondmate_liveness_unlock "$id"
@@ -367,7 +377,7 @@ stop_and_mark() {  # <index>
 admit_for_sleep() {  # <index> <persist-request>
   local i=$1 request=$2 id pending
   id=${IDS[$i]}
-  PLAN[i]="done" HOME_OF[i]="" NEEDS_EXIT[i]=0 CORR[i]="" DEADLINE[i]=""
+  PLAN[i]="done" HOME_OF[i]="" NEEDS_EXIT[i]=0 ASKED_GEN[i]="" CORR[i]="" DEADLINE[i]=""
   if fm_secondmate_asleep "$STATE" "$id"; then
     echo "$id: already $(fm_secondmate_asleep_line)"
     return
@@ -388,6 +398,7 @@ admit_for_sleep() {  # <index> <persist-request>
     relaunchable|silent) ;;
     alive)
       NEEDS_EXIT[i]=1
+      ASKED_GEN[i]=$(fm_meta_get "$STATE/$id.meta" spawn_gen)
       if fm_secondmate_persist_ask "$FM_HOME" "$STATE" "$id" "$request"; then
         CORR[i]=$FM_SECONDMATE_PERSIST_CORR
         DEADLINE[i]=$(($(date +%s) + FM_SECONDMATE_PERSIST_WAIT_SECS))

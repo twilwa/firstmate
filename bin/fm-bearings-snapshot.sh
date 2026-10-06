@@ -61,7 +61,10 @@
 # state `asleep`, its sleep line as doing, and its reason, and its deliberately
 # stopped endpoint is left out of unhealthy_endpoints: an action-free notice,
 # never an unavailable home or a dead endpoint. bin/fm-secondmate-sleep-lib.sh
-# reads the marker; this wrapper only decorates the projection with it.
+# reads the marker; this wrapper only decorates the projection with it. The
+# asleep notice lives only in that secondmates[] row, never in gates[], so a
+# consumer composes its Charted Next warning row from the secondmates[] entry
+# whose state is asleep.
 #
 # An open away-return catch-up is disclosed the same way, as a single action-free
 # (return-catchup) gate row naming the blockers left to clear or the reason the
@@ -173,7 +176,8 @@ For every registered secondmate, readable structured facts from its own home are
   evidence and never become current work. The provenance and freshness fields
   distinguish live and cached ledgers; a home without either is explicitly unreadable.
   A mate put to sleep on purpose reports state asleep with its sleep line and
-  reason, and its stopped endpoint is not listed as unhealthy.
+  reason in its secondmates[] row (not in gates[]), and its stopped endpoint is
+  not listed as unhealthy.
 Opt-in surfaces: --fields bodies|paths|actions|endpoints, --all-in-flight,
   --all-decisions (all open decisions and captain holds in the bounded snapshot),
   --all-secondmates, --all-landed, --all-reports, --all-queued, --all-recorded-prs,

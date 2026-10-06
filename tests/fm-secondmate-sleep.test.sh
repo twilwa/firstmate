@@ -22,6 +22,8 @@
 #   6. a registered id that itself begins with fm- is addressed as itself.
 #   7. a mate whose stopped agent comes back up between admission and its
 #      stop step is refused, never marked asleep while it runs.
+#   8. a running agent replaced after it was asked to persist is never
+#      stopped: only the asked incarnation (its spawn_gen) may be.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -329,6 +331,35 @@ test_sleep_refuses_agent_back_up_after_admission() {
   pass "T8 a mate whose agent comes back up after admission is refused, never marked asleep"
 }
 
+# --- T9: an agent replaced after the persist request is not stopped unasked --
+# A liveness relaunch can swap the agent for a new incarnation while the persist
+# answer is pending. The doorbell that carries the request models that swap by
+# recording a new spawn_gen; the stop step must then refuse instead of exiting a
+# replacement that was never asked to write down its open work.
+test_sleep_refuses_replaced_agent() {
+  local dir out rc
+  dir=$(new_case agent-replaced)
+  add_local_mate "$dir" sm1
+  register_mate "$dir" sm1
+  arm_answer "$dir" sm1
+  printf 'spawn_gen=asked\n' >> "$dir/home/state/sm1.meta"
+  cat > "$dir/fake/on-doorbell" <<SH
+#!/bin/sh
+printf 'spawn_gen=replacement\\n' >> '$dir/home/state/sm1.meta'
+SH
+  chmod +x "$dir/fake/on-doorbell"
+
+  out=$(run_sleep "$dir" sleep sm1 --by captain --reason parked); rc=$?
+
+  expect_code 3 "$rc" "a replaced agent must not be reported asleep"$'\n'"$out"
+  assert_contains "$out" "sm1: refused at agent: an agent that was never asked to write down its open work is running now" \
+    "the refusal must say a different agent is running"
+  ! grep -qx '/exit' "$dir/fake/literal" || fail "sleep stopped a replacement agent that was never asked to persist"
+  assert_absent "$dir/home/state/sm1.asleep" "a mate with an unasked running agent was marked asleep"
+  assert_absent "$dir/fake/home-calls" "the refused mate's watcher or listeners were stopped"
+  pass "T9 an agent replaced after the persist request is refused, never stopped unasked"
+}
+
 # --- T7: a registered id beginning with fm- is addressed as itself ------------
 test_fm_prefixed_registered_id_is_its_own() {
   local dir out rc
@@ -354,5 +385,6 @@ test_status_reads_each_registered_mate
 test_sleep_keeps_decision_bound_listeners
 test_fm_prefixed_registered_id_is_its_own
 test_sleep_refuses_agent_back_up_after_admission
+test_sleep_refuses_replaced_agent
 
 echo "# all fm-secondmate-sleep tests passed"
