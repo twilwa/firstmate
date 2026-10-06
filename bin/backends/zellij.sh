@@ -513,12 +513,12 @@ fm_backend_zellij_visible_capture() {  # <target> [expected-label]
 # fm_backend_zellij_composer_capture: bounded styled tail of the pane. When
 # --ansi is unsupported (an older zellij), the caller falls back to the plain
 # dump and a styled=0 descriptor - see fm_backend_zellij_composer_state.
-fm_backend_zellij_composer_capture() {  # <target> [expected-label]
+fm_backend_zellij_composer_capture() {  # <target> [expected-label] [lines]
   fm_backend_zellij_target_ready "$1" "${2:-}" || return 1
-  local out
+  local out lines=${3:-$FM_COMPOSER_CAPTURE_LINES}
   out=$(fm_backend_zellij_cli "$FM_BACKEND_ZELLIJ_SESSION" action dump-screen --pane-id "$FM_BACKEND_ZELLIJ_PANE" --ansi 2>/dev/null) || return 1
   [ -n "$out" ] || return 1
-  printf '%s' "$out" | tail -n "$FM_COMPOSER_CAPTURE_LINES"
+  printf '%s' "$out" | tail -n "$lines"
 }
 
 # fm_backend_zellij_composer_state: thin adapter - capture plus capabilities
@@ -554,9 +554,16 @@ fm_backend_zellij_composer_content() {  # <target> [expected-label]
 fm_backend_zellij_composer_observed_append() {  # <target> <before> <text> [expected-label]
   local target=$1 before=$2 text=$3 expected_label=${4:-} cap caps after expected
   [ -n "$text" ] || return 1
-  cap=$(fm_backend_zellij_composer_capture "$target" "$expected_label") || return 1
+  # Only the post-paste proof needs the wider read: Claude's /exit popup can
+  # fill the usual 20-row tail below the live composer. Select within that
+  # tail first, then fall back to the same capture's 200-row tail. The
+  # bottom-most composer still wins over older transcript prompts.
+  cap=$(fm_backend_zellij_composer_capture "$target" "$expected_label" 200) || return 1
   caps=$(printf 'styled=1\ncursor=0\nidentity=0\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
-  after=$(fm_composer_extract_selected_content "$caps" "$cap") || return 1
+  after=$(fm_composer_extract_selected_content "$caps" "$(printf '%s\n' "$cap" | tail -n "$FM_COMPOSER_CAPTURE_LINES")") || {
+    caps=$(printf 'styled=1\ncursor=0\nidentity=0\nrows=200')
+    after=$(fm_composer_extract_selected_content "$caps" "$cap") || return 1
+  }
   fm_composer_normalize_spaces_var before
   fm_composer_normalize_spaces_var text
   fm_composer_normalize_spaces_var after

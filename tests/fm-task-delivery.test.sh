@@ -1292,9 +1292,19 @@ EOF
   status=$?
   [ "$status" -ne 0 ] || fail "a gerrit brief launched on a project with no registered forge"
   assert_contains "$out" "forge mismatch for forge-agree-a5" "the unbound-project refusal did not name the drift"
-  assert_contains "$out" "fm-brief.sh forge-agree-a5 proj --mode no-mistakes" \
-    "the refusal did not print the unbound re-scaffold command"
+  assert_contains "$out" "fm-brief.sh forge-agree-a5 proj --mode no-mistakes --tests none" \
+    "the refusal did not print the unbound re-scaffold command with the brief's test scope"
   assert_absent "$home/state/forge-agree-a5.meta" "the refused spawn still recorded a task"
+
+  FM_HOME="$home" "$BRIEF" forge-agree-a6 proj --mode direct-PR --forge gerrit --tests full >/dev/null \
+    || fail "a gerrit brief with a full test scope should scaffold"
+  fill_brief_subsections "$home/data/forge-agree-a6/brief.md" "Publish upstream." "Ship it."
+  out=$(run_spawn "$home" "$fakebin" forge-agree-a6 "$proj" claude --mode direct-PR --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a gerrit brief launched on an unbound project was accepted"
+  assert_contains "$out" "fm-brief.sh forge-agree-a6 proj --mode direct-PR --tests full," \
+    "the forge re-scaffold command dropped the brief's full test scope"
+  assert_absent "$home/state/forge-agree-a6.meta" "the refused full-scope spawn still recorded a task"
 
   pass "fm-spawn: a registered forge must reach the worker's brief"
 }

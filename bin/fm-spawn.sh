@@ -31,6 +31,10 @@
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
+#   --budget-wall-secs and --budget-output-tokens override the brief's task budget
+#   on fresh ship/scout spawns; defaults are 21600 seconds and 1000000 tokens.
+#   The original budget_start_epoch is retained on relaunch (including legacy
+#   records without a start, which cannot be assigned one retroactively).
 #   --branch-prefix is the optional prefix selected at intake for this ship's
 #   immutable branch, defaulting to "fm/". It must agree with the branch recorded
 #   in the brief, and is refused on scouts, secondmates, and relaunches. When the
@@ -221,8 +225,14 @@
 #   default-branch commit when safe: directly for a local home, or through the
 #   configured host for a remote home. Skipped syncs warn and launch unchanged.
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
-#   git worktree root distinct from both the spawning project and its repository's
-#   primary checkout, including when the spawning project is a linked worktree.
+#   linked git worktree root sharing the spawning project's canonical common git
+#   directory, distinct from both the spawning project and the primary checkout.
+#   New Treehouse allocations use --root $HOME/.treehouse-fm/<hash of the
+#   canonical common git dir> to separate independent clones even when they
+#   share an origin, and to keep crew slots outside every Firstmate home. This
+#   overrides ambient Treehouse root configuration for new allocations only; recorded
+#   worktrees, slot claims, project locks and absolute-path returns keep their
+#   existing owners. Relaunch never reallocates or refreshes the recorded copy.
 #   On the backends that discover that path by reading the task pane's own cwd,
 #   the same isolation test screens every read: a pane still showing the project
 #   or the repository primary while `treehouse get` prepares the slot is waited
@@ -367,7 +377,7 @@
 # plus a gitignored .fm-grok-turnend worktree pointer and a state token.
 # muse installs no hook at all - its plugin engine is off in the default build - so
 # it writes state/<id>.muse-session to bind the pane to muse's own session event
-# log; muse, gemini, agy, and devin are crewmate/scout only and are refused for --secondmate.
+# log; muse, gemini, agy, devin, and opencode are crewmate/scout only and are refused for --secondmate.
 # rovo installs no hook either - its eventHooks fire at tool granularity only,
 # never turn-end - so it carries no busy-source wiring at all and no turn-end
 # hook. A positional brief is dead-on-arrival (rovo loads, never works, and drops
@@ -615,6 +625,10 @@ MODE=
 YOLO=
 BRANCH_PREFIX=fm/
 TRACEPARENT_ARG=
+BUDGET_WALL_ARG=
+BUDGET_OUTPUT_ARG=
+BUDGET_WALL_SET=0
+BUDGET_OUTPUT_SET=0
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
@@ -666,6 +680,14 @@ for a in "$@"; do
     traceparent)
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
+      ;;
+    budget-wall-secs)
+      BUDGET_WALL_ARG=$a
+      BUDGET_WALL_SET=1
+      ;;
+    budget-output-tokens)
+      BUDGET_OUTPUT_ARG=$a
+      BUDGET_OUTPUT_SET=1
       ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
@@ -720,6 +742,10 @@ for a in "$@"; do
     BRANCH_PREFIX=${a#--branch-prefix=}
     BRANCH_PREFIX_SET=1
     ;;
+  --budget-wall-secs) want_value=budget-wall-secs ;;
+  --budget-wall-secs=*) BUDGET_WALL_ARG=${a#*=}; BUDGET_WALL_SET=1 ;;
+  --budget-output-tokens) want_value=budget-output-tokens ;;
+  --budget-output-tokens=*) BUDGET_OUTPUT_ARG=${a#*=}; BUDGET_OUTPUT_SET=1 ;;
   --traceparent) want_value=traceparent ;;
   --traceparent=*)
     TRACEPARENT_ARG=${a#--traceparent=}
@@ -756,6 +782,20 @@ done
   echo "error: --yolo requires a non-empty value" >&2
   exit 1
 }
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
+if [ "$BUDGET_WALL_SET" -eq 1 ] || [ "$BUDGET_OUTPUT_SET" -eq 1 ]; then
+  [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] || {
+    echo "error: budget overrides apply only to fresh ship/scout spawns" >&2
+    exit 1
+  }
+fi
+if [ "$BUDGET_WALL_SET" -eq 1 ]; then
+  fm_task_budget_positive "$BUDGET_WALL_ARG" || { echo "error: --budget-wall-secs requires a positive integer" >&2; exit 1; }
+fi
+if [ "$BUDGET_OUTPUT_SET" -eq 1 ]; then
+  fm_task_budget_positive "$BUDGET_OUTPUT_ARG" || { echo "error: --budget-output-tokens requires a positive integer" >&2; exit 1; }
+fi
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || {
   echo "error: --traceparent requires a non-empty value" >&2
   exit 1
@@ -903,7 +943,7 @@ spawn_remote_secondmate() {
     harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate)
   fi
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor) ;;
+  claude | codex | pi | pi-signed | grok | kimi | cursor) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1417,6 +1457,8 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ "$MODE_SET" -eq 0 ] || shared_args+=(--mode "$MODE")
   [ "$YOLO_SET" -eq 0 ] || shared_args+=(--yolo "$YOLO")
   [ "$BRANCH_PREFIX_SET" -eq 0 ] || shared_args+=(--branch-prefix "$BRANCH_PREFIX")
+  [ "$BUDGET_WALL_SET" -eq 0 ] || shared_args+=(--budget-wall-secs "$BUDGET_WALL_ARG")
+  [ "$BUDGET_OUTPUT_SET" -eq 0 ] || shared_args+=(--budget-output-tokens "$BUDGET_OUTPUT_ARG")
   for pair in "${POS[@]}"; do
     case "$pair" in
     *=*) : ;;
@@ -1967,7 +2009,9 @@ launch_template() {
       printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox --disable hooks -c "notify=[\"bash\",\"-c\",\"touch __TURNEND__\"]" "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
-  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  # OpenCode 2.0 exposes interactive --model on `mini`, not the main TUI.
+  # Both paths use a private server, including on --continue.
+  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--standalone --prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
     printf '%s' '__PIBIN____PITUIMODE__'
     if [ "$kind" = secondmate ]; then
@@ -2190,7 +2234,7 @@ case "$ARG3" in
   ;;
 esac
 
-# muse, gemini, agy, and devin are verified as CREWMATE/SCOUT adapters only. A secondmate is
+# muse, gemini, agy, devin, and opencode are verified as CREWMATE/SCOUT adapters only. A secondmate is
 # a firstmate instance, so it needs a primary supervision protocol.
 # gemini has none: docs/supervision-protocols/ carries no gemini wake protocol
 # and this task verified only crewmate-side launch, busy state, interrupt, and
@@ -2204,7 +2248,10 @@ esac
 # docs/supervision-protocols/ carries no agy wake protocol (agy 1.2.0).
 # devin has none either: only its worker lifecycle hooks are verified, and
 # docs/supervision-protocols/ carries no devin wake protocol (devin 3000.11.1).
-if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini ] || [ "$HARNESS" = agy ] || [ "$HARNESS" = devin ]; }; then
+# opencode's fm-primary plugins export only the v1 named hook, which the 2.0
+# loader rejects, so an opencode secondmate would run with no primary
+# supervision until those plugins are ported to the default-definition loader.
+if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini ] || [ "$HARNESS" = agy ] || [ "$HARNESS" = devin ] || [ "$HARNESS" = opencode ]; }; then
   echo "error: $HARNESS is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
   exit 1
 fi
@@ -2220,7 +2267,7 @@ fi
 
 case "$HARNESS" in
 devin)
-  DEVIN_BIN=$(command -v devin) || {
+  DEVIN_BIN=$(type -P devin) || {
     echo "error: devin executable not found on PATH" >&2
     exit 1
   }
@@ -2333,7 +2380,7 @@ secondmate_registry_value() {
 
 resolve_kimi_binary() {
   local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+  candidate=$(type -P kimi 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2360,7 +2407,7 @@ resolve_kimi_binary() {
 
 resolve_muse_binary() {
   local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
+  candidate=$(type -P muse 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2382,7 +2429,7 @@ resolve_muse_binary() {
 
 resolve_rovo_binary() {
   local candidate dir fallback
-  candidate=$(command -v rovo 2>/dev/null || true)
+  candidate=$(type -P rovo 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -2447,7 +2494,10 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
+  opencode)
+    printf -- 'mini --model %s ' "$(shell_quote "$model")"
+    ;;
+  claude | codex | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   esac
@@ -2526,9 +2576,9 @@ effort_flag_for_harness() {
     # --config-override, but that flag is single-value (see
     # rovo_config_override_flag below) so it is built there, merged with the
     # mandatory allowedExternalPaths grant, rather than here.
-    # opencode's interactive `opencode --prompt` launch has a verified --model
-    # flag but no verified effort flag. Its `opencode run --variant` flag belongs
-    # to a different, non-interactive launch mode, so fm-spawn does not pass it.
+    # OpenCode 2.0's interactive `opencode --prompt` has no effort flag.
+    # `opencode run -m provider/model#variant` is a separate headless mode;
+    # the requested interactive effort stays in metadata but is not passed.
     # kimi provider catalogs expose supported and default effort values, but a
     # launch flag and mapping have not been live-verified; the requested axis
     # stays in task metadata but never reaches the launch command. Cursor encodes
@@ -2557,20 +2607,16 @@ case "$LAUNCH" in
   ;;
 esac
 
+KIMI_HOOK_REQUIRED=0
 case "$LAUNCH" in
 *__KIMIBIN__*)
+  KIMI_HOOK_REQUIRED=1
   KIMI_BIN=$(resolve_kimi_binary) || exit 1
   LAUNCH=${LAUNCH//__KIMIBIN__/$(shell_quote "$KIMI_BIN")}
   fm_backend_visible_capture_supported "$BACKEND" || {
     echo "error: refusing Kimi spawn because backend '$BACKEND' has no verified viewport-bounded capture; Kimi 2.0.0 gates a fresh worktree on a trust dialog that can only be answered and confirmed cleared from a scrollback-free read of the live pane" >&2
     exit 1
   }
-  if [ "$KIND" != secondmate ]; then
-    "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
-      echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely" >&2
-      exit 1
-    }
-  fi
   ;;
 esac
 
@@ -2858,12 +2904,47 @@ if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   # Use the existing launch-brief overlay for every worker kind, including
   # pre-scope briefs and relaunches. Charters never enter this worker path.
   SOURCE_BRIEF=$BRIEF
+  if [ "$RELAUNCH" -eq 1 ]; then
+    BUDGET_START=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_start_epoch)
+    BUDGET_ID=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_id)
+    BUDGET_WALL=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_wall_secs)
+    BUDGET_OUTPUT=$(fm_task_budget_meta_value "$RELAUNCH_META" budget_output_tokens)
+  else
+    BUDGET_START=$(date +%s)
+    BUDGET_ID="b$BUDGET_START.${BASHPID:-$$}.$RANDOM"
+    BUDGET_WALL=$FM_BUDGET_DEFAULT_WALL_SECS
+    BUDGET_OUTPUT=$FM_BUDGET_DEFAULT_OUTPUT_TOKENS
+    budget_line=$(grep '^Task budget: wall_secs=' "$SOURCE_BRIEF" | head -1 || true)
+    if [ -n "$budget_line" ]; then
+      if [[ "$budget_line" =~ ^Task\ budget:\ wall_secs=([0-9]+)\ output_tokens=([0-9]+)$ ]]; then
+        BUDGET_WALL=${BASH_REMATCH[1]}
+        BUDGET_OUTPUT=${BASH_REMATCH[2]}
+      else
+        echo "error: invalid Task budget line in $SOURCE_BRIEF" >&2
+        exit 1
+      fi
+    fi
+    [ "$BUDGET_WALL_SET" -eq 0 ] || BUDGET_WALL=$BUDGET_WALL_ARG
+    [ "$BUDGET_OUTPUT_SET" -eq 0 ] || BUDGET_OUTPUT=$BUDGET_OUTPUT_ARG
+  fi
+  # Legacy relaunches without a recorded start cannot safely reset the clock.
+  if [ "$RELAUNCH" -eq 0 ] || [ -n "$BUDGET_START" ]; then
+    if ! fm_task_budget_positive "$BUDGET_START" || ! fm_task_budget_positive "$BUDGET_WALL" \
+      || ! fm_task_budget_positive "$BUDGET_OUTPUT"; then
+      echo "error: invalid task budget in $SOURCE_BRIEF or ${RELAUNCH_META:-$SOURCE_BRIEF}" >&2
+      exit 1
+    fi
+  fi
   BRIEF="$DATA/$ID/launch-brief.md"
   BRIEF_TMP="$DATA/$ID/.launch-brief.md.${BASHPID:-$$}"
   {
     fm_brief_worker_role "$STATE" "$ID" &&
       printf '\n' &&
       cat "$SOURCE_BRIEF" &&
+      if [ -n "$BUDGET_START" ]; then
+        printf '\nCurrent task budget: start_epoch=%s wall_secs=%s output_tokens=%s (spawn record is authoritative).\n' \
+          "$BUDGET_START" "$BUDGET_WALL" "$BUDGET_OUTPUT"
+      fi &&
       if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
         fm_brief_intent_overlay "$CAPTAIN_INTENT"
       fi
@@ -2945,6 +3026,8 @@ if [ "$KIND" = ship ]; then
     else
       forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE"
     fi
+    BRIEF_TEST_SCOPE=$(awk 'prev == "## Test scope" && /^Scope: [a-z-]+\.$/ { scope = substr($0, 8, length($0) - 8) } { prev = $0 } END { print scope }' "$SOURCE_BRIEF")
+    [ -z "$BRIEF_TEST_SCOPE" ] || forge_scaffold="$forge_scaffold --tests $BRIEF_TEST_SCOPE"
     echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent and ## Firstmate spec bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those two subsections, so the worker's publication matches the project's forge" >&2
     exit 1
   fi
@@ -2990,6 +3073,14 @@ BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 # once here so every downstream comparison uses the same physical form
 # (docs/herdr-backend.md "Known gaps").
 PROJ_ABS_REAL=$(cd "$PROJ_ABS" 2>/dev/null && pwd -P) || PROJ_ABS_REAL="$PROJ_ABS"
+PROJ_COMMON_REAL=
+if [ "$KIND" != secondmate ]; then
+  if ! PROJ_COMMON_REAL=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir) ||
+    ! PROJ_COMMON_REAL=$(cd "$PROJ_COMMON_REAL" && pwd -P); then
+    echo "error: could not resolve the spawning project's common git directory; refusing to allocate a worktree" >&2
+    exit 1
+  fi
+fi
 
 real_path_or_raw() { # <path>
   local path=$1 real
@@ -3011,7 +3102,7 @@ real_path_or_raw() { # <path>
 
 # True when <path> is an isolated worktree of the spawning project: a real
 # directory that is its own worktree root, is not the spawning project itself,
-# and does not share the project repository's common git dir. SPAWN_WT_TOP is
+# shares its common git dir, and has a separate per-worktree git dir. SPAWN_WT_TOP is
 # left holding the worktree root the check read, and SPAWN_WT_REASON a short
 # phrase naming why a rejected path failed, both for the refusal messages.
 #
@@ -3026,7 +3117,7 @@ real_path_or_raw() { # <path>
 SPAWN_WT_TOP=
 SPAWN_WT_REASON=
 spawn_worktree_isolated() { # <path>
-  local path=$1 wt_real wt_top_real wt_git_dir proj_common
+  local path=$1 wt_real wt_top_real wt_git_dir wt_common
   SPAWN_WT_TOP=
   SPAWN_WT_REASON=
   wt_real=
@@ -3063,14 +3154,18 @@ spawn_worktree_isolated() { # <path>
   # dir, so comparing only the two working directories cannot protect primary.
   wt_git_dir=$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null) &&
     wt_git_dir=$(cd "$wt_git_dir" 2>/dev/null && pwd -P) || wt_git_dir=
-  proj_common=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
-    proj_common=$(cd "$proj_common" 2>/dev/null && pwd -P) || proj_common=
-  if [ -z "$wt_git_dir" ] || [ -z "$proj_common" ]; then
+  wt_common=$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
+    wt_common=$(cd "$wt_common" 2>/dev/null && pwd -P) || wt_common=
+  if [ -z "$wt_git_dir" ] || [ -z "$wt_common" ] || [ -z "$PROJ_COMMON_REAL" ]; then
     SPAWN_WT_REASON="its git directory could not be resolved"
     return 1
   fi
-  if [ "$wt_git_dir" = "$proj_common" ]; then
-    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is the spawning project's common git dir)"
+  if [ "$wt_git_dir" = "$wt_common" ]; then
+    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is its common git dir)"
+    return 1
+  fi
+  if [ "$wt_common" != "$PROJ_COMMON_REAL" ]; then
+    SPAWN_WT_REASON="its common git dir '$wt_common' does not belong to the spawning project '$PROJ_COMMON_REAL'"
     return 1
   fi
   return 0
@@ -3079,7 +3174,14 @@ spawn_worktree_isolated() { # <path>
 validate_spawn_worktree() { # <source> <inspect-target>
   local source=$1 inspect_target=$2
   if ! spawn_worktree_isolated "$WT"; then
-    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
+    if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
+      # A returned allocation ID is not removal authority when its path fails
+      # custody validation. Keep both resources for inspection; valid owned
+      # allocations retain the normal cleanup path for later launch failures.
+      ORCA_ABORT_CLEANUP=0
+      echo "warning: preserving unverified Orca allocation id='$ORCA_WORKTREE_ID' path='$WT' terminal='${ORCA_TERMINAL:-none}'; no worktree removal or terminal closure attempted" >&2
+    fi
+    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'; $SPAWN_WT_REASON); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
 }
@@ -4013,23 +4115,19 @@ if [ "$RELAUNCH" -eq 1 ]; then
   fi
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  # Treehouse names pools by repo basename and remote URL, not by clone path.
-  # Give each clone its own root, keyed by a hash of its physical path, so
-  # another home's clone of the same origin cannot lend this task a foreign
-  # slot. The root sits under the user's HOME rather than beside the clone so
-  # no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor of a crew slot.
-  # Explicit --root also overrides an inherited TREEHOUSE_ROOT or user-level
-  # Treehouse config.
+  # Bind new allocations to this clone, even when homes share an origin or an
+  # ambient Treehouse root is set, by keying the root on a hash of the clone's
+  # canonical common git dir. The root sits under the user's HOME rather than
+  # beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
+  # of a crew slot. Relaunch uses the recorded slot unchanged.
   if command -v shasum >/dev/null 2>&1; then
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
   elif command -v sha256sum >/dev/null 2>&1; then
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
   else
-    pool_hash=$(printf '%s' "$PROJ_ABS_REAL" | cksum | awk '{printf "%08x", $1}')
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
   fi
-  pool_root="$HOME/.treehouse-fm/$pool_hash"
-  pool_root_quoted=${pool_root//\'/\'\\\'\'}
-  spawn_send_text_line "$WT_TARGET" "treehouse get --root '$pool_root_quoted'"
+  spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$HOME/.treehouse-fm/$pool_hash") get"
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
   # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -4044,10 +4142,10 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # A single read that already looks isolated is not proof the pane settled
   # there: on some tmux/WSL setups a brand-new window's pane_current_path
   # transiently reports an unrelated stale path (seen live as another real git
-  # checkout entirely) before the shell catches up with treehouse get's cd. That
-  # stale path passes spawn_worktree_isolated too (it resolves to a real,
-  # distinct worktree top-level), so accepting it on one read alone silently
-  # records the wrong worktree= in state/<id>.meta. Require two consecutive
+  # checkout entirely) before the shell catches up with treehouse get's cd.
+  # Foreign clones fail the custody check, but another linked worktree of this
+  # clone can still pass it. Accepting that on one read alone silently records
+  # the wrong worktree= in state/<id>.meta. Require two consecutive
   # reads to agree on the same isolated path before accepting it; a mismatch
   # just becomes the new candidate rather than resetting the wait, so a pane
   # that is already settled by the first real read only costs the one existing
@@ -4120,6 +4218,15 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
+fi
+
+# Executable/capture preflight above is read-only. Even Kimi's global hook must
+# wait until the worker's recorded or allocated copy has passed custody checks.
+if [ "$KIMI_HOOK_REQUIRED" -eq 1 ] && [ "$KIND" != secondmate ]; then
+  "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
+    echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely; inspect window $T" >&2
+    exit 1
+  }
 fi
 
 # Pre-register Claude's workspace trust for the directory this launch starts in,
@@ -4334,50 +4441,40 @@ EOF
     cat >"$WT/.opencode/plugins/fm-busy-state.js" <<EOF
 // Firstmate semantic busy-state events + turn-end notification; written by
 // fm-spawn under the contract owned by bin/fm-busy-lib.sh.
-// Semantic state comes from OpenCode's session.status events: busy and retry
-// are active, idle is inactive. Scoping latches the first session that
-// reports activity (the worker's main session - a subagent child session can
-// only start while the main session is already busy) and ignores other
-// sessions' status until the latched session settles, so a child's idle can
-// never clear the worker's busy state. The session.idle touch stays the
-// watcher's wake NOTIFICATION, never current-state truth.
+// Requires OpenCode 2.0 or later: its plugin loader reads only a default
+// id/setup definition, and the v2 event stream reports session.execution.*.
+// The root session is latched so a child cannot clear its parent's busy marker.
 import { execFile } from "node:child_process";
-const busyEvent = (state, event) =>
-  new Promise((resolve) => {
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "apply", "$STATE_REAL", "$ID", state,
-      "--gen", "$BUSY_GEN", "--source", "opencode-plugin", "--event", event,
-    ], () => resolve());
-  });
-export const FmBusyState = async () => {
-  let activeSession = null;
-  return {
-    event: async ({ event }) => {
-      if (event.type === "session.status") {
-        const sessionID = event.properties.sessionID;
-        const statusType = event.properties.status && event.properties.status.type;
-        if (statusType === "busy" || statusType === "retry") {
-          if (activeSession === null) activeSession = sessionID;
-          if (sessionID === activeSession) await busyEvent("busy", "session-" + statusType);
-          return;
-        }
-        if (statusType === "idle" && sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-status-idle");
-        }
-        return;
-      }
-      if (event.type === "session.idle") {
-        if (event.properties.sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-idle");
-        }
-        await new Promise((resolve) => {
-          execFile("touch", ["$TURNEND"], () => resolve());
-        });
-      }
-    },
-  };
+const invoke = (file, args) => new Promise((resolve) => {
+  execFile(file, args, () => resolve());
+});
+const busyEvent = (state, event) => invoke("$FM_ROOT/bin/fm-busy-event.sh", [
+  "apply", "$STATE_REAL", "$ID", state,
+  "--gen", "$BUSY_GEN", "--source", "opencode-plugin", "--event", event,
+]);
+let activeSession = null;
+const update = async (event) => {
+  const sessionID = event.data?.sessionID;
+  if (!sessionID) return;
+  const type = event.type;
+  if (type === "session.execution.started") {
+    if (activeSession === null) activeSession = sessionID;
+    if (sessionID === activeSession) await busyEvent("busy", type);
+  } else if (type === "session.execution.succeeded" || type === "session.execution.failed" || type === "session.execution.interrupted") {
+    if (sessionID === activeSession) {
+      activeSession = null;
+      await busyEvent("idle", type);
+    }
+    await invoke("touch", ["$TURNEND"]);
+  }
+};
+export default {
+  id: "fm-busy-state",
+  setup: (context) => {
+    (async () => {
+      for await (const event of context.event.subscribe()) await update(event);
+    })().catch((error) => { console.error("fm-busy-state event stream failed", error); });
+  },
 };
 EOF
     exclude_path '.opencode/plugins/fm-busy-state.js'
@@ -4679,6 +4776,12 @@ preserve_relaunch_meta() {
   [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  if [ "$KIND" != secondmate ] && [ "$RELAUNCH" -eq 0 ]; then
+    echo "budget_id=$BUDGET_ID"
+    echo "budget_start_epoch=$BUDGET_START"
+    echo "budget_wall_secs=$BUDGET_WALL"
+    echo "budget_output_tokens=$BUDGET_OUTPUT"
+  fi
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;

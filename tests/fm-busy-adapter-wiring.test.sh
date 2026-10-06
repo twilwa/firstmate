@@ -156,27 +156,29 @@ test_pi_extension_stale_incarnation_rejected() {
 }
 
 # drive_oc_plugin <plugin-path> <events-json-lines...>: load the generated
-# OpenCode plugin in a plain Node host and feed it one event per argument, in
-# order, through the same hooks.event entry OpenCode calls.
+# OpenCode plugin in a plain Node host through the default setup definition
+# OpenCode 2.0 calls, and feed it one event per argument, in order, on the
+# async event stream; a missing terminal event stays busy.
 drive_oc_plugin() {
   local plugin=$1
   shift
   PLUGIN_PATH="$plugin" node --input-type=module - "$@" 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 const mod = await import(pathToFileURL(process.env.PLUGIN_PATH).href);
-const hooks = await mod.FmBusyState({});
-for (const arg of process.argv.slice(2)) {
-  await hooks.event({ event: JSON.parse(arg) });
-}
+if (mod.default?.id !== "fm-busy-state" || typeof mod.default.setup !== "function") throw new Error("default plugin definition missing");
+const events = process.argv.slice(2).map((raw) => JSON.parse(raw));
+let subscribed = false;
+mod.default.setup({ event: { subscribe: () => {
+  subscribed = true;
+  return { async *[Symbol.asyncIterator]() { for (const event of events) yield event; } };
+} } });
+await new Promise((resolve) => setTimeout(resolve, 400));
+if (!subscribed) throw new Error("event stream never subscribed");
 EOF
 }
 
-oc_status() {  # <sessionID> <type>
-  printf '{"type":"session.status","properties":{"sessionID":"%s","status":{"type":"%s"}}}' "$1" "$2"
-}
-
-oc_idle() {  # <sessionID>
-  printf '{"type":"session.idle","properties":{"sessionID":"%s"}}' "$1"
+oc_execution() {  # <sessionID> <started|succeeded|failed|interrupted>
+  printf '{"type":"session.execution.%s","data":{"sessionID":"%s"}}' "$2" "$1"
 }
 
 test_opencode_plugin_semantic_lifecycle() {
@@ -192,39 +194,36 @@ test_opencode_plugin_semantic_lifecycle() {
   out=$(classify opencode "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "seed after spawn must be 'busy fm-spawn', got '$out'"
 
-  out=$(drive_oc_plugin "$plugin" "$(oc_status ses_main busy)") || fail "busy drive failed: $out"
+  out=$(drive_oc_plugin "$plugin" "$(oc_execution ses_main started)") || fail "v2 start drive failed: $out"
   out=$(classify opencode "$id" "$state")
-  [ "$out" = "busy opencode-plugin" ] || fail "session busy must classify 'busy opencode-plugin', got '$out'"
-
-  out=$(drive_oc_plugin "$plugin" \
-    "$(oc_status ses_main busy)" \
-    "$(oc_status ses_child busy)" \
-    "$(oc_status ses_child idle)") || fail "child-session drive failed: $out"
-  out=$(classify opencode "$id" "$state")
-  [ "$out" = "busy opencode-plugin" ] || fail "a child session's idle must not clear the worker, got '$out'"
-
-  out=$(drive_oc_plugin "$plugin" \
-    "$(oc_status ses_main retry)" \
-    "$(oc_status ses_main idle)") || fail "retry/idle drive failed: $out"
-  out=$(classify opencode "$id" "$state")
-  [ "$out" = "idle opencode-plugin" ] || fail "the latched session's idle must classify idle, got '$out'"
+  [ "$out" = "busy opencode-plugin" ] || fail "v2 session.execution.started must classify busy, got '$out'"
 
   rm -f "$state/$id.turn-ended"
   out=$(drive_oc_plugin "$plugin" \
-    "$(oc_status ses_main busy)" \
-    "$(oc_idle ses_main)") || fail "session.idle drive failed: $out"
-  [ -f "$state/$id.turn-ended" ] || fail "session.idle no longer touches the notification marker"
+    "$(oc_execution ses_main started)" \
+    "$(oc_execution ses_child succeeded)") || fail "v2 child drive failed: $out"
+  [ -f "$state/$id.turn-ended" ] || fail "the marker touch must stay a notification for every terminal event"
   out=$(classify opencode "$id" "$state")
-  [ "$out" = "idle opencode-plugin" ] || fail "session.idle for the latched session must classify idle, got '$out'"
+  [ "$out" = "busy opencode-plugin" ] || fail "v2 child terminal event cleared root busy, got '$out'"
 
   rm -f "$state/$id.turn-ended"
   out=$(drive_oc_plugin "$plugin" \
-    "$(oc_status ses2 busy)" \
-    "$(oc_idle ses_other)") || fail "other-session idle drive failed: $out"
-  [ -f "$state/$id.turn-ended" ] || fail "the marker touch must stay a notification for every session.idle"
+    "$(oc_execution ses_main started)" \
+    "$(oc_execution ses_main succeeded)") || fail "v2 terminal drive failed: $out"
   out=$(classify opencode "$id" "$state")
-  [ "$out" = "busy opencode-plugin" ] || fail "another session's idle must not clear the latched busy, got '$out'"
-  pass "opencode plugin classifies from session.status, scoped to the latched worker session"
+  [ "$out" = "idle opencode-plugin" ] || fail "v2 session.execution.succeeded must classify idle, got '$out'"
+  [ -f "$state/$id.turn-ended" ] || fail "v2 terminal event did not notify turn end"
+  out=$(drive_oc_plugin "$plugin" \
+    "$(oc_execution ses_main started)" \
+    "$(oc_execution ses_main interrupted)") || fail "v2 interrupt drive failed: $out"
+  out=$(classify opencode "$id" "$state")
+  [ "$out" = "idle opencode-plugin" ] || fail "v2 interrupt must settle semantic busy, got '$out'"
+  out=$(drive_oc_plugin "$plugin" \
+    "$(oc_execution ses_main started)" \
+    "$(oc_execution ses_main failed)") || fail "v2 failure drive failed: $out"
+  out=$(classify opencode "$id" "$state")
+  [ "$out" = "idle opencode-plugin" ] || fail "v2 session.execution.failed must settle semantic busy, got '$out'"
+  pass "opencode 2.0 execution stream classifies the latched worker session"
 }
 
 run_claude_hook() {  # <settings.json> <hook-event>
@@ -407,6 +406,19 @@ test_gemini_is_refused_as_a_secondmate() {
   pass "gemini is refused as a secondmate because it has no primary supervision protocol"
 }
 
+test_opencode_is_refused_as_a_secondmate() {
+  local rec id=busy-oc-3 out
+  rec=$(make_spawn_case opencode-secondmate opencode "$id")
+  read_case_record "$rec"
+  out=$(fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" --secondmate "$id" opencode) && {
+    fail "an opencode secondmate must be refused, its primary plugins do not load on 2.0: $out"
+  }
+  assert_contains "$out" 'crewmate/scout adapter only' \
+    "refusing an opencode secondmate must name the crewmate/scout boundary: $out"
+  [ ! -e "$WT_DIR/.opencode/plugins/fm-busy-state.js" ] || fail "a refused opencode secondmate still wrote the worker plugin"
+  pass "opencode is refused as a secondmate until its primary plugins load on 2.0"
+}
+
 test_kimi_and_grok_install_no_unverified_wiring() {
   local state out
   state="$TMP_ROOT/gates/state"
@@ -433,6 +445,7 @@ test_gemini_hooks_semantic_lifecycle
 test_gemini_hooks_stale_incarnation_harmless
 test_raw_gemini_launch_has_no_semantic_wiring
 test_gemini_is_refused_as_a_secondmate
+test_opencode_is_refused_as_a_secondmate
 test_codex_unverified_until_a_semantic_source_exists
 
 echo "all fm-busy-adapter-wiring tests passed"

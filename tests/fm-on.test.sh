@@ -459,11 +459,11 @@ pass "tracked-command authorization excludes checkout-local git"
 set +e
 out=$(
   # shellcheck disable=SC2329 # Exported for indirect use by fm_on.
-  command() {
-    if [ "${1:-}" = -v ] && [ "${2:-}" = git ]; then return 1; fi
-    builtin command "$@"
+  type() {
+    if [ "${1:-}" = -P ] && [ "${2:-}" = git ]; then return 1; fi
+    builtin type "$@"
   }
-  export -f command
+  export -f type
   fm_on ios fm-remote-doctor.sh 2>&1
 )
 set -e
@@ -472,11 +472,11 @@ printf '\n' >> "$REMOTE_ROOT/bin/fm-remote-doctor.sh"
 set +e
 out=$(
   # shellcheck disable=SC2329 # Exported for indirect use by fm_on.
-  command() {
-    if [ "${1:-}" = -v ] && [ "${2:-}" = git ]; then return 1; fi
-    builtin command "$@"
+  type() {
+    if [ "${1:-}" = -P ] && [ "${2:-}" = git ]; then return 1; fi
+    builtin type "$@"
   }
-  export -f command
+  export -f type
   fm_on ios fm-remote-doctor.sh 2>&1
 )
 rc=$?

@@ -511,8 +511,8 @@ test_backend_key_capability_matrix() {
 }
 
 # A verified adapter is not automatically verified for every task kind, and the
-# check has to sit on the pre-stop side of a relaunch: muse has no primary
-# supervision protocol, so bin/fm-spawn.sh refuses it for a secondmate, and
+# check has to sit on the pre-stop side of a relaunch: OpenCode 2.0 and muse
+# have no supported primary supervision path, so spawn refuses secondmates, and
 # discovering that only after the running agent was stopped would strand the
 # secondmate with no agent at all.
 test_harness_kind_capability() {
@@ -523,15 +523,40 @@ test_harness_kind_capability() {
     fm_control_harness_supports_kind "$harness" scout \
       || fail "$harness should be able to run a scout task"
   done
-  fm_control_harness_supports_kind muse secondmate \
-    && fail "muse has no primary supervision protocol and must not claim a secondmate"
-  for harness in claude codex opencode pi pi-signed grok kimi omp; do
+  for harness in muse opencode; do
+    fm_control_harness_supports_kind "$harness" secondmate \
+      && fail "$harness has no supported primary supervision and must not claim a secondmate"
+  done
+  for harness in claude codex pi pi-signed grok kimi omp; do
     fm_control_harness_supports_kind "$harness" secondmate \
       || fail "$harness should be able to run a secondmate"
   done
   fm_control_harness_supports_kind someagent ship \
     && fail "an unverified harness must not claim any kind"
   pass "fm-control-lib: adapter capability is per task kind, not per adapter alone"
+}
+
+# A recorded Claude secondmate is live; switching to OpenCode 2.0 must refuse
+# before sending any exit or interrupt key, because its primary supervision
+# plugins are not ported and fm-spawn would refuse the replacement.
+test_opencode_secondmate_relaunch_refuses_before_stop() {
+  local dir out rc
+  dir=$(new_case oc-secondmate-relaunch)
+  add_task "$dir" smoc claude secondmate
+  alive_as "$dir" claude
+  printf 'smoc\n' > "$dir/wt-smoc/.fm-secondmate-home"
+  printf '# agents\n' > "$dir/wt-smoc/AGENTS.md"
+  printf 'mode=secondmate\n' >> "$dir/home/state/smoc.meta"
+  out=$(run_control "$dir" smoc relaunch --harness opencode); rc=$?
+  expect_code 1 "$rc" "OpenCode secondmate relaunch must refuse before stopping Claude"
+  assert_contains "$out" "not verified to run a secondmate task" \
+    "OpenCode refusal must name the unsupported secondmate kind"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "OpenCode refusal stopped the running Claude secondmate"
+  [ ! -s "$dir/fake/keys" ] || fail "OpenCode refusal sent lifecycle keys before capability check"
+  assert_grep 'harness=claude' "$dir/home/state/smoc.meta" \
+    "OpenCode refusal changed the recorded secondmate harness"
+  pass "fm-control: OpenCode secondmate relaunch refuses before touching the live agent"
 }
 
 test_orca_refuses_an_escape_harness_interrupt() {
@@ -1044,6 +1069,7 @@ test_harness_family_resolution
 test_prefixed_recorded_harness_reaches_each_control_verb
 test_backend_key_capability_matrix
 test_harness_kind_capability
+test_opencode_secondmate_relaunch_refuses_before_stop
 test_orca_refuses_an_escape_harness_interrupt
 test_unverified_state_backends_refuse_stop_verbs
 test_state_verified_backends_are_exactly_tmux_and_herdr

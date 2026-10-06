@@ -4617,6 +4617,12 @@ done
 # meets it still held, then release it partway through the confirm window.
 setsid sleep 60 &
 drain_holder=$!
+# Mid-exec the holder's command line is empty or still the forking shell's, so
+# read its identity only once it is running sleep.
+for _ in $(seq 1 100); do
+  [ "$(ps -p "$drain_holder" -o args= 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" != "sleep 60" ] || break
+  sleep 0.05
+done
 drain_holder_identity=$(bash -c '. "$1/bin/fm-wake-lib.sh"; fm_pid_identity "$2"' _ "$ROOT" "$drain_holder") \
   || fail "could not read the draining holder's identity"
 awk -v pid="$drain_holder" -v ident="$drain_holder_identity" \

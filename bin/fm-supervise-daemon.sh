@@ -352,6 +352,12 @@ _collapse_newlines() {  # <text>
 
 classify_signal() {  # <reason-after-colon> <state>
   local reason=$1 state=$2 f last event record rest endpoint ident rc distilled="" rel="" seen_rel="" task sig marker
+  case "$reason" in
+    'decision-pending '*)
+      task=${reason#decision-pending }; task=${task%.turn-ended}
+      printf 'escalate|%s: decision pending (turn ended on a question with no keyed status line)' "$task"
+      return 0 ;;
+  esac
   for f in $reason; do
     case "$f" in *.status) ;; *) continue ;; esac
     [ -e "$f" ] || [ -L "$f" ] || continue

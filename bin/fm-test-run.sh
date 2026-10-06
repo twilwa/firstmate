@@ -19,6 +19,7 @@
 #   fm-test-run.sh --list --lane portable-parallel-1
 #   fm-test-run.sh --list-scheduled --family <name>
 #   fm-test-run.sh --list-scheduled --lane portable-parallel-1
+#   fm-test-run.sh --estimate-ms --all [--exclude-family <name>...]
 #   fm-test-run.sh --list-families
 #   fm-test-run.sh --list-concurrent-safe-families
 #   fm-test-run.sh --concurrent-safe-family-jobs-max <name>
@@ -41,6 +42,9 @@
 #                   parallel hints, falling back to serial weights if missing.
 #                   Every other selection uses serial weights alone.
 #                   Equal weights are ordered by path under LC_ALL=C.
+#   --estimate-ms   print the selection's summed serial duration hints in
+#                   milliseconds and exit 0: each script's parallel hint, else
+#                   its serial hint, else PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
 #   --base <ref>    with --changed, compare against this ref (default: origin/main)
 #   --exclude-family <name>
 #                   drop scripts whose primary family matches <name> after selection
@@ -94,6 +98,17 @@
 #   FM_TEST_SUMMARY_FAMILY family=<name> count=<n> duration_ms=<n> failed=<n>
 #   FM_TEST_SLOWEST rank=<k> script=<path> duration_ms=<n>
 #   FM_TEST_BUDGET max_wall_ms=<n> duration_ms=<n>   (only with --max-wall-ms)
+#   FM_TEST_LISTENER pid=<n> port=<n> test=<script> command=<argv>   (per leak)
+#   FM_TEST_LISTENERS found=<n>
+#
+# Listener guard:
+#   After a run that executed scripts, every process whose inherited
+#   FM_TEST_RUN_TOKENS chain includes this invocation's FM_TEST_RUN_TOKEN (so
+#   nested runs count) and that holds a listening TCP socket is reported as a
+#   leak and fails the run; listeners this invocation did not start are ignored.
+#   The guard reports but does not stop leaked servers. Where it cannot inspect
+#   sockets (non-Linux, no /proc/net/tcp, or no python3), it prints
+#   "FM_TEST_LISTENERS unchecked: <reason>" to stderr and does not fail.
 #
 # Placement refusal:
 #   A task worker is assigned an isolated worktree, and that placement is
@@ -106,8 +121,9 @@
 #
 # Exit status is non-zero if any selected script exits non-zero, a configured
 # --fail-on-gate-skip token appears, the measured duration exceeds
-# --max-wall-ms, timing-artifact finalization fails, or a concurrent worker
-# violates its isolation check. Other gate skips (first meaningful line
+# --max-wall-ms, timing-artifact finalization fails, a concurrent worker
+# violates its isolation check, or the listener guard finds a leak or cannot
+# finish its inspection. Other gate skips (first meaningful line
 # matching ^skip:) remain successful and are counted as skipped_gate; each one
 # is logged with its reason and recorded in the timing artifact.
 #
@@ -164,6 +180,7 @@ cd "$ROOT" || exit 1
 MODE=
 LIST_ONLY=0
 LIST_SCHEDULED=0
+ESTIMATE_MS=0
 LIST_FAMILIES=0
 LIST_CONCURRENT_SAFE_FAMILIES=0
 LIST_LANES=0
@@ -276,7 +293,7 @@ family_for_basename() {
   case "$1" in
     fm-arm-pretool-check.test.sh|fm-ask-user-authority.test.sh|\
     fm-bearings-board.test.sh|\
-    fm-brief.test.sh|fm-dod-lib.test.sh|fm-vendor-auth-probe.test.sh|\
+    fm-brief.test.sh|fm-brief-test-scope.test.sh|fm-dod-lib.test.sh|fm-vendor-auth-probe.test.sh|\
     fm-calm-pi-extension.test.sh|fm-cd-pretool-check.test.sh|\
     fm-classify-decision-key.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
@@ -326,6 +343,7 @@ family_for_basename() {
     fm-remote-transport-lanes.test.sh|\
     fm-remote-reply.test.sh|fm-remote-secondmate-lifecycle-e2e.test.sh|\
     fm-remote-secondmate-trace-context.test.sh|\
+    fm-local-handoff.test.sh|\
     fm-secondmate-harness.test.sh|fm-secondmate-lifecycle-e2e.test.sh|\
     fm-secondmate-liveness.test.sh|fm-secondmate-reconcile.test.sh|\
     fm-secondmate-restart.test.sh|\
@@ -356,7 +374,7 @@ family_for_basename() {
     fm-herdr-version-floor-live-e2e.test.sh|\
     fm-herdr-pi-stale-registration-live-e2e.test.sh|\
     fm-worker-account-live-e2e.test.sh|\
-    fm-opencode-primary-live-e2e.test.sh|fm-pi-branch-live-e2e.test.sh|\
+    fm-opencode-primary-live-e2e.test.sh|fm-opencode-adapter-live-e2e.test.sh|fm-pi-branch-live-e2e.test.sh|\
     fm-pi-branch-responsiveness-live-e2e.test.sh|\
     fm-pi-primary-live-e2e.test.sh|fm-pi-codex-native.test.sh|fm-omp-primary-live-e2e.test.sh|\
     fm-pr-state-live-e2e.test.sh|\
@@ -365,7 +383,7 @@ family_for_basename() {
     fm-quota-array-dispatch-live-e2e.test.sh|fm-send-secondmate-marker-herdr-e2e.test.sh|\
     fm-send-inbox-doorbell-live-e2e.test.sh|\
     fm-calm-claude-mod-plugin.test.sh|fm-calm-claude-mod-live-e2e.test.sh|\
-    fm-herdr-submit-confirm-live-e2e.test.sh)
+    fm-herdr-submit-confirm-live-e2e.test.sh|fm-treehouse-clone-custody.test.sh)
       printf '%s\n' live-harness-optin
       ;;
     fm-backend-herdr.test.sh|fm-backend-tmux-smoke.test.sh|fm-backend.test.sh|\
@@ -1441,6 +1459,12 @@ families_for_changed_path() {
       printf '%s\n' secondmate
       printf '%s\n' session-bootstrap
       ;;
+    bin/fm-local-handoff*)
+      # Local-only child custody is seeded by the secondmate path and consumed
+      # by the landing and cleanup guards, so both families prove a change here.
+      printf '%s\n' secondmate
+      printf '%s\n' pr-forge
+      ;;
     bin/fm-secondmate*|bin/fm-remote*|bin/fm-on.sh|bin/fm-home-seed.sh|\
     bin/fm-backlog-handoff.sh|bin/fm-backlog-receive.sh|bin/fm-procevent-remote-reply.sh|\
     bin/fm-config-inherit-lib.sh|bin/fm-config-push.sh|bin/fm-shared*|\
@@ -1546,7 +1570,14 @@ families_for_changed_path() {
       printf '%s\n' watcher-wake-lock
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
       ;;
-    bin/fm-pr-*|bin/fm-merge-local.sh|bin/fm-teardown.sh|bin/fm-review-diff.sh|\
+    bin/fm-merge-local.sh|bin/fm-teardown.sh)
+      # Both carry local-only child custody - the guarded delegated landing and
+      # the receipt-gated cleanup - beside their ordinary forge paths, so each
+      # is proven by the custody suite as well as its own family.
+      printf '%s\n' pr-forge
+      printf '%s\n' "__script__:fm-local-handoff.test.sh"
+      ;;
+    bin/fm-pr-*|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*)
       printf '%s\n' pr-forge
       ;;
@@ -1574,6 +1605,10 @@ families_for_changed_path() {
     bin/fm-peek.sh|bin/fm-composer*)
       printf '%s\n' backend-dispatch
       printf '%s\n' pure-contract-unit
+      if [ "$1" = bin/fm-spawn.sh ]; then
+        printf '%s\n' '__script__:fm-spawn-pool-base-freshen.test.sh'
+        printf '%s\n' '__script__:fm-treehouse-clone-custody.test.sh'
+      fi
       ;;
     bin/fm-task-inbox-lib.sh)
       # The steering-inbox record/doorbell/ladder owner: fm-send's data plane
@@ -1959,6 +1994,10 @@ while [ "$#" -gt 0 ]; do
       LIST_SCHEDULED=1
       shift
       ;;
+    --estimate-ms)
+      ESTIMATE_MS=1
+      shift
+      ;;
     --list-families)
       LIST_FAMILIES=1
       shift
@@ -2088,10 +2127,11 @@ esac
 # Refuse before any suite is selected or run. The inspection modes execute
 # nothing: --list-families, --list-concurrent-safe-families, --list-lanes,
 # --check-coverage, --concurrent-safe-family-jobs-max and --aggregate-json have
-# already exited above, and --list/--list-scheduled print their selection and
-# exit below. An unset MODE still falls through to the usage error, so a caller
-# who named no selection mode is told that rather than this.
-if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ]; then
+# already exited above, and --list/--list-scheduled/--estimate-ms print their
+# selection or its estimate and exit below. An unset MODE still falls through
+# to the usage error, so a caller who named no selection mode is told that
+# rather than this.
+if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ] && [ "$ESTIMATE_MS" -eq 0 ]; then
   refuse_primary_checkout_for_task
 fi
 
@@ -2136,6 +2176,15 @@ if [ "${#EXCLUDE_FAMILIES[@]}" -gt 0 ]; then
 fi
 if [ -n "$FAIL_ON_GATE_SKIP" ]; then
   SELECTION_DESC="${SELECTION_DESC};fail-on-gate-skip=$FAIL_ON_GATE_SKIP"
+fi
+if [ "$ESTIMATE_MS" -eq 1 ]; then
+  printf '%s\n' "${SCRIPTS[@]+"${SCRIPTS[@]}"}" | awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
+    FILENAME == ARGV[1] { if (NF) { parallel[$1] = $2 }; next }
+    FILENAME == ARGV[2] { if (NF) { serial[$1] = $2 }; next }
+    NF { total += ($1 in parallel) ? parallel[$1] : (($1 in serial) ? serial[$1] : fallback) }
+    END { printf "%d\n", total + 0 }
+  ' <(portable_parallel_weight_hints) <(portable_serial_weight_hints) -
+  exit 0
 fi
 if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   if [ "$LIST_SCHEDULED" -eq 1 ]; then
@@ -2316,6 +2365,11 @@ cleanup_run() {
 trap cleanup_run EXIT
 
 RUN_ID="fm-test-run-${RUN_STARTED_MS}-$$"
+# Preserve enclosing run markers so nested runs remain attributable to each
+# ancestor. Each script exports its own source path as well.
+FM_TEST_RUN_TOKEN="${RUN_ID}-${RANDOM}-${RANDOM}"
+FM_TEST_RUN_TOKENS="${FM_TEST_RUN_TOKENS:+${FM_TEST_RUN_TOKENS}:}${FM_TEST_RUN_TOKEN}"
+export FM_TEST_RUN_TOKEN FM_TEST_RUN_TOKENS
 TOTAL=0
 FAILED=0
 SKIPPED_GATE=0
@@ -2404,7 +2458,9 @@ run_script_bounded() {  # <script> <out> <stream> <id>
   local GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
   # shellcheck source=tests/git-config-helpers.sh
   . "$ROOT/tests/git-config-helpers.sh" || return
-  local rc
+  local rc FM_TEST_RUN_SCRIPT
+  FM_TEST_RUN_SCRIPT=$script
+  export FM_TEST_RUN_SCRIPT
   : "$id"
   set +e
   if [ "$stream" -eq 1 ]; then
@@ -2657,4 +2713,80 @@ if [ -n "$MAX_WALL_MS" ]; then
   fi
 fi
 
+# Inspect only processes carrying this invocation's inherited marker. On
+# non-Linux hosts (and hosts without procfs/Python), say explicitly that the
+# socket check is unavailable; the portable test result remains meaningful.
+check_run_listeners() {
+  if [ "$(uname -s)" != Linux ] || [ ! -r /proc/net/tcp ] || ! type -P python3 >/dev/null 2>&1; then
+    printf 'FM_TEST_LISTENERS unchecked: listener inspection unavailable on this platform\n' >&2
+    return 0
+  fi
+  python3 - "$FM_TEST_RUN_TOKEN" <<'PY'
+import os
+import re
+import sys
+
+token = sys.argv[1].encode()
+marker_prefix = b'FM_TEST_RUN_TOKENS='
+try:
+    listening = {}
+    tables = ['/proc/net/tcp']
+    if os.path.exists('/proc/net/tcp6'):
+        tables.append('/proc/net/tcp6')
+    for table in tables:
+        with open(table, encoding='ascii') as rows:
+            next(rows)
+            for row in rows:
+                fields = row.split()
+                if fields[3] == '0A':
+                    listening[fields[9]] = int(fields[1].split(':')[1], 16)
+    leaks = set()
+    for name in os.listdir('/proc'):
+        if not name.isdigit():
+            continue
+        pid_dir = '/proc/' + name
+        env = []
+        try:
+            with open(pid_dir + '/environ', 'rb') as env_file:
+                env = env_file.read().split(b'\0')
+            chain = next((item[len(marker_prefix):] for item in env
+                          if item.startswith(marker_prefix)), b'')
+            if token not in chain.split(b':'):
+                continue
+            script = next((item.split(b'=', 1)[1] for item in env
+                           if item.startswith(b'FM_TEST_RUN_SCRIPT=')), b'unknown')
+            with open(pid_dir + '/cmdline', 'rb') as command_file:
+                command = command_file.read().replace(b'\0', b' ').decode(errors='replace').strip()
+            try:
+                fds = os.listdir(pid_dir + '/fd')
+            except (FileNotFoundError, ProcessLookupError):
+                continue  # Exited during inspection.
+            for fd in fds:
+                try:
+                    target = os.readlink(pid_dir + '/fd/' + fd)
+                except (FileNotFoundError, ProcessLookupError):
+                    continue
+                match = re.fullmatch(r'socket:\[(\d+)\]', target)
+                if match and match[1] in listening:
+                    leaks.add((name, listening[match[1]], command, script.decode(errors='replace')))
+        except (FileNotFoundError, ProcessLookupError):
+            continue  # Exited during inspection.
+        except PermissionError:
+            # Other users' processes have private environments. A marked
+            # process whose descriptors are inaccessible is not a clean run.
+            if token in next((item[len(marker_prefix):] for item in env
+                              if item.startswith(marker_prefix)), b'').split(b':'):
+                raise
+            continue
+    for pid, port, command, script in sorted(leaks):
+        print(f'FM_TEST_LISTENER pid={pid} port={port} test={script} command={command}', flush=True)
+    print(f'FM_TEST_LISTENERS found={len(leaks)}', flush=True)
+    sys.exit(bool(leaks))
+except OSError as error:
+    print(f'FM_TEST_LISTENERS unchecked: {error}', file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
+check_run_listeners || AGG_RC=1
 exit "$AGG_RC"

@@ -393,8 +393,10 @@ test_no_mistakes_dod_wording() {
 
   # The --yes ban is a fleet-wide prohibition, not a preference, and it must not
   # claim an enforcement the tool does not provide: this is instruction only.
-  assert_grep "NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide." "$brief" \
+  assert_grep "NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`$ROOT/bin/fm-nm-respond.sh\`. It is banned fleet-wide." "$brief" \
     "no-mistakes DOD must state the --yes ban as a prohibition"
+  assert_grep "Send every \`no-mistakes axi respond\` call, including a skip taken from an \`axi\` \`help\` line, through \`$ROOT/bin/fm-nm-respond.sh\` with the same arguments." "$brief" \
+    "no-mistakes DOD must route every gate response through the skip guard"
   assert_grep "Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding." "$brief" \
     "no-mistakes DOD must route ask-user gates back to firstmate as needs-decision"
   assert_grep "answering your own ask-user finding is a hard rule violation" "$brief" \
@@ -1309,10 +1311,38 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   pass "fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool"
 }
 
+# Both public scaffold variants must carry the host gate without a local include.
+test_shared_host_safety_without_home_include() {
+  local home id brief
+  home="$TMP_ROOT/host-safety-home"
+  mkdir -p "$home/data"
+  [ ! -e "$home/config/brief-include.md" ] || fail "fixture unexpectedly has a home include"
+  for id in brief-host-ship brief-host-scout; do
+    if [ "$id" = brief-host-ship ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1 \
+        || fail "ship scaffold failed without a home include"
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1 \
+        || fail "scout scaffold failed without a home include"
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_grep 'Use rg for literal or regex text search' "$brief" "$id: search policy absent"
+    assert_grep 'ast-grep (never sg)' "$brief" "$id: structural search policy absent"
+    assert_grep 'run a Jev risk check with jev-cli or jevhelper on the exact command or diff' "$brief" "$id: risk gate absent"
+    assert_grep 'If Jev rates it risky or uncertain, stop and ask your supervisor for approval' "$brief" "$id: escalation absent"
+    assert_grep 'Run anything approved from this gate inside a systemd-run user scope' "$brief" "$id: containment absent"
+    assert_grep "see \`$ROOT/docs/configuration.md\` for the scope recipe" "$brief" "$id: scope recipe pointer is not absolute"
+    # shellcheck disable=SC2016 # The brief's backticks are literal prose.
+    assert_grep 'resolve its target to an absolute path with `type -P` before prepending' "$brief" "$id: shim protection absent"
+  done
+  pass "fm-brief.sh: ship and scout carry host safety without a home include"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
+test_shared_host_safety_without_home_include
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply

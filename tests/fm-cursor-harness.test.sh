@@ -143,12 +143,15 @@ test_resolve_binary_prefers_stable_path() {
   # through canonicalization.
   local tree bin out
   tree="$TMP_ROOT/tree4"; bin=$(make_cursor_tree "$tree")
-  out=$(PATH="$bin:$PATH" fm_cursor_resolve_binary) \
-    || fail "resolve must succeed when cursor-agent is on PATH"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  cursor-agent() { return 97; }
+  out=$(HOME="$TMP_ROOT/no-cursor-home" PATH="$bin:$PATH" fm_cursor_resolve_binary) \
+    || fail "resolve must succeed when cursor-agent is on PATH despite a shadowing function"
+  unset -f cursor-agent
   [ "$out" = "$bin/cursor-agent" ] \
     || fail "resolve must print the stable launcher, got '$out'"
   case "$out" in *versions*) fail "resolve must not pin the versioned install path" ;; esac
-  pass "fm_cursor_resolve_binary: prints the stable launcher, not the versioned target"
+  pass "fm_cursor_resolve_binary: prints the stable launcher, not the versioned target, past a shadowing function"
 }
 
 # --- 2. tmux pane liveness ---------------------------------------------------

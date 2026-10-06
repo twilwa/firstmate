@@ -559,6 +559,10 @@
     {
       "path": "tests/captures/no-mistakes-v1.70.1/README.md",
       "audience": "maintainer-verification"
+    },
+    {
+      "path": "tests/safe-suite-exclusions.txt",
+      "audience": "agent-runtime"
     }
   ]
 }

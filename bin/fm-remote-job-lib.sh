@@ -297,7 +297,7 @@ fm_remote_job_build_child_path() { # <remote-root>
 
 fm_remote_job_operator_tool() { # <tool>; resolves only outside the checkout bin
   local tool=$1 resolved
-  resolved=$(PATH="$FM_REMOTE_JOB_OPERATOR_PATH" command -v "$tool" 2>/dev/null || true)
+  resolved=$(PATH="$FM_REMOTE_JOB_OPERATOR_PATH" type -P "$tool" 2>/dev/null || true)
   case "$resolved" in
     /*)
       [ -x "$resolved" ] || return 1

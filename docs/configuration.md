@@ -323,7 +323,7 @@ A project-less seed requires no existing project clones or `data/projects.md` en
 A preexisting project-bearing charter is also refused until it is re-scaffolded with `--no-projects` or removed.
 The lease is held under the secondmate id until explicit retirement or seed rollback returns it, so normal restarts do not free or recycle the home.
 Teardown of a leased home fails closed if `treehouse return` cannot release the lease; plain-clone homes with no treehouse pool slot are removed directly.
-Secondmate routes cover `no-mistakes` and `direct-PR` projects; `local-only` projects remain main-firstmate work.
+Local secondmate routes cover `no-mistakes`, `direct-PR`, and `local-only` projects; a `local-only` project is seeded as a bound local clone whose landing stays with the primary, and the `secondmate-provisioning` skill owns that custody contract.
 For `no-mistakes` projects, seeding initializes only projects newly cloned into a secondmate home and refuses to mutate a preexisting clone that is not already initialized.
 After creating a secondmate, move existing main-backlog queued items that you have judged in-scope with `fm-backlog-handoff.sh <secondmate-id> <item-key>...`; it refuses In flight, Done, or non-secondmate homes, and its [script header](../bin/fm-backlog-handoff.sh) owns route-specific wake outcomes and retries.
 Set `FM_SECONDMATE_CHARTER` to seed from inline charter text when no filled charter brief exists; set `FM_SECONDMATE_SCOPE` when the routing scope should differ from the charter text.
@@ -354,7 +354,7 @@ The full cmux home label also includes a short hash of the resolved `FM_ROOT` pa
 
 ## Harness support
 
-claude, codex, opencode, pi, pi-signed, grok, kimi, cursor, and omp are empirically verified for crewmate and secondmate launches; gemini is verified for crewmate and scout launches only, and [README requirements](../README.md#requirements) own the set supported for the primary session.
+claude, codex, pi, pi-signed, grok, kimi, cursor, and omp are empirically verified for crewmate and secondmate launches; gemini and opencode are verified for crewmate and scout launches only, and [README requirements](../README.md#requirements) own the set supported for the primary session.
 `fm-spawn.sh` refuses kimi on cmux and Orca at preflight, because answering Kimi's folder-trust dialog needs a verified viewport-only capture those backends lack; [its adapter reference](../.agents/skills/harness-adapters/references/harness/kimi.md#readiness-gated-start) owns the trust-dialog handling.
 A cursor secondmate or primary runs the tracked project-scope `.cursor/hooks.json` in its own home and must be launched with `--trust`, or no project hook loads; [`docs/supervision-protocols/cursor.md`](supervision-protocols/cursor.md) owns its supervision protocol.
 Cursor typed-submit confirmation is verified on tmux and Herdr only.
@@ -460,6 +460,13 @@ When the file exists, `bin/fm-brief.sh` appends its text verbatim as the scaffol
 An absent or blank file changes nothing, while a present path that is not a readable regular file, or text carrying its own `Delivery contract: mode=` line, stops the scaffold before anything is written.
 The text is static and never executed or expanded; secondmate charters never take it, and the file is local to each home rather than part of secondmate inherited configuration.
 `bin/fm-brief.sh`'s header owns the placement rule and its safety argument.
+The generated shared-host safety rules apply without this include; homes still carrying those rules here will see both copies until the home include is trimmed.
+
+## Contained worker experiments
+
+The worker-facing risk gate and containment rule are owned by `bin/fm-brief.sh` and generated for ship and scout briefs.
+For an approved experiment, the user-scope command shape is `systemd-run --user --scope -p TasksMax=<n> -p MemoryMax=<size> -p MemorySwapMax=0 -p RuntimeMaxSec=<seconds> -- <command>`; size each placeholder to the job, not as host-wide limits.
+Script authors must resolve a binary's real path with `type -P <name>` before any wrapper directory is prepended to PATH, not `command -v`, which may return a shell function's bare name rather than an executable path.
 
 ## Worker launch environment (config/launch-env-allowlist)
 

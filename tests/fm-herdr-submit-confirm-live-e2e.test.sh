@@ -5,8 +5,9 @@
 # a busy-queued Enter can keep proven pending text visible. A stub cannot prove
 # either signal. This guard launches real Claude Code in an isolated Herdr lab
 # and requires fm_backend_herdr_send_text_submit to report empty for a landed
-# idle steer. It fails naming the harness and version rather than degrading
-# quietly.
+# idle steer, and to submit `/exit` through Claude's slash-command completion
+# popup the way fm-control.sh exit does. It fails naming the harness and version
+# rather than degrading quietly.
 #
 # Run explicitly with FM_HERDR_SUBMIT_CONFIRM_LIVE=1 after a Herdr or Claude
 # upgrade, and before trusting a refreshed docs/verification/runtime-backends.md
@@ -165,5 +166,33 @@ done
 [ "$landed" = 1 ] \
   || fail "Claude Code ($VERSION) on $HERDR_VER: operational submit reported '$verdict' but the expected reply never rendered"
 pass "live Herdr submit confirm: Claude Code ($VERSION) on $HERDR_VER submits a U+2063 away-supervisor payload whose read-back drops the mark"
+
+# Typing `/exit` opens Claude's completion popup below the composer, sized by
+# the pane, so the pre-Enter proof must find the composer above it. This is the
+# submit fm-control.sh exit makes, with its settle; send-failed is its refusal.
+i=0
+while [ "$i" -lt 45 ]; do
+  st=$(lab agent get "$PANE" 2>/dev/null | jq -r '.result.agent.agent_status // empty')
+  case "$st" in idle|done) break ;; esac
+  i=$((i + 1))
+  sleep 1
+done
+verdict=$(fm_backend_herdr_send_text_submit "$TARGET" /exit 3 0.4 1.2) \
+  || fail "send_text_submit failed to run /exit against Claude Code ($VERSION) on $HERDR_VER"
+[ "$verdict" != send-failed ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: /exit under its completion popup was refused as send-failed"
+stopped=0
+i=0
+while [ "$i" -lt 45 ]; do
+  if [ "$(fm_backend_herdr_agent_state "$TARGET")" = dead ]; then
+    stopped=1
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+[ "$stopped" = 1 ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: /exit submit reported '$verdict' but Claude never exited"
+pass "live Herdr submit confirm: Claude Code ($VERSION) on $HERDR_VER submits /exit through its completion popup and exits"
 
 [ "$CHECKED" -gt 0 ] || fail "FM_HERDR_SUBMIT_CONFIRM_LIVE=1 checked no harness"

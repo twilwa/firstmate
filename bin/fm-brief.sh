@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -72,6 +72,17 @@
 # membership pinned when its watch is armed, because the merge watch follows one
 # change.
 # It defaults to squash on gerrit and is refused without it.
+# --budget-wall-secs and --budget-output-tokens select per-brief task limits;
+# defaults are 21600 seconds and 1000000 tokens for ship/scout briefs.
+# Spawn reads the Task budget line and may override it on a fresh launch.
+# --tests selects the task's local test scope: none, focused, safe-suite, or full.
+# It defaults to none for no-mistakes and direct-PR ship briefs, whose CI runs
+# the tests, and to focused for local-only and scout briefs, which reach no CI.
+# The scaffold has no reliable signal for upstream-bound work, so firstmate must
+# pass --tests full explicitly for it.
+# safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
+# owned by bin/fm-test-run.sh; bin/fm-dod-lib.sh owns the rendered section, which
+# bin/fm-promote.sh shares. Only ship and scout task briefs accept this flag.
 # The generated ship brief records the chosen mode as a fixed machine-readable
 # "Delivery contract: mode=<mode>" line, followed by " forge=gerrit shape=squash"
 # on that forge. bin/fm-spawn.sh reads that line and refuses to launch a ship task
@@ -84,7 +95,7 @@
 # charter omits it: that home allocates and returns slots for its own crewmates.
 # --mode, --forge, and --shape are refused on scout and secondmate scaffolds: a
 # scout's deliverable is a report rather than a merge, and a charter is not a
-# delivery contract.
+# delivery contract. --tests applies to ship and scout task briefs, not charters.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
@@ -174,6 +185,11 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+TEST_SCOPE=
+TEST_SCOPE_SET=0
+BUDGET_WALL=21600
+BUDGET_OUTPUT=1000000
+BUDGET_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
 FORGE=none
@@ -192,6 +208,9 @@ for a in "$@"; do
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
+      tests) TEST_SCOPE=$a; TEST_SCOPE_SET=1 ;;
+      budget-wall-secs) BUDGET_WALL=$a; BUDGET_SET=1 ;;
+      budget-output-tokens) BUDGET_OUTPUT=$a; BUDGET_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -210,6 +229,12 @@ for a in "$@"; do
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
     --shape=*) SHAPE=${a#--shape=}; SHAPE_SET=1 ;;
+    --budget-wall-secs) want_value=budget-wall-secs ;;
+    --budget-wall-secs=*) BUDGET_WALL=${a#*=}; BUDGET_SET=1 ;;
+    --budget-output-tokens) want_value=budget-output-tokens ;;
+    --budget-output-tokens=*) BUDGET_OUTPUT=${a#*=}; BUDGET_SET=1 ;;
+    --tests) want_value=tests ;;
+    --tests=*) TEST_SCOPE=${a#--tests=}; TEST_SCOPE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -236,6 +261,34 @@ if [ "$KIND" = ship ]; then
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
+fi
+if [ "$KIND" = secondmate ] && [ "$BUDGET_SET" -eq 1 ]; then
+  echo "error: task budgets apply only to ship or scout briefs, not secondmate charters" >&2
+  exit 1
+fi
+if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
+  echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
+  exit 1
+fi
+if [ "$TEST_SCOPE_SET" -eq 0 ]; then
+  case "$KIND:$MODE" in
+    ship:no-mistakes|ship:direct-PR) TEST_SCOPE=none ;;
+    *) TEST_SCOPE=focused ;;
+  esac
+fi
+fm_test_scope_valid "$TEST_SCOPE" || exit 1
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
+if [ "$KIND" != secondmate ]; then
+  if ! fm_task_budget_positive "$BUDGET_WALL" || ! fm_task_budget_positive "$BUDGET_OUTPUT"; then
+    echo "error: task budget values must be positive integers" >&2
+    exit 1
+  fi
+  TASK_BUDGET_LINE="Task budget: wall_secs=$BUDGET_WALL output_tokens=$BUDGET_OUTPUT"
+  TASK_BUDGET_RULE="   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / $FM_BUDGET_REPEAT_SECS rounded down; once per period, append \`needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?\` and stop; firstmate decides."
+else
+  TASK_BUDGET_LINE=
+  TASK_BUDGET_RULE=
 fi
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
@@ -448,6 +501,8 @@ fi
 
 REPO=${POS[1]}
 
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "${MODE:-scout}")
+
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -489,6 +544,9 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 {FIRSTMATE_SPEC}
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
+TASK_SECTION="$TASK_SECTION
+
+$TEST_SCOPE_SECTION"
 
 # One shared string keeps the ship and scout infrastructure rule identical.
 # Rule 2 governs file edits, so it does not prohibit pool administration.
@@ -520,6 +578,18 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
+# Shared worker safety text is generated for both ship and scout even when no
+# home brief include exists. The optional include remains additive.
+IFS= read -r -d '' SHARED_HOST_SAFETY <<EOF || true
+# Shared-host safety
+Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use \`type -P <name>\`, never \`command -v\`.
+
+Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
+
+Run anything approved from this gate inside a systemd-run user scope, sized to the job; see \`$FM_ROOT/docs/configuration.md\` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with \`type -P\` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with \`head -n2\` before use. A self-referencing shim can trigger uncontrolled process recursion.
+EOF
+SHARED_HOST_SAFETY=${SHARED_HOST_SAFETY%$'\n'}
+
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.'
@@ -530,6 +600,8 @@ cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 $TASK_SECTION
+
+$TASK_BUDGET_LINE
 
 $HERDR_SECTION
 
@@ -560,11 +632,14 @@ The report is the only thing that survives, so anything worth keeping must be in
    \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) and firstmate rechecks at that time instead.
    Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
+$TASK_BUDGET_RULE
 6. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
+$SHARED_HOST_SAFETY
 
 $INBOX_SECTION
 
@@ -607,6 +682,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 
 $TASK_SECTION
 
+$TASK_BUDGET_LINE
+
 $HERDR_SECTION
 
 # Setup
@@ -640,12 +717,15 @@ $RULE1
    firstmate then leaves your idle pane alone and rechecks it on a long
    cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
+$TASK_BUDGET_RULE
 6. If a decision belongs above the implementation worker (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
 $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
+$SHARED_HOST_SAFETY
 
 $INBOX_SECTION
 

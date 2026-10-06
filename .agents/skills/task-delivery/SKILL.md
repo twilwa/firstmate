@@ -44,6 +44,7 @@ Before applying Ready for QA after a GitHub merge or deploy, load `pr-review-pol
 For a no-mistakes ship, trigger validation on the same worker after its implementation commit, using the harness invocation owned by `harness-adapters`.
 The task worker that starts a no-mistakes run drives the pipeline and owns every `no-mistakes axi run` and `no-mistakes axi respond` call through the next gate or outcome.
 Firstmate never invokes `no-mistakes axi respond` for a crew-owned run.
+A review decision names its finding IDs one by one; a whole-step skip needs the explicit `--whole-step` flag, which [`bin/fm-nm-respond.sh`](../../../bin/fm-nm-respond.sh) enforces.
 When the captain adds or changes an ask mid-task, append the captain's words without added speaker labels or direct address to that brief's `## Captain's intent` and relay those words to the worker.
 Firstmate build constraints stay in `## Firstmate spec` or the steer.
 [`bin/fm-dod-lib.sh`](../../../bin/fm-dod-lib.sh) owns the worker-side `--intent` contract.
@@ -105,5 +106,5 @@ Read and relay its findings, record the report as the Done artifact, and re-eval
 A report may recommend implementation but does not authorize it.
 Before treating the investigation or any visual review as complete, load `captain-hold-lifecycle`; teardown enforces that shared completion gate.
 When a scout's deliverable is a visual artifact the captain will iterate on, keep it alive and follow the crew-hosted Lavish board contract in `docs/configuration.md` rather than arming or polling the board from firstmate.
-When implementation is separately authorized, promote the existing scout through `bin/fm-promote.sh` rather than creating a duplicate task.
+When implementation is separately authorized, promote the existing scout through `bin/fm-promote.sh` rather than creating a duplicate task, passing `--tests full` when the promoted work is upstream-bound.
 The promoted worker must inventory scratch state, return to a clean default-branch base, carry over only intended fix changes, create the ship branch, and follow the project's selected delivery path while leaving scratch commits and debug edits behind and turning a reproduced bug into the regression test.

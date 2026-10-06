@@ -140,6 +140,68 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
   return 0
 }
 
+# Single owner of the task test-scope declaration: bin/fm-brief.sh renders it
+# into ship and scout briefs and bin/fm-promote.sh into promoted ship
+# instructions; each caller owns its default. Only no-mistakes and direct-PR
+# reach CI, so none promises CI only there. The no-mistakes Test-step skip
+# answer is limited to none and focused because safe-suite and full ask for the
+# suite to run, while the timeout-means-needs-decision rule holds at every
+# scope. The Firstmate figures are bin/fm-test-run.sh --estimate-ms over the
+# selections the section names.
+fm_test_scope_valid() {  # <scope>
+  case "$1" in
+    none|focused|safe-suite|full) return 0 ;;
+  esac
+  echo "error: --tests must be one of none, focused, safe-suite, full (got '$1')" >&2
+  return 1
+}
+
+fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout>
+  local scope=$1 flow=$2 lib_dir estimate_ms no_figure
+  local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
+  lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
+  printf '## Test scope\nScope: %s.\n' "$scope"
+  case "$scope" in
+    none)
+      case "$flow" in
+        no-mistakes|direct-PR)
+          printf '%s\n' 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' ;;
+        *)
+          printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
+      esac
+      if [ "$flow" = no-mistakes ]; then
+        printf '%s\n' "$test_step_skip"
+      fi
+      printf '%s\n' 'Expected duration: 0 minutes.'
+      ;;
+    focused)
+      printf '%s\n' \
+        'Permits: only the tests covering the behavior you touch; never the full local suite.' \
+        'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
+      if [ "$flow" = no-mistakes ]; then
+        printf '%s\n' "$test_step_skip"
+      fi
+      ;;
+    safe-suite)
+      estimate_ms=$(xargs "$lib_dir/fm-test-run.sh" --estimate-ms --all < "$lib_dir/../tests/safe-suite-exclusions.txt") || return 1
+      printf '%s\n' \
+        "Permits: the suite minus the committed exclusion manifest \`tests/safe-suite-exclusions.txt\`; never the full local suite. If the target repo has no such manifest, say so in your first status line and run focused tests instead." \
+        "Expected duration: about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured duration hints; $no_figure" \
+        "Exclusion manifest: in the Firstmate repo, run \`xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt\`."
+      ;;
+    full)
+      estimate_ms=$("$lib_dir/fm-test-run.sh" --estimate-ms --all) || return 1
+      printf '%s\n' \
+        'Permits: the full local suite, including tests that drive live Herdr, Codex, or Lavish.' \
+        "Expected duration: at least about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured CI duration hints, not counting live Herdr, Codex, or Lavish runtime, which is unmeasured and can be much longer; record your own estimate in your first status line before starting. Any other repo has no measured figure either."
+      ;;
+  esac
+  if [ "$flow" = no-mistakes ]; then
+    printf '%s\n' 'If the Test step times out, report needs-decision; never choose fix.'
+  fi
+}
+
 fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id> [branch] [<forge>]
   local mode=$1 id=$2 forge=${4:-none}
   local branch=${3:-fm/$id}
@@ -280,7 +342,8 @@ EOF
 # Written once; only the two sentences about a green PR depend on the forge,
 # because on gerrit the ci step is skipped and there is no PR to report.
 fm_nm_driving_block() {  # <forge>
-  local pr_return_line='' pr_reattach_clause=';'
+  local pr_return_line='' pr_reattach_clause=';' respond
+  respond=$(printf '%q' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-nm-respond.sh")
   if [ "$1" != gerrit ]; then
     pr_return_line="Only a drive call's return reports the green PR: \`no-mistakes axi status\` shows progress but never reports \`checks-passed\` while the ci step is still monitoring the PR for merge, so never wait on a status poll for the next gate or outcome.
 "
@@ -289,6 +352,7 @@ fm_nm_driving_block() {  # <forge>
   cat <<EOF
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
+Send every \`no-mistakes axi respond\` call, including a skip taken from an \`axi\` \`help\` line, through \`$respond\` with the same arguments.
 When starting no-mistakes, pass \`--intent\` as only this brief's \`## Captain's intent\` subsection body, not its heading, plus any later words the captain actually said.
 Preserve the actual words without adding speaker labels or direct address; the subsection heading supplies provenance outside the pipeline input.
 For a legacy brief with no such subsection, include only words on lines marked \`[captain] \`, excluding that metadata prefix; never copy its mixed \`# Task\` wholesale.
@@ -309,8 +373,8 @@ Reattach and keep going rather than reporting the pipeline blocked; rule 7 owns 
 Two firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
-  When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
-- NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
+  When the decision comes back, feed it to the gate with \`$respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+- NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`$respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
   Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding.
 EOF

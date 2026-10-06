@@ -2610,7 +2610,7 @@ test_mixed_secondmate_roles_partial_state_and_captain_readiness() {
 EOF
   fm_write_meta "$hibit/state/hibit-worker.meta" \
     "window=firstmate:fm-hibit-worker" "worktree=$hibit/projects/worker" "project=hibit" \
-    "harness=claude" "kind=ship" "mode=no-mistakes"
+    "harness=claude" "model=anthropic/claude-opus-4" "effort=high" "kind=ship" "mode=no-mistakes"
   record_claude_state "$hibit/state" hibit-worker busy
   printf 'working: finalizing progress\n' > "$hibit/state/hibit-worker.status"
 
@@ -2667,10 +2667,12 @@ EOF
     (.secondmate_current.records[] | select(.id == "hibit")
       | .current.state == "active_child_work"
         and [.active_children[].id] == ["hibit-worker"]
+        and [.active_children[] | {model,effort}] == [{model:"anthropic/claude-opus-4",effort:"high"}]
         and ([.endpoints[].id] | index("dogfood-program") | not))
       and (.secondmate_current.records[] | select(.id == "wheel")
         | .current.state == "active_child_work"
           and [.active_children[].id] == ["wheel-worker"]
+          and [.active_children[] | {model,effort}] == [{model:null,effort:null}]
           and [.queued[].id] == ["production-observation"]
           and [.holds[].id] == ["production-observation"])
       and (.secondmate_current.records[] | select(.id == "sshhip")

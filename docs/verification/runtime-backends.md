@@ -1152,6 +1152,44 @@ Observed 2026-08-19:
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
 
+Measured 2026-09-26 against Claude Code 2.1.283 in private tmux panes with no user settings, hooks, or MCP servers, typing a slash command and never submitting it:
+
+```sh
+tmux -L cap -f /dev/null new-session -d -s cap -x 150 -y 45 "$(type -P claude)" --restricted --strict-mcp-config
+tmux -L cap send-keys -t cap -l /exit
+tmux -L cap capture-pane -p -t cap
+```
+
+Claude drew its completion popup below the composer's closing rule, and the popup's depth followed the pane size rather than the payload:
+
+| Pane | Typed | Composer row, counted up from the popup's last row |
+| --- | --- | --- |
+| 100x30 | `/exit` | 17 |
+| 150x45 | `/exit` | 21 |
+| 200x60 | `/exit` | 21 |
+| 80x80 | `/exit` | 30 |
+| 80x80 | `/` | 42 |
+
+From 150x45 up, a 20-row read held only the popup, which is why the Claude payload proof selects from the whole recent read when the payload-sized read selects no composer.
+`tests/fm-backend-herdr.test.sh` pins that proof with the popup rows of the 150x45 capture.
+The same shape is pinned for zellij's post-paste proof in `tests/fm-backend-zellij.test.sh`; this portable fixture does not claim a live zellij run.
+
+The Herdr live guard passed all three checks on 2026-09-26 against Claude Code 2.1.283 and herdr 0.9.1.
+Refresh with:
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 reports empty and renders the requested reply in isolated session fm-lab-herdr-submit-con-3507012-7981
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 submits a U+2063 away-supervisor payload whose read-back drops the mark
+ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.1 submits /exit through its completion popup and exits
+rc=0
+```
+
 ### Prune and respawn
 
 The real label-collision reproduction is owned by:
@@ -1654,7 +1692,7 @@ ok - real herdr 0.9.0 + pi 0.85.1: the registration left behind by a quit pi rea
 ```
 
 `tests/fm-control-herdr-smoke.test.sh` proves the same shape through the control plane with no harness launched (the two `stale` lines under "Agent lifecycle control" above): a registration over a real agent-named process reads `alive`, stopping that process makes the pane read `stale-agent` and recover as `dead` while `agent get` still reports the record, `exit` then reports `already-stopped`, and `--relaunch` reuses the same endpoint with the local copy intact.
-`tests/fm-backend-herdr.test.sh` pins the logic portably with canned `process-info` bodies over real processes, driving the signals apart: the identical shell-only foreground reads `stale-agent` for a childless shell and `live` when an agent-named process is still a descendant of that shell, a `working`, `done`, or `blocked` record over a shell-only pane reads the same as `idle`, an unreadable process view reads `unknown` and refuses husk closing, a transient prompt helper beside the shell settles into `stale-agent` on the next shell-only sample while a foreground that never settles within the bound still reads `live`, and `busy_state` verifies a `working` record before reporting busy.
+`tests/fm-backend-herdr.test.sh` pins the logic portably with canned `process-info` bodies over real processes, driving the signals apart: the identical shell-only foreground reads `stale-agent` for a childless shell and `live` when an agent-named process is still a descendant of that shell, a verified harness foreground reads `live` even when `process-info` names no shell pid, as for a directly launched harness with no wrapping shell, a `working`, `done`, or `blocked` record over a shell-only pane reads the same as `idle`, an unreadable process view reads `unknown` and refuses husk closing, a transient prompt helper beside the shell settles into `stale-agent` on the next shell-only sample while a foreground that never settles within the bound still reads `live`, and `busy_state` verifies a `working` record before reporting busy.
 `tests/fm-crew-state.test.sh` pins the recovery classifier: a stale registration over a shell-only pane reports agent gone rather than alive or unreachable, and a stale `working` record never reports the pane working.
 A stale-registration pane is never a husk: create, reclaim, presentation recovery, and session cleanup keep refusing it, and only recovery reuses it.
 
@@ -2287,3 +2325,31 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 6. `bin/fm-control.sh <id> exit` stopped the agent and `bin/fm-teardown.sh` returned the worktree and closed the item.
 
 `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` refreshes the primary evidence; the worker path above is refreshed by repeating the scout dispatch after any omp upgrade.
+
+## OpenCode 2.0.16 standalone worker (2026-09-26)
+
+`opencode --version` printed `opencode v2.0.16`.
+The worker adapter requires OpenCode 2.0 or later; 1.x worker launches and the v1 plugin hook are no longer supported.
+`opencode --help` exposes `--standalone`, `--prompt`, and `--continue`, but no top-level `--model`; `opencode mini --help` exposes `--model provider/model`, and `opencode run --help` exposes the separate headless `-m provider/model#variant`.
+The installed v2 plugin loader rejected the old named-export-only worker plugin with `Plugin must export a default definition with an id and an effect or setup function`.
+The repaired worker plugin exports only a v2 setup definition, consuming the private server's `context.event.subscribe()` stream; 2.0.16 emitted `session.execution.started`, `session.execution.succeeded`, and `session.execution.interrupted` for the worker's session.
+
+`FM_OPENCODE_ADAPTER_LIVE=1 bash tests/fm-opencode-adapter-live-e2e.test.sh` ran on 2026-09-26 in a named non-default Herdr lab, with its teardown tripwire, and every OpenCode process in `systemd-run --user --scope -p TasksMax=256 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=900` under `--standalone`.
+The guard built the model-pinned command and busy plugin through `bin/fm-spawn.sh`, then launched that command in the lab.
+It observed MiMo `opencode-go/mimo-v2.6-flash` answer, semantic busy-to-idle plugin transitions and a turn-end notification, a second answer from an Enter queued during busy work, double Escape interrupt and idle, `/exit` returning to the pane shell, then `mini --continue --standalone` handling a manually submitted next instruction.
+That resume step reused the first session's pane, so its scrollback could satisfy it without a restored session.
+The guard now relaunches `mini --model opencode-go/mimo-v2.6-flash --standalone --continue` without `--prompt` in a fresh lab pane and requires recall of a code word given only in the first session.
+That fresh-pane guard ran once more on 2026-09-26 against `opencode v2.0.16` in the isolated Herdr lab, under an outer `systemd-run --user --scope -p TasksMax=512 -p MemoryMax=3G -p MemorySwapMax=0 -p RuntimeMaxSec=1200`, and exited 0 with:
+
+```text
+ok - OpenCode opencode v2.0.16: fm-spawn model pin, private server, v2 busy/idle and rendered answer
+ok - OpenCode opencode v2.0.16: busy-queued Enter delivered and settled
+ok - OpenCode opencode v2.0.16: double Escape interrupted active turn
+ok - OpenCode opencode v2.0.16: /exit closed the private-server worker
+ok - OpenCode opencode v2.0.16: --continue on a private server restored the previous session
+```
+
+After teardown, the lab helper's session list showed exactly one running session, the default one.
+The guard is the refresh command after an OpenCode upgrade; its negative assertions fail naming the version, rather than treating a rendered answer as proof the plugin still runs.
+`tests/fm-busy-adapter-wiring.test.sh` drives the plugin's v2 event stream without the vendor binary, including each terminal event and a child terminal event that must not clear the root session.
+The test runs a fake tmux delivery for `fm-spawn.sh` and executes its exact generated launch inside the real lab; it does not independently prove `fm-control.sh` delivery through Herdr, primary OpenCode hooks, or a real dispatch into the live Firstmate fleet.

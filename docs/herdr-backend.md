@@ -234,6 +234,7 @@ Enter, Escape, and Ctrl-C are supported.
 Typed-plane slash input, and dollar-prefixed skill input for Codex, uses the shared harness-aware settle before the first Enter so a completion popup cannot consume it.
 Typed-plane text is typed once; only Enter is retried.
 When native `agent get` identity is Claude, the adapter types only into an empty composer and, before that Enter, continues only when the selected composer shows the typed payload, or only Claude paste placeholders with no literal remainder.
+Claude draws its slash-command completion popup below the composer, sized by the pane rather than the payload, so when the payload-sized read selects no composer the proof selects from the whole recent read, where the bottom-most composer still wins.
 That comparison ignores whitespace and U+2063, the invisible mark that starts operational inputs and ends the from-firstmate label, because Claude's Herdr read-back never shows it.
 A composer that holds a shorter suffix, or a placeholder plus a literal remainder, does not receive Enter.
 The adapter presses Ctrl+U until the shared classifier reads the composer as empty, then reports `send-failed`, so a resend starts from a clean composer.

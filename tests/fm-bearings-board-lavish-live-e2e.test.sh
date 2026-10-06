@@ -28,19 +28,17 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-fm_live_gate default-on FM_BEARINGS_LAVISH_LIVE lavish-axi jq curl
+fm_live_gate default-on FM_BEARINGS_LAVISH_LIVE lavish-axi jq curl python3
 
 pass() { printf 'ok - %s\n' "$1"; }
 note() { printf '# %s\n' "$1"; }
 
 LAB=''
 cleanup() {
-  fm_test_reap_procevent_homes
-  [ -z "$LAB" ] || {
-    [ ! -f "$LAB/.lavish/bearings-board.html" ] \
-      || lavish-axi end "$LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
-    rm -rf "$LAB"
-  }
+  if [ -n "$LAB" ] && [ -f "$LAB/.lavish/bearings-board.html" ]; then
+    lavish-axi end "$LAB/.lavish/bearings-board.html" >/dev/null 2>&1 || true
+  fi
+  fm_test_cleanup
 }
 fail() { printf 'not ok - %s\n' "$1" >&2; cleanup; exit 1; }
 trap cleanup EXIT
@@ -48,9 +46,16 @@ trap cleanup EXIT
 VERSION=$(lavish-axi --version 2>/dev/null | tr -d '[:space:]')
 note "lavish-axi ${VERSION:-version-unknown}"
 
-LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-bearings-lavish-live.XXXXXX") || fail "cannot create the guard lab"
-LAB=$(cd -P -- "$LAB" && pwd -P)
-mkdir -p "$LAB/state" "$LAB/data"
+LAB=$(fm_test_tmproot fm-bearings-lavish-live) || fail "cannot create the guard lab"
+mkdir -p "$LAB/state" "$LAB/data" "$LAB/lavish-state"
+# Lavish keys ownership by LAVISH_AXI_STATE_DIR, not FM_HOME. Give this test
+# its own state and port, then register the pair before anything starts it.
+export LAVISH_AXI_STATE_DIR="$LAB/lavish-state" LAVISH_AXI_NO_OPEN=1
+LAVISH_AXI_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()') \
+  || fail "cannot reserve a Lavish port"
+export LAVISH_AXI_PORT
+fm_test_register_lavish_server "$LAVISH_AXI_STATE_DIR" "$LAVISH_AXI_PORT" \
+  || fail "cannot register the Lavish server"
 fm_test_track_procevent_home "$LAB" "$LAB/procevent-claims"
 
 cat > "$LAB/payload.json" <<'JSON'

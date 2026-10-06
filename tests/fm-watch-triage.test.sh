@@ -26,6 +26,8 @@ WATCH="$ROOT/bin/fm-watch.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-watch-triage-tests)
+# Each watcher reports cycle boundaries for the test's completed-cycle waits.
+export FM_WATCH_TRACE="$TMP_ROOT/.watch-test-trace"
 
 ack_stopped_cycle() {  # <state>
   local state=$1 err sequence generation
@@ -70,33 +72,29 @@ wait_live() {
 # machine a short fixed budget can reap a round before the cycle it asserts on
 # ever ran - and then every "no wake, no marker" assertion passes vacuously
 # while every "marker written" assertion fails spuriously.
-# The liveness beacon is touched at the TOP of every poll, so this drops any
-# beacon left by an earlier round, waits for THIS watcher to write a fresh one
-# (some poll's top), then waits for that one to advance (the next poll's top) -
-# and the whole cycle in between is what the caller's assertions describe.
+# The beacon now advances within a cycle, so a second beacon write no longer
+# proves that a whole scan completed. Snapshot this watcher's cycle-start trace
+# count on entry and wait for two more: the first starts after this call, and
+# the second proves that cycle completed.
 # 0 if the watcher is still alive after a completed cycle, 1 if it exited.
 wait_poll_cycle() {  # <state> <pid> [limit-ticks]
-  local state=$1 pid=$2 limit=${3:-300} beat first now i=0
-  beat="$state/.last-watcher-beat"
-  rm -f "$beat"
-  first=""
+  local pid=$2 limit=${3:-300} i=0 starts target
+  target=$(( $(watch_cycle_starts "$pid") + 2 ))
   while [ "$i" -lt "$limit" ]; do
     kill -0 "$pid" 2>/dev/null || return 1
-    first=$(file_mtime "$beat")
-    [ -n "$first" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  while [ "$i" -lt "$limit" ]; do
-    kill -0 "$pid" 2>/dev/null || return 1
-    now=$(file_mtime "$beat")
-    if [ -n "$now" ] && [ "$now" != "$first" ]; then
-      return 0
-    fi
+    starts=$(watch_cycle_starts "$pid")
+    [ "$starts" -ge "$target" ] && return 0
     sleep 0.1
     i=$((i + 1))
   done
   return 1
+}
+
+watch_cycle_starts() {  # <pid>
+  local starts
+  starts=$(grep -c " $1 cycle-start\$" "$FM_WATCH_TRACE" 2>/dev/null || true)
+  case "$starts" in ''|*[!0-9]*) starts=0 ;; esac
+  printf '%s\n' "$starts"
 }
 
 # Every wait_for_exit budget in this file is 100 ticks (10s), not because any
@@ -917,8 +915,10 @@ test_turn_ended_churn_resets_wedge_state_before_stale_poll() {
   printf '%s' "$(hash_text 'idle output from the prior interval')" > "$state/.hash-$key"
   printf '2\n' > "$state/.wedge-escalations-$key"
   export FM_FAKE_CREW_STATE='state: unknown · source: pane · harness state unavailable (unknown codex-unverified)'
+  # The signal path captures twice (the pane-question check, then the churn
+  # check); every capture after those, starting with the stale path's, fails.
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CAPTURE_COUNT_FILE="$capture_count" FM_FAKE_TMUX_CAPTURE_FAIL_AFTER=1 \
+    FM_FAKE_TMUX_CAPTURE_COUNT_FILE="$capture_count" FM_FAKE_TMUX_CAPTURE_FAIL_AFTER=2 \
     FM_CONFIG_OVERRIDE="$(churn_config "$dir")" \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_POLL=3 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &

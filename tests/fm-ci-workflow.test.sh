@@ -238,6 +238,7 @@ raise "lint failures must not cancel another partition" unless lint.fetch("fail-
 matrix = lint.fetch("matrix")
 raise "unexpected lint dimensions" unless matrix.keys == ["partition"]
 parts = matrix.fetch("partition")
+raise "lint needs three memory-bounded partitions" unless parts == [1, 2, 3]
 roots = parts.flat_map do |p|
   output, result = Open3.capture2(File.join(root, "bin/fm-lint.sh"), "--partition", "#{p}of#{parts.length}", "--list-files")
   raise "unsupported lint partition" unless result.success?

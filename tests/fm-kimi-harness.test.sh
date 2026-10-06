@@ -609,20 +609,29 @@ test_kimi_hook_is_silent_and_requires_registered_workspace_token() {
   pass "Kimi hook stays silent and inert without a Firstmate registry token"
 }
 
-test_kimi_spawn_refuses_unsafe_global_config_before_pane_creation() {
-  local id rec out rc
+test_kimi_spawn_refuses_unsafe_global_config_before_hooks_and_launch() {
+  local id rec out rc before
   id=kimi-config-refuse-z7
   rec=$(make_spawn_case config-refuse "$id")
   read_spawn_record "$rec"
   printf '[malformed\n' > "$HOME_DIR/.kimi-code/config.toml"
+  cp "$HOME_DIR/.kimi-code/config.toml" "$CASE_DIR/config-before"
+  before=$(git -C "$WT_DIR" rev-parse HEAD)
   rc=0
   out=$(run_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "Kimi spawn accepted malformed global config"
   assert_contains "$out" "malformed TOML" "Kimi spawn omitted the concrete config refusal"
-  if grep -Eq '(^| )new-(session|window)( |$)' "$CASE_DIR/tmux-calls.log"; then
-    fail "unsafe Kimi config refusal created a tmux container or pane"
-  fi
-  pass "fm-spawn: unsafe Kimi global config refuses before pane creation"
+  cmp -s "$HOME_DIR/.kimi-code/config.toml" "$CASE_DIR/config-before" \
+    || fail 'unsafe Kimi config refusal changed config bytes'
+  [ -d "$WT_DIR" ] && [ "$(git -C "$WT_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail 'unsafe Kimi config refusal lost the allocated worktree'
+  assert_absent "$WT_DIR/.fm-kimi-turnend" 'unsafe Kimi config refusal installed a task pointer'
+  assert_absent "$HOME_DIR/.kimi-code/fm-turn-end.sh" 'unsafe Kimi config refusal installed the hook'
+  assert_absent "$HOME_DIR/state/$id.meta" 'unsafe Kimi config refusal published task metadata'
+  assert_absent "$HOME_DIR/state/$id.kimi-turnend-token" 'unsafe Kimi config refusal registered task token'
+  assert_absent "$HOME_DIR/state/$id.busy-state" 'unsafe Kimi config refusal armed task busy state'
+  [ ! -s "$CASE_DIR/launch.log" ] || fail 'unsafe Kimi config refusal launched a worker'
+  pass "fm-spawn: unsafe Kimi global config preserves config and worktree without hooks or launch"
 }
 
 test_kimi_teardown_removes_pointer_and_registry_token() {
@@ -1122,7 +1131,7 @@ test_kimi_hook_install_refuses_without_jq
 test_kimi_launch_then_send_is_verified
 test_kimi_spawn_refuses_shared_task_temp_root
 test_kimi_hook_is_silent_and_requires_registered_workspace_token
-test_kimi_spawn_refuses_unsafe_global_config_before_pane_creation
+test_kimi_spawn_refuses_unsafe_global_config_before_hooks_and_launch
 test_kimi_teardown_removes_pointer_and_registry_token
 test_kimi_falls_back_to_expanded_home_binary
 test_kimi_missing_binary_refuses_before_pane_creation

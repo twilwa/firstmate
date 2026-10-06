@@ -97,9 +97,14 @@ wt="$case_dir/wt"
 fm_test_spawn_home "$home" devin
 fm_git_worktree "$proj" "$wt" devin-test
 fm_test_spawn_brief "$home" devin-worker
+# shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+devin() { return 97; }
+export -f devin
 if ! out=$(FM_FAKE_LAUNCH_LOG="$case_dir/launch" fm_test_run_spawn "$home" "$wt" "$fakebin" devin-worker "$proj" --scout --harness devin --model fusion-claude-fable-5-1-high-sidekick-swe-2-medium --effort xhigh 2>&1)
-then fail "spawn failed: $out"; fi
+then unset -f devin; fail "spawn failed: $out"; fi
+unset -f devin
 launch=$(cat "$case_dir/launch")
+assert_contains "$launch" "$fakebin/devin" 'spawn did not use the resolved external Devin executable path'
 assert_contains "$launch" '--permission-mode dangerous --respect-workspace-trust false' 'autonomy/trust flags missing'
 assert_contains "$launch" "--config '$home/state/devin-worker.devin-config.json'" 'private config missing'
 assert_contains "$launch" "--model 'fusion-claude-fable-5-1-high-sidekick-swe-2-medium'" 'Fusion model lost'
