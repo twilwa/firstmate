@@ -268,8 +268,38 @@ test_marked_send_preserves_trailing_newlines() {
   pass "fm-send: marked secondmate payload preserves trailing newline bytes in its record"
 }
 
+# A mate put to sleep has no agent to read a steer, so a routed request would
+# sit unread in a dark home. fm-send refuses it before anything is recorded,
+# typed, or armed, and names the wake command.
+test_asleep_secondmate_is_refused() {
+  local dir fb log home rc err target
+  dir="$TMP_ROOT/sm-asleep"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home sm-asleep)
+  fm_write_secondmate_meta "$home/state/domain.meta" "$home" "sess:fm-domain"
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$home/state/domain.asleep"
+  for target in fm-domain domain; do
+    : > "$log"
+    err=$(env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+      FM_SEND_LOG="$log" FM_SEND_SETTLE=0 "$SEND" "$target" "audit the build" 2>&1 >/dev/null); rc=$?
+    [ "$rc" -ne 0 ] || fail "a send to asleep secondmate '$target' should be refused"
+    assert_contains "$err" "secondmate domain is asleep since 2026-10-06T12:00:00Z (by captain): parked" \
+      "the refusal should say the mate is asleep"
+    assert_contains "$err" "bin/fm-secondmate-sleep.sh wake domain" "the refusal should name the wake command"
+    [ ! -s "$log" ] || fail "a refused send to '$target' typed into the asleep mate's pane: $(cat "$log")"
+  done
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_SEND_LOG="$log" FM_SEND_SETTLE=0 "$SEND" domain --key Enter >/dev/null 2>&1; rc=$?
+  [ "$rc" -ne 0 ] || fail "a key sent to an asleep secondmate should be refused"
+  assert_absent "$home/state/domain.inbox" "a refused send recorded a steer for the asleep mate"
+  [ -z "$(ls -A "$home/state/pending-replies" 2>/dev/null)" ] \
+    || fail "a refused send armed a reply expectation: $(ls -A "$home/state/pending-replies")"
+  pass "fm-send: an asleep secondmate is refused before anything is recorded, typed, or armed"
+}
+
 test_secondmate_target_is_marked
 test_exact_secondmate_task_id_is_marked
+test_asleep_secondmate_is_refused
 test_crewmate_target_is_not_marked
 test_explicit_window_is_not_marked
 test_key_path_is_not_marked

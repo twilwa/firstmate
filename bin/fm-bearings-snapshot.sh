@@ -57,6 +57,12 @@
 # gaps in omitted[] and, when invalid, a Charted Next gate line so the four-section
 # chat cannot claim an empty fleet while main current state is broken.
 #
+# A mate put to sleep on purpose (bin/fm-secondmate-sleep.sh) is reported with
+# state `asleep`, its sleep line as doing, and its reason, and its deliberately
+# stopped endpoint is left out of unhealthy_endpoints: an action-free notice,
+# never an unavailable home or a dead endpoint. bin/fm-secondmate-sleep-lib.sh
+# reads the marker; this wrapper only decorates the projection with it.
+#
 # An open away-return catch-up is disclosed the same way, as a single action-free
 # (return-catchup) gate row naming the blockers left to clear or the reason the
 # catch-up was retained. Reporting is not ordinary captain work, so the gate never
@@ -101,6 +107,9 @@ FLEET="$SCRIPT_DIR/fm-fleet-snapshot.sh"
 # shellcheck source=bin/fm-landed-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-landed-lib.sh"  # FM_LANDED_JQ_DEFS: the shared landed selector
+# shellcheck source=bin/fm-secondmate-sleep-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-secondmate-sleep-lib.sh"
 
 # Bounds (overridable for tests / large fleets).
 FM_BEARINGS_LANDED=${FM_BEARINGS_LANDED:-6}
@@ -163,6 +172,8 @@ For every registered secondmate, readable structured facts from its own home are
   Parent events and bounded terminal reads are labeled fallback or contradiction
   evidence and never become current work. The provenance and freshness fields
   distinguish live and cached ledgers; a home without either is explicitly unreadable.
+  A mate put to sleep on purpose reports state asleep with its sleep line and
+  reason, and its stopped endpoint is not listed as unhealthy.
 Opt-in surfaces: --fields bodies|paths|actions|endpoints, --all-in-flight,
   --all-decisions (all open decisions and captain holds in the bounded snapshot),
   --all-secondmates, --all-landed, --all-reports, --all-queued, --all-recorded-prs,
@@ -242,6 +253,19 @@ else
 fi
 HOME_LABEL=$(printf '%s' "$SNAP" | jq -er '.fm_home | strings | split("/") | (.[-2:] | join("/"))') \
   || { echo "fm-bearings-snapshot: invalid canonical snapshot" >&2; exit 1; }
+
+# Sleeping mates, keyed by id: {line, reason} from the one marker reader.
+ASLEEP='{}'
+ASLEEP_STATE="${FM_STATE_OVERRIDE:-$(printf '%s' "$SNAP" | jq -r '.fm_home')/state}"
+while IFS= read -r mate_id; do
+  [ -n "$mate_id" ] || continue
+  fm_secondmate_asleep "$ASLEEP_STATE" "$mate_id" || continue
+  ASLEEP=$(jq -n --argjson asleep "$ASLEEP" --arg id "$mate_id" \
+    --arg line "$(fm_secondmate_asleep_line)" --arg reason "$FM_SECONDMATE_ASLEEP_REASON" \
+    '$asleep + {($id): {line:$line, reason:$reason}}')
+done <<EOF
+$(printf '%s' "$SNAP" | jq -r '[((.secondmate_current.records // [])[].id), (.tasks[] | select(.kind == "secondmate") | .id)] | unique[]')
+EOF
 
 # --- optional live GitHub PR enrichment -------------------------------------
 PR_STATUS='not_requested (run: /bearings include PRs)'
@@ -380,6 +404,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   --argjson pr_rows_capped "$PR_ROWS_CAPPED" \
   --argjson pr_rows_min_total "$PR_ROWS_MIN_TOTAL" \
   --argjson return_catchup "$RETURN_CATCHUP" \
+  --argjson asleep "$ASLEEP" \
   --argjson candidate_prs "$CANDIDATE_PRS" "$FM_LANDED_JQ_DEFS"'
   def trunc($n): if . == null then null else
     (tostring | gsub("\\s+"; " ") | if (length > $n) then (.[:$n] + "…") else . end) end;
@@ -461,6 +486,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   | ($live_ids + $done_ids) as $rel_ids
   | ([ .tasks[]
        | select(.endpoint.exists == false or .endpoint.agent_alive == "dead")
+       | select(.kind == "secondmate" and $asleep[.id] != null | not)
        | {id, backend, target:(.endpoint.target // "-"), exists:.endpoint.exists, agent:.endpoint.agent_alive} ]
      + [ (.secondmate_current.records // [])[] as $m | $m.endpoints[]?
          | select(.endpoint.exists == false or .endpoint.agent_alive == "dead")
@@ -499,7 +525,10 @@ MODEL=$(printf '%s' "$SNAP" | jq \
           provenance:(if .provenance.summary_source == "remote-ledger-cache" then "structured-home-cache"
                       else .provenance.selected end),freshness:.freshness.status,
           age_seconds:.freshness.age_seconds,contradiction:(.contradiction // false),
-          reason:(.current.reason // "-")} ]) as $secondmates_all
+          reason:(.current.reason // "-")}
+       | if $asleep[.id] != null then
+           .state = "asleep" | .doing = ($asleep[.id].line | trunc(120)) | .reason = $asleep[.id].reason
+         else . end ]) as $secondmates_all
   | ([ .tasks[]
        | select(.kind != "secondmate")
        | select(.backlog.current_role != "program")

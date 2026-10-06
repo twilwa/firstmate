@@ -35,146 +35,8 @@ mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
-# A session-provider stub that models the two things this pass depends on: the
-# harness exit command stops the agent, a launch brief starts the replacement,
-# and - when armed - the live mate ANSWERS a doorbell by doing what the persist
-# request asks and reporting it on the parent channel with the correlation token
-# the request carried. That answer is a real status append read by the real
-# pending-reply machinery, not a stubbed verdict.
-make_stub() {  # <case-dir>
-  local fb="$1/fakebin"
-  mkdir -p "$fb"
-  cat > "$fb/tmux" <<'SH'
-#!/usr/bin/env bash
-set -u
-D=$FM_FAKE_DIR
-case "${1:-}" in
-  send-keys)
-    shift
-    literal=0
-    target=
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        -t) target=$2; shift 2 ;;
-        -l) literal=1; shift ;;
-        *) break ;;
-      esac
-    done
-    payload=${1:-}
-    if [ "$literal" = 1 ]; then
-      case "$payload" in
-        ". '"*"'")
-          staged=${payload#". '"}
-          staged=${staged%"'"}
-          [ ! -f "$staged" ] || payload=$(cat "$staged")
-          ;;
-      esac
-      printf '%s\n' "$payload" >> "$D/literal"
-      case "$payload" in
-        /exit|/quit)
-          if [ -e "$D/remote-relaunch-start" ] && [ ! -e "$D/remote-relaunch-end" ]; then
-            : > "$D/local-relaunch-during-remote"
-          fi
-          printf 'zsh' > "$D/command.$target"
-          ;;
-        *'encode launch-brief'*) cat "$D/becomes" > "$D/command.$target" ;;
-        ': Firstmate instruction waiting: list '*)
-          printf 'doorbell\n' >> "$D/rings"
-          if [ -x "$D/on-doorbell" ]; then
-            "$D/on-doorbell" "$payload"
-          fi
-          if [ -f "$D/answer-inbox" ]; then
-            # Model the mate: read the newest instruction it was handed and
-            # report back on the parent channel, carrying the correlation token
-            # the request itself embedded.
-            inbox=$(cat "$D/answer-inbox")
-            corr=$(cat "$inbox"/*.msg 2>/dev/null \
-              | grep -oE 'corr=[0-9a-f]{16}' | head -1)
-            if [ -n "$corr" ]; then
-              printf 'done [%s]: open records written down\n' "$corr" \
-                >> "$(cat "$D/answer-status")"
-            fi
-          fi
-          ;;
-      esac
-    else
-      printf '%s\n' "$payload" >> "$D/keys"
-    fi
-    exit 0 ;;
-  display-message)
-    target=
-    prev=
-    for a in "$@"; do
-      if [ "$prev" = -t ]; then target=$a; fi
-      case "$a" in
-        *cursor_y*) printf '1\n'; exit 0 ;;
-        *pane_current_command*)
-          if [ -f "$D/command.$target" ]; then cat "$D/command.$target"; else cat "$D/command"; fi
-          printf '\n'; exit 0 ;;
-        *pane_current_path*) cat "$D/cwd"; printf '\n'; exit 0 ;;
-      esac
-      prev=$a
-    done
-    printf 'fakepane\n'; exit 0 ;;
-  capture-pane) printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
-  list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
-esac
-exit 0
-SH
-  chmod +x "$fb/tmux"
-  cat > "$fb/sleep" <<'SH'
-#!/usr/bin/env bash
-case "${1:-}" in
-  ''|*[!0-9]*) ;;
-  *) /bin/sleep 0.01 ;;
-esac
-exit 0
-SH
-  chmod +x "$fb/sleep"
-}
-
-# new_case <name> -> a parent home with a stub session provider.
-new_case() {
-  local dir="$TMP_ROOT/$1-$RANDOM"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/fake"
-  printf 'claude\n' > "$dir/home/config/secondmate-harness"
-  : > "$dir/fake/literal"
-  : > "$dir/fake/keys"
-  : > "$dir/fake/rings"
-  printf 'claude' > "$dir/fake/command"
-  printf 'claude' > "$dir/fake/becomes"
-  make_stub "$dir"
-  printf '%s\n' "$dir"
-}
-
-# add_local_mate <case-dir> <id> [harness] [backend-line]
-# A live LOCAL second mate: a real git worktree for its home, plus the durable
-# record this home keeps for it.
-add_local_mate() {
-  local dir=$1 id=$2 harness=${3:-claude} backend=${4:-}
-  local home="$dir/home" smhome="$dir/$id-home"
-  fm_git_worktree "$dir/$id-repo" "$smhome" "sm-$id"
-  mkdir -p "$smhome/state" "$smhome/data" "$smhome/bin" "$home/data/$id"
-  printf '%s\n' "$id" > "$smhome/.fm-secondmate-home"
-  printf '# agents\n' > "$smhome/AGENTS.md"
-  printf '# charter\n' > "$home/data/$id/brief.md"
-  {
-    echo "window=fmses:fm-$id"
-    echo "endpoint_task_id=$id"
-    echo "worktree=$smhome"
-    echo "project=$smhome"
-    echo "harness=$harness"
-    echo "kind=secondmate"
-    echo "mode=secondmate"
-    echo "yolo=off"
-    echo "model=default"
-    echo "effort=default"
-    echo "home=$smhome"
-    [ -z "$backend" ] || echo "backend=$backend"
-  } > "$home/state/$id.meta"
-  printf '%s\n' "fm-$id" >> "$dir/fake/windows"
-  printf '%s' "$smhome" > "$dir/fake/cwd"
-}
+# shellcheck source=tests/secondmate-persist-helpers.sh
+. "$(dirname "${BASH_SOURCE[0]}")/secondmate-persist-helpers.sh"
 
 # add_repo_backed_mate <case-dir> <id> [harness] [backend-line]
 # Like add_local_mate, but the world is the one /updatefirstmate actually runs
@@ -232,13 +94,6 @@ run_update_in_case() {
     FM_ROOT_OVERRIDE="$dir/fmrepo" FM_HOME="$dir/home" \
     FM_SSH_BIN="${FM_TEST_SSH_BIN:-ssh}" \
     "$ROOT/bin/fm-update.sh" 2>/dev/null
-}
-
-# arm_answer <case-dir> <id>: make the modelled mate answer the persist request.
-arm_answer() {
-  local dir=$1 id=$2
-  printf '%s' "$dir/home/state/$id.inbox" > "$dir/fake/answer-inbox"
-  printf '%s' "$dir/home/state/$id.status" > "$dir/fake/answer-status"
 }
 
 run_restart() {  # <case-dir> <args...>
@@ -398,6 +253,30 @@ test_unknown_mate_is_accounted_for() {
   assert_contains "$out" "no durable record" "the unknown mate's reason must be concrete"
   assert_contains "$out" "summary: 1 of 2 restarted, 0 nudged, 1 unreached" "the summary must count both mates"
   pass "T4 every named mate is accounted for, including one this home does not know"
+}
+
+# --- T4b: an asleep mate named by hand is left asleep -----------------------
+test_asleep_mate_is_left_asleep() {
+  local dir out rc
+  dir=$(new_case asleep)
+  # The stub models one pane directory, the last mate added, so the mate that is
+  # really restarted is added last.
+  add_local_mate "$dir" sm2
+  add_local_mate "$dir" sm1
+  arm_answer "$dir" sm1
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$dir/home/state/sm2.asleep"
+
+  out=$(run_restart "$dir" sm1 fm-sm2); rc=$?
+
+  expect_code 0 "$rc" "leaving an asleep mate asleep is not a failed restart"$'\n'"$out"
+  assert_contains "$out" "restarted: sm1" "the awake mate should still be restarted"
+  assert_contains "$out" "asleep: sm2: asleep since 2026-10-06T12:00:00Z (by captain): parked; not restarted" \
+    "the asleep mate must be listed as asleep"
+  assert_contains "$out" "summary: 1 of 2 restarted, 0 nudged, 0 unreached, 1 asleep" \
+    "the summary must account for the asleep mate"
+  assert_absent "$dir/home/state/sm2.inbox" "an asleep mate was asked to persist or nudged"
+  assert_absent "$dir/home/state/sm2.control-relaunch" "an asleep mate was restarted"
+  pass "T4b an asleep mate named by hand is reported asleep and never asked, nudged, or restarted"
 }
 
 # --- T5: a refused restart leaves the mate running and says so ---------------
@@ -845,6 +724,7 @@ test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for
+test_asleep_mate_is_left_asleep
 test_refused_restart_falls_back_without_claiming_a_reload
 test_local_restart_uses_the_home_pin_and_reports_what_ran
 test_native_ultra_restart_keeps_local_and_remote_profiles

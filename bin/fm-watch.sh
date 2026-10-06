@@ -922,7 +922,13 @@ secondmate_wake_stall_tick() {
     [ -f "$home/.fm-secondmate-home" ] && [ ! -L "$home/.fm-secondmate-home" ] || continue
     [ "$(cat "$home/.fm-secondmate-home" 2>/dev/null || true)" = "$task" ] || continue
     queue="$home/state/.wake-queue"
-    row=$(secondmate_oldest_queue_row "$queue")
+    # A mate put to sleep on purpose has no agent to drain its queue, so a row
+    # there is expected to sit: observe it as empty, neither rung nor escalated.
+    if fm_secondmate_asleep "$STATE" "$task"; then
+      row=
+    else
+      row=$(secondmate_oldest_queue_row "$queue")
+    fi
     marker="$STATE/.secondmate-wake-stall-$task"
     progress_marker="$STATE/.secondmate-wake-progress-$task"
     ring_marker="$STATE/.secondmate-wake-ring-$task"

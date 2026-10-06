@@ -606,6 +606,50 @@ EOF
   pass "declared external-wait pause rows do not feed secondmate wake-loop escalation"
 }
 
+# A mate put to sleep on purpose has no agent to drain its own queue, so a row
+# left there is expected to sit. It is neither rung (a ring would land in a
+# stopped pane) nor escalated as a stalled wake loop while the mate sleeps.
+test_asleep_secondmate_queue_does_not_feed_stall_escalation() {
+  local dir state sub fakebin real_date
+  dir=$(make_case secondmate-asleep-queue)
+  state="$dir/state"
+  sub="$dir/secondmate"
+  mkdir -p "$sub/state"
+  printf 'mate\n' > "$sub/.fm-secondmate-home"
+  printf 'window=firstmate:fm-mate\nkind=secondmate\nhome=%s\n' "$sub" > "$state/mate.meta"
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$state/mate.asleep"
+  fakebin="$dir/fakebin"
+  real_date=$(command -v date)
+  cat > "$fakebin/date" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = +%s ]; then
+  cat "\${FM_FAKE_NOW_FILE:?}"
+else
+  exec "$real_date" "\$@"
+fi
+SH
+  chmod +x "$fakebin/date"
+  printf '100\t7\tcheck\trouted\tcheck: routed row\n' > "$sub/state/.wake-queue"
+  printf '1000\n' > "$dir/now"
+  PATH="$fakebin:$PATH" FM_FAKE_NOW_FILE="$dir/now" FM_HOME="$dir" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_STATE_OVERRIDE="$state" FM_FAKE_TMUX_WINDOW='firstmate:fm-mate' FM_FAKE_TMUX_SENT="$dir/sent" \
+    FM_SECONDMATE_WAKE_STALL_SECS=1 FM_POLL=1 FM_SIGNAL_GRACE=0 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    secondmate_stall_watch_leg "$dir" "first" cleared
+  printf '5000\n' > "$dir/now"
+  PATH="$fakebin:$PATH" FM_FAKE_NOW_FILE="$dir/now" FM_HOME="$dir" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_STATE_OVERRIDE="$state" FM_FAKE_TMUX_WINDOW='firstmate:fm-mate' FM_FAKE_TMUX_SENT="$dir/sent" \
+    FM_SECONDMATE_WAKE_STALL_SECS=1 FM_POLL=1 FM_SIGNAL_GRACE=0 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    secondmate_stall_watch_leg "$dir" "second" cleared
+  [ ! -s "$state/.wake-queue" ] \
+    || fail "an asleep mate's queue fed the secondmate wake-loop escalation: $(cat "$state/.wake-queue")"
+  ! grep -F 'secondmate wake-loop stalled' "$dir/watch-first.out" "$dir/watch-second.out" >/dev/null \
+    || fail "an asleep mate was reported as a stalled wake loop"
+  [ ! -s "$dir/sent" ] || fail "an asleep mate's pane was rung: $(cat "$dir/sent")"
+  pass "an asleep secondmate's queue is neither rung nor escalated as a stalled wake loop"
+}
+
 # A retired mate reprovisioned under the same task id gets a fresh home, so its
 # wake-queue sequence restarts from scratch and can land on the very position the
 # parent last recorded for the retired generation. Those are different rows in
@@ -3238,6 +3282,7 @@ test_live_presentation_holder_is_deadlined_without_weakening_ack
 test_malformed_presentation_lock_reports_acquire_failure
 test_secondmate_foreign_queue_stall_tracks_progress_and_alerts_once
 test_secondmate_declared_pause_rows_do_not_feed_stall_escalation
+test_asleep_secondmate_queue_does_not_feed_stall_escalation
 test_secondmate_reprovisioned_queue_starts_a_fresh_interval
 test_secondmate_active_turn_defers_stall_until_the_turn_ends
 test_secondmate_long_lived_mate_mid_turn_is_not_a_stall

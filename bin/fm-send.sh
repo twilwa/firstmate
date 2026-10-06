@@ -151,6 +151,11 @@
 # during the final locked remote-route validation; unset or empty guards do not
 # change ordinary sends.
 #
+# An asleep second mate (bin/fm-secondmate-sleep.sh) is refused outright, text
+# and --key alike, before anything is recorded, typed, or armed: it has no agent
+# to read a steer, so a routed request would sit unread in a dark home. The
+# refusal names the wake command.
+#
 # Decision closure (answerer-closes): pass --resolve-key <key> (repeatable,
 # before the message) when this send answers an open keyed needs-decision: or
 # blocked: record in the target task's state/<id>.status. fm-send itself
@@ -266,6 +271,8 @@ fi
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-secondmate-sleep-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-sleep-lib.sh"
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -452,6 +459,14 @@ RAW_TARGET=$1
 fm_send_resolve_target "$RAW_TARGET" || exit 1
 T=$RESOLVED_TARGET
 shift
+
+if [ -n "$TARGET_META" ] && [ "$(fm_meta_get "$TARGET_META" kind)" = secondmate ]; then
+  ASLEEP_ID=$(fm_send_id_from_meta "$TARGET_META")
+  if fm_secondmate_asleep "$STATE" "$ASLEEP_ID"; then
+    echo "error: secondmate $ASLEEP_ID is $(fm_secondmate_asleep_line); nothing was sent. Wake it on purpose first with FM_HOME=$FM_HOME bin/fm-secondmate-sleep.sh wake $ASLEEP_ID, or hold the work in this home's backlog until it wakes." >&2
+    exit 1
+  fi
+fi
 
 # Supervision lease guard: a steer is overlap territory between the two Pi
 # supervision actors, so refuse while the OTHER actor holds this task's live
