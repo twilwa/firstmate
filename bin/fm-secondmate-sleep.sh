@@ -50,7 +50,9 @@
 #               answer lands. An agent that is already stopped has nothing to
 #               persist; one whose state cannot be read is refused. The stop and
 #               every later step run under this home's per-mate liveness lock, so
-#               no liveness check relaunches the mate before its marker lands.
+#               no liveness check relaunches the mate before its marker lands; an
+#               agent that was stopped at admission is probed again under that
+#               lock, and one that came back up meanwhile is refused unstopped.
 #   watcher     the home's own bin/fm-watch-arm.sh --stop stops its watcher.
 #   listeners   each process-event source registered in the home is asked about
 #               through the home's own bin/fm-captain-hold.sh binding <source-id>.
@@ -99,7 +101,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,95{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,97{s/^# \{0,1\}//;p;}' "$0"
 }
 
 VERB=${1:-}
@@ -239,6 +241,15 @@ inflight_work() {  # <home>
   printf '%s' "$pending"
 }
 
+# Probe whether <id>'s agent is running, through the liveness library, leaving
+# its verdict in FM_SM_LIVE_STATUS; a mate with no durable record here has no
+# endpoint to probe and reads silent.
+probe_agent() {  # <id>
+  FM_SM_LIVE_STATUS=silent
+  FM_SM_LIVE_REASON=""
+  [ ! -f "$STATE/$1.meta" ] || fm_secondmate_liveness_probe "$STATE/$1.meta" "$1" poll
+}
+
 # Retire every process-event source in the mate's home that no held captain
 # call is bound to, each through the home's own owner-matched retire. A
 # decision-bound source stays armed. Prints why on the first refusal.
@@ -308,6 +319,22 @@ stop_and_mark() {  # <index>
     refuse "$i" idle "its home has in-flight work:$pending; nothing was stopped"
     return
   fi
+  if [ "${NEEDS_EXIT[i]}" = 0 ]; then
+    probe_agent "$id"
+    case "$FM_SM_LIVE_STATUS" in
+      relaunchable|silent) ;;
+      alive)
+        fm_secondmate_liveness_unlock "$id"
+        refuse "$i" agent "its agent came back up after it was checked and was never asked to write down its open work; nothing was stopped"
+        return
+        ;;
+      *)
+        fm_secondmate_liveness_unlock "$id"
+        refuse "$i" agent "cannot tell whether its agent is running: $FM_SM_LIVE_REASON; nothing was stopped"
+        return
+        ;;
+    esac
+  fi
   if [ "${NEEDS_EXIT[i]}" = 1 ] && ! out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
     "$SCRIPT_DIR/fm-control.sh" "$id" exit < /dev/null 2>&1); then
     fm_secondmate_liveness_unlock "$id"
@@ -338,7 +365,7 @@ stop_and_mark() {  # <index>
 # Admit one mate: every check before anything moves, then the persist request
 # when its agent is running. Leaves PLAN at stop, persist-pending, or done.
 admit_for_sleep() {  # <index> <persist-request>
-  local i=$1 request=$2 id meta pending
+  local i=$1 request=$2 id pending
   id=${IDS[$i]}
   PLAN[i]="done" HOME_OF[i]="" NEEDS_EXIT[i]=0 CORR[i]="" DEADLINE[i]=""
   if fm_secondmate_asleep "$STATE" "$id"; then
@@ -356,9 +383,7 @@ admit_for_sleep() {  # <index> <persist-request>
     return
   fi
   PLAN[i]=stop
-  meta="$STATE/$id.meta"
-  [ -f "$meta" ] || return
-  fm_secondmate_liveness_probe "$meta" "$id" poll
+  probe_agent "$id"
   case "$FM_SM_LIVE_STATUS" in
     relaunchable|silent) ;;
     alive)
@@ -435,9 +460,7 @@ report_awake() {  # <id> <home> <how>
 # live. The caller holds its liveness lock and has already removed its marker.
 relaunch_woken_mate() {  # <id> <home>
   local id=$1 home=$2 meta="$STATE/$1.meta" out="" rc=0
-  FM_SM_LIVE_STATUS=silent
-  FM_SM_LIVE_REASON=""
-  [ ! -f "$meta" ] || fm_secondmate_liveness_probe "$meta" "$id" poll
+  probe_agent "$id"
   case "$FM_SM_LIVE_STATUS" in
     alive)
       report_awake "$id" "$home" "its agent was already running"
@@ -464,7 +487,7 @@ relaunch_woken_mate() {  # <id> <home>
     echo "$id: wake failed: the relaunch failed: $(first_line "${FM_SM_LIVE_REASON:-$out}"); the marker is removed, so liveness recovery owns it now"
     return 1
   fi
-  fm_secondmate_liveness_probe "$meta" "$id" poll
+  probe_agent "$id"
   if [ "$FM_SM_LIVE_STATUS" != alive ]; then
     echo "$id: wake failed: relaunched, but its agent is not confirmed live (state: $FM_SM_LIVE_STATE); liveness recovery owns it now"
     return 1

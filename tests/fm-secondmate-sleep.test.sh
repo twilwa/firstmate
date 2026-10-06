@@ -20,6 +20,8 @@
 #      decision-bound listener stays registered with its binding while an
 #      unbound one is retired.
 #   6. a registered id that itself begins with fm- is addressed as itself.
+#   7. a mate whose stopped agent comes back up between admission and its
+#      stop step is refused, never marked asleep while it runs.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -221,6 +223,10 @@ test_wake_relaunches_and_clears_marker() {
   out=$(run_sleep "$dir" sleep sm1 --by captain --reason parked); rc=$?
   expect_code 0 "$rc" "the fixture mate should fall asleep"$'\n'"$out"
   assert_absent "$ran" "the fixture's bound listener ran before the wake"
+  # The case's sleep stub cuts every wait short, which the wake's real listener
+  # machinery inherits and which then races its launch on a loaded host; from
+  # here on every sleep is real.
+  printf '#!/bin/sh\nexec %s "$@"\n' "$(type -P sleep)" > "$dir/fakebin/sleep"
 
   out=$(run_sleep "$dir" wake sm1); rc=$?
 
@@ -295,6 +301,34 @@ test_sleep_keeps_decision_bound_listeners() {
   pass "T6 sleep keeps decision-bound listeners armed with their binding and retires unbound ones"
 }
 
+# --- T8: an agent that comes back up after admission is not put to sleep -----
+# sm2's agent is stopped at admission, so it needs no persist answer, but a
+# liveness relaunch can bring it back before its own stop step. sm1's stop, which
+# runs after every mate is admitted and before sm2's stop, models that relaunch.
+test_sleep_refuses_agent_back_up_after_admission() {
+  local dir out rc
+  dir=$(new_case agent-back-up)
+  add_local_mate "$dir" sm2
+  register_mate "$dir" sm2
+  add_local_mate "$dir" sm1
+  register_mate "$dir" sm1
+  arm_answer "$dir" sm1
+  printf 'zsh' > "$dir/fake/command.fmses:fm-sm2"
+  # shellcheck disable=SC2016 # $FM_FAKE_DIR expands when the hook runs.
+  printf '#!/bin/sh\nprintf claude > "$FM_FAKE_DIR/command.fmses:fm-sm2"\n' > "$dir/fake/on-exit"
+  chmod +x "$dir/fake/on-exit"
+
+  out=$(run_sleep "$dir" sleep sm1 sm2 --by captain --reason parked); rc=$?
+
+  expect_code 3 "$rc" "a mate whose agent came back up must not be reported asleep"$'\n'"$out"
+  assert_contains "$out" "sm1: asleep since " "the other mate should still fall asleep"
+  assert_contains "$out" "sm2: refused at agent:" "the mate whose agent came back up must be refused at the agent step"
+  assert_absent "$dir/home/state/sm2.asleep" "a mate with a running agent was marked asleep"
+  ! grep -q "FM_HOME=$dir/sm2-home" "$dir/fake/home-calls" \
+    || fail "the refused mate's watcher or listeners were stopped: $(cat "$dir/fake/home-calls")"
+  pass "T8 a mate whose agent comes back up after admission is refused, never marked asleep"
+}
+
 # --- T7: a registered id beginning with fm- is addressed as itself ------------
 test_fm_prefixed_registered_id_is_its_own() {
   local dir out rc
@@ -319,5 +353,6 @@ test_wake_relaunches_and_clears_marker
 test_status_reads_each_registered_mate
 test_sleep_keeps_decision_bound_listeners
 test_fm_prefixed_registered_id_is_its_own
+test_sleep_refuses_agent_back_up_after_admission
 
 echo "# all fm-secondmate-sleep tests passed"

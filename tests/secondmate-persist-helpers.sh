@@ -50,6 +50,8 @@ case "${1:-}" in
             : > "$D/local-relaunch-during-remote"
           fi
           printf 'zsh' > "$D/command.$target"
+          # Optional: model something else happening at the moment this agent stops.
+          [ ! -x "$D/on-exit" ] || "$D/on-exit" "$target"
           ;;
         *'encode launch-brief'*) cat "$D/becomes" > "$D/command.$target" ;;
         ': Firstmate instruction waiting: list '*)
