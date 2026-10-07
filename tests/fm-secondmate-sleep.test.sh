@@ -35,7 +35,9 @@ fm_git_identity fmtest fmtest@example.com
 TMP_ROOT=$(fm_test_tmproot fm-secondmate-sleep)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
-trap 'rm -rf -- "$TMP_ROOT"' EXIT
+# fm_test_cleanup also removes the read-only state/<id>.git-hooks directory a
+# woken mate's spawn leaves, which a plain rm -rf cannot.
+trap fm_test_cleanup EXIT
 
 # shellcheck source=tests/secondmate-persist-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/secondmate-persist-helpers.sh"

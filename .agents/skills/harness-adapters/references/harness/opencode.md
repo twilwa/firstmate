@@ -15,7 +15,7 @@ Primary and secondmate use is unsupported on OpenCode 2.0 until the `fm-primary-
 | Skill invocation | No separate verified form beyond normal slash-command behavior; use natural language when the exact command is uncertain. |
 | Resume | Relaunch with `--continue --standalone` in the same directory; on 2.0.16, `mini --model <provider/model> --standalone --continue` without `--prompt`, run in a fresh pane, recalled a code word given only in the earlier session. Do not assume `--prompt` auto-submits alongside `--continue`. |
 | Model flag | On 2.0, the main TUI has no `--model`; pin interactive workers with `opencode mini --model <provider/model> --standalone --prompt`. For an unpinned worker, use `opencode --standalone --prompt`. `run -m provider/model#variant` is headless, not an interactive worker. |
-| Effort flag | None for Firstmate's interactive launches; only the model-pinned `opencode mini` launch has live 2.0.16 evidence, and the unpinned `opencode --standalone --prompt` main-TUI launch is covered only by its launch-string test; `opencode run` has `--variant`, but that is not this path. |
+| Effort flag | None for Firstmate's interactive launches; only the model-pinned `opencode mini` launch has live 2.0.16 evidence, and the unpinned `opencode --standalone --prompt` main-TUI launch is covered only by its launch-string test; `opencode run` has `--variant`, but that is not this path. The `OPENCODE_CONFIG_CONTENT` build-agent `variant` verified on 1.18.32 is not carried onto the 2.0 launch, which has no live evidence for it, so the requested effort stays in task metadata only. |
 | Model discovery | On 2.0 `opencode models` accepts no provider positional argument; its empty stdout is not proof an authenticated model is unavailable. Confirm the candidate with a bounded standalone probe. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
@@ -42,7 +42,7 @@ The primary integration was verified on 2026-07-08 with OpenCode 1.17.6.
 `.opencode/plugins/fm-primary-turnend-guard.js` listens for `session.idle`.
 Throwing from `session.idle` does not block `opencode run`, so the primary adapter treats the event as passive and uses `client.session.promptAsync` to force one follow-up turn when `../../../bin/fm-turnend-guard.sh` returns 2.
 The follow-up was verified in the interactive TUI.
-In a home with `config/supervision-host` the watch-arm plugin spawns the supervision host instead of `../../../bin/fm-watch-arm.sh`, with Claude's print mode as its headless engine; [`supervision-host.md`](../../../../../docs/supervision-host.md) owns the host.
+In a home with `config/supervision-host` and no `config/supervision-host-off` the watch-arm plugin spawns the supervision host instead of `../../../bin/fm-watch-arm.sh`, with Claude's print mode as its headless engine; [`supervision-host.md`](../../../../../docs/supervision-host.md) owns the host.
 `opencode run` can exit before displaying a queued follow-up, so the adapter steps aside in headless mode.
 On native Windows, the operational-input adapter runs its Bash helper through `bash`; macOS and Linux invoke it directly.
 

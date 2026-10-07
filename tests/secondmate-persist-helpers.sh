@@ -53,7 +53,7 @@ case "${1:-}" in
           # Optional: model something else happening at the moment this agent stops.
           [ ! -x "$D/on-exit" ] || "$D/on-exit" "$target"
           ;;
-        *'encode launch-brief'*) cat "$D/becomes" > "$D/command.$target" ;;
+        *'encode launch-brief'* | *'Firstmate operational input waiting: read'*) cat "$D/becomes" > "$D/command.$target" ;;
         ': Firstmate instruction waiting: list '*)
           printf 'doorbell\n' >> "$D/rings"
           if [ -x "$D/on-doorbell" ]; then

@@ -12,9 +12,9 @@
 #
 # MECHANICAL CONSUMERS ONLY. This answers "what posture did the captain register
 # for this project", never "how does this task ship". Firstmate resolves each
-# task's delivery mode, yolo, and ship-branch prefix through task-intake and
-# passes them to bin/fm-brief.sh, bin/fm-spawn.sh, and scout promotion through
-# task-delivery. bin/fm-brief.sh's header owns the --branch-prefix flag.
+# task's delivery mode, yolo, and ship-branch prefix at intake (AGENTS.md section 7)
+# and passes them to bin/fm-brief.sh, bin/fm-spawn.sh, and bin/fm-promote.sh.
+# bin/fm-brief.sh's header owns the --branch-prefix flag.
 # The consumers are bin/fm-fleet-sync.sh (skip local-only clones),
 # bin/fm-home-seed.sh (seed a local-only project as a bound local clone without
 # a remote or no-mistakes init), bin/fm-remote-home-seed.sh (refuse local-only),
@@ -29,6 +29,7 @@
 #   - <name> [<mode> +yolo] - <desc> (added <date>)                  -> <mode> on fm/
 #   - <name> [<mode> +yolo branch=<prefix>] - <desc> (added <date>)  -> <mode> <yolo> <prefix>
 #   - <name> [<mode> forge=gerrit] - <desc> (added <date>)           -> <mode> off, --forge gerrit
+#   <name> may contain spaces; it ends at the literal " [" or " - " that follows it.
 #   Bracket tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>
 #   are recognized by their own shape wherever they appear, and whichever token is
 #   left over is the mode. <prefix> must not contain a space; an empty override
@@ -46,7 +47,7 @@
 #                          no-mistakes, so sync, seeding, and init treat such a
 #                          project as the remote-backed pipeline project it is.
 # yolo (orthogonal) = merge authority only: when on, firstmate merges green,
-#   in-scope work itself (the task-delivery skill).
+#   in-scope work itself (AGENTS.md section 7).
 # branch=<prefix> (orthogonal) = overrides the "fm/" ship-branch prefix so a
 #   project's branch and PR do not read as firstmate-authored, e.g. for a
 #   third-party repo that does not use this tooling. Query it with
@@ -139,11 +140,21 @@ parsed=$(awk -v n="$NAME" '
     }
     return d[lx,ly];
   }
-  $1=="-" && $2==n {
+  {
+    # Exact whole-name match on the raw line text (never a regex, so a name
+    # containing dots or brackets is compared literally): the line must start
+    # with "- " n, and the text right after the name must be empty, or start
+    # with " [" or " - ", so a name that is a leading prefix of a longer
+    # registered name does not match that longer row.
+    prefix = "- " n; plen = length(prefix);
+    if (substr($0, 1, plen) != prefix) next
+    after = substr($0, plen + 1);
+    if (after != "" && substr(after, 1, 2) != " [" && substr(after, 1, 3) != " - ") next
     mode="no-mistakes"; yolo="off"; branch="fm/"; forge="none";
-    if ($3 ~ /^\[/) {
+    if (substr(after, 1, 2) == " [") {
       s="";
-      for (i=3; i<=NF; i++) { s = s (s==""?"":" ") $i; if ($i ~ /\]$/) break }
+      nk = split(after, rest, " ");
+      for (i=1; i<=nk; i++) { s = s (s==""?"":" ") rest[i]; if (rest[i] ~ /\]$/) break }
       gsub(/^\[|\]$/, "", s);           # strip the surrounding brackets
       k = split(s, a, " ");
       # Tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>

@@ -37,6 +37,16 @@
 #   docs/configuration.md "Crew dispatch profiles" owns the declared fields and
 #   "Typed dispatch resolution" owns this tool's operator contract.
 #
+# Never-send check: when the optional $FM_HOME/config/dispatch-never-send list
+#   exists, every string value of the built request is checked against it
+#   before the POST. Each non-blank, non-# line is a literal matched
+#   case-insensitively, with surrounding whitespace trimmed and every run of
+#   whitespace, on both sides, treated as one space. A match, or a list that
+#   is not a readable regular file, prints one
+#   "dispatch-resolve: off (...; nothing sent)" line on stderr naming at most
+#   the list line number, never its value, prints nothing on stdout, and exits
+#   0 with no network or quota call, exactly like the absent-key off path.
+#
 # Output (stdout, TOON-style block):
 #   dispatch-resolve:
 #     status: clear | ambiguous | escalate | error
@@ -50,9 +60,10 @@
 #   escalate  -> the rule requires captain approval, no candidate is rankable, or a genuine tie
 #   error     -> API, network, response, or quota-axi failure; decide as today
 #   Every outcome exits 0 so an intake is never blocked by this tool.
-#   A keyed run appends one best-effort resolution receipt to
-#   dispatch-receipts.jsonl in the state directory ($FM_STATE_OVERRIDE, else
-#   $FM_HOME/state) after the block above is printed.
+#   A keyed run that prints the block above appends one best-effort resolution
+#   receipt to dispatch-receipts.jsonl in the state directory
+#   ($FM_STATE_OVERRIDE, else $FM_HOME/state) after printing it; a never-send
+#   off run prints no block and writes no receipt.
 #   On clear only, once fm-spawn has accepted the dispatched profile, a
 #   separate --record-dispatch run appends a second receipt joined to the
 #   latest resolution for the same brief content hash, and names on stderr
@@ -106,7 +117,7 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 RECEIPTS="$STATE/dispatch-receipts.jsonl"
 RECEIPT_LOCK="$STATE/.dispatch-receipts.lock"
 
-RULES='' BRIEF_SNAPSHOT='' RESP_FILE='' RESP_HEADERS='' QUOTA='' TASK_TEXT=''
+RULES='' BRIEF_SNAPSHOT='' RESP_FILE='' RESP_HEADERS='' QUOTA='' TASK_TEXT='' SEND_TEXT=''
 RULES_SHA256='' BRIEF_SHA256='' REQUEST_ID=''
 LAT_MS=null RECEIPT_LOCK_HELD=0
 
@@ -118,6 +129,7 @@ cleanup() {
   [ -z "$RESP_HEADERS" ] || rm -f -- "$RESP_HEADERS"
   [ -z "$QUOTA" ] || rm -f -- "$QUOTA"
   [ -z "$TASK_TEXT" ] || rm -f -- "$TASK_TEXT"
+  [ -z "$SEND_TEXT" ] || rm -f -- "$SEND_TEXT"
   receipt_lock_release || true
 }
 trap cleanup EXIT
@@ -286,6 +298,7 @@ usage() {
 
 BRIEF='' PROJECT='' RULES_PATH="$CONFIG/crew-dispatch.json"
 MODE=resolve DISPATCH_HARNESS='' DISPATCH_MODEL='' DISPATCH_EFFORT=''
+NEVER_SEND_PATH="$CONFIG/dispatch-never-send"
 while [ $# -gt 0 ]; do
   case "$1" in
     --record-dispatch) MODE=dispatch; shift ;;
@@ -397,12 +410,14 @@ missing_provider=$(jq -r '
 ' "$RULES" | while IFS=$'\t' read -r location harness; do
   if ! fm_quota_single_provider_for_harness "$harness" >/dev/null; then
     printf '%s\t%s\n' "$location" "$harness"
-    break
   fi
 done)
 if [ -n "$missing_provider" ]; then
-  IFS=$'\t' read -r location harness <<< "$missing_provider"
-  die "malformed rules file: $RULES_PATH - $location profiles whose harness lacks one authoritative provider family require provider: $harness"
+  missing_provider_detail=''
+  while IFS=$'\t' read -r location harness; do
+    missing_provider_detail="${missing_provider_detail:+$missing_provider_detail; }$location profiles whose harness lacks one authoritative provider family require provider: $harness"
+  done <<< "$missing_provider"
+  die "malformed rules file: $RULES_PATH - $missing_provider_detail"
 fi
 
 # ---- harness -> provider map, from the single owner in fm-quota-axi-lib.sh -----
@@ -449,6 +464,41 @@ RESP_FILE=$(mktemp) || die "mktemp failed"
 RESP_HEADERS=$(mktemp) || die "mktemp failed"
 QUOTA=$(mktemp) || die "mktemp failed"
 TASK_TEXT=$(mktemp) || die "mktemp failed"
+SEND_TEXT=$(mktemp) || die "mktemp failed"
+
+never_send_off() {
+  echo "dispatch-resolve: off ($1; nothing sent)" >&2
+  exit 0
+}
+
+# Checks every string the request carries, so no text reaches the network
+# unchecked. grep's own stderr is discarded because it can echo the pattern.
+never_send_check() {
+  local list value n=0 rc
+  [ -e "$NEVER_SEND_PATH" ] || [ -L "$NEVER_SEND_PATH" ] || return 0
+  { [ -f "$NEVER_SEND_PATH" ] && [ -r "$NEVER_SEND_PATH" ]; } \
+    || never_send_off "$NEVER_SEND_PATH is not a readable regular file"
+  # Collapse whitespace runs on both sides so a value the brief wraps across
+  # lines or spaces differently still matches
+  jq -r '.. | strings | gsub("\\s+"; " ")' <<<"$REQUEST" > "$SEND_TEXT" 2>/dev/null \
+    || never_send_off "could not extract the request text to check"
+  list=$(jq -Rr 'gsub("\\s+"; " ")' "$NEVER_SEND_PATH" 2>/dev/null) \
+    || never_send_off "could not read $NEVER_SEND_PATH"
+  while IFS= read -r value; do
+    n=$((n + 1))
+    value=${value# }
+    value=${value% }
+    case "$value" in
+      ''|'#'*) continue ;;
+    esac
+    grep -qiF -e "$value" "$SEND_TEXT" 2>/dev/null; rc=$?
+    case "$rc" in
+      0) never_send_off "brief text matches $NEVER_SEND_PATH line $n" ;;
+      1) ;;
+      *) never_send_off "could not check the request text against $NEVER_SEND_PATH line $n" ;;
+    esac
+  done <<<"$list"
+}
 
 # Send Jev only the task-specific sections parsed by the shared brief-heading library.
 # A brief with neither section goes whole. Ship delivery mode is deliberately not sent.
@@ -487,6 +537,7 @@ command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
         }
       }
     }')
+  never_send_check
   T0=$(fm_timing_now_ms)
   HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -D "$RESP_HEADERS" -o "$RESP_FILE" -w '%{http_code}' \
     -X POST "$TS_BASE/v1/systemone" -H 'Content-Type: application/json' \
