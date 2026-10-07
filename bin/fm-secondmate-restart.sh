@@ -40,6 +40,10 @@
 # restart gets the ordinary re-read nudge and is reported as a nudge, never as a
 # clean reload. Once a relaunch is attempted, any failed or ambiguous result is
 # reported as unknown rather than attributing it to either incarnation.
+# A mate that is asleep (bin/fm-secondmate-sleep.sh) is never asked, nudged,
+# or restarted: it is reported as asleep and left so until an explicit wake. The
+# relaunch runs under the mate's per-mate liveness lock, the one sleep holds while
+# it stops the agent and writes its marker, and rechecks that marker inside it.
 #
 # Placement changes the transport and nothing else. A local mate is restarted
 # with bin/fm-control.sh <id> relaunch; a remote mate is restarted by running THAT
@@ -60,16 +64,16 @@
 #   FM_SECONDMATE_PERSIST_WAIT  seconds to wait for one mate's persist answer (900)
 #   FM_SECONDMATE_PERSIST_POLL  seconds between checks of that answer (5)
 #
-# Exit status: 0 every named mate restarted; 3 at least one was nudged or left
-# unreached and every mate was still accounted for; 1 the input itself is
-# unusable; 2 invalid use.
+# Exit status: 0 every named mate restarted or was left asleep; 3 at least one
+# was nudged or left unreached and every mate was still accounted for; 1 the
+# input itself is unusable; 2 invalid use.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  sed -n '2,65{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,69{s/^# \{0,1\}//;p;}' "$0"
 }
 
 case "${1:-}" in
@@ -89,13 +93,12 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
 # shellcheck source=bin/fm-secondmate-nudge-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
-# shellcheck source=bin/fm-pending-reply-lib.sh
-. "$SCRIPT_DIR/fm-pending-reply-lib.sh"
+# shellcheck source=bin/fm-secondmate-liveness-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-liveness-lib.sh"
 
-PERSIST_WAIT=${FM_SECONDMATE_PERSIST_WAIT:-900}
-PERSIST_POLL=${FM_SECONDMATE_PERSIST_POLL:-5}
-case "$PERSIST_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_PERSIST_WAIT must be a non-negative integer: $PERSIST_WAIT" >&2; exit 2 ;; esac
-case "$PERSIST_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_PERSIST_POLL must be a positive integer: $PERSIST_POLL" >&2; exit 2 ;; esac
+fm_secondmate_persist_bounds || exit 2
+PERSIST_WAIT=$FM_SECONDMATE_PERSIST_WAIT_SECS
+PERSIST_POLL=$FM_SECONDMATE_PERSIST_POLL_SECS
 
 IDS=()
 for arg in "$@"; do
@@ -131,6 +134,7 @@ RESTART_RESULT=()
 restarted_count=0
 nudged_count=0
 unreached_count=0
+asleep_count=0
 
 # The first line of a command's output that carries anything, flattened to one
 # readable line with its "error: " prefix dropped. A refusal's own words are the
@@ -160,6 +164,28 @@ report_unreached() {  # <id> <reason>
 }
 
 restart_mate() {  # <array-index>
+  local i=$1 id tries=0
+  id=${IDS[$i]}
+  until fm_secondmate_liveness_lock "$id"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 120 ]; then
+      printf 'unreached: %s: another liveness check kept holding this mate, so it was not restarted\n' "$id"
+      return
+    fi
+    sleep 1
+  done
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    printf 'asleep: %s: %s; not restarted\n' "$id" "$(fm_secondmate_asleep_line)"
+  else
+    relaunch_mate "$i"
+  fi
+  fm_secondmate_liveness_unlock "$id"
+}
+
+# The relaunch itself, run under the mate's liveness lock with its sleep marker
+# rechecked, so a sleep that lands after the persist answer can never be left
+# with a running agent behind its marker.
+relaunch_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
   if [ "${PLACEMENT[i]}" = remote ]; then
@@ -232,6 +258,7 @@ harvest_restarts() {
     case "$out" in
       restarted:*) restarted_count=$((restarted_count + 1)) ;;
       nudged:*) nudged_count=$((nudged_count + 1)) ;;
+      asleep:*) asleep_count=$((asleep_count + 1)) ;;
       *) unreached_count=$((unreached_count + 1)) ;;
     esac
     PLAN[i]="done"
@@ -256,6 +283,12 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
   HARNESS[i]=""
   MODEL[i]=""
   EFFORT[i]=""
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    PLAN[i]="asleep"
+    REASON[i]=$(fm_secondmate_asleep_line)
+    i=$((i + 1))
+    continue
+  fi
   if ! fm_secondmate_restart_capable "$STATE/$id.meta"; then
     REASON[i]=$FM_SECONDMATE_RESTART_REASON
     i=$((i + 1))
@@ -286,21 +319,12 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
     fi
   fi
 
-  if ! corr=$(fm_pending_reply_create "$FM_HOME" "$STATE" "$id" \
-    "$FM_SECONDMATE_PERSIST_REQUEST"); then
-    REASON[i]="its answer about the open work cannot be tracked, so a clean reload could not be proven"
+  if ! fm_secondmate_persist_ask "$FM_HOME" "$STATE" "$id" "$FM_SECONDMATE_PERSIST_REQUEST"; then
+    REASON[i]=$FM_SECONDMATE_PERSIST_REASON
     i=$((i + 1))
     continue
   fi
-  if ! send_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    FM_PENDING_REPLY_EXISTING_CORR="$corr" \
-    "$SCRIPT_DIR/fm-send.sh" "$id" "$FM_SECONDMATE_PERSIST_REQUEST" 2>&1); then
-    fm_pending_reply_discard_undelivered "$STATE" "$corr" >/dev/null 2>&1 || true
-    REASON[i]="the request to write down its open work could not be delivered: $(first_reported_line "$send_out")"
-    i=$((i + 1))
-    continue
-  fi
-  CORR[i]=$corr
+  CORR[i]=$FM_SECONDMATE_PERSIST_CORR
   DEADLINE[i]=$(($(date +%s) + PERSIST_WAIT))
   PLAN[i]="persisted-pending"
   i=$((i + 1))
@@ -319,6 +343,10 @@ i=0
 while [ "$i" -lt "${#IDS[@]}" ]; do
   if [ "${PLAN[i]}" = persisted-pending ]; then
     pending_count=$((pending_count + 1))
+  elif [ "${PLAN[i]}" = asleep ]; then
+    asleep_count=$((asleep_count + 1))
+    printf 'asleep: %s: %s; not restarted\n' "${IDS[$i]}" "${REASON[i]}"
+    PLAN[i]="done"
   else
     fall_back_to_nudge "${IDS[$i]}" "${REASON[i]}"
     PLAN[i]="done"
@@ -371,7 +399,7 @@ done
 
 # --- summary ---------------------------------------------------------------
 
-printf 'summary: %d of %d restarted, %d nudged, %d unreached\n' \
-  "$restarted_count" "${#IDS[@]}" "$nudged_count" "$unreached_count"
+printf 'summary: %d of %d restarted, %d nudged, %d unreached, %d asleep\n' \
+  "$restarted_count" "${#IDS[@]}" "$nudged_count" "$unreached_count" "$asleep_count"
 [ "$((nudged_count + unreached_count))" -eq 0 ] || exit 3
 exit 0

@@ -766,6 +766,33 @@ test_parent_decision_is_untrusted_contradiction_only() {
   pass "parent decisions remain untrusted contradiction evidence"
 }
 
+# A mate put to sleep on purpose has a stopped endpoint by design. Bearings must
+# report it asleep with its reason, never as an unhealthy endpoint or an
+# unavailable home; the same stopped endpoint without the marker is the control.
+test_asleep_secondmate_is_reported_asleep_not_dead() {
+  local home mate fakebin json
+  home=$(make_home asleep-mate)
+  mate="$TMP_ROOT/asleep-mate-home"
+  make_valid_secondmate_home sleeper "$mate"
+  append_secondmate_registry "$home" sleeper "$mate"
+  fm_write_secondmate_meta "$home/state/sleeper.meta" "$mate" "firstmate:dead-sleeper" sample
+  fakebin=$(make_fakebin "$home")
+
+  json=$(run "$home" "$fakebin" --json)
+  printf '%s' "$json" | jq -e '.unhealthy_endpoints // [] | any(.[]; .id == "sleeper")' >/dev/null \
+    || fail "fixture: the stopped endpoint should read unhealthy without a sleep marker: $json"
+
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=outside the current focus\n' > "$home/state/sleeper.asleep"
+  json=$(run "$home" "$fakebin" --json)
+  printf '%s' "$json" | jq -e '
+    (.secondmates | any(.[]; .id == "sleeper" and .state == "asleep"
+        and .reason == "outside the current focus"
+        and .doing == "asleep since 2026-10-06T12:00:00Z (by captain): outside the current focus"))
+      and (.unhealthy_endpoints // [] | any(.[]; .id == "sleeper") | not)
+  ' >/dev/null || fail "bearings did not report the asleep mate as asleep: $json"
+  pass "an asleep secondmate is reported asleep with its reason, never as a dead endpoint"
+}
+
 test_parent_evidence_reconciles_by_verb_and_key() {
   local home hold blocked decision fakebin canonical mate child
   home=$(make_home keyed-parent-evidence)
@@ -3371,6 +3398,7 @@ test_bad_secondmate_homes_never_revive_parent_work
 test_oversized_secondmate_summary_stays_strict_unknown
 test_secondmate_and_child_bounds_are_disclosed
 test_parent_decision_is_untrusted_contradiction_only
+test_asleep_secondmate_is_reported_asleep_not_dead
 test_parent_evidence_reconciles_by_verb_and_key
 test_nonprogressing_child_states_are_explicit
 test_registry_unavailability_and_bounds_are_explicit

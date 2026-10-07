@@ -58,6 +58,8 @@ FM_SM_LIVE_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$FM_SM_LIVE_LIB_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-secondmate-sleep-lib.sh
+. "$FM_SM_LIVE_LIB_DIR/fm-secondmate-sleep-lib.sh"
 
 # Per-task probe+kill+relaunch serialization. A busy lock means another
 # supervisor (the other sweep, or a racing tick) is mid-episode on this mate;
@@ -115,17 +117,20 @@ fm_secondmate_liveness_recent_attempts() {  # <id> <window-secs>
 #
 # Read-only probe of one registered secondmate's recorded endpoint. Populates:
 #
-#   FM_SM_LIVE_STATUS  silent | alive | relaunchable | skipped
+#   FM_SM_LIVE_STATUS  silent | alive | relaunchable | skipped | asleep
 #   FM_SM_LIVE_STATE   the raw classifier/state word
 #   FM_SM_LIVE_KILL    1 when relaunch must first kill a confirmed-dead local
 #                      endpoint (its shell husk occupies the name)
 #   FM_SM_LIVE_CAUSE   relaunch cause phrase, on relaunchable
 #   FM_SM_LIVE_WHERE   backend=<b> or host=<h>, on relaunchable
-#   FM_SM_LIVE_REASON  exact skip suffix, on skipped
+#   FM_SM_LIVE_REASON  exact skip suffix, on skipped; the sleep report line, on asleep
 #   FM_SM_LIVE_LINE    verbose already-live line body, on alive
 #
 # `silent` means the meta records no endpoint at all - that shape is owned by
-# secondmate-provisioning recovery, not liveness.
+# secondmate-provisioning recovery, not liveness. `asleep` means the mate was
+# put to sleep on purpose (bin/fm-secondmate-sleep.sh): its stopped agent is
+# the intended state, so the endpoint is not even probed and nothing relaunches
+# it until an explicit wake.
 #
 # The caller must hold fm_secondmate_liveness_lock for <id> whenever a
 # relaunchable verdict could be acted on.
@@ -134,6 +139,11 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   FM_SM_LIVE_STATUS=skipped FM_SM_LIVE_STATE=unknown FM_SM_LIVE_KILL=0
   FM_SM_LIVE_CAUSE='' FM_SM_LIVE_WHERE='' FM_SM_LIVE_REASON='' FM_SM_LIVE_LINE=''
   local window harness remote_host remote_rc out agent_state readiness_reason route_out remote_backend
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    FM_SM_LIVE_STATUS=asleep
+    FM_SM_LIVE_REASON=$(fm_secondmate_asleep_line)
+    return 0
+  fi
   window=$(fm_meta_get "$meta" window)
   [ -n "$window" ] || { FM_SM_LIVE_STATUS=silent; return 0; }
   harness=$(fm_meta_get "$meta" harness)
