@@ -432,6 +432,40 @@ test_sweep_refuses_relaunch_on_ledger_errors() {
   pass "sweep: an unreadable or unwritable relaunch ledger refuses to kill or spawn"
 }
 
+# A mate put to sleep (bin/fm-secondmate-sleep.sh) has its agent deliberately
+# stopped, so its endpoint reads exactly like a crashed one. Both liveness
+# callers must leave it asleep: the sweep says so once, the watcher's poll probe
+# never yields a relaunchable verdict.
+test_sweep_leaves_asleep_secondmate_asleep() {
+  local w fb tmuxfb log out probe
+  w=$(new_world sweep-asleep)
+  add_sm_home "$w" sm1 firstmate:fm-sm1
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=outside the current focus\n' \
+    > "$w/home/state/sm1.asleep"
+  fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+  log="$w/calls.log"; : > "$log"
+
+  out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log")
+
+  assert_contains "$out" "BOOTSTRAP_INFO: secondmate sm1 asleep since 2026-10-06T12:00:00Z (by captain): outside the current focus" \
+    "the sweep should name the sleeping mate instead of relaunching it"
+  [ "$(printf '%s\n' "$out" | grep -c 'secondmate sm1 asleep')" -eq 1 ] \
+    || fail "the sweep should name the sleeping mate exactly once: $out"
+  [ ! -s "$log" ] || fail "an asleep secondmate must never be killed or relaunched: $(cat "$log")"
+  assert_absent "$w/home/state/.secondmate-relaunch-sm1" "an asleep secondmate gained a relaunch attempt"
+
+  # shellcheck disable=SC2016 # positional params expand in the child shell.
+  probe=$(PATH="$tmuxfb:$BASE_PATH" FM_TEST_PANE_CMD=zsh FM_TMUX_CALL_LOG="$log" \
+    STATE="$w/home/state" FM_HOME="$w/home" bash -c '
+      . "$0/bin/fm-secondmate-liveness-lib.sh"
+      fm_secondmate_liveness_probe "$1" sm1 poll
+      printf "%s|%s\n" "$FM_SM_LIVE_STATUS" "$FM_SM_LIVE_REASON"
+    ' "$ROOT" "$w/home/state/sm1.meta")
+  [ "$probe" = 'asleep|asleep since 2026-10-06T12:00:00Z (by captain): outside the current focus' ] \
+    || fail "the watcher's poll probe must report the mate asleep, not relaunchable, got: $probe"
+  pass "sweep: an asleep secondmate is named once and never relaunched by either liveness caller"
+}
+
 test_sweep_leaves_alive_secondmate_untouched() {
   local w fb tmuxfb log out
   w=$(new_world sweep-alive)
@@ -708,6 +742,7 @@ test_herdr_agent_state_preserves_husk_classifier
 test_agent_state_dispatcher_and_compatibility
 test_sweep_respawns_confirmed_dead_secondmate
 test_sweep_leaves_alive_secondmate_untouched
+test_sweep_leaves_asleep_secondmate_asleep
 test_sweep_respawns_authoritatively_missing_pi_secondmate
 test_sweep_respawns_authoritatively_missing_pi_signed_secondmate
 test_sweep_never_acts_on_ambiguous_existing_process

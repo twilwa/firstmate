@@ -386,6 +386,10 @@ secondmate_sync() {
   # /updatefirstmate, startup owns the live-convergence send itself because it is
   # a deterministic locked sweep and can report success as BOOTSTRAP_INFO while
   # preserving failed sends as NUDGE_SECONDMATES retry markers.
+  # A mate put to sleep (bin/fm-secondmate-sleep.sh) has no agent to steer, so
+  # it is never nudged here: its home still fast-forwards, any retry marker or
+  # reread generation it already holds stays durable, and its wake launch reads
+  # the converged instructions and inherited files.
   [ -d "$STATE" ] || return 0
   local primary_head
   if ! primary_head=$(primary_head_commit "$FM_ROOT"); then
@@ -415,6 +419,7 @@ secondmate_sync() {
 
   secondmate_send_nudge() {
     local id=$1 home=$2 commit=$3 instr=$4 selector marker out
+    ! fm_secondmate_asleep "$STATE" "$id" || return 0
     selector="fm-$id"
     marker=$(secondmate_nudge_marker_path "$id") || {
       echo "NUDGE_SECONDMATES: secondmate $id: send failed: unsafe id"
@@ -476,6 +481,7 @@ secondmate_sync() {
           ;;
       esac
       [ "$remote" -ne 1 ] || continue
+      ! fm_secondmate_asleep "$STATE" "$id" || continue
       meta="$STATE/$id.meta"
       [ -f "$meta" ] && [ "$(fm_meta_get "$meta" kind)" = secondmate ] || {
         echo "NUDGE_SECONDMATES: secondmate ${id:-unknown}: send failed: retry target has no live secondmate metadata"
@@ -531,6 +537,7 @@ secondmate_sync() {
   propagated_homes=""
   SECONDMATE_RESPAWNED_IDS=${SECONDMATE_RESPAWNED_IDS:-}
   while IFS='|' read -r id home _window _meta; do
+    ! fm_secondmate_asleep "$STATE" "$id" || continue
     validate_secondmate_home "$id" "$home" || continue
     home_real="$VALIDATED_HOME"
     case " $FF_SEEN_HOMES " in
@@ -769,6 +776,9 @@ secondmate_liveness_one() {  # <meta> <id>
       ;;
     skipped)
       echo "SECONDMATE_LIVENESS: secondmate $id: skipped: $FM_SM_LIVE_REASON"
+      ;;
+    asleep)
+      echo "BOOTSTRAP_INFO: secondmate $id $FM_SM_LIVE_REASON; left asleep until bin/fm-secondmate-sleep.sh wake $id"
       ;;
   esac
   fm_secondmate_liveness_unlock "$id"

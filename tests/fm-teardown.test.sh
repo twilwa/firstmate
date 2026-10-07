@@ -2306,6 +2306,64 @@ test_teardown_missing_busy_sidecar_completes() {
   pass "teardown completes when an exact busy-state sidecar is already absent"
 }
 
+test_teardown_clears_sleep_marker() {
+  local case_dir rc
+  case_dir=$(make_case sleep-marker-cleanup)
+  write_meta "$case_dir" local-only ship
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$case_dir/state/task-x1.asleep"
+
+  set +e
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "sleep-marker-cleanup: teardown should succeed: $(cat "$case_dir/stderr")"
+  assert_absent "$case_dir/state/task-x1.asleep" \
+    "sleep-marker-cleanup: a retired id kept its sleep marker, so a mate reprovisioned under it would start asleep"
+  pass "teardown removes the retired id's sleep marker"
+}
+
+# Anything at the marker path reads as asleep, so a directory there is removed
+# too, and a marker teardown cannot remove fails the retirement loudly instead of
+# reporting success over it.
+test_teardown_clears_directory_sleep_marker_or_fails() {
+  local case_dir rc
+  case_dir=$(make_case sleep-marker-directory)
+  write_meta "$case_dir" local-only ship
+  mkdir -p "$case_dir/state/task-x1.asleep/nested"
+  : > "$case_dir/state/task-x1.asleep/nested/leftover"
+
+  set +e
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "sleep-marker-directory: teardown should succeed: $(cat "$case_dir/stderr")"
+  assert_absent "$case_dir/state/task-x1.asleep" \
+    "sleep-marker-directory: a directory at the sleep marker path survived retirement"
+
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "teardown removes a directory sleep marker (unremovable case skipped: root ignores file modes)"
+    return 0
+  fi
+  case_dir=$(make_case sleep-marker-stuck)
+  write_meta "$case_dir" local-only ship
+  mkdir -p "$case_dir/state/task-x1.asleep/locked"
+  : > "$case_dir/state/task-x1.asleep/locked/leftover"
+  chmod 500 "$case_dir/state/task-x1.asleep/locked"
+
+  set +e
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  chmod 700 "$case_dir/state/task-x1.asleep/locked"
+
+  [ "$rc" -ne 0 ] || fail "sleep-marker-stuck: teardown reported success while the sleep marker stayed in place"
+  assert_contains "$(cat "$case_dir/stderr")" "sleep marker $case_dir/state/task-x1.asleep could not be removed" \
+    "sleep-marker-stuck: teardown must name the marker it could not remove"
+  pass "teardown removes a directory sleep marker and fails loudly when the marker cannot be removed"
+}
+
 test_herdr_teardown_clears_escalation_marker() {
   local case_dir marker
   case_dir=$(make_case herdr-marker-cleanup)
@@ -4521,6 +4579,8 @@ test_local_only_force_overrides_unpushed
 test_secondmate_pr_registration_publishes_ready_line
 test_secondmate_home_teardown_delivers_final_line_or_refuses
 test_teardown_missing_busy_sidecar_completes
+test_teardown_clears_sleep_marker
+test_teardown_clears_directory_sleep_marker_or_fails
 test_herdr_teardown_clears_escalation_marker
 test_herdr_flat_teardown_refuses_orphaning_records_then_retry_completes
 test_herdr_flat_teardown_refuses_records_on_unparseable_presence

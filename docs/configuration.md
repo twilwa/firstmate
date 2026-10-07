@@ -91,6 +91,7 @@ Each effective `FM_HOME` contains private operational directories.
 - Private secondmate config-reread generations with their retry and quarantine state.
 - Per-task steering-inbox records under `state/<id>.inbox/` (`bin/fm-task-inbox-lib.sh`).
 - Parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
+- Parent-side `state/<id>.asleep` markers recording that second mate `<id>` is asleep on purpose ([`bin/fm-secondmate-sleep.sh` header](../bin/fm-secondmate-sleep.sh) owns their format and lifecycle).
 
 `config/` holds local gitignored operating choices, including explicit extension bindings under `config/extensions.d/`.
 

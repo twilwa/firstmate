@@ -11,5 +11,5 @@ metadata:
 # task-intake (folded)
 
 The fork's task-intake skill was folded back into the always-loaded contract when the fork adopted upstream's `AGENTS.md` structure.
-`AGENTS.md` section 7 "Intake and authority" and "Dispatch and supervision handoff" own project resolution, secondmate routing (including seeded `local-only` work), ship or scout classification, delivery mode, `yolo`, branch prefix, base branch, dispatch, and steering.
+`AGENTS.md` section 7 "Intake and authority" and "Dispatch and supervision handoff" own project resolution, secondmate routing (including seeded `local-only` work and asleep homes), ship or scout classification, delivery mode, `yolo`, branch prefix, base branch, dispatch, and steering.
 `AGENTS.md` section 4 owns profile resolution and dispatch receipts, and section 11 owns brief authoring, including the `--tests` scope choice.

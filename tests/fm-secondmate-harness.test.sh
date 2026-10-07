@@ -2647,6 +2647,50 @@ SH
   pass "B19 bootstrap respawns before inherited-config reread"
 }
 
+# A mate put to sleep has no agent to read a steer, so neither convergence
+# point may send it one: the reread generation it already holds stays durable
+# for the wake launch, which reads the converged files and clears it.
+test_asleep_secondmate_is_never_steered_by_convergence() {
+  local w head out status log report stale
+  w=$(new_world config-reread-asleep)
+  head=$(git -C "$w/main" rev-parse HEAD)
+  add_sm_worktree "$w" sm "$head"
+  mkdir -p "$w/sm/config" "$w/sm/state"
+  printf 'old\n' > "$w/sm/config/crew-harness"
+  printf 'codex\n' > "$w/home/config/crew-harness"
+  report="$w/sm/state/held-reread.report"
+  printf '%s\n' $'crew-harness\tpushed\t' > "$report"
+  stale="$w/sm/state/.fm-inherited-config-reread.held-generation"
+  fm_config_write_reread_instruction "$w/sm" "$report" "$stale" \
+    || fail "could not create the held reread generation"
+  fm_config_reread_mark_pending "$stale" "$stale.pending" \
+    || fail "could not create the held reread marker"
+  # An instruction-surface advance that would otherwise earn a re-read nudge.
+  printf 'v2\n' > "$w/main/AGENTS.md"
+  git -C "$w/main" add AGENTS.md
+  git -C "$w/main" commit -qm c2
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$w/home/state/sm.asleep"
+  log="$w/config-reread-asleep.tmux.log"
+
+  out=$(run_config_push "$w" "$log" 2>&1); status=$?
+  expect_code 0 "$status" "config push should succeed around an asleep mate"$'\n'"$out"
+  assert_contains "$out" "secondmate sm: skipped - asleep since 2026-10-06T12:00:00Z (by captain): parked" \
+    "config push should say the mate is asleep"
+  assert_not_contains "$out" "config-reread: sent" "config push must not steer an asleep mate"
+
+  out=$(run_bootstrap "$w" "$log")
+  assert_not_contains "$out" "nudged fm-sm" "bootstrap must not nudge an asleep mate"
+  assert_not_contains "$out" "NUDGE_SECONDMATES:" "an asleep mate is not a failed nudge"
+  assert_not_contains "$out" "CONFIG_REREAD:" "bootstrap must not send a reread to an asleep mate"
+
+  [ -z "$(inbox_stream "$w/home/state" sm)" ] || fail "an asleep mate was steered: $(inbox_stream "$w/home/state" sm)"
+  [ ! -s "$log" ] || assert_not_contains "$(cat "$log")" "Firstmate instruction waiting" \
+    "an asleep mate's pane was rung"
+  assert_present "$stale" "the held reread generation was dropped while the mate slept"
+  assert_present "$stale.pending" "the held reread marker was dropped while the mate slept"
+  pass "B20 an asleep secondmate keeps its held reread generation and is never steered by convergence"
+}
+
 test_spawn_quarantines_pending_rereads_on_cleanup_failure() {
   local w sm report stale fakebin real_rm out status launchlog quarantine_root quarantined_count
   local quarantine_dirs before_quarantine_dirs after_quarantine_dirs n dir
@@ -2768,6 +2812,7 @@ test_config_reread_stops_after_failed_generation
 test_config_reread_skips_when_unchanged_and_reads_after_push
 test_config_reread_bootstrap_path_and_spawn_flexibility
 test_bootstrap_respawns_before_config_reread
+test_asleep_secondmate_is_never_steered_by_convergence
 test_spawn_quarantines_pending_rereads_on_cleanup_failure
 test_bootstrap_detect_only_does_not_create_state
 

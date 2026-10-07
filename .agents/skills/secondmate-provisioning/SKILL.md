@@ -2,8 +2,8 @@
 name: secondmate-provisioning
 description: >-
   Agent-only reference for persistent secondmate setup and retirement.
-  Use when creating, seeding, validating, launching, recovering, handing backlog to, pushing inherited local material into, or retiring a secondmate home, or when editing data/secondmates.md.
-  Covers local leases, whole-home remote routes, transactional seeding, record intake for an existing or inherited domain, project clone restrictions, secondmate harness pins, inherited local-material push, idle charter, handoff helper, and teardown safety.
+  Use when creating, seeding, validating, launching, recovering, handing backlog to, pushing inherited local material into, sleeping or waking, or retiring a secondmate home, or when editing data/secondmates.md.
+  Covers local leases, whole-home remote routes, transactional seeding, record intake for an existing or inherited domain, project clone restrictions, secondmate harness pins, inherited local-material push, idle charter, handoff helper, sleep and wake, and teardown safety.
 user-invocable: false
 metadata:
   internal: true
@@ -11,7 +11,7 @@ metadata:
 
 # secondmate-provisioning
 
-Use this reference before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a persistent secondmate, and before editing `data/secondmates.md`.
+Use this reference before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, sleeping or waking, or retiring a persistent secondmate, and before editing `data/secondmates.md`.
 
 Keep the always-inline routing rules in `AGENTS.md` section 7 authoritative: route by natural-language `scope:`; a local-only project's landing authority stays with the primary that seeded its bound copy.
 The charter `bin/fm-brief.sh` seeds into the secondmate's own `data/charter.md` owns idle-by-default.
@@ -271,6 +271,15 @@ The main firstmate reconciles only direct reports.
 Each secondmate is a firstmate in its own home, so it runs recovery on startup and reconciles its own crewmates.
 A secondmate's recovery reconciles only work that is already its own and then idles.
 It never initiates a survey or audit during recovery.
+
+## Sleep and wake
+
+A persistent secondmate that should cost nothing until it is needed is put to sleep, not retired: `FM_HOME=<this-firstmate-home> bin/fm-secondmate-sleep.sh sleep <id>... --by <who> --reason <text>` stops its agent, watcher, and process-event listeners and leaves its home untouched, and `bin/fm-secondmate-sleep.sh wake <id>...` relaunches it.
+Sleep and wake are always explicit captain or main-firstmate actions, never automatic.
+`bin/fm-secondmate-sleep.sh status` reads every registered mate as asleep or awake.
+Sleep retires only the process-event sources no held captain call is bound to: a decision-bound source stays registered with its binding but does not run while the mate sleeps, so a board answer given meanwhile is queued by Lavish and captured once wake relaunches that listener.
+The script's `--help` owns the marker, every step and its refusals, and which fleet paths leave a sleeping mate alone; never hand-write or delete its marker.
+An asleep mate is not dead: liveness recovery never relaunches it, never respawn it by hand under Recovery above, and `bin/fm-send.sh` refuses to steer it; only a wake brings it back.
 
 ## Retirement and teardown
 
