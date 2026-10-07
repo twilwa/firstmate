@@ -81,7 +81,8 @@ tasks_in() {  # <home> <tasks-axi args...>
 }
 
 # Hold reasons are stored encoded (bin/fm-hold-reason-lib.sh), so assertions on
-# a reason's text read through the public reader that decodes them.
+# a reason's text read through the public reader, which decodes each reason and
+# prints it as a JSON-quoted string.
 public_show() {  # <home> <task-id>
   FM_HOME="$1" "$ROOT/bin/fm-tasks-axi.sh" show "$2" --full
 }
@@ -1221,7 +1222,7 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
     "the re-dated deferral was not reported"
   show=$(public_show "$home" sample-keyed-defer)
   assert_contains "$show" "hold_until: 2026-11-01" "a repeated later did not carry its new date"
-  assert_contains "$show" "hold_reason: captain timing choice pending" \
+  assert_contains "$show" 'hold_reason: "captain timing choice pending"' \
     "a repeated deferral rewrote the gate text the call was held under"
   assert_contains "$show" "Deferred until: 2026-11-01" "the re-dated deferral lost its date"
   records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
@@ -1237,7 +1238,7 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
     || fail "could not register the expired defer fixture"
   show=$(public_show "$home" sample-expired-defer)
   assert_contains "$show" "held: no" "precondition: the elapsed date still reports as held"
-  assert_contains "$show" "hold_reason: captain expired timing pending" \
+  assert_contains "$show" 'hold_reason: "captain expired timing pending"' \
     "precondition: the elapsed date gate dropped the hold reason"
   out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
@@ -1245,7 +1246,7 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   show=$(public_show "$home" sample-expired-defer)
   assert_contains "$show" "held: yes" "deferring an expired hold did not re-date it"
   assert_contains "$show" "hold_until: 2026-10-01" "the expired hold lost its new date"
-  assert_contains "$show" "hold_reason: captain expired timing pending" \
+  assert_contains "$show" 'hold_reason: "captain expired timing pending"' \
     "deferring an expired hold rewrote the gate text the call was held under"
   assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
     "deferring an expired captain hold restarted the call's age"
