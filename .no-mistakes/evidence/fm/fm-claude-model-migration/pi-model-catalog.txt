@@ -1,0 +1,16 @@
+## pi --list-models claude-opus-5-5 (Pi default profile model anthropic/claude-opus-5-5)
+provider   model                     context  max-out  thinking  images
+anthropic  claude-opus-4-5-20251101  200K     64K      yes       yes   
+anthropic  claude-opus-5-5           1M       128K     yes       yes   
+opencode   claude-opus-5-5           1M       128K     yes       yes   
+## pi --list-models claude-sonnet-5 (old example id, for comparison)
+provider    model                              context  max-out  thinking  images
+anthropic   claude-sonnet-4-5                  1M       64K      yes       yes   
+anthropic   claude-sonnet-4-5-20250929         1M       64K      yes       yes   
+anthropic   claude-sonnet-5                    1M       128K     yes       yes   
+anthropic   claude-sonnet-5-5                  1M       128K     yes       yes   
+opencode    claude-sonnet-4-5                  200K     64K      yes       yes   
+opencode    claude-sonnet-5                    1M       128K     yes       yes   
+opencode    claude-sonnet-5-5                  1M       128K     yes       yes   
+openrouter  anthropic/claude-sonnet-4.5        1M       64K      yes       yes   
+openrouter  anthropic/claude-sonnet-4.5:batch  1M       64K      yes       yes   

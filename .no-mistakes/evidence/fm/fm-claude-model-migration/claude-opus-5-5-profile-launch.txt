@@ -1,0 +1,4 @@
+## claude --model claude-opus-5-5 --effort low -p (profile flags fm-spawn derives from the example's claude rules)
+{"is_error":false,"result":"OK","models":["claude-opus-5-5"]}
+## claude --model claude-opus-5-5 --effort high -p (profile flags fm-spawn derives from the example's claude rules)
+{"is_error":false,"result":"OK","models":["claude-opus-5-5"]}

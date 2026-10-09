@@ -1,0 +1,26 @@
+## target (26a7be1): cp docs/examples/crew-dispatch.json $LAB/config/crew-dispatch.json; FM_HOME=$LAB FM_BOOTSTRAP_VERBOSE_FACTS=1 bin/fm-bootstrap.sh | grep crew
+BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+BOOTSTRAP_INFO: crew dispatch rule: The task depends on fresh news, current events, live public facts, or recent market and product changes. -> grok
+BOOTSTRAP_INFO: crew dispatch rule: The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering. -> claude/claude-opus-5-5/low
+BOOTSTRAP_INFO: crew dispatch rule: The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind. -> quota-balanced[claude/claude-opus-5-5/high, codex/gpt-5.5/high]
+BOOTSTRAP_INFO: crew dispatch default: quota-balanced[codex/gpt-5.5/medium, pi/anthropic/claude-opus-5-5/medium]
+
+## same, typed mode on (TYPESAFE_API_KEY set in lab .env; fm_control_harnesses verified set + provider ids checked)
+BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+BOOTSTRAP_INFO: crew dispatch rule: The task depends on fresh news, current events, live public facts, or recent market and product changes. -> grok
+BOOTSTRAP_INFO: crew dispatch rule: The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering. -> claude/claude-opus-5-5/low
+BOOTSTRAP_INFO: crew dispatch rule: The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind. -> quota-balanced[claude/claude-opus-5-5/high, codex/gpt-5.5/high]
+BOOTSTRAP_INFO: crew dispatch default: quota-balanced[codex/gpt-5.5/medium, pi/anthropic/claude-opus-5-5/medium]
+
+## base (2dd4b0e) example for comparison
+BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+BOOTSTRAP_INFO: crew dispatch rule: The task depends on fresh news, current events, live public facts, or recent market and product changes. -> grok
+BOOTSTRAP_INFO: crew dispatch rule: The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering. -> claude/haiku/low
+BOOTSTRAP_INFO: crew dispatch rule: The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind. -> quota-balanced[claude/claude-sonnet-5/high, codex/gpt-5.5/high]
+BOOTSTRAP_INFO: crew dispatch default: quota-balanced[codex/gpt-5.5/medium, pi/anthropic/claude-sonnet-5/medium]
+
+## adversarial: target example with the trivial-rule claude effort mutated to 'ultra' (must be rejected)
+CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: claude:ultra
+
+## adversarial: target example with pi default provider mutated to 'Claude!' in typed mode (must be rejected)
+CREW_DISPATCH: invalid config/crew-dispatch.json - default profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present
