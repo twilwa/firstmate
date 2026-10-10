@@ -1,0 +1,45 @@
+### real clock: 2026-10-10T01:58:39Z (FM_CAPTAIN_HOLD_NOW unset)
+
+## S1: captain answers 'later' deferring to tomorrow (2026-10-11) through the keyed answers intake
+live-near-defer
+deferred: live-near-defer until 2026-10-11
+answers: closed=0 deferred=1 skipped=0
+exit=0
+  state: queued
+  held: yes
+  hold_reason: "captain timing choice pending"
+  hold_until: 2026-10-11
+  body: "Captain hold set: 2026-10-10T01:58:39Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: 626d8c1fd03c75af7adc59ecbda02ed559695928d69fc884d8daa253297567c1\nResolution mode: deferred\nDeferred until: 2026-10-11\nCaptain hold answered: 2026-10-10T01:58:39Z\n\nCaptain decision:\nCaptain answered this call through captain chat.\nTask: live-near-defer\nAnswer: later\nAnswer as shown to the captain: Revisit tomorrow"
+
+## S2: same act with a far date (2099-10-01, the fixture's new date)
+live-far-defer
+deferred: live-far-defer until 2099-10-01
+answers: closed=0 deferred=1 skipped=0
+exit=0
+  state: queued
+  held: yes
+  hold_reason: "captain far timing pending"
+  hold_until: 2099-10-01
+  body: "Captain hold set: 2026-10-10T01:58:53Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: c55a8b3c7b73fc6ffc3b6d11e82c02891cb6ebefeacdca7937a24b27baae2749\nResolution mode: deferred\nDeferred until: 2099-10-01\nCaptain hold answered: 2026-10-10T01:58:53Z\n\nCaptain decision:\nCaptain answered this call through captain chat.\nTask: live-far-defer\nAnswer: later\nAnswer as shown to the captain: Revisit in October"
+
+## S3 adversarial: replay the old fixture date 2026-10-01 (now in the past) on the real clock
+live-stale-defer
+skipped: live-stale-defer (defer date 2026-10-01 must be later than UTC today 2026-10-10; nothing was recorded)
+answers: closed=0 deferred=0 skipped=1
+exit=1
+backlog unchanged by refused defer
+  state: queued
+  held: yes
+  hold_reason: "captain stale timing pending"
+  hold_until: "-"
+
+## S4 root cause repro: pin FM_CAPTAIN_HOLD_NOW=2026-09-20 (as the test does) and defer to 2026-10-01
+live-pinned-defer
+deferred: live-pinned-defer until 2026-10-01
+answers: closed=0 deferred=1 skipped=0
+exit=0
+  state: queued
+  held: no
+  hold_reason: "captain pinned timing pending"
+  hold_until: 2026-10-01
+  body: "Captain hold set: 2026-10-10T01:59:15Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: f6b0bc576720c9cc61db756c0399fae6b63bad353b3c4e980bf45655acd80e3b\nResolution mode: deferred\nDeferred until: 2026-10-01\nCaptain hold answered: 2026-10-10T01:59:15Z\n\nCaptain decision:\nCaptain answered this call through captain chat.\nTask: live-pinned-defer\nAnswer: later\nAnswer as shown to the captain: Revisit in October"

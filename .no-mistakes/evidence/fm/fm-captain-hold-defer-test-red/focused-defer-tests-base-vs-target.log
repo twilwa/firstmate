@@ -1,0 +1,29 @@
+== base (date 2026-10-10)
+ok - marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields
+ok - new, active, and released holds require the origin first with and without deferral
+ok - historical self-inventories name a workable repair that preserves sibling entries
+not ok - the defer released the captain-held task (missing: 'held: yes')
+--- output ---
+task:
+  id: sample-keyed-defer
+  title: Revisit the sample plan
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "fm-hold-v1:Y2FwdGFpbiB0aW1pbmcgY2hvaWNlIHBlbmRpbmc="
+  hold_kind: captain
+  hold_until: 2026-10-01
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: 2026-10-10
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-06-01T12:00:00Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: be5e10335a8183e4a7cab04c6d6816679be61092ce48dc6ba3ab41f04deadf78\nResolution mode: deferred\nDeferred until: 2026-10-01\nCaptain hold answered: 2026-06-01T12:00:00Z\n\nCaptain decision:\nCaptain answered this call through captain chat.\nTask: sample-keyed-defer\nAnswer: later\nAnswer as shown to the captain: Revisit in October"
+exit=1
+== target (date 2026-10-10)
+ok - a keyed defer records the answer, dates the hold, and never restarts the call's age
+ok - a bound channel's captured answers close their captain-held tasks at answer time
+exit=0
