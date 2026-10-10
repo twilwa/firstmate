@@ -1,0 +1,18 @@
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Fable 5.1 with medium effort · Claude Max
+ ▝▝   ▝▝   /tmp/fmlab.fable2581820/home
+  Updated to latest. Got 42 features, 335 bugfixes, and 108 other changes.
+  code.claude.com/docs/en/changelog for details
+❯ Lab readiness probe from bin/fm-live-lab.sh. Run no tool or command for this message. Reply with only the word LABREADY, a hyphen, and then 66df3ee81524, with no spaces.
+● LABREADY-66df3ee81524
+✻ Sautéed for 4s · done 2:14 AM
+❯ Lab check, read-only: read .agents/skills/harness-adapters/SKILL.md and docs/examples/crew-dispatch.json, then reply in exactly two lines. Line 1 starts ROLES: and lists the harnesses that file says are verified only
+  for crewmate and scout work. Line 2 starts MODELS: and lists every distinct claude model id in the example.
+  Searched for 1 pattern (ctrl+o to expand)
+● ROLES: Captain, the skill says Muse, Gemini, Rovo, AGY, and Devin are verified only for crewmate and scout work, with OpenCode 2.0 likewise crewmate and scout only.
+  MODELS: claude-opus-5-5, anthropic/claude-opus-5-5
+✻ Cooked for 7s · done 2:19 AM
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

@@ -1,0 +1,13 @@
+lab: /tmp/fmlab.fable2581820 (tear down with: bin/fm-live-lab.sh down /tmp/fmlab.fable2581820)
+tree: 2f6f507f00db3ff3e32ad7ae4c03611f8a3e21a2 from /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M4HJ8AVV6NPE44S59RBD469J
+primary: claude --setting-sources project,local --model claude-fable-5-1 --effort medium --permission-mode auto
+ok primary: claude pid 2583484 in /tmp/fmlab.fable2581820/home
+ok probe: the primary answered LABREADY-66df3ee81524
+ok trust: /tmp/fmlab.fable2581820/home is trusted in the Claude store
+ok host: skipped (empty fleet arms no supervision)
+ok watcher: skipped (empty fleet)
+ok treehouse: ~/.treehouse unchanged
+ready: /tmp/fmlab.fable2581820
+stopped: lab tmux server and lab processes
+removed: 1 Claude project entries under /tmp/fmlab.fable2581820
+removed: /tmp/fmlab.fable2581820

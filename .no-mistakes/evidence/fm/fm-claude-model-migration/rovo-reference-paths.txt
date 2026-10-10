@@ -1,0 +1,20 @@
+== 2dd4b0e: .agents/skills/harness-adapters/references/harness/rovo.md paths resolved from the skill root .agents/skills/harness-adapters/
+  MISSING ../../../../docs/verification/rovo.md -> /tmp/docs/verification/rovo.md
+  MISSING ../../../../tests/fm-rovo-signals-live-e2e.test.sh -> /tmp/tests/fm-rovo-signals-live-e2e.test.sh
+  ok      ../../../bin/fm-busy-lib.sh -> bin/fm-busy-lib.sh
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-control-lib.sh -> bin/fm-control-lib.sh
+  ok      ../../../bin/fm-harness.sh -> bin/fm-harness.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  MISSING ../../../references/common/model-and-effort.md -> references/common/model-and-effort.md
+  MISSING ../../firstmate-coding-guidelines/SKILL.md -> .agents/firstmate-coding-guidelines/SKILL.md
+== 2f6f507: .agents/skills/harness-adapters/references/harness/rovo.md paths resolved from the skill root .agents/skills/harness-adapters/
+  ok      ../../../bin/fm-busy-lib.sh -> bin/fm-busy-lib.sh
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-control-lib.sh -> bin/fm-control-lib.sh
+  ok      ../../../bin/fm-harness.sh -> bin/fm-harness.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  ok      ../../../docs/verification/rovo.md -> docs/verification/rovo.md
+  ok      ../../../tests/fm-rovo-signals-live-e2e.test.sh -> tests/fm-rovo-signals-live-e2e.test.sh
+  ok      ../firstmate-coding-guidelines/SKILL.md -> .agents/skills/firstmate-coding-guidelines/SKILL.md
+  ok      references/common/model-and-effort.md -> .agents/skills/harness-adapters/references/common/model-and-effort.md

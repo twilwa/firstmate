@@ -1,0 +1,4 @@
+$ FM_HOME=$LAB bin/fm-spawn.sh labrovo-mate --harness rovo --secondmate
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.z1hhzw
+error: rovo is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates.
+exit=1
