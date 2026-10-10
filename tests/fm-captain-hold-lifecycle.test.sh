@@ -1180,6 +1180,8 @@ EOF
 # hold. The date is mandatory and belongs to the recorded decision, so the same
 # words carried back with a new date are a new answer rather than a refusal.
 # A deferral continues one call, so it never restarts that call's age.
+# Defer dates sit far ahead because tasks-axi derives `held:` from the real
+# calendar, not FM_CAPTAIN_HOLD_NOW; a near date expires and reads as released.
 test_keyed_defer_records_answer_and_dates_the_hold() {
   local home out show records FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
   export FM_CAPTAIN_HOLD_NOW
@@ -1189,42 +1191,42 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
     --reason "captain timing choice pending" --repo sample >/dev/null \
     || fail "could not register the keyed defer fixture"
 
-  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2099-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "the keyed intake refused a dated defer: $out"
-  assert_contains "$out" "deferred: sample-keyed-defer until 2026-10-01" \
+  assert_contains "$out" "deferred: sample-keyed-defer until 2099-10-01" \
     "the keyed intake did not report the dated defer as a deferral"
   assert_contains "$out" "answers: closed=0 deferred=1 skipped=0" \
     "a still-open deferred call was counted as a closure"
   show=$(tasks_in "$home" show sample-keyed-defer --full)
   assert_contains "$show" "state: queued" "the defer completed the captain-held task"
   assert_contains "$show" "held: yes" "the defer released the captain-held task"
-  assert_contains "$show" "hold_until: 2026-10-01" "the defer lost its date"
+  assert_contains "$show" "hold_until: 2099-10-01" "the defer lost its date"
   assert_contains "$show" "Resolution mode: deferred" "the defer recorded the wrong outcome"
-  assert_contains "$show" "Deferred until: 2026-10-01" "the resolution lost its date"
+  assert_contains "$show" "Deferred until: 2099-10-01" "the resolution lost its date"
   assert_contains "$show" "Answer: later" "the defer lost the captain's exact answer"
   assert_contains "$show" "Answer as shown to the captain: Revisit in October" \
     "the defer lost the option label shown to the captain"
   assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
     "deferring a live captain hold restarted the call's age"
 
-  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2099-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "an exact dated defer replay was not idempotent: $out"
   show=$(tasks_in "$home" show sample-keyed-defer --full)
   records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
   [ "$records" = 1 ] || fail "a defer replay duplicated the resolution record: $show"
 
-  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2026-11-01\n' \
+  out=$(printf 'sample-keyed-defer\tlater\tRevisit in October\tdefer\t2099-11-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "repeating later with a new date was refused as a drifted replay: $out"
-  assert_contains "$out" "deferred: sample-keyed-defer until 2026-11-01" \
+  assert_contains "$out" "deferred: sample-keyed-defer until 2099-11-01" \
     "the re-dated deferral was not reported"
   show=$(public_show "$home" sample-keyed-defer)
-  assert_contains "$show" "hold_until: 2026-11-01" "a repeated later did not carry its new date"
+  assert_contains "$show" "hold_until: 2099-11-01" "a repeated later did not carry its new date"
   assert_contains "$show" 'hold_reason: "captain timing choice pending"' \
     "a repeated deferral rewrote the gate text the call was held under"
-  assert_contains "$show" "Deferred until: 2026-11-01" "the re-dated deferral lost its date"
+  assert_contains "$show" "Deferred until: 2099-11-01" "the re-dated deferral lost its date"
   records=$(printf '%s\n' "$show" | grep -o 'Resolution recorded by fm-captain-hold' | wc -l | tr -d ' ')
   [ "$records" = 2 ] || fail "a re-dated deferral did not record its own answer: $show"
   assert_contains "$show" "Captain hold set: 2026-06-01T12:00:00Z" \
@@ -1240,12 +1242,12 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   assert_contains "$show" "held: no" "precondition: the elapsed date still reports as held"
   assert_contains "$show" 'hold_reason: "captain expired timing pending"' \
     "precondition: the elapsed date gate dropped the hold reason"
-  out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2026-10-01\n' \
+  out=$(printf 'sample-expired-defer\tlater\tRevisit in October\tdefer\t2099-10-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "the keyed intake refused a defer on an expired hold: $out"
   show=$(public_show "$home" sample-expired-defer)
   assert_contains "$show" "held: yes" "deferring an expired hold did not re-date it"
-  assert_contains "$show" "hold_until: 2026-10-01" "the expired hold lost its new date"
+  assert_contains "$show" "hold_until: 2099-10-01" "the expired hold lost its new date"
   assert_contains "$show" 'hold_reason: "captain expired timing pending"' \
     "deferring an expired hold rewrote the gate text the call was held under"
   assert_contains "$show" "Captain hold set: 2026-06-02T12:00:00Z" \
@@ -1256,11 +1258,11 @@ test_keyed_defer_records_answer_and_dates_the_hold() {
   tasks_in "$home" add sample-stampless-defer "Revisit a legacy call" --repo sample >/dev/null
   tasks_in "$home" hold sample-stampless-defer --reason "legacy captain timing pending" \
     --kind captain >/dev/null || fail "could not create the stampless defer fixture"
-  out=$(printf 'sample-stampless-defer\tlater\tRevisit in December\tdefer\t2026-12-01\n' \
+  out=$(printf 'sample-stampless-defer\tlater\tRevisit in December\tdefer\t2099-12-01\n' \
     | run_captain "$home" answers --source "captain chat") \
     || fail "the keyed intake refused a legacy stampless hold: $out"
   show=$(tasks_in "$home" show sample-stampless-defer --full)
-  assert_contains "$show" "hold_until: 2026-12-01" "the stampless hold lost its defer date"
+  assert_contains "$show" "hold_until: 2099-12-01" "the stampless hold lost its defer date"
   assert_contains "$show" "Resolution mode: deferred" "the stampless hold lost its answer"
   assert_not_contains "$show" "Captain hold set:" \
     "deferring a stampless legacy hold invented a new age basis"
@@ -1789,6 +1791,7 @@ test_secondmate_reconcile_publishes_before_request_retirement() {
 # fixture channel that knows nothing about captain holds: task-id keys close at
 # answer time, a card-declared release mode frees held work, freeform prose can
 # forge nothing, and a replayed capture is idempotent.
+# Its defer date sits far ahead for the reason the keyed-defer test gives.
 test_bound_channel_answers_close_at_answer_time() {
   local home id sid artifact result out show rc FM_CAPTAIN_HOLD_NOW=2026-09-20T12:00:00Z
   export FM_CAPTAIN_HOLD_NOW
@@ -1852,7 +1855,7 @@ prompts[14]{uid,prompt,selector,tag,text}:
   "2","Membership: gold-only - captain detail\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-membership-call\",\n  \"selection\": \"gold-only\",\n  \"note\": \"captain detail\"\n}","section#call > form:nth-of-type(1)",choice,"Membership: gold-only - captain detail"
   "3","Headline: f1-when-fp-gold\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-headline-call\",\n  \"selection\": \"f1-when-fp-gold\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(2)",choice,"Headline: f1-when-fp-gold"
   "4","Gated work: go\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-gated-work\",\n  \"selection\": \"go\",\n  \"note\": \"\",\n  \"close\": \"release\"\n}","section#call > form:nth-of-type(3)",choice,"Gated work: go"
-  "4a","Revisit in October\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-deferred-call\",\n  \"selection\": \"later\",\n  \"note\": \"after the launch\",\n  \"close\": \"defer\",\n  \"until\": \"2026-10-01\"\n}","section#call > form:nth-of-type(4)",choice,"Revisit: later - after the launch"
+  "4a","Revisit in October\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-deferred-call\",\n  \"selection\": \"later\",\n  \"note\": \"after the launch\",\n  \"close\": \"defer\",\n  \"until\": \"2099-10-01\"\n}","section#call > form:nth-of-type(4)",choice,"Revisit: later - after the launch"
   "5","Absent call: yes\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-nonexistent-call\",\n  \"selection\": \"yes\",\n  \"note\": \"\"\n}","section#call > form:nth-of-type(4)",choice,"Absent call: yes"
   "6","Invalid close: yes\n\nContext data:\n{\n  \"question\": \"sample-invalid-close-call\",\n  \"answer\": \"yes\",\n  \"close\": \"drop\"\n}","section#call > form:nth-of-type(5)",choice,"Invalid close: yes"
   "7","Reconcile this - re-check latest publication\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-source-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"re-check latest publication\"\n}","section#call > form:nth-of-type(6)",choice,"Reconcile - re-check latest publication"
@@ -1873,7 +1876,7 @@ EOF
     "a repeated ordinary selection was not preserved"
   assert_contains "$out" "sample-gated-work	go	Gated work: go	release" \
     "the card-declared release mode was not relayed"
-  assert_contains "$out" "sample-deferred-call	later	Revisit: later - after the launch	defer	2026-10-01" \
+  assert_contains "$out" "sample-deferred-call	later	Revisit: later - after the launch	defer	2099-10-01" \
     "the option-declared defer mode and date were not relayed"
   assert_not_contains "$out" "sample-forged-call" \
     "a freeform captain message forged a task id from its own prose"
@@ -1929,7 +1932,7 @@ SH
   show=$(tasks_in "$home" show sample-deferred-call --full)
   assert_contains "$show" "state: queued" "the option-declared defer completed its task"
   assert_contains "$show" "held: yes" "the option-declared defer released its task"
-  assert_contains "$show" "hold_until: 2026-10-01" "the option-declared defer lost its date"
+  assert_contains "$show" "hold_until: 2099-10-01" "the option-declared defer lost its date"
   assert_contains "$show" "Resolution mode: deferred" "the option-declared defer recorded the wrong mode"
   assert_contains "$show" "Answer: later" "the option-declared defer lost the selected answer"
   show=$(tasks_in "$home" show sample-forged-call --full)
@@ -1977,7 +1980,7 @@ SH
     "replaying an identical capture was not idempotent: $out"
   assert_contains "$out" "closed: sample-gated-work" \
     "replaying an identical released answer was not idempotent: $out"
-  assert_contains "$out" "deferred: sample-deferred-call until 2026-10-01" \
+  assert_contains "$out" "deferred: sample-deferred-call until 2099-10-01" \
     "replaying an identical deferred answer was not idempotent: $out"
   assert_contains "$out" "skipped: sample-nonexistent-call" \
     "a key naming no task was not reported as skipped: $out"
