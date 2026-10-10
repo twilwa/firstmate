@@ -1,0 +1,20 @@
+# Lab primary: claude --model claude-fable-5-1 in disposable FM_HOME (bin/fm-lab-home.sh), private tmux socket fm-lab, cwd = run worktree
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Fable 5.1 · Claude Max
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/8be14fbb8fb5/01M4HXQTGPZ1HVHPB5SGP9BD9A
+❯ Test probe, take no fleet actions: load the harness-adapters skill and the quiet skill with the Skill tool (do not start quiet mode). Then answer in two lines: (1) which harnesses harness-adapters
+  says are verified only for crewmate and scout work; (2) the first sentence of the quiet skill body.
+● Captain, loading the two skills now as a read-only probe. No fleet actions will be taken.
+● Skill(harness-adapters)
+  ⎿  Successfully loaded skill
+● Skill(quiet)
+  ⎿  Successfully loaded skill
+● Captain, both skills loaded with no fleet actions taken. Answers:
+  1. Harness-adapters says Muse, Gemini, Rovo, AGY, and Devin are verified only for crewmate and scout work, never a secondmate or primary, and OpenCode 2.0 is likewise crewmate and scout only.
+  2. The quiet skill body opens: "Quiet supervision mode is the same token-saving daemon tradeoff as /afk, made explicit for a captain who is staying, watching the session, and does not want to exit
+     the mode just by chatting."
+✻ Brewed for 13s · done 5:35 AM
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Probe passed, no further action needed
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

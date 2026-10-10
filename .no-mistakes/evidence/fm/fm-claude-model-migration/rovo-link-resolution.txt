@@ -1,0 +1,47 @@
+# Backtick path references in harness-adapters reference files resolve from the skill root (.agents/skills/harness-adapters), the same base SKILL.md and grok.md use for ../../../bin/...
+== 51c8c10: references/harness/rovo.md
+  MISSING ../../../../docs/verification/rovo.md -> ../docs/verification/rovo.md
+  MISSING ../../../../tests/fm-rovo-signals-live-e2e.test.sh -> ../tests/fm-rovo-signals-live-e2e.test.sh
+  ok      ../../../bin/fm-busy-lib.sh -> bin/fm-busy-lib.sh
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-control-lib.sh -> bin/fm-control-lib.sh
+  ok      ../../../bin/fm-harness.sh -> bin/fm-harness.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  MISSING ../../../references/common/model-and-effort.md -> references/common/model-and-effort.md
+  MISSING ../../firstmate-coding-guidelines/SKILL.md -> .agents/firstmate-coding-guidelines/SKILL.md
+== 51c8c10: references/harness/grok.md
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-guard.sh -> bin/fm-guard.sh
+  ok      ../../../bin/fm-send.sh -> bin/fm-send.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  ok      ../../../bin/fm-teardown.sh -> bin/fm-teardown.sh
+  ok      ../../../bin/fm-turnend-guard-grok.sh -> bin/fm-turnend-guard-grok.sh
+  ok      ../../../bin/fm-watch-arm.sh -> bin/fm-watch-arm.sh
+  ok      ../../../docs/herdr-backend.md -> docs/herdr-backend.md
+  ok      ../../../docs/turnend-guard.md -> docs/turnend-guard.md
+  ok      ../../../tests/fm-backend-herdr.test.sh -> tests/fm-backend-herdr.test.sh
+  ok      ../../../tests/fm-composer-ghost.test.sh -> tests/fm-composer-ghost.test.sh
+  ok      references/common/model-and-effort.md -> .agents/skills/harness-adapters/references/common/model-and-effort.md
+== d27abea: references/harness/rovo.md
+  ok      ../../../bin/fm-busy-lib.sh -> bin/fm-busy-lib.sh
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-control-lib.sh -> bin/fm-control-lib.sh
+  ok      ../../../bin/fm-harness.sh -> bin/fm-harness.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  ok      ../../../docs/verification/rovo.md -> docs/verification/rovo.md
+  ok      ../../../tests/fm-rovo-signals-live-e2e.test.sh -> tests/fm-rovo-signals-live-e2e.test.sh
+  ok      ../firstmate-coding-guidelines/SKILL.md -> .agents/skills/firstmate-coding-guidelines/SKILL.md
+  ok      references/common/model-and-effort.md -> .agents/skills/harness-adapters/references/common/model-and-effort.md
+== d27abea: references/harness/grok.md
+  ok      ../../../bin/fm-composer-lib.sh -> bin/fm-composer-lib.sh
+  ok      ../../../bin/fm-guard.sh -> bin/fm-guard.sh
+  ok      ../../../bin/fm-send.sh -> bin/fm-send.sh
+  ok      ../../../bin/fm-spawn.sh -> bin/fm-spawn.sh
+  ok      ../../../bin/fm-teardown.sh -> bin/fm-teardown.sh
+  ok      ../../../bin/fm-turnend-guard-grok.sh -> bin/fm-turnend-guard-grok.sh
+  ok      ../../../bin/fm-watch-arm.sh -> bin/fm-watch-arm.sh
+  ok      ../../../docs/herdr-backend.md -> docs/herdr-backend.md
+  ok      ../../../docs/turnend-guard.md -> docs/turnend-guard.md
+  ok      ../../../tests/fm-backend-herdr.test.sh -> tests/fm-backend-herdr.test.sh
+  ok      ../../../tests/fm-composer-ghost.test.sh -> tests/fm-composer-ghost.test.sh
+  ok      references/common/model-and-effort.md -> .agents/skills/harness-adapters/references/common/model-and-effort.md

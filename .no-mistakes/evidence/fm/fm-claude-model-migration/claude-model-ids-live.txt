@@ -1,0 +1,6 @@
+$ claude -p --model claude-opus-5-5 'Reply with exactly: MODEL-OK'
+{"is_error":false,"result":"MODEL-OK","models":["claude-opus-5-5"]}
+
+$ claude -p --model claude-fable-5-1 'Reply with exactly: MODEL-OK'
+{"is_error":false,"result":"MODEL-OK","models":["claude-fable-5-1"]}
+

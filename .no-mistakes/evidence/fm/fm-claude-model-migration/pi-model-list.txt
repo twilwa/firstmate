@@ -1,0 +1,8 @@
+$ pi --list-models opus-5-5
+provider   model                       context  max-out  thinking  images
+anthropic  claude-opus-4-5-20251101    200K     64K      yes       yes   
+anthropic  claude-opus-5-5             1M       128K     yes       yes   
+anthropic  claude-sonnet-4-5-20250929  1M       64K      yes       yes   
+anthropic  claude-sonnet-5-5           1M       128K     yes       yes   
+opencode   claude-opus-5-5             1M       128K     yes       yes   
+opencode   claude-sonnet-5-5           1M       128K     yes       yes   
