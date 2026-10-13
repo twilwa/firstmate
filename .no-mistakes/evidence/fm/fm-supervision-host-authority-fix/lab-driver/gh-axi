@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+printf 'gh-axi %s\n' "$*" >> "$FORGE/gh.log"
+n=$3; s=open; [ -f "$FORGE/pr-$n/merged" ] && s=merged
+printf 'pull_request:\n  number: %s\n  state: %s\n' "$n" "$s"

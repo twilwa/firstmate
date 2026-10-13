@@ -1,0 +1,13 @@
+# Adversarial: real GitHub PR 35, with ONE base-branch read overridden per scenario (target tree)
+
+## MODE=unreadable
+exit=0
+.checks = [{"name":"required checks have not reported","state":"PENDING","bucket":"pending","url":null,"status":"PENDING","conclusion":"pending","required":true}]
+
+## MODE=required
+exit=0
+.checks = [{"name":"required checks have not reported","state":"PENDING","bucket":"pending","url":null,"status":"PENDING","conclusion":"pending","required":true}]
+
+## MODE=rules-unreadable
+exit=0
+.checks = [{"name":"required checks have not reported","state":"PENDING","bucket":"pending","url":null,"status":"PENDING","conclusion":"pending","required":true}]

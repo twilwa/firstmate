@@ -1,0 +1,156 @@
+# Lab-home drive of the REAL firstmate scripts at TARGET 4946d9c (FM_HOME = disposable lab from bin/fm-lab-home.sh; forge = local stand-in gh/gh-axi for example/repo; driver: lab-driver/drive.sh)
+=== S-attended: attended, MAIN calls bin/fm-pr-merge.sh directly on PR 300 (no attestation) - unchanged attended path
+
+$ bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/300
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/300 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6666666666666666666666666666666666666666
+verified: https://github.com/example/repo/pull/300 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+exit=0
+FORGE: PR 300 MERGED
+
+=== captain leaves: away record entered
+
+$ bin/fm-afk-contract.sh enter --words land further fixes, improvements
+Away posture recorded at 2026-10-13T21:50:31Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. Your away instructions are recorded verbatim; the away session will carry them out where it can, and anything it is unsure of, or that needs you, waits for your return. Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: not given. Spend cap: 4 concurrent workers.
+Away posture (recorded):
+  entered: 2026-10-13T21:50:31Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words (verbatim):
+    land further fixes, improvements
+exit=0
+
+=== S-PR240: away, branch calls bin/fm-pr-merge.sh directly on high-stakes PR 240 lacking the exact-model attestation
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/240
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+exit=2
+FORGE: PR 240 still open (no gh pr merge reached the forge)
+
+=== S-handset: away, branch hand-sets FM_PR_REVIEW_EXPECTED_HEAD=<live head> on PR 240
+
+$ env FM_SUPERVISION_ACTOR=branch FM_PR_REVIEW_EXPECTED_HEAD=1111111111111111111111111111111111111111 bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/240
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+exit=2
+FORGE: PR 240 still open (no gh pr merge reached the forge)
+
+=== S-wrapper-unattested: away, branch uses bin/fm-pr-review.sh merge on PR 240
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/240
+review gate: high-stakes work lacks a no-mistakes attestation for the configured exact model
+exit=1
+FORGE: PR 240 still open (no gh pr merge reached the forge)
+
+=== S-PR218: away, branch uses bin/fm-pr-review.sh merge on fully reviewed + attested PR 218 (base requires no checks)
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/218
+merge-decision: https://github.com/example/repo/pull/218 verified_head=2222222222222222222222222222222222222222 verified_at=2026-10-13T21:50:35Z
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/218 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 2222222222222222222222222222222222222222
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+verified: https://github.com/example/repo/pull/218 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+exit=0
+FORGE: PR 218 MERGED
+
+$ sh -c jq -c '.generations[-1] | {merge_decision:(.merge_decision|{decision,verified_head}), checks}' /tmp/fm-lab.jshO5T/data/pr-review-ledger/github--example--repo--218.json
+{"merge_decision":{"decision":"merge","verified_head":"2222222222222222222222222222222222222222"},"checks":null}
+exit=0
+
+$ sh -c grep 'merge landed' /tmp/fm-lab.jshO5T/state/.wake-queue || echo 'no merge-landed outcome'
+1791928231	1	check	merged-task-x1-https://github.com/example/repo/pull/300	check: merge landed: task-x1 https://github.com/example/repo/pull/300
+1791928242	2	check	merged-task-x1-https://github.com/example/repo/pull/218	check: merge landed: task-x1 https://github.com/example/repo/pull/218 away
+exit=0
+
+=== S-red: away, PR 250 has a red 'lint' check: wrapper, then direct --allow-red
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/250
+merge-decision: https://github.com/example/repo/pull/250 verified_head=3333333333333333333333333333333333333333 verified_at=2026-10-13T21:50:44Z
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+armed: state/task-x1.check.sh
+error: refusing to merge https://github.com/example/repo/pull/250
+  - check 'lint' is not green
+error: these checks are not green: lint
+exit=1
+FORGE: PR 250 still open (no gh pr merge reached the forge)
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/250 --allow-red lint
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: --allow-red is attended-only; while the away-posture record exists the green check is absolute
+exit=2
+FORGE: PR 250 still open (no gh pr merge reached the forge)
+
+=== S-stale: PR 250's ledger recorded merge for head 3333 (red, refused); the worker then pushes green head 7777 without a new review
+
+$ sh -c jq -c '.generations[-1].merge_decision|{decision,verified_head}' /tmp/fm-lab.jshO5T/data/pr-review-ledger/github--example--repo--250.json
+{"decision":"merge","verified_head":"3333333333333333333333333333333333333333"}
+exit=0
+
+$ env FM_SUPERVISION_ACTOR=branch FM_PR_REVIEW_EXPECTED_HEAD=7777777777777777777777777777777777777777 bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/250
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+exit=2
+FORGE: PR 250 still open (no gh pr merge reached the forge)
+
+$ env FM_SUPERVISION_ACTOR=branch FM_PR_REVIEW_EXPECTED_HEAD=3333333333333333333333333333333333333333 bin/fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/250
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+armed: state/task-x1.check.sh
+error: refusing to merge https://github.com/example/repo/pull/250
+  - live head 7777777777777777777777777777777777777777 does not equal ledger-reviewed head 3333333333333333333333333333333333333333
+exit=1
+FORGE: PR 250 still open (no gh pr merge reached the forge)
+
+=== S-hold: PR 260 fully reviewed but held for the captain
+
+$ bin/fm-pr-review.sh hold https://github.com/example/repo/pull/260 4444444444444444444444444444444444444444 captain's word to land
+held: https://github.com/example/repo/pull/260 head=4444444444444444444444444444444444444444 reason=captain's word to land
+exit=0
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh release-hold https://github.com/example/repo/pull/260 4444444444444444444444444444444444444444 https://example.test/decision
+error: review hold release (fm-pr-review release-hold) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)
+exit=6
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/260
+review gate: pull request is held: captain's word to land
+exit=1
+FORGE: PR 260 still open (no gh pr merge reached the forge)
+
+=== captain returns: away record archived
+
+$ bin/fm-afk-contract.sh archive
+<LAB>/state/afk-contracts/1791928231.afk-contract
+exit=0
+
+$ env FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh release-hold https://github.com/example/repo/pull/260 4444444444444444444444444444444444444444 https://example.test/decision
+error: review hold release (fm-pr-review release-hold) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)
+exit=6
+
+$ bin/fm-pr-review.sh release-hold https://github.com/example/repo/pull/260 4444444444444444444444444444444444444444 https://example.test/decision
+hold-released: https://github.com/example/repo/pull/260 head=4444444444444444444444444444444444444444 evidence=https://example.test/decision
+exit=0
+
+$ sh -c jq -c '.generations[-1].merge_decision' /tmp/fm-lab.jshO5T/data/pr-review-ledger/github--example--repo--260.json
+null
+exit=0
+
+--- forge merge calls:
+pr merge 300 --repo example/repo --match-head-commit 6666666666666666666666666666666666666666 --squash
+pr merge 218 --repo example/repo --match-head-commit 2222222222222222222222222222222222222222 --squash
+(lab removed)

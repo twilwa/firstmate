@@ -1,0 +1,18 @@
+# Live snapshot of real public PR https://github.com/twilwa/firstmate/pull/35 (unprotected main, rules [])
+$ gh pr checks <url> --required
+no required checks reported on the 'fm/fm-captain-hold-defer-test-red' branch
+$ gh api repos/twilwa/firstmate/branches/main --jq .protected
+false
+$ gh api repos/twilwa/firstmate/rules/branches/main
+[]
+## base: bin/fm-pr-review-snapshot.sh https://github.com/twilwa/firstmate/pull/35 out.json
+exit=0
+.checks =
+[{"name":"required checks have not reported","state":"PENDING","bucket":"pending","url":null,"status":"PENDING","conclusion":"pending","required":true}]
+.head = a128564a79be67b83dccef1e2c7bca1ab2773739
+
+## target: bin/fm-pr-review-snapshot.sh https://github.com/twilwa/firstmate/pull/35 out.json
+exit=0
+.checks =
+[]
+.head = a128564a79be67b83dccef1e2c7bca1ab2773739

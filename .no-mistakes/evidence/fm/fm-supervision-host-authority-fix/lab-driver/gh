@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Disposable stand-in GitHub forge for repo example/repo, state under $FORGE.
+# PR number N has $FORGE/pr-N/{head,files.json,comments.json,checks.json,merged}.
+printf '%s\n' "$*" >> "$FORGE/gh.log"
+jqx=; args=(); while [ $# -gt 0 ]; do case "$1" in --jq|-q) jqx=$2; shift 2;; *) args+=("$1"); shift;; esac; done
+set -- "${args[@]}"
+emit() { if [ -n "$jqx" ]; then jq -r "$jqx"; else cat; fi; }
+num_of() { printf '%s' "$1" | sed -E 's#.*/pull/([0-9]+).*#\1#; s#.*/pulls/([0-9]+).*#\1#; s#.*/issues/([0-9]+).*#\1#'; }
+case "${1:-} ${2:-}" in
+  "api user") echo '{"login":"maintainer"}' | emit; exit 0 ;;
+  "pr checks") n=$(num_of "$3"); echo "no required checks reported on the 'topic-$n' branch" >&2; exit 1 ;;
+  "pr view")
+    n=$(num_of "$3"); [ "$3" = "$n" ] && n=$3; P=$FORGE/pr-$n; head=$(cat $P/head)
+    state=OPEN; [ -f $P/merged ] && state=MERGED
+    jq -n --arg h "$head" --arg s "$state" --slurpfile c $P/checks.json \
+      '{state:$s,isDraft:false,mergeable:"MERGEABLE",mergeStateStatus:"CLEAN",headRefOid:$h,baseRefName:"main",statusCheckRollup:$c[0]}' | emit
+    exit 0 ;;
+  "pr merge")
+    n=$3; P=$FORGE/pr-$n; : > $P/merged; printf 'merged:\n  number: %s\n  status: ok\n' "$n"; exit 0 ;;
+  "api graphql")
+    case " $* " in
+      *" --input "*)
+        n=$(cat "$FORGE/last-pr" 2>/dev/null); # reviewThreads read; head of the PR being snapshotted
+        printf '{"data":{"repository":{"pullRequest":{"headRefOid":"%s","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' "$(cat $FORGE/pr-$n/head)" | emit; exit 0 ;;
+    esac
+    n=$(printf '%s\n' "$@" | sed -n 's/^number=//p'); P=$FORGE/pr-$n
+    m=false; s=OPEN; [ -f $P/merged ] && { m=true; s=MERGED; }
+    jq -n --arg s $s --argjson m $m '{data:{repository:{pullRequest:{state:$s,merged:$m,isInMergeQueue:false,baseRefName:"main"}}}}' | emit; exit 0 ;;
+esac
+case " $* " in
+  *" repos/example/repo/rules/branches/"*) echo '[{"type":"deletion"}]' | emit; exit 0 ;;
+  *" repos/example/repo/branches/"*) echo '{"name":"main","protected":false}' | emit; exit 0 ;;
+  *"/check-runs"*) echo '{"total_count":0,"check_runs":[]}' | emit; exit 0 ;;
+  *" /repos/example/repo/pulls/"*"/files"*) n=$(num_of "$2"); printf '[%s]\n' "$(cat $FORGE/pr-$n/files.json)"; exit 0 ;;
+  *" /repos/example/repo/issues/"*"/comments"*) n=$(num_of "$2"); printf '[%s]\n' "$(cat $FORGE/pr-$n/comments.json)"; exit 0 ;;
+  *" /repos/example/repo/pulls/"*"/reviews"*) echo '[[]]'; exit 0 ;;
+  *" /repos/example/repo/pulls/"*)
+    n=$(num_of "$2"); echo "$n" > $FORGE/last-pr
+    printf '{"head":{"sha":"%s"},"base":{"ref":"main"},"user":{"login":"worker"},"requested_reviewers":[],"requested_teams":[]}\n' "$(cat $FORGE/pr-$n/head)" | emit; exit 0 ;;
+esac
+echo "fake forge: unexpected gh call: $*" >&2; exit 91
