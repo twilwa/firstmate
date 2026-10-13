@@ -1,0 +1,4 @@
+realdir: gave-up after 18ms; lock is dir pid=4242
+stopped: gave-up after 2220ms; lock is link
+lostmutex: gave-up after 23ms; lock is link
+transient: acquired after 353ms; lock is link

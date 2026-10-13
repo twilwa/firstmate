@@ -1,0 +1,3 @@
+== r2: 20x late-claimant interleaving (staged via rmdir hook, real fm_lock_try_acquire), load avg: 13.02 ==
+TARGET 7209591 lib: 20 pass / 0 fail of 20 
+BASE 2ad1639 lib: 0 pass / 20 fail of 20 (failure: not ok - stealer lost to a late claimant that backed off (rc=1))

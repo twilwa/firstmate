@@ -1,0 +1,4 @@
+PROBE: Reloaded text absent before /reload
+PROBE: post-wait snapshot lines with Reload:
+    25: Reloaded keybindings, extensions, skills, prompts, themes, and context files
+ok - Pi Calm native /skill:ahoy geometry keeps every collapsed thinking and tool block at zero height while preserving expansion, history, restart, and Calm-off rendering

@@ -1,0 +1,4 @@
+== r2: 30x isolated Pi Calm hidden-block geometry E2E (real pi 1.1.0 in a private tmux socket) + 8 busy-loop CPU hogs on 8 cores ==
+TARGET 7209591 test: 30 pass / 0 fail of 30
+BASE 2ad1639 test: 29 pass / 1 fail of 30
+  iter 14: not ok - Pi Calm hidden-block geometry E2E did not complete the /reload viewport transition

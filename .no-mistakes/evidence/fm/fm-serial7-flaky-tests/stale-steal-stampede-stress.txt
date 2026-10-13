@@ -1,0 +1,3 @@
+== 30x test_lock_stale_steal_single_winner_under_concurrency (40 concurrent stealers), 8 busy-loop CPU hogs ==
+TARGET 482dd85: 30 pass / 0 fail of 30
+BASE 2ad1639: 30 pass / 0 fail of 30

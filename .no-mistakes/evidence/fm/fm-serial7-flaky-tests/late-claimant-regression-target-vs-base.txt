@@ -1,0 +1,9 @@
+== TARGET 482dd85 lib: late-claimant regression ==
+ok - disposable watcher refuses inherited state outside its marked lab
+ok - a stale-lock stealer still wins when a late claimant links the freed path
+exit=0
+
+== BASE 2ad1639 lib: same test ==
+ok - disposable watcher refuses inherited state outside its marked lab
+not ok - stealer lost to a late claimant that backed off (rc=1)
+exit=1

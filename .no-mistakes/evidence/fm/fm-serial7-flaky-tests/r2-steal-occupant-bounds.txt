@@ -1,0 +1,10 @@
+== r2: occupant planted on the freed path during a real fm_lock_try_acquire steal (load avg 9.31) ==
+transient = late claimant links then backs off 300ms later; stuck-link = claimant links and never backs off (stopped); realdir = a live process's real directory lock
+-- TARGET 7209591
+transient  rc=0 after   462ms; hook fired=yes; lock now symlink; steal mutex released; claimant=lost
+stuck-link rc=1 after  2007ms; hook fired=yes; lock now symlink; steal mutex released; claimant=n/a
+realdir    rc=1 after    90ms; hook fired=yes; lock now dir pid=2244419; steal mutex released; claimant=n/a
+-- BASE 2ad1639
+transient  rc=1 after   118ms; hook fired=yes; lock now symlink; steal mutex released; claimant=won
+stuck-link rc=1 after   130ms; hook fired=yes; lock now symlink; steal mutex released; claimant=n/a
+realdir    rc=1 after    87ms; hook fired=yes; lock now dir pid=2245589; steal mutex released; claimant=n/a

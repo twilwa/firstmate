@@ -1,0 +1,7 @@
+== 40x TARGET Pi Calm hidden-block geometry E2E under 8 busy-loop CPU hogs on 8 cores ==
+  iter 9: not ok - completed native Calm /skill:ahoy turn left 5 rows between the collapsed skill row and final response instead of the two standard visible-row separators
+  iter 10: not ok - completed native Calm /skill:ahoy turn left 5 rows between the collapsed skill row and final response instead of the two standard visible-row separators
+  iter 17: not ok - completed native Calm /skill:ahoy turn left 5 rows between the collapsed skill row and final response instead of the two standard visible-row separators
+  iter 25: not ok - completed native Calm /skill:ahoy turn left 5 rows between the collapsed skill row and final response instead of the two standard visible-row separators
+  iter 28: not ok - completed native Calm /skill:ahoy turn left 5 rows between the collapsed skill row and final response instead of the two standard visible-row separators
+TARGET 482dd85 test: 35 pass / 5 fail of 40
