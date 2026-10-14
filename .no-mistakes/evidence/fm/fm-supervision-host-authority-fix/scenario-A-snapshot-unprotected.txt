@@ -1,0 +1,10 @@
+### Scenario A - live review snapshot against real GitHub (read-only)
+$ gh pr checks https://github.com/twilwa/firstmate/pull/36 --required
+no required checks reported on the 'fm/fm-supervision-host-authority-fix' branch
+
+[base] fm-pr-review-snapshot.sh twilwa/firstmate#36 rc=0
+[base] required-check placeholder rows: [{"name":"required checks have not reported","state":"PENDING","bucket":"pending","url":null,"status":"PENDING","conclusion":"pending","required":true}]
+[base] .checks = [{"name":"required checks have not reported","status":"PENDING"}]
+[target] fm-pr-review-snapshot.sh twilwa/firstmate#36 rc=0
+[target] required-check placeholder rows: []
+[target] .checks = []

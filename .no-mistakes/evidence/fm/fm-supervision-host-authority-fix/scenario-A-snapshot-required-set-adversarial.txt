@@ -1,0 +1,8 @@
+### Scenario A adversarial - real cli/cli PR (trunk requires 3 checks); only 'gh pr checks' is forced to print the ambiguous message
+PR: https://github.com/cli/cli/pull/14679
+[target] rc=0
+[target] .checks status!=COMPLETED = [{"name":"required checks have not reported","status":"PENDING","required":true}]
+
+### Same PR, branch-protection read made unreadable (HTTP 502) -> required set unreadable
+[target] rc=0
+[target] .checks status!=COMPLETED = [{"name":"required checks have not reported","status":"PENDING","required":true}]

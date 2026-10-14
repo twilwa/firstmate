@@ -1,0 +1,119 @@
+### Lab FM_HOME=/tmp/fm-lab.5KWVaH (bin/fm-lab-home.sh create); gh = read-only pass-through to real GitHub, mutating calls BLOCKED
+### PR under test: https://github.com/twilwa/firstmate/pull/36 (live head 214f840f3095a226a156207232c781b435c61f44)
+
+$ bin/fm-afk-contract.sh enter --words "keep the lanes running"   (captain enters away)
+Away posture recorded at 2026-10-14T12:56:00Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. Your away instructions are recorded verbatim; the away session will carry them out where it can, and anything it is unsure of, or that needs you, waits for your return. Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: not given. Spend cap: 4 concurrent workers.
+Away posture (recorded):
+  entered: 2026-10-14T12:56:00Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words (verbatim):
+    keep the lanes running
+rc=0
+
+$ FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh init task-x1 https://github.com/twilwa/firstmate/pull/36   (standing authority: branch initializes the missing ledger)
+initialized: https://github.com/twilwa/firstmate/pull/36 head=214f840f3095a226a156207232c781b435c61f44 risk=high checkpoint_due=1791983168
+rc=0
+
+$ FM_SUPERVISION_ACTOR=branch bin/fm-pr-review.sh arm
+armed: state/review-policy.check.sh
+rc=0
+
+ledger files: github--twilwa--firstmate--36.json
+
+===== B1: branch actor calls bin/fm-pr-merge.sh directly while away (no handoff) =====
+
+$ env FM_SUPERVISION_ACTOR=branch /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-merge.sh task-x1 https://github.com/twilwa/firstmate/pull/36
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+rc=2
+
+===== B2: same, with the reviewed-head handoff set by hand to the live head =====
+
+$ env FM_SUPERVISION_ACTOR=branch FM_PR_REVIEW_EXPECTED_HEAD=214f840f3095a226a156207232c781b435c61f44 /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-merge.sh task-x1 https://github.com/twilwa/firstmate/pull/36
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+rc=2
+
+===== B3: same, with --allow-red under the record =====
+
+$ env FM_SUPERVISION_ACTOR=branch /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-merge.sh task-x1 https://github.com/twilwa/firstmate/pull/36 --allow-red Behavior portable parallel 1
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: --allow-red is attended-only; while the away-posture record exists the green check is absolute
+rc=2
+
+===== B4: branch actor goes through bin/fm-pr-review.sh merge on a ledger that does NOT pass every gate =====
+
+$ env FM_SUPERVISION_ACTOR=branch /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-review.sh merge task-x1 https://github.com/twilwa/firstmate/pull/36
+review gate: ten-minute review checkpoint has not completed on this head
+review gate: a reviewer comment, submitted review, or inline thread lacks a disposition with evidence
+review gate: final disposition and evidence have not been posted for the latest review state on this head
+review gate: high-stakes work lacks a no-mistakes attestation for the configured exact model
+rc=1
+
+ledger merge_decision now: null
+
+----- every gh call the lab made during B1-B4 -----
+      1   api --paginate repos/twilwa/firstmate/rules/branches/main
+      1   api /repos/twilwa/firstmate/issues/36/comments?per_page=100 --paginate --slurp
+      1   api /repos/twilwa/firstmate/pulls/36
+      1   api /repos/twilwa/firstmate/pulls/36/files?per_page=100 --paginate --slurp
+      1   api /repos/twilwa/firstmate/pulls/36/reviews?per_page=100 --paginate --slurp
+      1   api graphql --input /tmp/fm-pr-review-snapshot.VSI05U/graphql-request.json
+      1   api repos/twilwa/firstmate/branches/main
+      1   api user
+      1   pr checks https://github.com/twilwa/firstmate/pull/36 --required --json name,state,bucket,link
+      1   pr view https://github.com/twilwa/firstmate/pull/36 --json headRefOid -q .headRefOid
+      1   pr view https://github.com/twilwa/firstmate/pull/36 --json headRefOid,statusCheckRollup
+pr merge attempts: 0
+
+===== B5: ledger records a merge decision for an EARLIER head (0000...), handoff names the live head =====
+
+$ env FM_SUPERVISION_ACTOR=branch FM_PR_REVIEW_EXPECTED_HEAD=214f840f3095a226a156207232c781b435c61f44 /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-merge.sh task-x1 https://github.com/twilwa/firstmate/pull/36
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+note: PR merge (fm-pr-merge) proceeds for the supervision branch under the away-posture record: main is parked and its standing authority is relocated; this script's own gate still applies (docs/pi-supervision-branch.md "Postures")
+error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged
+rc=2
+pr merge attempts: 0
+
+===== C1: release-hold - main records a captain hold, the branch tries to release it while AWAY =====
+
+$ /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-review.sh hold https://github.com/twilwa/firstmate/pull/36 214f840f3095a226a156207232c781b435c61f44 captain must decide the rollout
+held: https://github.com/twilwa/firstmate/pull/36 head=214f840f3095a226a156207232c781b435c61f44 reason=captain must decide the rollout
+rc=0
+
+$ env FM_SUPERVISION_ACTOR=branch /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-review.sh release-hold https://github.com/twilwa/firstmate/pull/36 214f840f3095a226a156207232c781b435c61f44 branch thinks it is fine
+error: review hold release (fm-pr-review release-hold) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)
+rc=6
+(the hold stays unreleased: the ledger's hold_release was still null, and B6 below is refused by this same hold)
+
+===== captain returns: bin/fm-afk-contract.sh archive =====
+
+$ /tmp/fm-lab.5KWVaH/run.sh bin/fm-afk-contract.sh archive
+/tmp/fm-lab.5KWVaH/state/afk-contracts/1791982560.afk-contract
+rc=0
+
+===== C2: branch tries release-hold ATTENDED =====
+
+$ env FM_SUPERVISION_ACTOR=branch /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-review.sh release-hold https://github.com/twilwa/firstmate/pull/36 214f840f3095a226a156207232c781b435c61f44 branch thinks it is fine
+error: review hold release (fm-pr-review release-hold) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)
+rc=6
+
+===== B6 attended contrast: main calls bin/fm-pr-merge.sh directly (no handoff) - away gate no longer applies =====
+
+$ /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-merge.sh task-x1 https://github.com/twilwa/firstmate/pull/36
+error: GitHub merge refused: the review ledger holds this pull request: captain must decide the rollout; record the human decision with bin/fm-pr-review.sh release-hold before merging
+rc=2
+
+===== C3: main releases the hold with evidence (attended, MAIN's action) =====
+
+$ /tmp/fm-lab.5KWVaH/run.sh bin/fm-pr-review.sh release-hold https://github.com/twilwa/firstmate/pull/36 214f840f3095a226a156207232c781b435c61f44 captain approved the rollout in chat
+hold-released: https://github.com/twilwa/firstmate/pull/36 head=214f840f3095a226a156207232c781b435c61f44 evidence=captain approved the rollout in chat
+rc=0
+
+----- gh calls during B5-C3 -----
+pr merge attempts: 0

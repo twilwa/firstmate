@@ -1,0 +1,20 @@
+{
+  "task": "task-x1",
+  "url": "https://github.com/twilwa/firstmate/pull/36",
+  "current_head": "214f840f3095a226a156207232c781b435c61f44",
+  "generation": {
+    "head": "214f840f3095a226a156207232c781b435c61f44",
+    "risk": {
+      "level": "high",
+      "reason": "broad change: 20 files and 832 changed lines"
+    },
+    "merge_decision": null,
+    "final_disposition": null,
+    "attestations": [],
+    "hold": null,
+    "hold_release": {
+      "evidence": "captain approved the rollout in chat",
+      "released_at": "2026-10-14T12:56:54Z"
+    }
+  }
+}

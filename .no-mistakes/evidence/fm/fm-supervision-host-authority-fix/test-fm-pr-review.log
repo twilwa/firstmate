@@ -1,0 +1,27 @@
+ok - pending reviews retry, and top-level comments, submissions, and inline threads all require dispositions
+ok - a new head invalidates prior checks and review coverage
+ok - high-stakes readiness requires the configured model and no independent review when the policy count is zero
+ok - the risk classifier resolves incomplete changed-surface evidence to high stakes with a reason
+ok - authentication and authorization filenames are high stakes
+ok - conventional migrate directories are high stakes
+ok - public API definitions and conventional production infrastructure paths are high stakes
+ok - PR review, merge, shared identity, captain-hold, snapshot, classifier, and policy surfaces are high stakes
+ok - attestation changes invalidate and become part of the bound final disposition state
+ok - merge decisions bind the immediately verified head to the reviewed ledger generation
+ok - live collection reads top-level comments, submitted reviews, inline threads, and pending reviewers
+ok - only an observed exact ledger-bound final-disposition post is excluded from reviewer input
+ok - unreported required checks remain pending instead of satisfying readiness
+ok - the collector records no required checks only when the base branch provably requires none
+ok - a complete review is ready on a base that requires no checks, and an unreadable required set still blocks it
+ok - imported ledgers keep holds and null dispositions blocking ready and merge-decision
+ok - human holds survive head changes and require an evidenced release
+ok - the review wrapper applies one named red-check waiver and forwards guarded options
+ok - the merge wrapper binds its task id to the task recorded in the review ledger
+ok - review checkpoints reuse the authenticated watcher check without another monitor
+ok - non-browser changes record a head-keyed N/A reason that a new head invalidates
+ok - post-merge verification requires a forge merge of the reviewed source head
+ok - post-merge validation and recording use one exact JSON document
+ok - post-merge validates and records the same immutable staged evidence object
+ok - browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence
+ok - post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims
+ok - a failed post-merge smoke requires an owning bug and blocks Ready for QA
