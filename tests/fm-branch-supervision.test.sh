@@ -73,7 +73,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
   # and in-scope ask-user findings all waited for the captain, because nothing
   # named the authority MAIN uses attended without asking.
   case "$out_a" in
-    *"MAIN's standing authority needs no words"*"\`bin/fm-pr-review.sh merge <task> <url>\`"*"steer that worker to supply it, as routine steering"*"no init (if the repository is not already initialized, it stops and reports), the rebase step skipped, and no rebase or force-push"*"never a merge"*"Decide each ask-user finding under the ask-user-authority policy"*"a stop condition you wrote into your own earlier steer as your checkpoint, not a captain instruction"*"The words add to this set and never subtract from it."*) ;;
+    *"MAIN's standing authority needs no words"*"Initialize a GitHub pull request's missing review ledger with \`bin/fm-pr-review.sh init <task> <url>\` and arm it with \`bin/fm-pr-review.sh arm\`"*"\`bin/fm-pr-review.sh merge <task> <url>\`"*"steer that worker to supply it, as routine steering"*"no init (if the repository is not already initialized, it stops and reports), the rebase step skipped, and no rebase or force-push"*"never a merge"*"Decide each ask-user finding under the ask-user-authority policy"*"a stop condition you wrote into your own earlier steer as your checkpoint, not a captain instruction"*"The words add to this set and never subtract from it."*) ;;
     *) fail "branch prompt lost MAIN's standing authority under the away posture" ;;
   esac
   case "$out_a" in
