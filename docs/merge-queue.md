@@ -51,6 +51,7 @@ git merge --no-ff --no-edit FETCH_HEAD
 A member whose fetched head differs from the named head has moved since it was selected, so it is dropped.
 A member whose merge conflicts is dropped with `git merge --abort`, and the build continues with the next member.
 Batch numbers only increase, so a rebuilt candidate is a new branch and no candidate is ever reset, rebased, or force-pushed.
+The next batch number is 1 + the highest `<n>` of any `fm/batch-<n>` seen across `git ls-remote --heads origin` and the local refs of the shared repository (`git for-each-ref refs/heads/fm/batch-*`), so no batch number is ever reused, even by a later landing crew for the same project.
 
 ## Admission and lease
 
@@ -105,6 +106,7 @@ The guarded merge path `ship-landing` selects applies to every merge in either s
 
 Every merge moves the default branch, so the next candidate is always built on the default branch as it stands after the latest merge, and a pushed candidate whose base is no longer that head, other than through its own members landing, is rebuilt before it can prove anything.
 The crew deletes the remote candidate with `git push origin --delete fm/batch-<n>` on Firstmate's steer and keeps its local branch.
+Leftover local `fm/batch-*` refs are the accepted consequence of keeping every local branch, and Firstmate or the captain prunes them; until then they still count toward the next batch number.
 A candidate the forge already deleted after the merge, for which `git ls-remote --exit-code origin refs/heads/fm/batch-<n>` finds nothing, counts as deleted.
 Cleanup of each member's task follows once its pull request is merged or closed as landed, and cleanup of the crew's copy follows its report.
 
