@@ -1,0 +1,76 @@
+## Spawn (lab FM_HOME, private tmux socket fm-lab, isolated HOME)
+$ bin/fm-spawn.sh land-q1 $LAB/projects/alpha --scout 'bash --norc -i'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ZN2stq
+spawned land-q1 harness=bash kind=scout window=primary:fm-land-q1 worktree=/tmp/fm-lab.ZN2stq/user-home/.treehouse-fm/aea77878c863/.treehouse/alpha-f47044/1/alpha
+
+## Named member heads (103 moved after naming; 105 conflicts with 104)
+101 a06ca26ba068bbea03d5e01f98b3b26500e2b161
+102 6aa57c94df5942717ef8f631f55191bf42fd4003
+103 ee3081ca6a581c13ad02fdf67ee944815f777b16
+104 8c2591c1c3a1893005fb230542ec65dfdc831674
+105 ff0ab47c51f6f626b7e00868031e27a0281c7540
+
+## Crew candidate build in the spawned worktree (docs/merge-queue.md Candidate build)
+Switched to a new branch 'fm/batch-1'
+MERGED 101 at a06ca26
+MERGED 102 at 6aa57c9
+DROP 103: forge head e1f5c6b != named ee3081c
+MERGED 104 at 8c2591c
+DROP 105: conflicts with candidate (merge aborted)
+status: 0 dirty files
+BUILD_DONE
+
+## Firstmate lease grant: bin/fm-send.sh land-q1 --resolve-key batch-1-lease ...
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ZN2stq
+fm-send: doorbell not typed because the agent in primary:fm-land-q1 has exited; the steer is durably recorded at /tmp/fm-lab.ZN2stq/state/land-q1.inbox/001.msg for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane
+SEND_EXIT=0
+
+## Crew leased push
+To file:///tmp/fm-lab.ZN2stq/work/origin.git
+ * [new branch]      fm/batch-1 -> fm/batch-1
+PUSH_DONE
+
+## Teardown before report (scout-kind cleanup requires report)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ZN2stq
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+REFUSED: scout task land-q1 has no report at /tmp/fm-lab.ZN2stq/data/land-q1/report.md.
+The report is the work product. Have the crewmate write it, or use --force after explicit discard approval.
+TD_EXIT=1
+
+## Member merges on unchanged heads, then tree equality check
+git diff --quiet origin/main fm/batch-1 -> exit=0
+with an outside landing: git diff --quiet -> exit=1
+
+## Crew finish: delete remote candidate on steer, report, done
+schema=fm-task-inbox.v1
+at=2026-10-20T06:49:00Z
+--
+Batch 1 landed (members 101,102,104; candidate CI green). Delete remote fm/batch-1; queue finished.To file:///tmp/fm-lab.ZN2stq/work/origin.git
+ - [deleted]         fm/batch-1
+FINISH_DONE
+
+## Status log
+(status archived by teardown)
+
+## Report
+# Landing crew report
+- fm/batch-1 base=95881597d78f1af96a742e0fb78afe81e249d6e4 head=d57a5bea55937a5bcffbdaed408b05460341623f
+- members: pull/101, pull/102, pull/104; dropped: pull/103 (head moved), pull/105 (conflict)
+- CI: green (firstmate); remote branch deleted: yes; local branch kept: * fm/batch-1
+
+## Teardown after report + captain-call inventory
+complete: land-q1 captain-call inventory reviewed
+CH_EXIT=0
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ZN2stq
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for land-q1: 1897598 1898912
+teardown: force-killing leaked worktree process(es) for land-q1: 1897598 1898912
+🌳 Worktree returned to pool.
+teardown land-q1 complete (window primary:fm-land-q1, worktree /tmp/fm-lab.ZN2stq/user-home/.treehouse-fm/aea77878c863/.treehouse/alpha-f47044/1/alpha)
+Backlog: land-q1 just finished (this home keeps no markdown backlog at /tmp/fm-lab.ZN2stq/data/backlog.md). Update /tmp/fm-lab.ZN2stq/data/backlog.md - move land-q1 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+TD_EXIT=0
+
+## Status log lines as read live from $LAB/state/land-q1.status before teardown
+needs-decision [at=1792478901] [key=batch-1-lease]: candidate fm/batch-1 head=d57a5bea55937a5bcffbdaed408b05460341623f base=95881597d78f1af96a742e0fb78afe81e249d6e4 members=https://example.invalid/alpha/pull/101,https://example.invalid/alpha/pull/102,https://example.invalid/alpha/pull/104 dropped=https://example.invalid/alpha/pull/103 (head moved),https://example.invalid/alpha/pull/105 (conflict); push lease?
+resolved [key=batch-1-lease] [at=1792478911]: answered: Lease granted: push fm/batch-1 head=d57a5bea55937a5bcffbdaed408b05460341623f once.
+paused [at=1792478922] [key=batch-1]: candidate fm/batch-1 head=d57a5bea55937a5bcffbdaed408b05460341623f pushed; waiting for firstmate to report its CI result

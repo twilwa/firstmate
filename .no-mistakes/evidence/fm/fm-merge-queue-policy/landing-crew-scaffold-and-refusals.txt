@@ -1,0 +1,30 @@
+$ FM_HOME=$LAB bin/fm-brief.sh land-q1 alpha --landing-crew
+scaffolded: /tmp/fm-lab.ZN2stq/data/land-q1/brief.md (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)
+exit=0
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --scout
+error: --landing-crew cannot be combined with --scout or --secondmate
+exit=1
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --secondmate
+error: --landing-crew cannot be combined with --scout or --secondmate
+exit=1
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --mode direct-PR
+error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract
+exit=1
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --base-branch release
+error: --base-branch takes a branch name and applies only to ship and scout briefs
+exit=1
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --forge gerrit
+error: --forge and --shape apply only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract
+exit=1
+
+$ bin/fm-brief.sh land-r alpha --landing-crew --branch-prefix fix/
+error: --branch-prefix applies only to ship briefs; a scout makes no branch and a secondmate charter is not a delivery contract
+exit=1
+
+$ ls $LAB/data/land-r
+ls: cannot access '/tmp/fm-lab.ZN2stq/data/land-r': No such file or directory
