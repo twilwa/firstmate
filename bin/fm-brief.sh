@@ -761,7 +761,7 @@ This is a LANDING CREW task: you build merge-queue candidate branches that one C
    Push only a candidate branch, only after a firstmate steering message grants a lease naming that branch and head, and only once per lease; never pass \`--no-verify\`.
    Delete a remote candidate branch only when a firstmate steering message says its batch landed or was abandoned.
 2. Never rebase, reset, amend, or force-push, and never delete a local branch; a rebuilt candidate is a new branch with the next batch number.
-   The next batch number is 1 + the highest \`<n>\` of any \`fm/batch-<n>\` seen across \`git ls-remote --heads origin\` and the local refs of the shared repository (\`git for-each-ref refs/heads/fm/batch-*\`), so no batch number is ever reused.
+   The next batch number is 1 + the highest \`<n>\` of any \`fm/batch-<n>\` seen across \`git ls-remote --heads origin\` and the local refs of the shared repository (\`git for-each-ref refs/heads/fm/batch-*\`), so no batch number is reused while those refs remain.
    Stay inside this worktree; the only files you may write outside it are the report, the status file, and the steering-inbox acknowledgements below.
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
