@@ -167,7 +167,7 @@ fm_test_scope_valid() {  # <scope>
   return 1
 }
 
-fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout>
+fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout|landing>
   local scope=$1 flow=$2 lib_dir estimate_ms no_figure
   local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -178,6 +178,8 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
       case "$flow" in
         no-mistakes|direct-PR)
           printf '%s\n' 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' ;;
+        landing)
+          printf '%s\n' "Permits: no local test runs; the candidate's CI run is the only proof." ;;
         *)
           printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
       esac
