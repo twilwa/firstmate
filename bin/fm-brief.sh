@@ -753,7 +753,7 @@ $HERDR_SECTION
 
 # Setup
 $SETUP_BASE
-This is a LANDING CREW task: you build merge-queue candidate branches that one CI run proves, and firstmate merges the member pull requests itself.
+This is a LANDING CREW task: you build merge-queue candidate branches that one CI run proves; firstmate opens and merges every pull request itself - the batch pull request by default, member pull requests only in the fallback - and you never open or merge one.
 \`$FM_ROOT/docs/merge-queue.md\` owns the candidate mechanics; read it before the first build.
 
 # Rules
