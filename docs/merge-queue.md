@@ -56,6 +56,8 @@ The captain sets the cap per project; bbchat's cap on 2026-10-19 was two, includ
 Firstmate counts the full-run workflow's queued and in-progress runs with `gh-axi run list --workflow <workflow> --status queued` and `--status in_progress`, and grants a lease only while that count is below the cap.
 
 The crew asks for a lease with a `needs-decision` status line keyed `batch-<n>-lease` that names the candidate head, its base, its members, and anything dropped.
+Before granting it, Firstmate checks that every member is still mergeable into the default branch, with `gh-axi api repos/<owner>/<repo>/pulls/<number>` returning `"mergeable": true` (`null` means the forge is still computing it, so ask again), because the forge runs no CI on a conflicting head, so such a member can never show its own green.
+A conflicting member leaves the batch, is refreshed alone, and the candidate is rebuilt without it.
 Firstmate grants it with a steering message that names the branch and head, sent through `bin/fm-send.sh --resolve-key batch-<n>-lease`, and the grant covers exactly one push of that head.
 Where the project carries a pre-push lease hook, the hook enforces the same grant, and the crew never bypasses it with `--no-verify`.
 
@@ -66,15 +68,24 @@ Firstmate finds the candidate's run with `gh-axi run list --branch fm/batch-<n>`
 A run on any other commit proves nothing about the batch.
 
 The candidate's green run proves the combination of members on the default branch.
-It never replaces a member's own merge guards: each member still merges only on its own unchanged head, with its own required checks green, its current review-ledger generation passing, and the configured merge authority.
+It never replaces a member's own merge guards: each member still needs its own required checks green on its own unchanged head, its current review-ledger generation passing, and the configured merge authority, whether it merges itself or lands inside a batch pull request.
 A member whose own head shows a failure that the candidate run disproves, such as a flaky job, gets green by rerunning only that job on its unchanged head with `gh-axi run rerun <id> --failed`, or by a current explicit captain waiver naming that check through `bin/fm-pr-merge.sh`, never by a refresh.
 
 ## Landing and cleanup
 
-Firstmate merges the members in landing order through the guarded merge path `ship-landing` selects for each one.
-Nothing else lands on that default branch while a batch is landing, so the branch after the last member merges is exactly what the candidate run proved.
-After the last member lands, `git diff --quiet origin/<default-branch> fm/batch-<n>` should report no tree difference after a fresh fetch, and a difference means something outside the batch landed and the proof no longer covers what follows.
-The crew then deletes the remote candidate with `git push origin --delete fm/batch-<n>` on Firstmate's steer and keeps its local branch, and cleanup of the crew's copy follows its report.
+A proven batch lands in one of two shapes, and the guarded merge path `ship-landing` selects applies to every merge in either one.
+
+- **Member merges.** Firstmate merges the members in landing order, each on its own unchanged head.
+  Nothing else lands on that default branch while a batch is landing, so the branch after the last member merges is exactly what the candidate run proved.
+  After the last member lands, `git diff --quiet origin/<default-branch> fm/batch-<n>` should report no tree difference after a fresh fetch, and a difference means something outside the batch landed and the proof no longer covers what follows.
+- **Batch pull request.** Firstmate opens one pull request from the candidate branch, which carries its own review-ledger generation, and merges it once.
+  On 2026-10-20 bbchat's batch pull request https://github.com/twilwa/bbchat/pull/404 carried three members and merged green on its first run.
+  A squash or rebase merge leaves the member heads unreachable from the default branch, so the forge keeps every member pull request open.
+  Unless the project merges with merge commits, Firstmate then closes each member with `gh-axi pr close <number> --comment "Landed in <batch PR URL> as <default-branch commit>"`.
+
+Every merge moves the default branch, so the next candidate is always built on the default branch as it stands after the latest merge, and a pushed candidate whose base is no longer that head, other than through its own members landing, is rebuilt before it can prove anything.
+The crew deletes the remote candidate with `git push origin --delete fm/batch-<n>` on Firstmate's steer and keeps its local branch.
+Cleanup of each member's task follows once its pull request is merged or closed as landed, and cleanup of the crew's copy follows its report.
 
 ## No refresh without a conflict
 

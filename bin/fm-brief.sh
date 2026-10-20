@@ -793,7 +793,7 @@ A member whose forge head no longer matches that commit, or whose merge conflict
 Never resolve a conflict or change a member's code yourself.
 
 # Definition of done
-Keep a running record in \`$DATA/$ID/report.md\`: for every candidate, its branch, base and head commits, each member's PR URL and head commit, every dropped member and why, the CI result firstmate reports, and whether its remote branch was deleted.
+Keep a running record in \`$DATA/$ID/report.md\`: for every candidate, its branch, base and head commits, each member's PR URL and head commit, every dropped member and why, the CI result firstmate reports, any batch PR URL firstmate reports, and whether its remote branch was deleted.
 When a firstmate steering message says the queue is finished, complete the report, leave the worktree clean, append \`done [at=<epoch>]: {batches built and members they carried}\` to the status file, and stop.
 EOF
 append_brief_include
