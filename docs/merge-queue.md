@@ -16,7 +16,7 @@ The queue therefore lives in Firstmate itself, and every merge still goes throug
 
 | Cost per landed pull request | Before | With the queue |
 | --- | --- | --- |
-| Full runs for intermediate fix rounds | about one per round | none: rounds use the project's scoped feedback run |
+| Full runs for intermediate fix rounds | about one per round | none where the project has a scoped feedback run; one per round where it has none |
 | Full runs from refreshing against the default branch | one per refresh | none for a branch that does not conflict |
 | Full runs as merge proof | each pull request's own | one candidate run shared by every member, so `1/k` of a run for a batch of `k` |
 | Flake reruns | per pull request | per candidate |
@@ -28,9 +28,11 @@ The scoped feedback runs for fix rounds are not yet measured, so that column sta
 
 The queue applies to a project only when all of these hold:
 
-- A push to a `fm/batch-<n>` branch runs the project's full merge-proof job set, or that workflow can be dispatched on the branch with `gh-axi workflow run <workflow> --ref fm/batch-<n>`.
+- A batch pull request from a `fm/batch-<n>` branch runs the project's full merge-proof job set, or, for a project that lands through member merges, a push to that branch runs it or that workflow can be dispatched on the branch with `gh-axi workflow run <workflow> --ref fm/batch-<n>`.
+- Where the project has a scoped feedback run, every intermediate fix round uses it, and the full run is only the final merge proof.
 - The default branch does not require a pull request to be up to date before it merges, because that setting forces a refresh of every member and defeats the shared proof.
 
+Where the project has no scoped feedback run, fix rounds use the full run, and the queue saves only the refresh and merge-proof runs.
 When a precondition fails, land that project's pull requests one at a time through the ordinary `ship-landing` path and tell the captain which precondition blocks the queue.
 
 ## Candidate build
@@ -59,29 +61,37 @@ The crew asks for a lease with a `needs-decision` status line keyed `batch-<n>-l
 Before granting it, Firstmate checks that every member is still mergeable into the default branch, with `gh-axi api repos/<owner>/<repo>/pulls/<number>` returning `"mergeable": true` (`null` means the forge is still computing it, so ask again), because the forge runs no CI on a conflicting head, so such a member can never show its own green.
 A conflicting member leaves the batch, is refreshed alone, and the candidate is rebuilt without it.
 Firstmate grants it with a steering message that names the branch and head, sent through `bin/fm-send.sh --resolve-key batch-<n>-lease`, and the grant covers exactly one push of that head.
+Without a pre-push lease hook, Firstmate enforces the cap by hand, because the crew pushes only on Firstmate's explicit go for an exact head.
 Where the project carries a pre-push lease hook, the hook enforces the same grant, and the crew never bypasses it with `--no-verify`.
 
 ## Proof
 
 The crew pushes with a plain `git push origin fm/batch-<n>`.
+Unless the project lands through member merges, Firstmate then opens the batch pull request from `fm/batch-<n>`, and the landing crew never opens, edits, or merges any pull request.
+The batch pull request's `pull_request` CI run is the one the push lease admitted, so there is no separate unadmitted run and the lease covers the run that proves the batch.
 Firstmate finds the candidate's run with `gh-axi run list --branch fm/batch-<n>` and accepts it as proof only when the run's head commit equals the leased head and every full-run job passed.
 A run on any other commit proves nothing about the batch.
 
 The candidate's green run proves the combination of members on the default branch.
-It never replaces a member's own merge guards: each member still needs its own required checks green on its own unchanged head, its current review-ledger generation passing, and the configured merge authority, whether it merges itself or lands inside a batch pull request.
+It never replaces a member's own merge guards: each member still needs its own required checks green on its own unchanged head, its current review-ledger generation passing, and the configured merge authority, whether it lands inside the batch pull request or merges itself.
 A member whose own head shows a failure that the candidate run disproves, such as a flaky job, gets green by rerunning only that job on its unchanged head with `gh-axi run rerun <id> --failed`, or by a current explicit captain waiver naming that check through `bin/fm-pr-merge.sh`, never by a refresh.
 
 ## Landing and cleanup
 
-A proven batch lands in one of two shapes, and the guarded merge path `ship-landing` selects applies to every merge in either one.
+A proven batch lands as one batch pull request, because that is the only way the batch's single lease-gated CI run becomes the merge proof: member pull requests get no run on the merged tree.
+Member merges are the fallback for a project that does not land through a batch pull request.
+The guarded merge path `ship-landing` selects applies to every merge in either shape.
 
+- **Batch pull request.** Firstmate initializes the batch pull request's review ledger under the landing crew's task id with `bin/fm-pr-review.sh init <crew-task> <batch-url>` and merges it once with `bin/fm-pr-merge.sh <crew-task> <batch-url>`.
+  Firstmate never registers a batch pull request with `bin/fm-pr-check.sh`, because that would arm a merge watch that queues the long-lived landing crew for teardown after its first batch while later batches are pending; `bin/fm-pr-check.sh` refuses a secondmate for the same reason.
+  The record `bin/fm-pr-merge.sh` makes as it merges wakes Firstmate with that batch's merge outcome, which closes out that batch only and never tears down the crew.
+  On 2026-10-20 bbchat's batch pull request https://github.com/twilwa/bbchat/pull/404 carried three members and merged green on its first run.
+  A squash merge leaves the member heads unreachable from the default branch, so the forge keeps every member pull request open.
+  After it, Firstmate closes each member with `gh-axi pr close <number> --comment "Landed on main in batch PR #<n> (<sha>)"` and tears down the member tasks.
+  A project that merges with merge commits skips the closing step, because the forge then marks every member merged.
 - **Member merges.** Firstmate merges the members in landing order, each on its own unchanged head.
   Nothing else lands on that default branch while a batch is landing, so the branch after the last member merges is exactly what the candidate run proved.
   After the last member lands, `git diff --quiet origin/<default-branch> fm/batch-<n>` should report no tree difference after a fresh fetch, and a difference means something outside the batch landed and the proof no longer covers what follows.
-- **Batch pull request.** Firstmate opens one pull request from the candidate branch, which carries its own review-ledger generation, and merges it once.
-  On 2026-10-20 bbchat's batch pull request https://github.com/twilwa/bbchat/pull/404 carried three members and merged green on its first run.
-  A squash or rebase merge leaves the member heads unreachable from the default branch, so the forge keeps every member pull request open.
-  Unless the project merges with merge commits, Firstmate then closes each member with `gh-axi pr close <number> --comment "Landed in <batch PR URL> as <default-branch commit>"`.
 
 Every merge moves the default branch, so the next candidate is always built on the default branch as it stands after the latest merge, and a pushed candidate whose base is no longer that head, other than through its own members landing, is rebuilt before it can prove anything.
 The crew deletes the remote candidate with `git push origin --delete fm/batch-<n>` on Firstmate's steer and keeps its local branch.
