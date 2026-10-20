@@ -37,12 +37,15 @@ With two or fewer waiting, or when a precondition fails, land each pull request 
    Then grant exactly one push only while the project's concurrent full runs, including the default branch's own, are below the captain's cap; otherwise leave the request waiting.
 4. Run: unless the project lands through member merges, open the batch pull request from `fm/batch-<n>` yourself after the leased push, because its `pull_request` run is the one the lease admitted; only a green full run on the leased head proves the candidate.
 5. Land the batch through the ordinary guarded merge path.
-   Primarily, initialize the batch pull request's review ledger under the landing crew's task id with `bin/fm-pr-review.sh init <crew-task> <batch-url>` and merge it once with `bin/fm-pr-merge.sh <crew-task> <batch-url>`; never register it with `bin/fm-pr-check.sh`, which would queue the long-lived crew for teardown after its first batch.
+   Primarily, initialize the batch pull request's review ledger under the landing crew's task id with `bin/fm-pr-review.sh init <crew-task> <batch-url>`.
+   Immediately before merging it, confirm for every member that its head still equals its named head, no captain hold is open on its task, its review-ledger generation passes with no unreleased hold, and its own required checks are green or a current explicit captain waiver names the check; drop a member that fails and have the crew rebuild without it.
+   Then merge the batch pull request once under the crew's task id with `bin/fm-pr-review.sh merge <crew-task> <batch-url>` when the reviewed-head handoff is required or the away-posture record exists, and otherwise `bin/fm-pr-merge.sh <crew-task> <batch-url>`; that records the batch pull request on the crew's task and arms its merge poll.
+   After a batch pull request that was refused or abandoned without merging, rebind the crew with `bin/fm-pr-check.sh <crew-task> <next-batch-url>` before merging the next one, or the merge refuses with `bound to <old>, not <new>`.
    For a project that does not land through a batch pull request, merge the members in landing order instead, each on its own unchanged head.
-   A member still red on its own head waits for a rerun of only its failed job or a current explicit captain waiver naming that check, and never merges red.
+   In either shape, a member still red on its own head waits for a rerun of only its failed job or a current explicit captain waiver naming that check, and never lands red, whether inside a batch pull request or by its own merge.
    If anything outside the batch lands on the default branch mid-batch, stop and put the unmerged members into a new candidate.
 6. Close out: after a batch pull request squash-merges, close each member pull request with `Landed on main in batch PR #<n> (<sha>)`, because the forge still shows every member open; skip this when the project merges with merge commits, since the forge then marks the members merged.
-   Tear down each member's task once its pull request is merged or closed as landed, and never the crew on a batch pull request's merged wake.
+   Tear down each member's task once its pull request is merged or closed as landed, and never the crew on a batch pull request's merged notification, which is informational; only the crew's own `done:` line and report end it.
 7. Clean up: steer the crew to delete the remote candidate branch, then hand it the next batch, built on the default branch as it stands after the latest merge, or tell it the queue is finished; tear the crew down after its report exists.
 
 When a candidate run is red:
