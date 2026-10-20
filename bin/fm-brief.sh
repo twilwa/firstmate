@@ -110,8 +110,8 @@
 # infrastructure every lane shares - the no-mistakes daemon and the worktree pool
 # their own slot came from - so ship, scout, and landing crew cannot drift apart. A secondmate
 # charter omits it: that home allocates and returns slots for its own crewmates.
-# --mode, --forge, and --shape are refused on scout and secondmate scaffolds: a
-# scout's deliverable is a report rather than a merge, and a charter is not a
+# --mode, --forge, and --shape are refused on scout, landing-crew, and secondmate
+# scaffolds: a scout's deliverable is a report rather than a merge, and a charter is not a
 # delivery contract. --tests applies to ship, scout, and landing-crew task briefs, not charters.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
