@@ -1065,6 +1065,8 @@ test_landing_crew_scaffold() {
     "landing crew must never rewrite history or delete a local branch"
   assert_grep "The next batch number is 1 + the highest \`<n>\` of any \`fm/batch-<n>\` seen across \`git ls-remote --heads origin\` and the local refs of the shared repository (\`git for-each-ref refs/heads/fm/batch-*\`)" "$brief" \
     "landing crew must number batches from the remote and local fm/batch refs so no number is reused"
+  assert_grep "Before every \`done\`, \`failed\`, or stopping \`blocked\` line, run \`git switch --detach\`" "$brief" \
+    "landing crew must detach before teardown so no local batch ref is deleted"
   assert_grep "Fetch origin immediately before every build" "$brief" \
     "landing crew must build each candidate from a fresh fetch"
   assert_grep "[key=batch-<n>-lease]: candidate fm/batch-<n> head=<sha> base=<sha> members=" "$brief" \

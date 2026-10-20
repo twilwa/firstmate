@@ -796,6 +796,7 @@ Never resolve a conflict or change a member's code yourself.
 # Definition of done
 Keep a running record in \`$DATA/$ID/report.md\`: for every candidate, its branch, base and head commits, each member's PR URL and head commit, every dropped member and why, the CI result firstmate reports, any batch PR URL firstmate reports, and whether its remote branch was deleted.
 When a firstmate steering message says the queue is finished, complete the report, leave the worktree clean, append \`done [at=<epoch>]: {batches built and members they carried}\` to the status file, and stop.
+Before every \`done\`, \`failed\`, or stopping \`blocked\` line, run \`git switch --detach\` so teardown finds no checked-out \`fm/batch-*\` branch to delete and every local batch ref survives.
 EOF
 append_brief_include
 echo "scaffolded: $BRIEF (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)"
