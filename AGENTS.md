@@ -251,7 +251,7 @@ Load `validation-supervision` when a ship starts or already has an active no-mis
 ### PR ready, landing, and teardown
 
 Load `ship-landing` when a ship reports a PR or ready branch, when deciding or monitoring landing, and before task cleanup.
-Never merge or rebase the default branch into a PR branch that does not conflict with it, because a refresh discards that head's green checks and review-ledger generation and costs a full CI run.
+Never merge or rebase the default branch into a PR branch that does not conflict with it, unless the forge requires an up-to-date branch to merge, because a refresh discards that head's green checks and review-ledger generation and costs a full CI run.
 When more than two review-complete PRs wait on one project, land them through the in-house merge queue: a landing crew builds a candidate branch from current origin default branch plus the next members in landing order, and firstmate grants each push only under the project's cap on concurrent full CI runs, counting the default branch's own.
 After one green candidate run, the batch lands as one batch PR, or, where a project does not land through one, each member merges in order on its own unchanged green head, always through the guarded merge path; a member that conflicts is dropped and refreshed alone, and no member whose own head is red ever merges.
 `ship-landing` owns the batch procedure and [`docs/merge-queue.md`](docs/merge-queue.md) its mechanics and rationale.
