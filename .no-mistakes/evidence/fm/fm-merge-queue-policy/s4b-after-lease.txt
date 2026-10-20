@@ -1,0 +1,18 @@
+=== AFTER LEASE GRANT (bin/fm-send.sh lq1 --resolve-key batch-4-lease ...)
+needs-decision [at=1792483522] [key=batch-4-lease]: candidate fm/batch-4 head=c28c7e68a84ea5568807304a1bc9f1a67ba9d188 base=aca6f508eee21d5b015b64c9b81d7984923caeb3 members=https://github.com/fm-lab/alpha/pull/1,https://github.com/fm-lab/alpha/pull/2,https://github.com/fm-lab/alpha/pull/5 dropped=https://github.com/fm-lab/alpha/pull/3 (merge conflict in README.md),https://github.com/fm-lab/alpha/pull/4 (head moved to 703f6bed9c652c6f7b4472e6c1805a9f4738e444); push lease?
+resolved [key=batch-4-lease] [at=1792483541]: answered: Lease granted: push fm/batch-4 at head c28c7e68a84ea5568807304a1bc9f1a67ba9d188 once.
+paused [at=1792483563] [key=batch-4]: candidate fm/batch-4 head=c28c7e68a84ea5568807304a1bc9f1a67ba9d188 pushed; waiting for firstmate to report its CI result
+=== origin refs
+refs/heads/fm/batch-2 a322a5387f924152006472f3500cc5bdc636d600
+refs/heads/fm/batch-4 c28c7e68a84ea5568807304a1bc9f1a67ba9d188
+refs/heads/main aca6f508eee21d5b015b64c9b81d7984923caeb3
+refs/heads/pr-1 6f05c7175d0553b1efc4e134722452edd6755e8f
+refs/heads/pr-2 08e297597773090c86359f384171723a8c1fadd4
+refs/heads/pr-3 779b792347349e0fc4603f92a963b4455f583911
+refs/heads/pr-4 703f6bed9c652c6f7b4472e6c1805a9f4738e444
+refs/heads/pr-5 27b7a92b585c06c89de3243e2d094f752988505f
+refs/pull/1/head 6f05c7175d0553b1efc4e134722452edd6755e8f
+refs/pull/2/head 08e297597773090c86359f384171723a8c1fadd4
+refs/pull/3/head 779b792347349e0fc4603f92a963b4455f583911
+refs/pull/4/head 703f6bed9c652c6f7b4472e6c1805a9f4738e444
+refs/pull/5/head 27b7a92b585c06c89de3243e2d094f752988505f

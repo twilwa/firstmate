@@ -1,0 +1,13 @@
+Next batch number per the brief rule, computed in the shared repository after crew lq1 was torn down:
+$ git ls-remote --heads origin
+a322a5387f924152006472f3500cc5bdc636d600	refs/heads/fm/batch-2
+c28c7e68a84ea5568807304a1bc9f1a67ba9d188	refs/heads/main
+6f05c7175d0553b1efc4e134722452edd6755e8f	refs/heads/pr-1
+08e297597773090c86359f384171723a8c1fadd4	refs/heads/pr-2
+779b792347349e0fc4603f92a963b4455f583911	refs/heads/pr-3
+703f6bed9c652c6f7b4472e6c1805a9f4738e444	refs/heads/pr-4
+27b7a92b585c06c89de3243e2d094f752988505f	refs/heads/pr-5
+$ git for-each-ref refs/heads/fm/batch-*
+refs/heads/fm/batch-3
+refs/heads/fm/batch-4
+highest=4 next=5  (remote fm/batch-4 was deleted; local ref kept by the detach step keeps 4 from being reused)

@@ -1,0 +1,50 @@
+● Leased push done. I am pausing until firstmate reports the CI result.
+
+  What happened
+
+  - Firstmate's steering message granted a one-time lease for fm/batch-4 at head c28c7e6.
+  - Local head matched the lease exactly, and the candidate was pushed once with a plain push. Origin now shows fm/batch-4 at that head.
+  - The message was moved into handled/. The inbox is empty again.
+  - The report at /tmp/fm-lab.64djP7/data/lq1/report.md records the lease grant and the push.
+  - A paused status line with key batch-4 is appended.
+
+  Waiting on firstmate's next steering message with the CI result for the candidate run, plus any batch PR URL and the delete or rebuild instruction that follows. Nothing is pushed or deleted until then.
+
+✻ Churned for 26s · done 10:06 AM
+
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'lq1.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+
+● Reading the steering inbox.
+
+  Ran 1 shell command
+
+● Firstmate reports the batch green and landed, and asks for the remote candidate deletion and finish. Running the deletion, report completion, detach, and acknowledgement now.
+
+  Pushed to origin/main, ran 1 shell command
+
+● Remote branch deleted, origin/main now equals the batch head, HEAD is detached, tree is clean, local fm/batch-4 ref survives. Completing the report and appending the done line.
+
+  Ran 2 shell commands
+
+● The queue is finished and the task is done.
+
+  Final state
+
+  - Firstmate's message said the fm/batch-4 CI run was green on head c28c7e6 and the batch landed on main. A fresh fetch confirms origin/main is now exactly that commit.
+  - The remote candidate branch was deleted on that steer, and git ls-remote finds nothing for it. The local fm/batch-4 ref is kept alongside fm/batch-3.
+  - HEAD is detached and the worktree is clean, so teardown finds no checked-out batch branch.
+  - The steering message was moved into handled/. The inbox is empty.
+  - The report at /tmp/fm-lab.64djP7/data/lq1/report.md is complete with branch, base, head, members, drops, CI result, deletion, and the queue-finished note.
+  - A done status line was appended.
+
+  Summary of the batch
+
+  - Landed: https://github.com/fm-lab/alpha/pull/1, https://github.com/fm-lab/alpha/pull/2, https://github.com/fm-lab/alpha/pull/5.
+  - Not landed: https://github.com/fm-lab/alpha/pull/3 conflicted in README.md, and https://github.com/fm-lab/alpha/pull/4 had moved to head 703f6be. Both are back in firstmate's hands for refresh or re-selection.
+
+✻ Brewed for 38s · done 10:09 AM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

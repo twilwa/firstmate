@@ -1,0 +1,28 @@
+=== BEFORE LEASE: status file
+needs-decision [at=1792483522] [key=batch-4-lease]: candidate fm/batch-4 head=c28c7e68a84ea5568807304a1bc9f1a67ba9d188 base=aca6f508eee21d5b015b64c9b81d7984923caeb3 members=https://github.com/fm-lab/alpha/pull/1,https://github.com/fm-lab/alpha/pull/2,https://github.com/fm-lab/alpha/pull/5 dropped=https://github.com/fm-lab/alpha/pull/3 (merge conflict in README.md),https://github.com/fm-lab/alpha/pull/4 (head moved to 703f6bed9c652c6f7b4472e6c1805a9f4738e444); push lease?
+=== origin refs (no fm/batch-4 pushed before lease)
+refs/heads/fm/batch-2 a322a5387f924152006472f3500cc5bdc636d600
+refs/heads/main aca6f508eee21d5b015b64c9b81d7984923caeb3
+refs/heads/pr-1 6f05c7175d0553b1efc4e134722452edd6755e8f
+refs/heads/pr-2 08e297597773090c86359f384171723a8c1fadd4
+refs/heads/pr-3 779b792347349e0fc4603f92a963b4455f583911
+refs/heads/pr-4 703f6bed9c652c6f7b4472e6c1805a9f4738e444
+refs/heads/pr-5 27b7a92b585c06c89de3243e2d094f752988505f
+=== crew candidate graph
+*   c28c7e6 Merge commit 'refs/pull/5/head' of file:///tmp/fm-lab.64djP7/origin into fm/batch-4
+|\  
+| * 27b7a92 PR 5
+* |   4ee3717 Merge commit 'refs/pull/2/head' of file:///tmp/fm-lab.64djP7/origin into fm/batch-4
+|\ \  
+| * | 08e2975 PR 2
+| |/  
+* |   7fa4f0c Merge commit 'refs/pull/1/head' of file:///tmp/fm-lab.64djP7/origin into fm/batch-4
+|\ \  
+| * | 6f05c71 PR 1
+| |/  
+* / aca6f50 main advance
+|/  
+* a322a53 initial
+=== project local refs
+refs/heads/fm/batch-3
+refs/heads/fm/batch-4

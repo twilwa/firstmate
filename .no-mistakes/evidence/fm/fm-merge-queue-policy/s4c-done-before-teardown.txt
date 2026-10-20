@@ -1,0 +1,53 @@
+=== AFTER 'batch landed / queue finished' steer
+needs-decision [at=1792483522] [key=batch-4-lease]: candidate fm/batch-4 head=c28c7e68a84ea5568807304a1bc9f1a67ba9d188 base=aca6f508eee21d5b015b64c9b81d7984923caeb3 members=https://github.com/fm-lab/alpha/pull/1,https://github.com/fm-lab/alpha/pull/2,https://github.com/fm-lab/alpha/pull/5 dropped=https://github.com/fm-lab/alpha/pull/3 (merge conflict in README.md),https://github.com/fm-lab/alpha/pull/4 (head moved to 703f6bed9c652c6f7b4472e6c1805a9f4738e444); push lease?
+resolved [key=batch-4-lease] [at=1792483541]: answered: Lease granted: push fm/batch-4 at head c28c7e68a84ea5568807304a1bc9f1a67ba9d188 once.
+paused [at=1792483563] [key=batch-4]: candidate fm/batch-4 head=c28c7e68a84ea5568807304a1bc9f1a67ba9d188 pushed; waiting for firstmate to report its CI result
+done [at=1792483745]: 1 batch built: fm/batch-4 (head c28c7e68a84ea5568807304a1bc9f1a67ba9d188, landed green, remote deleted) carried https://github.com/fm-lab/alpha/pull/1,https://github.com/fm-lab/alpha/pull/2,https://github.com/fm-lab/alpha/pull/5; dropped https://github.com/fm-lab/alpha/pull/3 (README.md conflict),https://github.com/fm-lab/alpha/pull/4 (head moved)
+=== origin refs (remote fm/batch-4 deleted, main untouched by crew)
+refs/heads/fm/batch-2 a322a5387f924152006472f3500cc5bdc636d600
+refs/heads/main c28c7e68a84ea5568807304a1bc9f1a67ba9d188
+refs/heads/pr-1 6f05c7175d0553b1efc4e134722452edd6755e8f
+refs/heads/pr-2 08e297597773090c86359f384171723a8c1fadd4
+refs/heads/pr-3 779b792347349e0fc4603f92a963b4455f583911
+refs/heads/pr-4 703f6bed9c652c6f7b4472e6c1805a9f4738e444
+refs/heads/pr-5 27b7a92b585c06c89de3243e2d094f752988505f
+=== crew worktree HEAD before teardown
+## HEAD (no branch)
+=== project local batch refs before teardown
+refs/heads/fm/batch-3 a322a53
+refs/heads/fm/batch-4 c28c7e6
+=== crew report /tmp/fm-lab.64djP7/data/lq1/report.md
+# Landing crew report: alpha merge queue (task lq1)
+
+Origin: local bare repository `/tmp/fm-lab.64djP7/origin.git` (no forge; PR URLs are labels, heads fetched from `refs/pull/N/head`).
+
+## Candidate fm/batch-4
+
+- Branch: `fm/batch-4` (next number after remote `fm/batch-2` and local `fm/batch-3`)
+- Base: `aca6f508eee21d5b015b64c9b81d7984923caeb3` (origin/main at fetch, 2026-10-20)
+- Head: `c28c7e68a84ea5568807304a1bc9f1a67ba9d188`
+
+Members merged (landing order):
+
+| Member | Named head | Fetched head | Result | Merge commit |
+| --- | --- | --- | --- | --- |
+| https://github.com/fm-lab/alpha/pull/1 | 6f05c7175d0553b1efc4e134722452edd6755e8f | same | merged | 7fa4f0cd1cef491d86d6bffa62e83c54855b234c |
+| https://github.com/fm-lab/alpha/pull/2 | 08e297597773090c86359f384171723a8c1fadd4 | same | merged | 4ee3717228a414d2a2f0d78c4f0b72c60bcc525d |
+| https://github.com/fm-lab/alpha/pull/3 | 779b792347349e0fc4603f92a963b4455f583911 | same | dropped | - |
+| https://github.com/fm-lab/alpha/pull/4 | 4c71b5a4f964704cef1f29bff5a65b6b2a99f251 | 703f6bed9c652c6f7b4472e6c1805a9f4738e444 | dropped | - |
+| https://github.com/fm-lab/alpha/pull/5 | 27b7a92b585c06c89de3243e2d094f752988505f | same | merged | c28c7e68a84ea5568807304a1bc9f1a67ba9d188 |
+
+Dropped members:
+
+- https://github.com/fm-lab/alpha/pull/3: merge conflict in `README.md` against the candidate after members 1 and 2; merge aborted, not resolved.
+- https://github.com/fm-lab/alpha/pull/4: forge head moved; `refs/pull/4/head` is `703f6bed9c652c6f7b4472e6c1805a9f4738e444`, not the named `4c71b5a4f964704cef1f29bff5a65b6b2a99f251`.
+
+- Lease: granted by firstmate (inbox 001.msg, 2026-10-20T08:05:41Z, key `batch-4-lease`)
+- Pushed: yes, once, `git push origin fm/batch-4` at head `c28c7e68a84ea5568807304a1bc9f1a67ba9d188` (origin confirms)
+- CI result (reported by firstmate, inbox 002.msg, 2026-10-20T08:08:32Z): green on `c28c7e68a84ea5568807304a1bc9f1a67ba9d188`; batch landed on main (origin/main now `c28c7e68a84ea5568807304a1bc9f1a67ba9d188`)
+- Batch PR URL (reported by firstmate): none reported (lab has no forge)
+- Remote branch deleted: yes, `git push origin --delete fm/batch-4` on firstmate steer; `git ls-remote` finds nothing. Local `fm/batch-4` ref kept.
+
+## Queue finished
+
+Firstmate declared the queue finished on 2026-10-20 (inbox 002.msg). One candidate built: `fm/batch-4` carrying https://github.com/fm-lab/alpha/pull/1, https://github.com/fm-lab/alpha/pull/2, https://github.com/fm-lab/alpha/pull/5. Not landed in this batch: https://github.com/fm-lab/alpha/pull/3 (README.md conflict) and https://github.com/fm-lab/alpha/pull/4 (head moved). Worktree left clean at detached HEAD.

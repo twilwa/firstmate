@@ -1,0 +1,31 @@
+$ bin/fm-brief.sh r1 alpha --landing-crew --mode no-mistakes
+error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r2 alpha --landing-crew --scout
+error: --landing-crew cannot be combined with --scout or --secondmate
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r3 alpha --secondmate --landing-crew alpha
+error: --landing-crew cannot be combined with --scout or --secondmate
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r4 alpha --landing-crew --base-branch release
+error: --base-branch takes a branch name and applies only to ship and scout briefs
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r5 alpha --landing-crew --forge gerrit --shape squash
+error: --forge and --shape apply only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r6 alpha --landing-crew --branch-prefix fix/
+error: --branch-prefix applies only to ship briefs; a scout makes no branch and a secondmate charter is not a delivery contract
+exit=1 brief_written=no
+
+$ bin/fm-brief.sh r7 alpha --landing-crew --tests full
+scaffolded: /tmp/fm-lab.mq0Jxp/data/r7/brief.md (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)
+exit=0 brief_written=yes
+
+--- r7 (--tests full accepted) test-scope section:
+Scope: full.
+Permits: the full local suite, including tests that drive live Herdr, Codex, or Lavish.

@@ -1,0 +1,38 @@
+$ bin/fm-teardown.sh lq1   (first attempt refused: captain-call inventory missing; see below)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.64djP7
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-captain-hold: origin lq1 has no completed captain-call inventory
+REFUSED: scout task lq1 has not passed the captain-call completion gate.
+Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown.
+TEARDOWN_EXIT=1
+
+$ bin/fm-captain-hold.sh complete lq1 --none
+complete: lq1 captain-call inventory reviewed
+HOLD_EXIT=0
+
+$ bin/fm-teardown.sh lq1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.64djP7
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for lq1: 542465 545750 546196
+teardown: force-killing leaked worktree process(es) for lq1: 542465
+🌳 Worktree returned to pool.
+teardown lq1 complete (window primary:fm-lq1, worktree /tmp/fm-lab.64djP7/userhome/.treehouse-fm/774fe2f0642f/.treehouse/alpha-8e5c9c/1/alpha)
+Backlog: lq1 just finished (this home keeps no markdown backlog at /tmp/fm-lab.64djP7/data/backlog.md). Update /tmp/fm-lab.64djP7/data/backlog.md - move lq1 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+TEARDOWN_EXIT=0
+=== project local batch refs AFTER teardown (fm/batch-4 must survive)
+refs/heads/fm/batch-3 a322a53
+refs/heads/fm/batch-4 c28c7e6
+=== origin refs after teardown
+refs/heads/fm/batch-2 a322a53
+refs/heads/main c28c7e6
+refs/heads/pr-1 6f05c71
+refs/heads/pr-2 08e2975
+refs/heads/pr-3 779b792
+refs/heads/pr-4 703f6be
+refs/heads/pr-5 27b7a92
+=== tmux windows
+primary:0: bash* (1 panes) [220x50] 
+=== state files
+home-summary.json
+operational-inbox
+terminal-outcomes
