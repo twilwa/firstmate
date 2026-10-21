@@ -1,0 +1,34 @@
+✻ Worked for 3s · done 6:03 AM
+● Stop hook feedback
+  Ran 3 shell commands 
+● Captain, the worker passed its time budget but is still making progress, so I let it keep going. The budget is only 1 second, which looks like a lab setting. The worker's latest update says it wrote the outline for
+  count_notes. Nothing is looping or stuck, and there was no open decision to resolve. I've acknowledged the notification.
+✻ Sautéed for 14s · done 6:05 AM
+● Stop hook feedback
+  Ran 2 shell commands                                                                                                    
+● Captain, the worker is still going and nothing needs your decision. It has drafted count_notes, and 2 of its 3 tests pass. It's investigating the third before it commits. The 1-second time budget keeps firing, but the
+  worker isn't looping or stuck, so I left it alone. I've acknowledged the notification.
+✻ Churned for 11s · done 6:07 AM
+● Stop hook feedback
+  Ran 2 shell commands                                                                  
+● Captain, the worker is still making progress and nothing needs your decision. It fixed the third count_notes test and is now running the full test pass before it commits. The 1-second time budget fired again, but the
+  worker isn't stuck or looping, so I left it alone. I've acknowledged the notification.
+✻ Worked for 11s · done 6:09 AM
+● Stop hook feedback
+  Listed 1 directory, ran 4 shell commands                                              
+● Captain, the worker's progress reports don't match what it has actually done. It says its tests are green and it is staging the count_notes commit. But its isolated copy of the project is clean, with no edits and no
+  commits beyond the starting one. A monitoring check also found it sitting idle at the start of its task, waiting on a resume file that never appeared. I haven't steered or restarted it, and its work is untouched.
+  The 1-second time budget keeps firing, so those notifications aren't informative on their own. I'll check the worker's copy again on the next notification. If it still has no code, I'll steer it to start work and
+  report back.                             
+✻ Cogitated for 28s · done 6:11 AM
+● Stop hook feedback                                                                                                                                                                                                     
+  Ran 2 shell commands 
+● Captain, the worker has written no code. Its copy of the project is still clean, with only the starting commit. It is paused on purpose, waiting for a resume file that hasn't appeared, and nothing has been committed.
+  The "tests green" and "commit staged" status lines are false. The worker says they aren't its own, and I found no sign of that work.
+  The supervision session already told the worker to stay paused. I've left it alone, since the pause is expected and nothing is broken. The 1-second time budget keeps firing, so those notifications tell us nothing.
+  I can't tell who is writing the false status lines. If you want the worker to start, I'll need the missing resume file or your go-ahead.
+✻ Cogitated for 16s · done 6:16 AM                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯                                                                                                                                                                          
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)                   

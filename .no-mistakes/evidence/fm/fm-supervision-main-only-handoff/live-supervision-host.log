@@ -1,0 +1,24 @@
+1792555438	start	gen=host-1640436-1792555437	primary=claude
+1792555492	handled	turn=host-1640436-1792555437.1	posture=attended	rc=0	reports=1	error=0 cost=0.068349 conversation_cost=0.068349 input=10 cache_read=54585 cache_write=14275 output=577 turns=5	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.turn-ended
+1792555493	pass-through	attended	main-only	check: task-budget task=lab2e585ec98219-worker period=0 age=100s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=31s
+1792555511	start	gen=host-1687389-1792555510	primary=claude
+1792555511	take-over	arm=1674951
+1792555536	handled	turn=host-1687389-1792555510.1	posture=attended	rc=0	reports=1	error=0 cost=0.018372 conversation_cost=0.086721 input=10 cache_read=59141 cache_write=1342 output=707 turns=4	stale: firstmate:fm-lab2e585ec98219-worker
+1792555631	handled	turn=host-1687389-1792555510.2	posture=attended	rc=0	reports=1	error=0 cost=0.012602 conversation_cost=0.099323 input=8 cache_read=47767 cache_write=925 output=411 turns=3	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status
+1792555636	pass-through	attended	main-only	check: task-budget task=lab2e585ec98219-worker period=0 age=243s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=56s
+1792555650	start	gen=host-1851534-1792555650	primary=claude
+1792555650	take-over	arm=1833463
+1792555751	handled	turn=host-1851534-1792555650.1	posture=attended	rc=0	reports=1	error=0 cost=0.012991 conversation_cost=0.112314 input=8 cache_read=50766 cache_write=997 output=391 turns=3	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status
+1792555755	pass-through	attended	main-only	check: task-budget task=lab2e585ec98219-worker period=0 age=362s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=59s
+1792555770	start	gen=host-2032960-1792555769	primary=claude
+1792555770	take-over	arm=2007991
+1792555796	handled	turn=host-2032960-1792555769.1	posture=attended	rc=0	reports=1	error=0 cost=0.028787 conversation_cost=0.141101 input=12 cache_read=91815 cache_write=2048 output=1139 turns=5	stale: firstmate:fm-lab2e585ec98219-worker (idle 253s, possible wedge, escalation 1)
+1792555874	handled	turn=host-2032960-1792555769.2	posture=attended	rc=0	reports=1	error=0 cost=0.01413 conversation_cost=0.155231 input=8 cache_read=59795 cache_write=946 output=435 turns=3	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status
+1792555878	pass-through	attended	main-only	check: task-budget task=lab2e585ec98219-worker period=0 age=486s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=59s
+1792555910	start	gen=host-2332996-1792555910	primary=claude
+1792555910	take-over	arm=2269858
+1792556063	handled	turn=host-2332996-1792555910.1	posture=attended	rc=0	reports=1	error=0 cost=0.038223 conversation_cost=0.193454 input=12 cache_read=110446 cache_write=3556 output=1293 turns=5	stale: firstmate:fm-lab2e585ec98219-worker (idle 254s, possible wedge, escalation 2)
+1792556121	handled	turn=host-2332996-1792555910.2	posture=attended	rc=0	reports=1	error=0 cost=0.016933 conversation_cost=0.210387 input=8 cache_read=73639 cache_write=1271 output=447 turns=3	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.turn-ended
+1792556190	handled	turn=host-2332996-1792555910.3	posture=attended	rc=0	reports=1	error=0 cost=0.017011 conversation_cost=0.227398 input=8 cache_read=76887 cache_write=954 output=549 turns=3	signal: /tmp/fmlab.0fiLqZ/home/state/lab2e585ec98219-worker.status
+1792556191	pass-through	attended	main-only	check: task-budget task=lab2e585ec98219-worker period=0 age=783s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=51s
+1792556211	start	gen=host-2964015-1792556210	primary=claude

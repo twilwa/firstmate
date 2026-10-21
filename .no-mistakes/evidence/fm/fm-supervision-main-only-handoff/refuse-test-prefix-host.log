@@ -1,0 +1,7 @@
+ok - supervision engine lookup ignores a shadowing shell function
+not ok - a failed restoration must be explicit
+--- /tmp/fm-supervision-host.8PGxl4/hook-budget-delayed-refuse/state/.supervision-host.log ---
+1792555294	start	gen=host-1586984-1792555293	primary=claude
+1792555309	handled	turn=host-1586984-1792555293.1	posture=attended	rc=0	reports=1	error=0 cost=0.25 conversation_cost=0.25 input=5 cache_read=100 cache_write=10 output=20 turns=3	signal: /tmp/fm-supervision-host.8PGxl4/hook-budget-delayed-refuse/state/demo.status
+1792555309	pass-through	attended	main-only	check: task-budget task=demo period=124483 age=1792555304s wall_budget=1s output_budget=1000000 tokens=unknown compactions=unknown restarts=unknown last_status_ago=10s
+rc=1

@@ -1,0 +1,15 @@
+ ▐▛███▛█   Claude Code v2.1.305
+▝▜██████▀  Sonnet 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   /tmp/fmlab.0fiLqZ/home
+❯ Lab readiness probe from bin/fm-live-lab.sh. Run no tool or command for this message. Reply with only the word LABREADY, a hyphen, and then 2e585ec98219, with no spaces.                                                 
+● LABREADY-2e585ec98219
+✻ Worked for 3s · done 6:03 AM
+● Stop hook feedback
+● Reconcile current state of the worker
+  ⎿  $ bin/fm-wake-drain.sh --ack-through 3 --recovery-generation 1660195.1792555491.4pMw3p
+* Spinning… (12s · ↓ 527 tokens · thought for 1s)                                             
+  ⎿  Tip: Working on a plan or design doc? Ask Claude to publish it as an artifact — a polished web page you can open in your browser.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯                                                                                                                                                                          
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt
