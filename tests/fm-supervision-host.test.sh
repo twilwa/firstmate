@@ -1004,9 +1004,9 @@ SH
   wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "budget handoff: the successor did not close on the real budget wake"
   printf 'continue\n' > "$home/stub-release"
   wait_until 250 hook_exited "$home" || fail "budget handoff: the hook never returned"
-  assert_re '\tpass-through\tattended\tmain-only\tcheck: task-budget' "$home/state/.supervision-host.log" "the budget wake must be handed to main"
+  assert_re $'\tpass-through\tattended\tmain-only\tcheck: task-budget' "$home/state/.supervision-host.log" "the budget wake must be handed to main"
   if [ "$restore" = refuse ]; then
-    assert_re '\tpass-through\tdowntime-unrestored\t' "$home/state/.supervision-host.log" "a failed restoration must be explicit"
+    assert_re $'\tpass-through\tdowntime-unrestored\t' "$home/state/.supervision-host.log" "a failed restoration must be explicit"
     expect_code 2 "$(cat "$home/hook.rc")" "a failed restoration must notify main"
     assert_re 'outcome=failed ' "$home/state/.claude-autoarm-epoch" "the failure notification must be committed"
     watcher_live "$home" && fail "a failed restoration left a misleading live successor"
