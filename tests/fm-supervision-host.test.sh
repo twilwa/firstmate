@@ -953,9 +953,9 @@ assert_rewoke_main() {  # <home> <label>
 # line. If its episode already entered handling, the host cannot restore it
 # through that absent token. The hook must still deliver the original close:
 # the successor only scans for later work, it cannot notify main for this one.
-test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {
-  local home arm pid generation predecessor
-  home=$(make_primary_home hook-live-handling-handback)
+assert_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {  # <notice-mode>
+  local notice_mode=$1 home arm pid generation predecessor
+  home=$(make_primary_home "hook-live-handling-handback-$notice_mode")
   turn_main_only_at_second_offer "$home"
   head -n2 "$home/fakebin/node"
   mkfifo "$home/offer-release"
@@ -980,6 +980,9 @@ test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {
   generation=$(sed -n 's/^watcher: started .* recovery-generation=//p' "$home/peer-arm.out")
   FM_HOME="$home" "$home/bin/fm-watch-arm.sh" --handling-delivered "$generation" --watcher-pid "$pid" \
     || fail "live handback: peer could not confirm the handling handoff"
+  if [ "$notice_mode" = unwritable ]; then
+    ln -s "$home/state/missing/notice" "$home/state/.claude-autoarm-failure-notified"
+  fi
   printf 'continue\n' > "$home/offer-release"
   wait_until 250 hook_exited "$home" || fail "live handback: hook did not close: $(cat "$home/state/.supervision-host.log" "$home/hook.err" "$home/offer-count" 2>/dev/null)"
 
@@ -989,6 +992,11 @@ test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {
   expect_code 2 "$(cat "$home/hook.rc")" "a healthy successor must not swallow an uncommitted main wake: $(cat "$home/state/.claude-autoarm-epoch")"
   assert_grep 'firstmate watcher auto-arm FAILED' "$home/hook.err" "the refused handback must carry a recovery notice"
   assert_re 'outcome=failed ' "$home/state/.claude-autoarm-epoch" "the handback failure must close the epoch"
+  if [ "$notice_mode" = unwritable ]; then
+    [ -L "$home/state/.claude-autoarm-failure-notified" ] && [ ! -e "$home/state/.claude-autoarm-failure-notified" ] \
+      || fail "fixture: the failure-notice marker must remain unrecordable"
+    assert_grep 'could not record its failure notice' "$home/hook.err" "main must learn that notice suppression could not be recorded"
+  fi
   main_drain "$home" > "$home/main-drain.out"
   assert_grep 'first actionable wake' "$home/main-drain.out" "main must receive the original queued event"
   [ -n "$MAIN_ACK" ] || fail "main must receive the original event's acknowledgement token"
@@ -997,7 +1005,15 @@ test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {
     || fail "main could not acknowledge the delivered event"
   kill -TERM "$arm" 2>/dev/null || true
   wait "$arm" 2>/dev/null || true
-  pass "host+hook: a live successor does not replace delivery of an uncommitted main wake"
+  pass "host+hook: a live successor does not replace delivery of an uncommitted main wake ($notice_mode notice)"
+}
+
+test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {
+  assert_claude_stop_hook_notifies_uncommitted_handback_with_live_successor writable
+}
+
+test_claude_stop_hook_delivers_handback_when_failure_notice_cannot_be_written() {
+  assert_claude_stop_hook_notifies_uncommitted_handback_with_live_successor unwritable
 }
 
 # The live failure (2026-09-27): a main-only pass-through confirmed a handling
@@ -2082,6 +2098,7 @@ SH
 }
 
 test_claude_stop_hook_notifies_uncommitted_handback_with_live_successor
+test_claude_stop_hook_delivers_handback_when_failure_notice_cannot_be_written
 test_claude_stop_hook_restores_handoff_when_successor_closed_before_exit_to_main
 test_claude_stop_hook_restores_handoff_when_successor_closed_mid_engine_turn
 test_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails
