@@ -1899,6 +1899,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ "$BUDGET_WALL_SET" -eq 0 ] || shared_args+=(--budget-wall-secs "$BUDGET_WALL_ARG")
   [ "$BUDGET_OUTPUT_SET" -eq 0 ] || shared_args+=(--budget-output-tokens "$BUDGET_OUTPUT_ARG")
   [ "$BASE_BRANCH_SET" -eq 0 ] || shared_args+=(--base-branch "$BASE_BRANCH")
+  [ "$UPSTREAM_CONSENT_SET" -eq 0 ] || shared_args+=(--upstream-consent "$UPSTREAM_CONSENT")
   [ "$HERDR_RESUME_LOCK_WAIT" -eq 0 ] || shared_args+=(--herdr-resume-lock-wait)
   for pair in "${POS[@]}"; do
     case "$pair" in
