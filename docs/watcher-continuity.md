@@ -182,6 +182,8 @@ This is the shape `bin/fm-startup-network.sh` uses, and [`verification/supervisi
 
 The next Stop's foreground arm attaches to that live cycle.
 A successor that confirms no live watcher adds one line to the rewake banner and never withholds the wake.
+If the supervision host hands back an actionable wake whose handling episode prevents the rewake commit, the hook delivers a failure notice even when a successor is healthy.
+A healthy successor watches later events; it does not prove this wake reached the primary.
 The next Stop then re-arms as before.
 
 ### Durable queue and turn-end backstop

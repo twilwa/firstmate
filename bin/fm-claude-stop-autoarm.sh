@@ -537,10 +537,11 @@ if [ "$ACTIONABLE" -eq 1 ]; then
     [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true
     exit 2
   fi
+  # A handling successor watches later events; its health cannot prove this
+  # refused hand-back reached main. Close the claim with a notice either way.
   if [ "$HOST_MODE" -eq 1 ] && fm_autoarm_still_owner "$STATE" "$MY_GEN" \
     && fm_recovery_marker_snapshot "$STATE/.watcher-down" \
-    && [[ "$FM_RECOVERY_MARKER_TOKEN" == pending:handling:* || "$FM_RECOVERY_MARKER_TOKEN" == announced:handling:* ]] \
-    && ! fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "$GRACE" "$FM_HOME"; then
+    && [[ "$FM_RECOVERY_MARKER_TOKEN" == pending:handling:* || "$FM_RECOVERY_MARKER_TOKEN" == announced:handling:* ]]; then
     LOST_HANDBACK_COMMITTED=0
     if [ ! -e "$FAILURE_NOTICE" ]; then
       printf 'firstmate watcher auto-arm FAILED - the supervision host returned an actionable wake, but its rewake could not be committed.\n' >&2
