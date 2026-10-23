@@ -521,6 +521,18 @@ test_relaunch_keeps_armed_pr_poll_authenticating() {
   expect_code 0 "$rc" "relaunch of a task with an armed PR poll should succeed"$'\n'"$out"
   fm_pr_poll_artifacts_content_valid "$dir/home/state" rl45 "$ROOT/bin/fm-pr-poll.sh" \
     || fail "relaunch broke PR poll authentication by writing control_relaunch_tx after pr="
+
+  # A second relaunch must carry exactly one control_relaunch_tx - the fresh
+  # transaction - never a stale value re-emitted by preserve_relaunch_meta.
+  out=$(run_control "$dir" rl45 relaunch --note "review round two"); rc=$?
+  expect_code 0 "$rc" "a second relaunch should succeed"$'\n'"$out"
+  [ "$(grep -c '^control_relaunch_tx=' "$dir/home/state/rl45.meta")" -eq 1 ] \
+    || fail "a relaunched record must carry exactly one control_relaunch_tx"
+  [ "$(grep -n '^control_relaunch_tx=' "$dir/home/state/rl45.meta" | cut -d: -f1)" -lt \
+    "$(grep -n '^pr=' "$dir/home/state/rl45.meta" | cut -d: -f1)" ] \
+    || fail "control_relaunch_tx must precede the preserved pr= identity block"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl45 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "a second relaunch broke PR poll authentication"
   pass "fm-control relaunch: an armed PR poll still authenticates after replacement launch publication"
 }
 
@@ -550,6 +562,29 @@ test_legacy_relaunch_record_keeps_pr_poll_authenticating() {
     fail "an unrecognised line after pr= must still refuse authentication"
   fi
   pass "fm-control relaunch: a legacy-order record authenticates while unrecognised post-pr lines still refuse"
+}
+
+# fm-captain-hold.sh appends decisions_reviewed= and decision_keys= to the
+# task record, which lands them after the pr= identity block fm-pr-check.sh
+# wrote last; a held task with an armed poll must keep authenticating.
+test_held_task_record_keeps_pr_poll_authenticating() {
+  local dir fixture_umask
+  fixture_umask=$(umask)
+  dir=$(new_case pr-poll-held rl47)
+  add_ship_task "$dir" rl47 claude
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/47' >> "$dir/home/state/rl47.meta"
+  fm_pr_poll_prepare "$dir/home/state" rl47 github \
+    https://github.com/example/repo/pull/47 github.com example/repo 47 \
+    "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "could not prepare the PR poll fixture for the held-task test"
+  fm_pr_poll_publish_prepared \
+    || fail "could not publish the PR poll fixture for the held-task test"
+  umask "$fixture_umask"
+  # The order fm-captain-hold.sh writes when attesting a held task.
+  printf '%s\n' 'decisions_reviewed=1' 'decision_keys=hold-1,hold-2' >> "$dir/home/state/rl47.meta"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl47 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "a held task's poll stopped authenticating after decisions_reviewed/decision_keys landed post-pr="
+  pass "fm-control relaunch: a held task with an armed PR poll still authenticates"
 }
 
 test_relaunch_serializes_concurrent_durable_metadata_publication() {
@@ -2509,6 +2544,7 @@ test_relaunch_from_linked_home_preserves_recorded_worktree
 test_relaunch_preserves_durable_task_metadata
 test_relaunch_keeps_armed_pr_poll_authenticating
 test_legacy_relaunch_record_keeps_pr_poll_authenticating
+test_held_task_record_keeps_pr_poll_authenticating
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context
 test_relaunch_appends_the_progress_note_to_the_instructions
