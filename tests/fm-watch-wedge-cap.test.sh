@@ -17,6 +17,8 @@ DRAIN="$ROOT/bin/fm-wake-drain.sh"
 # The fixture root for make_case, which reads TMP_ROOT at call time.
 # shellcheck disable=SC2034
 TMP_ROOT=$(fm_test_tmproot fm-watch-wedge-cap-tests)
+# Each watcher reports cycle boundaries for the test's completed-cycle waits.
+export FM_WATCH_TRACE="$TMP_ROOT/.watch-test-trace"
 
 ack_stopped_cycle() {  # <state>
   local state=$1 err sequence generation
@@ -57,32 +59,28 @@ wait_for_exit() {
   return 124
 }
 
-file_mtime() {
-  if [ "$(uname)" = Darwin ]; then stat -f %m "$1" 2>/dev/null; else stat -c %Y "$1" 2>/dev/null; fi
-}
-
+# The beacon advances within a cycle, so a second beacon write does not prove
+# that a whole scan completed. Snapshot this watcher's cycle-start trace count
+# on entry and wait for two more: the first starts after this call, and the
+# second proves that cycle completed.
 wait_poll_cycle() {  # <state> <pid> [limit-ticks]
-  local state=$1 pid=$2 limit=${3:-300} beat first now i=0
-  beat="$state/.last-watcher-beat"
-  rm -f "$beat"
-  first=""
+  local pid=$2 limit=${3:-300} i=0 starts target
+  target=$(( $(watch_cycle_starts "$pid") + 2 ))
   while [ "$i" -lt "$limit" ]; do
     kill -0 "$pid" 2>/dev/null || return 1
-    first=$(file_mtime "$beat")
-    [ -n "$first" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  while [ "$i" -lt "$limit" ]; do
-    kill -0 "$pid" 2>/dev/null || return 1
-    now=$(file_mtime "$beat")
-    if [ -n "$now" ] && [ "$now" != "$first" ]; then
-      return 0
-    fi
+    starts=$(watch_cycle_starts "$pid")
+    [ "$starts" -ge "$target" ] && return 0
     sleep 0.1
     i=$((i + 1))
   done
   return 1
+}
+
+watch_cycle_starts() {  # <pid>
+  local starts
+  starts=$(grep -c " $1 cycle-start\$" "$FM_WATCH_TRACE" 2>/dev/null || true)
+  case "$starts" in ''|*[!0-9]*) starts=0 ;; esac
+  printf '%s\n' "$starts"
 }
 
 seen_sig() {

@@ -60,7 +60,7 @@ case "${1:-}" in
     printf '╭────╮\n│    │\n╰────╯\n'
     exit 0 ;;
   list-windows)
-    printf 'foreign:%s\nfm-mpf-lane-m8\nfm-lane-key\nfm-lane-ok\n' \
+    printf 'foreign:%s\nfm-mpf-lane-m8\nfm-lane-key\nfm-lane-ok\nfm-lane-ka\nfm-sm-ka\n' \
       "${FM_FAKE_TMUX_WINDOW:-fm-lost}"
     exit 0 ;;
 esac
