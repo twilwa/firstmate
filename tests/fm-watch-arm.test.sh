@@ -944,6 +944,85 @@ test_append_wakes_live_announced_watcher() {
   pass "watch-arm: appending work reopens an announced empty recovery"
 }
 
+test_append_wakes_handling_successor() {
+  local phase=$1 seq_state=${2:-intact} repeat=${3:-fresh}
+  local dir home state fakebin predecessor successor generation watcher_pid pair sequence
+  local new_key=inbox:second new_payload='check: captain inbox note second' datebin real_date inherited_row
+  dir=$(make_case "append-handling-$phase-$seq_state-$repeat")
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  mkdir -p "$home/data"
+  append_wake "$state" check inbox:zeroth 'check: captain inbox note zeroth'
+  append_wake "$state" check inbox:first 'check: captain inbox note first'
+  inherited_row=$(head -n 1 "$state/.wake-queue")
+  start_rearm_arm "$home" "$state" "$fakebin" "$dir/first.out"
+  wait_for_exit "$ARM_PID" "$REARM_EXIT_POLLS" || fail "first inbox wake did not surface"
+  predecessor=$ARM_PID
+  start_rearm_arm "$home" "$state" "$fakebin" "$dir/successor.out" "$predecessor"
+  successor=$ARM_PID
+  generation=$(recovery_marker_generation "$state/.watcher-down")
+  watcher_pid=$(cat "$state/.watch.lock/pid")
+  FM_HOME="$home" FM_STATE_OVERRIDE="$state" "$WATCH_ARM" --handling-delivered "$generation" \
+    --watcher-pid "$watcher_pid" || fail "could not confirm first notification delivery"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$dir/drain.out" 2> "$dir/drain.err"
+  pair=$(drain_ack_pair "$dir/drain.err") || fail "first drain supplied no acknowledgement"
+  sequence=${pair%%$'\t'*}
+  generation=${pair#*$'\t'}
+  # Outlast two real polls: the inherited row alone must not loop.
+  sleep 3
+  is_live_non_zombie "$successor" || fail "successor repeated the inherited notification"
+  if [ "$phase" = after-ack ]; then
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" --recovery-generation "$generation"
+    [ ! -s "$state/.wake-queue" ] || fail "inherited rows were not acknowledged"
+  fi
+  # A lost or unreadable counter must not let a new row look inherited.
+  case "$seq_state" in
+    missing) rm -f "$state/.wake-queue.seq" ;;
+    malformed) printf 'not-a-sequence\n' > "$state/.wake-queue.seq" ;;
+  esac
+  datebin=
+  if [ "$repeat" = identical ]; then
+    # Re-append the first inherited row's kind, key, and payload inside its
+    # epoch second, so the reused sequence makes the new row byte-identical.
+    new_key=inbox:zeroth
+    new_payload='check: captain inbox note zeroth'
+    datebin="$dir/datebin"
+    mkdir -p "$datebin"
+    real_date=$(command -v date)
+    cat > "$datebin/date" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = +%s ]; then
+  printf '%s\n' "${inherited_row%%$'\t'*}"
+else
+  exec "$real_date" "\$@"
+fi
+SH
+    chmod +x "$datebin/date"
+  fi
+  PATH="${datebin:+$datebin:}$PATH" append_wake "$state" check "$new_key" "$new_payload"
+  if [ "$repeat" = identical ]; then
+    [ "$(head -n 1 "$state/.wake-queue")" = "$inherited_row" ] \
+      || fail "re-append was not byte-identical to the inherited row"
+  fi
+  if [ "$phase" = before-ack ]; then
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" --recovery-generation "$generation"
+  fi
+  wait_for_exit "$successor" 100 || fail "handling successor stranded the second inbox wake ($phase)"
+  grep -F 'check: rearm-resurface' "$dir/successor.out" >/dev/null \
+    || fail "successor did not notify about new work"
+  grep "$(printf '\tcheck\t%s\t' "$new_key")" "$state/.wake-queue" >/dev/null \
+    || fail "notification or old acknowledgement consumed the second message"
+  start_rearm_arm "$home" "$state" "$fakebin" "$dir/next.out" "$successor"
+  ack_wakes "$state" || fail "could not acknowledge the second message"
+  sleep 3
+  is_live_non_zombie "$ARM_PID" || fail "next successor repeated already-handled work"
+  [ ! -s "$state/.wake-queue" ] || fail "handled queue was not drained"
+  kill -TERM "$ARM_PID"
+  wait "$ARM_PID" 2>/dev/null || true
+  pass "watch-arm: handling successor delivers $repeat new inbox work $phase ($seq_state counter) without consuming or looping"
+}
+
 # Exercise the handling-window recovery invariant owned by
 # docs/watcher-continuity.md through real watcher processes.
 test_handling_window_close_keeps_the_acknowledgement_valid() {
@@ -1450,6 +1529,44 @@ test_watcher_exits_when_its_home_is_removed() {
   pass "watch-arm: a watcher exits when its home is removed"
 }
 
+# An arm whose repository root is deleted mid-flight - the temporary root of a
+# torn-down test fixture - must exit within its stated bound with the typed
+# ground-removed line instead of polling for a successor that cannot come. The
+# owning arm first proves a state directory that does not exist yet is created,
+# not mistaken for a removed one. The root's bin is a symlink to this checkout's
+# bin, so removing the root removes the arm's script path too.
+test_attached_arm_exits_when_its_root_is_removed() {
+  local dir repo state fakebin ownerout armout owner attached status
+  dir=$(make_case root-removed)
+  repo="$dir/repo"
+  state="$repo/state"
+  fakebin="$dir/fakebin"
+  ownerout="$dir/owner.out"
+  armout="$dir/arm.out"
+  mkdir -p "$repo/data"
+  ln -s "$ROOT/bin" "$repo/bin"
+  fm_test_track_watcher_state "$state"
+  WATCH_ARM="$repo/bin/fm-watch-arm.sh" start_owned_watcher "$repo" "$state" "$fakebin" "$ownerout"
+  owner=$ARM_PID
+  [ -d "$state" ] || fail "the owning arm did not create the not-yet-existing state directory"
+  PATH="$fakebin:$PATH" FM_HOME="$repo" FM_STATE_OVERRIDE="$state" FM_POLL=1 \
+    FM_ARM_ATTACH_POLL=0.1 FM_ARM_CONFIRM_TIMEOUT=60 "$repo/bin/fm-watch-arm.sh" > "$armout" 2>&1 &
+  attached=$!
+  wait_for_file_text "$armout" "watcher: attached pid=$WATCH_PID" \
+    || fail "second arm did not attach to the live watcher: $(cat "$armout")"
+
+  rm -rf "$repo"
+  # One 0.1s attach poll plus the 0.2s recheck, with headroom for a busy host;
+  # far short of the 60s successor window the arm used to poll through.
+  wait_for_exit "$attached" 50
+  status=$?
+  wait_for_exit "$owner" 400 >/dev/null 2>&1 || true
+  expect_code 1 "$status" "an arm whose root was removed must exit 1: $(cat "$armout")"
+  grep -qF "watcher: FAILED - arm ground removed: $repo/bin/fm-watch-arm.sh no longer exists" "$armout" \
+    || fail "arm did not report its removed ground: $(cat "$armout")"
+  pass "watch-arm: an attached arm exits within its bound when its root is removed"
+}
+
 # tests/lib.sh's exit-time reaper must stop a watcher a suite armed for a
 # temporary home, through the home-scoped stop, so no test leaves one behind.
 # The reaper is driven with a private registry so this suite's own registry
@@ -1584,12 +1701,150 @@ test_handling_delivered_rejects_a_superseded_generation() {
   pass "watch-arm: a churned generation's handling confirmation reports a mismatch and an arm check keeps it"
 }
 
+# The OpenCode arm plugin must decide whether to arm with the shared supervision
+# predicate (bin/fm-supervision-lib.sh's fm_supervision_needed), the same
+# condition owner bin/fm-turnend-guard.sh decides with, so the plugin and the
+# guard can never disagree about whether a watcher is needed. The fixture is a
+# minimal primary root carrying the real shared predicate, a home whose state
+# directory receives each case's records, and a fake arm that records its own
+# run; the plugin is exercised through its public coordinator interface.
+make_arm_decision_fixture() {  # <name>
+  local name=$1 dir repo home
+  dir=$(make_case "$name")
+  repo="$dir/repo"
+  home="$dir/home"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q -b main "$repo"
+  : > "$repo/AGENTS.md"
+  cp "$ROOT/bin/fm-supervision-lib.sh" "$repo/bin/fm-supervision-lib.sh"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+printf 'watcher: healthy pid=1 (beacon 0s)\n'
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  printf '%s\n' "$dir"
+}
+
+test_opencode_arm_plugin_decides_with_the_shared_predicate() {
+  command -v node >/dev/null 2>&1 || { printf 'skip: node not found\n'; return 0; }
+  local driver case_name dir state config out status
+  driver="$TMP_ROOT/arm-decision-driver.mjs"
+  cat > "$driver" <<'EOF'
+import { existsSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+
+const state = `${process.env.FM_HOME}/state`;
+const config = `${process.env.FM_HOME}/config`;
+const armLog = process.env.FM_ARM_LOG;
+
+// The shared predicate verdict over the same state directory and the same lib
+// copy the delegation in the plugin sources.
+const probe = spawnSync(
+  "bash",
+  [
+    "-c",
+    '. "$1/bin/fm-supervision-lib.sh"; if fm_supervision_needed "$2"; then printf arm; else printf no-arm; fi',
+    "predicate-probe",
+    process.env.FM_ROOT_OVERRIDE,
+    state,
+  ],
+  { encoding: "utf8" },
+);
+const verdict = String(probe.stdout || "").trim();
+if (verdict !== "arm" && verdict !== "no-arm") {
+  console.error(`predicate probe failed (status ${probe.status}): ${probe.stderr}`);
+  process.exit(1);
+}
+
+// The two local overrides: an away record declines even when the predicate
+// reads needed, because away mode owns supervision through its daemon, and an
+// x-mode home arms before its relay poll is registered. Every other state
+// directory must match the shared verdict exactly.
+let expected;
+if (existsSync(`${state}/.afk`)) {
+  if (verdict !== "arm") {
+    console.error(`afk fixture lost its registered need: predicate said ${verdict}`);
+    process.exit(1);
+  }
+  expected = "no-arm";
+} else if (existsSync(`${config}/x-mode.env`)) {
+  if (verdict !== "no-arm") {
+    console.error(`x-mode fixture unexpectedly reads as needed: predicate said ${verdict}`);
+    process.exit(1);
+  }
+  expected = "arm";
+} else {
+  expected = verdict;
+}
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = { session: { promptAsync: async () => {} } };
+await mod.FmPrimaryWatchArm({ client, directory: process.env.WORKTREE, worktree: process.env.WORKTREE });
+writeFileSync(`${state}/.lock`, `${process.pid}\n`);
+const status = await globalThis.__firstmateOpenCodeWatchArm.ensureArmed("session-test", client);
+if (expected === "no-arm") {
+  if (status !== "not-needed") {
+    console.error(`expected a not-needed decline, got ${status}`);
+    process.exit(1);
+  }
+  if (existsSync(armLog)) {
+    console.error("the plugin declined but the arm ran");
+    process.exit(1);
+  }
+  process.exit(0);
+}
+for (let i = 0; i < 250 && !existsSync(armLog); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!existsSync(armLog)) {
+  console.error(`the arm never ran (ensureArmed status ${status})`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+  for case_name in source registered-check empty afk-with-source task-meta x-mode; do
+    dir=$(make_arm_decision_fixture "opencode-arm-$case_name")
+    state="$dir/home/state"
+    config="$dir/home/config"
+    case "$case_name" in
+      source) mkdir -p "$state/procevent"; : > "$state/procevent/fixture.source" ;;
+      registered-check) : > "$state/fixture.check.sh"; : > "$state/fixture.check-trust" ;;
+      empty) : ;;
+      afk-with-source)
+        mkdir -p "$state/procevent"
+        : > "$state/procevent/fixture.source"
+        : > "$state/.afk"
+        ;;
+      task-meta) : > "$state/fixture.meta" ;;
+      x-mode) : > "$config/x-mode.env" ;;
+    esac
+    out=$(FM_ROOT_OVERRIDE="$dir/repo" WORKTREE="$dir/repo" FM_HOME="$dir/home" \
+      FM_ARM_LOG="$dir/arm.log" NODE_NO_WARNINGS=1 \
+      PLUGIN="$ROOT/.opencode/plugins/fm-primary-watch-arm.js" node "$driver" 2>&1)
+    status=$?
+    expect_code 0 "$status" "OpenCode arm plugin must decide with the shared predicate ($case_name): $out"
+    [ -z "$out" ] || fail "OpenCode arm predicate case $case_name printed output: $out"
+  done
+  pass "watch-arm: the OpenCode arm plugin decides with the shared supervision predicate"
+}
+
+test_append_wakes_handling_successor after-ack
+test_append_wakes_handling_successor before-ack
+test_append_wakes_handling_successor after-ack missing
+test_append_wakes_handling_successor before-ack missing
+test_append_wakes_handling_successor after-ack malformed
+test_append_wakes_handling_successor before-ack malformed
+test_append_wakes_handling_successor after-ack missing identical
+test_append_wakes_handling_successor after-ack malformed identical
 test_attached_arm_reports_the_delivered_wake
 test_attached_arm_reports_the_delivered_wake_after_drain
 test_arm_refuses_an_unusable_launch_confirm_window
 test_arm_refuses_a_disposable_validation_checkout
 test_watcher_exits_when_its_state_directory_is_removed
 test_watcher_exits_when_its_home_is_removed
+test_attached_arm_exits_when_its_root_is_removed
 test_reaper_stops_a_tracked_watcher
 test_attached_arm_still_fails_on_a_wake_it_did_not_deliver
 test_attached_arm_follows_a_slow_live_holder
@@ -1614,3 +1869,4 @@ test_handling_delivered_rejects_a_superseded_generation
 test_take_over_attaches_to_a_cycle_the_named_arm_does_not_own
 test_take_over_owns_a_fresh_cycle_and_keeps_queued_work_surfacing
 test_take_over_preserves_downtime_from_watcher_self_exit
+test_opencode_arm_plugin_decides_with_the_shared_predicate
