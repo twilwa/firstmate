@@ -13,3 +13,5 @@ __pycache__/
 config/
 
 .tools/
+.serena/
+.claude/.headroom_wrap_settings.lock
