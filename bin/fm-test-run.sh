@@ -1714,6 +1714,10 @@ families_for_changed_path() {
     bin/fm-peek.sh|bin/fm-composer*)
       printf '%s\n' backend-dispatch
       printf '%s\n' pure-contract-unit
+      if [ "$1" = bin/fm-spawn.sh ]; then
+        printf '%s\n' '__script__:fm-spawn-pool-base-freshen.test.sh'
+        printf '%s\n' '__script__:fm-treehouse-clone-custody.test.sh'
+      fi
       ;;
     bin/fm-kimi-trust-lib.sh)
       # Kimi's folder-prompt predicates are vendor-rendered signal: the Kimi

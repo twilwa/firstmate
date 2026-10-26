@@ -318,8 +318,14 @@
 #   default-branch commit when safe: directly for a local home, or through the
 #   configured host for a remote home. Skipped syncs warn and launch unchanged.
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
-#   git worktree root distinct from both the spawning project and its repository's
-#   primary checkout, including when the spawning project is a linked worktree.
+#   linked git worktree root sharing the spawning project's canonical common git
+#   directory, distinct from both the spawning project and the primary checkout.
+#   New Treehouse allocations use --root $HOME/.treehouse-fm/<hash of the
+#   canonical common git dir> to separate independent clones even when they
+#   share an origin, and to keep crew slots outside every Firstmate home. This
+#   overrides ambient Treehouse root configuration for new allocations only; recorded
+#   worktrees, slot claims, project locks and absolute-path returns keep their
+#   existing owners. Relaunch never reallocates or refreshes the recorded copy.
 #   On the backends that discover that path by reading the task pane's own cwd,
 #   the same isolation test screens every read: a pane still showing the project
 #   or the repository primary while `treehouse get` prepares the slot is waited
@@ -327,6 +333,9 @@
 #   itself a linked worktree of the project repository still launches. A pane
 #   that never reaches an isolated worktree refuses at the end of that wait,
 #   naming the last path seen and why it was rejected.
+#   A Treehouse slot must also resolve to the spawning project clone's physical
+#   Git common directory: a slot linked to another clone of the same remote is
+#   refused even after passing that isolation test.
 #   That placement is proven only at launch. Every ship or scout therefore
 #   receives `FM_TASK_ID=<task-id>` before launch, on the same backend-specific
 #   environment channel as GOTMPDIR, and bin/fm-test-run.sh refuses to execute the
@@ -3516,20 +3525,16 @@ case "$LAUNCH" in
   ;;
 esac
 
+KIMI_HOOK_REQUIRED=0
 case "$LAUNCH" in
 *__KIMIBIN__*)
+  KIMI_HOOK_REQUIRED=1
   KIMI_BIN=$(resolve_kimi_binary) || exit 1
   LAUNCH=${LAUNCH//__KIMIBIN__/$(shell_quote "$KIMI_BIN")}
   fm_backend_visible_capture_supported "$BACKEND" || {
     echo "error: refusing Kimi spawn because backend '$BACKEND' has no verified viewport-bounded capture; Kimi 2.0.0 gates a fresh worktree on a trust dialog that can only be answered and confirmed cleared from a scrollback-free read of the live pane" >&2
     exit 1
   }
-  if [ "$KIND" != secondmate ]; then
-    "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
-      echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely" >&2
-      exit 1
-    }
-  fi
   ;;
 esac
 
@@ -4119,6 +4124,14 @@ BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 # once here so every downstream comparison uses the same physical form
 # (docs/herdr-backend.md "Known gaps").
 PROJ_ABS_REAL=$(cd "$PROJ_ABS" 2>/dev/null && pwd -P) || PROJ_ABS_REAL="$PROJ_ABS"
+PROJ_COMMON_REAL=
+if [ "$KIND" != secondmate ]; then
+  if ! PROJ_COMMON_REAL=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir) ||
+    ! PROJ_COMMON_REAL=$(cd "$PROJ_COMMON_REAL" && pwd -P); then
+    echo "error: could not resolve the spawning project's common git directory; refusing to allocate a worktree" >&2
+    exit 1
+  fi
+fi
 
 real_path_or_raw() { # <path>
   local path=$1 real
@@ -4140,7 +4153,7 @@ real_path_or_raw() { # <path>
 
 # True when <path> is an isolated worktree of the spawning project: a real
 # directory that is its own worktree root, is not the spawning project itself,
-# and does not share the project repository's common git dir. SPAWN_WT_TOP is
+# shares its common git dir, and has a separate per-worktree git dir. SPAWN_WT_TOP is
 # left holding the worktree root the check read, and SPAWN_WT_REASON a short
 # phrase naming why a rejected path failed, both for the refusal messages.
 #
@@ -4155,7 +4168,7 @@ real_path_or_raw() { # <path>
 SPAWN_WT_TOP=
 SPAWN_WT_REASON=
 spawn_worktree_isolated() { # <path>
-  local path=$1 wt_real wt_top_real wt_git_dir proj_common
+  local path=$1 wt_real wt_top_real wt_git_dir wt_common
   SPAWN_WT_TOP=
   SPAWN_WT_REASON=
   wt_real=
@@ -4192,14 +4205,18 @@ spawn_worktree_isolated() { # <path>
   # dir, so comparing only the two working directories cannot protect primary.
   wt_git_dir=$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null) &&
     wt_git_dir=$(cd "$wt_git_dir" 2>/dev/null && pwd -P) || wt_git_dir=
-  proj_common=$(git -C "$PROJ_ABS" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
-    proj_common=$(cd "$proj_common" 2>/dev/null && pwd -P) || proj_common=
-  if [ -z "$wt_git_dir" ] || [ -z "$proj_common" ]; then
+  wt_common=$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
+    wt_common=$(cd "$wt_common" 2>/dev/null && pwd -P) || wt_common=
+  if [ -z "$wt_git_dir" ] || [ -z "$wt_common" ] || [ -z "$PROJ_COMMON_REAL" ]; then
     SPAWN_WT_REASON="its git directory could not be resolved"
     return 1
   fi
-  if [ "$wt_git_dir" = "$proj_common" ]; then
-    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is the spawning project's common git dir)"
+  if [ "$wt_git_dir" = "$wt_common" ]; then
+    SPAWN_WT_REASON="it is the repository's primary checkout (its git dir is its common git dir)"
+    return 1
+  fi
+  if [ "$wt_common" != "$PROJ_COMMON_REAL" ]; then
+    SPAWN_WT_REASON="its common git dir '$wt_common' does not belong to the spawning project '$PROJ_COMMON_REAL'"
     return 1
   fi
   return 0
@@ -4223,7 +4240,14 @@ spawn_endpoint_hint() {
 validate_spawn_worktree() { # <source> <inspect-target>
   local source=$1 inspect_target=$2
   if ! spawn_worktree_isolated "$WT"; then
-    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
+    if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
+      # A returned allocation ID is not removal authority when its path fails
+      # custody validation. Keep both resources for inspection; valid owned
+      # allocations retain the normal cleanup path for later launch failures.
+      ORCA_ABORT_CLEANUP=0
+      echo "warning: preserving unverified Orca allocation id='$ORCA_WORKTREE_ID' path='$WT' terminal='${ORCA_TERMINAL:-none}'; no worktree removal or terminal closure attempted" >&2
+    fi
+    echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'; $SPAWN_WT_REASON); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
 }
@@ -5614,9 +5638,9 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # to once that task's worker exits - and that is exactly when the slot is
   # handed on and this task's worktree= line goes stale. The claim is what lets
   # bin/fm-teardown.sh leave a slot that has since been reassigned untouched, so
-  # a slot that cannot be claimed is refused here, at the cheapest point, rather
-  # than launching a worker whose slot teardown could later release out from
-  # under its successor.
+  # a managed slot that cannot be claimed is refused here, at the cheapest
+  # point, rather than launching a worker whose slot teardown could later
+  # release out from under its successor.
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
   if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
@@ -5625,6 +5649,14 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       exit 1
     fi
     SPAWN_SLOT_CLAIMED=1
+  else
+    # A foreign clone may have the same remote URL and thus the same default
+    # Treehouse pool name. Refuse it even when the pane's isolated-path check
+    # passed: that check proves isolation, not this home's Git ownership.
+    if ! fm_same_git_common_dir "$PROJ_ABS" "$WT"; then
+      echo "error: Treehouse pool slot $WT is not linked to project clone $PROJ_ABS; refusing to launch a worker outside that project; inspect window $T" >&2
+      exit 1
+    fi
   fi
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != t3code ]; then
@@ -5637,6 +5669,15 @@ fi
 # tab's original project directory.
 spawn_enter_recorded_worktree
 spawn_assert_agent_worktree
+
+# Executable/capture preflight above is read-only. Even Kimi's global hook must
+# wait until the worker's recorded or allocated copy has passed custody checks.
+if [ "$KIMI_HOOK_REQUIRED" -eq 1 ] && [ "$KIND" != secondmate ]; then
+  "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
+    echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely; inspect window $T" >&2
+    exit 1
+  }
+fi
 
 # Pre-register Claude's workspace trust for the directory this launch starts in,
 # at the first point that directory is known and before any per-task state is
