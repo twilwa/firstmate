@@ -2037,6 +2037,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ "$BUDGET_WALL_SET" -eq 0 ] || shared_args+=(--budget-wall-secs "$BUDGET_WALL_ARG")
   [ "$BUDGET_OUTPUT_SET" -eq 0 ] || shared_args+=(--budget-output-tokens "$BUDGET_OUTPUT_ARG")
   [ "$BASE_BRANCH_SET" -eq 0 ] || shared_args+=(--base-branch "$BASE_BRANCH")
+  [ "$UPSTREAM_CONSENT_SET" -eq 0 ] || shared_args+=(--upstream-consent "$UPSTREAM_CONSENT")
   [ "$HERDR_RESUME_LOCK_WAIT" -eq 0 ] || shared_args+=(--herdr-resume-lock-wait)
   for pair in "${POS[@]}"; do
     case "$pair" in
@@ -3033,7 +3034,7 @@ fi
 
 case "$HARNESS" in
 devin)
-  DEVIN_BIN=$(command -v devin) || {
+  DEVIN_BIN=$(type -P devin) || {
     echo "error: devin executable not found on PATH" >&2
     exit 1
   }
@@ -3225,7 +3226,7 @@ secondmate_registry_value() {
 
 resolve_kimi_binary() {
   local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+  candidate=$(type -P kimi 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -3252,7 +3253,7 @@ resolve_kimi_binary() {
 
 resolve_muse_binary() {
   local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
+  candidate=$(type -P muse 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -3274,7 +3275,7 @@ resolve_muse_binary() {
 
 resolve_rovo_binary() {
   local candidate dir fallback
-  candidate=$(command -v rovo 2>/dev/null || true)
+  candidate=$(type -P rovo 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
     /*)
@@ -6813,11 +6814,14 @@ preserve_relaunch_meta() {
     echo "home=$PROJ_ABS"
     echo "projects=$SECONDMATE_PROJECTS"
   fi
-  if [ "$RELAUNCH" -eq 1 ]; then
-    preserve_relaunch_meta
-  fi
+  # control_relaunch_tx must precede preserve_relaunch_meta's output: the
+  # preserved block can end with the task's pr=/pr_head= identity, and
+  # fm_pr_metadata_identity_parse refuses unrecognised keys after pr=.
   if [ "$SPAWN_CONTROL_PARENT" = 1 ] && [ -n "${FM_CONTROL_RELAUNCH_TX:-}" ]; then
     echo "control_relaunch_tx=$FM_CONTROL_RELAUNCH_TX"
+  fi
+  if [ "$RELAUNCH" -eq 1 ]; then
+    preserve_relaunch_meta
   fi
 } >"$SPAWN_META_PATH" || {
   echo "error: task record for $ID could not be prepared at $SPAWN_META_PATH" >&2

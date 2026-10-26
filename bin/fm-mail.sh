@@ -131,7 +131,7 @@ if [ "$MAIL_MAX_WAKES" -gt 200 ]; then
   MAIL_MAX_WAKES=200
 fi
 
-PY="$(command -v python3 || true)"
+PY="$(type -P python3 || true)"
 if [ -z "$PY" ]; then
   echo "fm-mail: python3 required" >&2
   exit 1

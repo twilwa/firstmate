@@ -18,159 +18,26 @@ set -u
 # shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
 
-HOST="$ROOT/bin/fm-supervision-host.sh"
-REPORT="$ROOT/bin/fm-branch-report.sh"
-DISPATCH="$ROOT/bin/fm-branch-dispatch.mjs"
-CONTRACT="$ROOT/bin/fm-afk-contract.sh"
-LEASE="$ROOT/bin/fm-lease.sh"
-
-command -v node >/dev/null 2>&1 || { printf 'skip: node absent\n'; exit 0; }
-command -v perl >/dev/null 2>&1 || { printf 'skip: perl absent\n'; exit 0; }
-
-TMP_ROOT=$(fm_test_tmproot fm-supervision-host)
-FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
-ln -s /bin/bash "$FAKEBIN/claude"
-FAKE_CLAUDE="$FAKEBIN/claude"
-
-# The stub engine. It records its environment and arguments, then acts like a
-# branch turn through the real scripts according to $FM_HOME/stub-mode:
-#   handle      drain, claim the task's lease, report, acknowledge, release
-#   captain     the same as handle, but report verdict captain naming the rows
-#               the drain presented
-#   hold-lease  the same, but leave the lease held (the host must release it),
-#               logging its check line while held
-#   return      handle, but the captain returns (the record is archived) before
-#               the turn ends
-#   return-silent the same, but the routine outcome is silent
-#   return-fail the same, then exit nonzero without a result
-#   return-fail-silent the same, but the routine outcome is silent
-#   return-many handle, then seed more than 1,000 same-turn receipts after an
-#               early visible outcome
-#   return-lookup-fail handle, then corrupt the store before the return lookup
-#   return-first the captain returns first, then handle, then block until the
-#               host is stopped (an owner killing its host at the turn's end)
-#   noack       the same as handle, but skip the acknowledgement
-#   held        handle, but first block reading the $FM_HOME/stub-release FIFO
-#               until the test writes to it, so the test chooses when the turn
-#               ends
-#   captain-held the same, but record a captain outcome before the turn ends
-#   emptyresult the same as handle, but print {} as its result
-#   noreport    drain and exit cleanly without a report
-#   go-away     the captain goes away (the record is written) mid-turn, then
-#               the turn reports verdict captain
-#   fail        exit nonzero at once, with no result and no report (an engine
-#               error the latch counts)
-#   hang        before anything else, start a descendant in a process group of
-#               its own, then block
-#   hold-marker the same as handle, but before the result a helper takes the
-#               recovery-marker lock for a few seconds, so the host's handled-
-#               turn settle is still waiting for it (holding the queue lock)
-# A $FM_HOME/stub-tz file sets the engine's TZ, as a wrapper launching the
-# real engine binary may, independent of the host's own TZ.
-STUB="$TMP_ROOT/engine-stub"
-cat > "$STUB" <<'SH'
-#!/usr/bin/env bash
-set -u
-STATE=${FM_STATE_OVERRIDE:-$FM_HOME/state}
-mode=$(cat "$FM_HOME/stub-mode" 2>/dev/null || echo handle)
-[ ! -s "$FM_HOME/stub-tz" ] || { TZ=$(cat "$FM_HOME/stub-tz"); export TZ; }
-n=$(( $(ls "$FM_HOME"/engine-call.* 2>/dev/null | wc -l) + 1 ))
-{
-  printf 'mode=%s\nactor=%s\nholder=%s\nprimary=%s\nturn=%s\n' "$mode" "${FM_SUPERVISION_ACTOR:-}" \
-    "${FM_LEASE_HOLDER_PID:-}" "${FM_SUPERVISION_PRIMARY_HARNESS:-}" "${FM_BRANCH_REPORT_TURN:-}"
-  for a in "$@"; do printf 'arg=%s\n' "$a"; done
-} > "$FM_HOME/engine-call.$n"
-case "$mode" in held|captain-held) printf 'ready\n' > "$FM_HOME/stub-ready" ;; esac
-# Like Claude, the reported cost is the conversation's running total.
-result() {
-  printf '{"type":"result","subtype":"success","is_error":false,"num_turns":3,"total_cost_usd":%s,' "$(awk -v n="$n" 'BEGIN { print n * 0.25 }')"
-  printf '"usage":{"input_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":10,"output_tokens":20},"session_id":"stub"}\n'
+test_engine_resolves_executable_past_a_shadowing_function() {
+  local bin="$TMP_ROOT/engine-path-bin" resolved
+  mkdir -p "$bin"
+  printf '#!/bin/sh\nexit 0\n' > "$bin/claude"
+  chmod +x "$bin/claude"
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  claude() { return 97; }
+  resolved=$(PATH="$bin:$PATH" FM_SUPERVISION_ENGINE_CLAUDE_BIN='' \
+    fm_supervision_engine_bin claude) \
+    || fail "supervision engine lookup did not resolve the external executable"
+  unset -f claude
+  [ "$resolved" = "$bin/claude" ] \
+    || fail "supervision engine lookup returned '$resolved' instead of the executable path"
+  pass "supervision engine lookup ignores a shadowing shell function"
 }
-if [ "$mode" = hang ]; then
-  perl -e 'setpgrp(0, 0); exec "sleep", $ARGV[0]' "$FM_TEST_STUB_MAX_BLOCK_SECONDS" &
-  printf '%s\n' "$!" > "$FM_HOME/orphan-pid"
-  sleep "$FM_TEST_STUB_MAX_BLOCK_SECONDS"
-  exit 0
-fi
-drain=$("$FM_REPO/bin/fm-wake-drain.sh" 2>&1)
-printf '%s\n' "$drain" > "$FM_HOME/engine-drain.$n"
-ack=$(printf '%s\n' "$drain" | sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run bin\/fm-wake-drain.sh //p' | tail -1)
-task=$(sed -n 's/^tasks=//p' "$STATE/.supervision-host-turn" | awk '{ print $1 }')
-[ -n "$task" ] || task=fleet
-verdict=routine
-[ "$mode" != go-away ] || verdict=captain
-case "$mode" in
-  fail) exit 3 ;;
-  handle|captain|captain-close-before-return|held|captain-held|hold-lease|hold-marker|return|return-silent|return-fail|return-fail-silent|return-many|return-lookup-fail|return-first|noack|emptyresult|go-away)
-    case "$mode" in held|captain-held) read -r _ < "$FM_HOME/stub-release" ;; esac
-    [ "$mode" != return-first ] || "$FM_REPO/bin/fm-afk-contract.sh" archive >> "$FM_HOME/engine-return.log" 2>&1
-    [ "$mode" != go-away ] || "$FM_REPO/bin/fm-afk-contract.sh" enter --words 'gone mid-turn' >> "$FM_HOME/engine-return.log" 2>&1
-    "$FM_REPO/bin/fm-lease.sh" claim "$task" >> "$FM_HOME/engine-lease.log" 2>&1
-    [ "$mode" != hold-lease ] || "$FM_REPO/bin/fm-lease.sh" check "$task" >> "$FM_HOME/engine-lease.log" 2>&1
-    if [ "$mode" = captain ] || [ "$mode" = captain-held ] \
-      || [ "$mode" = captain-close-before-return ]; then
-      "$FM_REPO/bin/fm-branch-report.sh" --task "$task" --verdict captain \
-        --summary "stub escalated: $(printf '%s\n' "$drain" | grep -v '^WAKE_' | tr '\n' ' ' | cut -c1-400)" \
-        >> "$FM_HOME/engine-report.log" 2>&1
-    else
-      report_args=(--task "$task" --verdict "$verdict" --summary "stub handled $task")
-      case "$mode" in
-        return-silent|return-fail-silent)
-          report_args=(--task "$task" --verdict routine --summary 'still working; nothing new has happened; no action was taken' --silent true)
-          ;;
-      esac
-      "$FM_REPO/bin/fm-branch-report.sh" "${report_args[@]}" >> "$FM_HOME/engine-report.log" 2>&1
-    fi
-    if [ "$mode" = return-many ]; then
-      awk -v task="$task" 'BEGIN { for (seq = 2; seq <= 1001; seq++)
-        printf "{\"seq\":%d,\"epoch\":1,\"task\":\"%s\",\"wake\":\"host test\",\"verdict\":\"routine\",\"summary\":\"bulk silent fixture\",\"silent\":true}\n", seq, task
-      }' >> "$STATE/branch-outcomes.jsonl"
-      awk -v turn="$FM_BRANCH_REPORT_TURN" -v task="$task" 'BEGIN { for (seq = 2; seq <= 1001; seq++)
-        printf "%s\t%d\troutine\t%s\n", turn, seq, task
-      }' >> "$STATE/.supervision-host-receipts"
-    fi
-    if [ "$mode" = return-lookup-fail ]; then
-      printf 'not-json\n' >> "$STATE/branch-outcomes.jsonl"
-    fi
-    # shellcheck disable=SC2086 # the printed acknowledgement arguments
-    [ -z "$ack" ] || [ "$mode" = noack ] || "$FM_REPO/bin/fm-wake-drain.sh" $ack >> "$FM_HOME/engine-ack.log" 2>&1
-    case "$mode" in captain-close-before-return)
-      watcher=$(cat "$STATE/.watch.lock/pid" 2>/dev/null || true)
-      [ -z "$watcher" ] || kill -TERM "$watcher" 2>/dev/null || true
-      i=0
-      while [ -n "$watcher" ] && kill -0 "$watcher" 2>/dev/null && [ "$i" -lt 100 ]; do
-        sleep 0.05
-        i=$((i + 1))
-      done
-      ;;
-    esac
-    [ "$mode" = hold-lease ] || "$FM_REPO/bin/fm-lease.sh" release "$task" >> "$FM_HOME/engine-lease.log" 2>&1
-    case "$mode" in
-      return|return-silent|return-fail|return-fail-silent|return-many|return-lookup-fail) "$FM_REPO/bin/fm-afk-contract.sh" archive >> "$FM_HOME/engine-return.log" 2>&1 ;;
-    esac
-    case "$mode" in return-fail|return-fail-silent) exit 3 ;; esac
-    [ "$mode" != return-first ] || sleep "$FM_TEST_STUB_MAX_BLOCK_SECONDS"
-    [ "$mode" != emptyresult ] || { printf '{}\n'; exit 0; }
-    if [ "$mode" = hold-marker ]; then
-      perl -e 'setpgrp(0, 0); exec @ARGV' bash -c '
-        . "$1"
-        fm_lock_acquire_wait "$2" || exit 1
-        : > "$3"
-        sleep 3
-        fm_lock_release "$2"' _ "$FM_REPO/bin/fm-wake-lib.sh" "$STATE/.watcher-down.lock" "$FM_HOME/marker-held" \
-        >/dev/null 2>&1 </dev/null &
-      i=0
-      while [ ! -e "$FM_HOME/marker-held" ] && [ "$i" -lt 100 ]; do
-        sleep 0.05
-        i=$((i + 1))
-      done
-    fi
-    result
-    ;;
-  noreport) result ;;
-esac
-SH
-chmod +x "$STUB"
+(
+  # shellcheck source=bin/fm-supervision-engine-lib.sh
+  . "$ROOT/bin/fm-supervision-engine-lib.sh"
+  test_engine_resolves_executable_past_a_shadowing_function
+)
 
 export FM_REPO="$ROOT"
 export FM_SUPERVISION_ENGINE_CLAUDE_BIN="$STUB"

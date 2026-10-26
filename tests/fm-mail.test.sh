@@ -115,10 +115,14 @@ SH
   printf '%s' "hello world" > "$body_file"
   export FM_MAIL_TEST_STDIN_FILE="$stdin_file"
   local out rc=0
+  # shellcheck disable=SC2329 # Decoy; the lookup under test must bypass it.
+  python3() { printf 'shadowed python3 function invoked\n' >&2; return 97; }
+  export -f python3
   out=$(FM_MAIL_USER=test FM_MAIL_PASS=pass FM_IMAP_HOST=h FM_SMTP_HOST=h \
     FM_HOME="$HOME_DIR" PATH="$fakebin:$PATH" \
     "$MAIL" send to@example.com subj "hello world" 2>&1) || rc=$?
-  expect_code 0 "$rc" "send with body must succeed"
+  unset -f python3
+  expect_code 0 "$rc" "send with body must invoke the external python3 executable"
   local captured
   captured=$(cat "$stdin_file" 2>/dev/null || echo "")
   assert_contains "$captured" "hello world" "send passes body through stdin to python3"

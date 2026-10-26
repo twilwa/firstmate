@@ -702,6 +702,27 @@ test_promote_gate_on_self_repo() {
   pass "fm-promote.sh: the self-repository gate governs promotion identically to spawn"
 }
 
+# A batch spawn re-runs this script once per id=repo pair with the shared
+# delivery-contract flags, so the one-task consent must reach every child the
+# same way a single-task spawn passes it, or each agreeing child is refused.
+test_batch_spawn_forwards_consent() {
+  local home out
+  [ -n "$PUB_TARGET" ] || {
+    printf '# skip - checkout has no upstream/github/origin remote to scope\n'
+    return
+  }
+  home=$(make_role_home spawn-batch-consent)
+  write_ship_brief "$home" spawn-bconsent-c1 " upstream-consent=$PUB_TARGET"
+  write_ship_brief "$home" spawn-bconsent-c2 " upstream-consent=$PUB_TARGET"
+  out=$(run_spawn "$home" "spawn-bconsent-c1=$ROOT" "spawn-bconsent-c2=$ROOT" --harness claude \
+    --mode no-mistakes --yolo off --upstream-consent "$PUB_TARGET")
+  assert_contains "$out" "batch:" "fixture: the id=repo pairs must route through batch dispatch"
+  assert_not_contains "$out" "upstream-consent mismatch" \
+    "a batch child must receive the shared --upstream-consent flag"
+  assert_not_contains "$out" "spawn refused" "matching batch consent must pass the gate"
+  pass "fm-spawn.sh: a batch spawn forwards --upstream-consent to every pair"
+}
+
 test_secondmate_spawn_refuses_consent_flag() {
   local home out
   home=$(make_role_home spawn-sm)
@@ -736,6 +757,7 @@ test_brief_consent_flag_bounds
 test_brief_self_repo_pre_gate
 test_spawn_gate_on_self_repo
 test_spawn_consent_agreement
+test_batch_spawn_forwards_consent
 test_promote_gate_on_self_repo
 test_secondmate_spawn_refuses_consent_flag
 

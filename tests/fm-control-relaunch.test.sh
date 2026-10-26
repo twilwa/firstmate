@@ -24,6 +24,8 @@ set -u
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-control-lib.sh"
 # shellcheck source=/dev/null
+. "$ROOT/bin/fm-pr-lib.sh"
+# shellcheck source=/dev/null
 . "$ROOT/bin/fm-trace-context-lib.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-tasks-axi-lib.sh"
@@ -488,6 +490,101 @@ test_relaunch_preserves_durable_task_metadata() {
   [ "$(meta_field "$dir" rl19 decisions_reviewed)" = 1 ] \
     || fail "the task decision state must survive relaunch"
   pass "fm-control relaunch: durable task metadata survives replacement launch publication"
+}
+
+# Relaunch preserves a recorded PR identity, and the preserved record must
+# still pass the authentication the watcher's PR merge poll applies
+# (bin/fm-pr-lib.sh fm_pr_poll_artifacts_content_valid). The poll artifacts
+# are armed through the same fm_pr_poll_prepare/fm_pr_poll_publish_prepared
+# pair fm-pr-check.sh uses, with pr= and pr_head= appended last to the record
+# the way fm-pr-check.sh writes them.
+test_relaunch_keeps_armed_pr_poll_authenticating() {
+  local dir out rc fixture_umask
+  fixture_umask=$(umask)
+  dir=$(new_case pr-poll rl45)
+  add_ship_task "$dir" rl45 claude
+  {
+    printf '%s\n' 'pr=https://github.com/example/repo/pull/45'
+    printf '%s\n' 'pr_head=0123456789abcdef0123456789abcdef01234567'
+  } >> "$dir/home/state/rl45.meta"
+  fm_pr_poll_prepare "$dir/home/state" rl45 github \
+    https://github.com/example/repo/pull/45 github.com example/repo 45 \
+    "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "could not prepare the PR poll fixture for the relaunch-ordering test"
+  fm_pr_poll_publish_prepared \
+    || fail "could not publish the PR poll fixture for the relaunch-ordering test"
+  umask "$fixture_umask"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl45 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "the armed PR poll did not authenticate before relaunch"
+
+  out=$(run_control "$dir" rl45 relaunch --note "continue the review"); rc=$?
+  expect_code 0 "$rc" "relaunch of a task with an armed PR poll should succeed"$'\n'"$out"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl45 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "relaunch broke PR poll authentication by writing control_relaunch_tx after pr="
+
+  # A second relaunch must carry exactly one control_relaunch_tx - the fresh
+  # transaction - never a stale value re-emitted by preserve_relaunch_meta.
+  out=$(run_control "$dir" rl45 relaunch --note "review round two"); rc=$?
+  expect_code 0 "$rc" "a second relaunch should succeed"$'\n'"$out"
+  [ "$(grep -c '^control_relaunch_tx=' "$dir/home/state/rl45.meta")" -eq 1 ] \
+    || fail "a relaunched record must carry exactly one control_relaunch_tx"
+  [ "$(grep -n '^control_relaunch_tx=' "$dir/home/state/rl45.meta" | cut -d: -f1)" -lt \
+    "$(grep -n '^pr=' "$dir/home/state/rl45.meta" | cut -d: -f1)" ] \
+    || fail "control_relaunch_tx must precede the preserved pr= identity block"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl45 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "a second relaunch broke PR poll authentication"
+  pass "fm-control relaunch: an armed PR poll still authenticates after replacement launch publication"
+}
+
+# Records written before the ordering fix kept control_relaunch_tx after pr=,
+# so the record parser must still accept that order for already-relaunched
+# tasks to keep polling. An unrecognised line after pr= must still refuse.
+test_legacy_relaunch_record_keeps_pr_poll_authenticating() {
+  local dir fixture_umask
+  fixture_umask=$(umask)
+  dir=$(new_case pr-poll-legacy rl46)
+  add_ship_task "$dir" rl46 claude
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/46' >> "$dir/home/state/rl46.meta"
+  fm_pr_poll_prepare "$dir/home/state" rl46 github \
+    https://github.com/example/repo/pull/46 github.com example/repo 46 \
+    "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "could not prepare the PR poll fixture for the legacy-order test"
+  fm_pr_poll_publish_prepared \
+    || fail "could not publish the PR poll fixture for the legacy-order test"
+  umask "$fixture_umask"
+  # The old writer appended control_relaunch_tx after the preserved pr= block.
+  printf '%s\n' 'control_relaunch_tx=12345.20261023T000000Z.678' >> "$dir/home/state/rl46.meta"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl46 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "a record carrying control_relaunch_tx after pr= stopped authenticating"
+
+  printf '%s\n' 'not_a_known_key=1' >> "$dir/home/state/rl46.meta"
+  if fm_pr_poll_artifacts_content_valid "$dir/home/state" rl46 "$ROOT/bin/fm-pr-poll.sh"; then
+    fail "an unrecognised line after pr= must still refuse authentication"
+  fi
+  pass "fm-control relaunch: a legacy-order record authenticates while unrecognised post-pr lines still refuse"
+}
+
+# fm-captain-hold.sh appends decisions_reviewed= and decision_keys= to the
+# task record, which lands them after the pr= identity block fm-pr-check.sh
+# wrote last; a held task with an armed poll must keep authenticating.
+test_held_task_record_keeps_pr_poll_authenticating() {
+  local dir fixture_umask
+  fixture_umask=$(umask)
+  dir=$(new_case pr-poll-held rl47)
+  add_ship_task "$dir" rl47 claude
+  printf '%s\n' 'pr=https://github.com/example/repo/pull/47' >> "$dir/home/state/rl47.meta"
+  fm_pr_poll_prepare "$dir/home/state" rl47 github \
+    https://github.com/example/repo/pull/47 github.com example/repo 47 \
+    "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "could not prepare the PR poll fixture for the held-task test"
+  fm_pr_poll_publish_prepared \
+    || fail "could not publish the PR poll fixture for the held-task test"
+  umask "$fixture_umask"
+  # The order fm-captain-hold.sh writes when attesting a held task.
+  printf '%s\n' 'decisions_reviewed=1' 'decision_keys=hold-1,hold-2' >> "$dir/home/state/rl47.meta"
+  fm_pr_poll_artifacts_content_valid "$dir/home/state" rl47 "$ROOT/bin/fm-pr-poll.sh" \
+    || fail "a held task's poll stopped authenticating after decisions_reviewed/decision_keys landed post-pr="
+  pass "fm-control relaunch: a held task with an armed PR poll still authenticates"
 }
 
 test_relaunch_serializes_concurrent_durable_metadata_publication() {
@@ -2974,6 +3071,9 @@ test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text
 test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree
 test_relaunch_preserves_durable_task_metadata
+test_relaunch_keeps_armed_pr_poll_authenticating
+test_legacy_relaunch_record_keeps_pr_poll_authenticating
+test_held_task_record_keeps_pr_poll_authenticating
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context
 test_relaunch_appends_the_progress_note_to_the_instructions

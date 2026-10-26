@@ -141,8 +141,8 @@ set_check() { # <name> <value> [operator-action]
 
 herdr_cli_available() {
   local herdr_bin jq_bin
-  herdr_bin=$(command -v herdr 2>/dev/null || true)
-  jq_bin=$(command -v jq 2>/dev/null || true)
+  herdr_bin=$(type -P herdr 2>/dev/null || true)
+  jq_bin=$(type -P jq 2>/dev/null || true)
   [ -n "$herdr_bin" ] && [ -x "$herdr_bin" ] && [ -n "$jq_bin" ] && [ -x "$jq_bin" ]
 }
 
@@ -309,7 +309,7 @@ XML
 launch_agent_contract_matches() { # <resolved-login-shell>
   local shell=$1 herdr_bin actual expected
   [ -f "$LAUNCH_AGENT_PLIST" ] && [ ! -L "$LAUNCH_AGENT_PLIST" ] || return 1
-  herdr_bin=$(command -v herdr 2>/dev/null) || return 1
+  herdr_bin=$(type -P herdr 2>/dev/null) || return 1
   actual=$(tr -d ' \t\r\n' < "$LAUNCH_AGENT_PLIST" 2>/dev/null) || return 1
   expected=$(render_launch_agent "$herdr_bin" "$shell" | tr -d ' \t\r\n') || return 1
   [ "$actual" = "$expected" ]
@@ -317,7 +317,7 @@ launch_agent_contract_matches() { # <resolved-login-shell>
 
 launch_agent_loaded_contract_matches() { # <resolved-login-shell>
   local shell=$1 loaded herdr_bin exec_compact shell_compact plist_compact log_compact args
-  herdr_bin=$(command -v herdr 2>/dev/null) || return 1
+  herdr_bin=$(type -P herdr 2>/dev/null) || return 1
   loaded=$(launchctl print "gui/$UID_NUM/$LAUNCH_AGENT_LABEL" 2>/dev/null) || return 1
   loaded=$(printf '%s' "$loaded" | tr -d ' \t\r\n') || return 1
   exec_compact=$(launch_agent_exec_command "$herdr_bin" | tr -d ' \t\r\n') || return 1
@@ -425,7 +425,7 @@ report_required_tools() {
   local tool resolved harness
   MISSING=()
   for tool in "${REQUIRED_TOOLS[@]}"; do
-    resolved=$(command -v "$tool" 2>/dev/null || true)
+    resolved=$(type -P "$tool" 2>/dev/null || true)
     if [ -n "$resolved" ] && [ -x "$resolved" ]; then
       if [ "$tool" = tasks-axi ] && ! fm_tasks_axi_compatible; then
         printf 'required tasks-axi=MISSING (incompatible)\n'
@@ -439,7 +439,7 @@ report_required_tools() {
     fi
   done
   for harness in "${HARNESS_TOOLS[@]}"; do
-    resolved=$(command -v "$harness" 2>/dev/null || true)
+    resolved=$(type -P "$harness" 2>/dev/null || true)
     if [ -n "$resolved" ] && [ -x "$resolved" ]; then
       printf 'required harness=%s:%s\n' "$harness" "$resolved"
       return 0
@@ -506,7 +506,7 @@ wrapper_is_firstmate_owned() { # <path>
 repair_tool_wrapper() { # <tool>
   local tool=$1 target wrapper tmp
   local resolved
-  resolved=$(command -v "$tool" 2>/dev/null || true)
+  resolved=$(type -P "$tool" 2>/dev/null || true)
   [ -n "$resolved" ] && [ -x "$resolved" ] && return 0
   target=$(fm_remote_job_manager_tool "${HOME:-}" "$tool" 2>/dev/null || true)
   [ -n "$target" ] || return 1
@@ -542,7 +542,7 @@ repair_required_wrappers() {
     repair_tool_wrapper "$tool" || true
   done
   for tool in "${HARNESS_TOOLS[@]}"; do
-    resolved=$(command -v "$tool" 2>/dev/null || true)
+    resolved=$(type -P "$tool" 2>/dev/null || true)
     [ -z "$resolved" ] || [ ! -x "$resolved" ] || return 0
   done
   for tool in "${HARNESS_TOOLS[@]}"; do
@@ -564,7 +564,7 @@ fix_remote_job_worker() {
 
 check_herdr() {
   local resolved selected
-  if resolved=$(command -v herdr 2>/dev/null) && [ -x "$resolved" ]; then
+  if resolved=$(type -P herdr 2>/dev/null) && [ -x "$resolved" ]; then
     if herdr_adapter_load; then
       fm_backend_herdr_client_select "$HERDR_SESSION_NAME"
       selected=$(fm_backend_herdr_bin)
@@ -739,7 +739,7 @@ fix_report() { # <check> applied|failed <text>
 
 write_launch_agent() { # <resolved-login-shell>
   local shell=$1 herdr_bin tmp
-  if ! herdr_bin=$(command -v herdr 2>/dev/null); then
+  if ! herdr_bin=$(type -P herdr 2>/dev/null); then
     fix_report launchagent failed "herdr does not resolve, so no launch agent was written"
     return 1
   fi
@@ -913,7 +913,7 @@ else
   report_required_tools_from_worker
 fi
 for tool in "${OPTIONAL_TOOLS[@]}"; do
-  if resolved=$(command -v "$tool" 2>/dev/null); then
+  if resolved=$(type -P "$tool" 2>/dev/null); then
     printf 'optional %s=%s\n' "$tool" "$resolved"
   else
     printf 'optional %s=absent\n' "$tool"

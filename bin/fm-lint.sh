@@ -43,13 +43,13 @@
 #
 # Lint defaults to two concurrency-limited workers over two stable logical
 # shards, and each worker runs ONE canonical root per ShellCheck process, so a
-# run holds at most JOBS concurrent ShellCheck processes. Diagnostics replay
-# in stable shard/root order. FM_LINT_JOBS=1 changes concurrency, not diagnostics
-# or exit selection.
-# --partition 1of2/2of2 splits the entire canonical inventory across
-# two CI runners, each with those same concurrency-limited workers.
-# Partitions are complete, disjoint, and byte-weight balanced; --list-files
-# exposes their actual roots.
+# run holds at most JOBS concurrent ShellCheck processes. CI partitions default
+# to one worker so large source-aware ShellCheck processes cannot overlap on a
+# memory-limited runner. Diagnostics replay in stable shard/root order.
+# FM_LINT_JOBS/--jobs change concurrency, not diagnostics or exit selection.
+# --partition 1of3/2of3/3of3 splits the entire canonical inventory across
+# three CI runners. Partitions are complete, disjoint, and byte-weight
+# balanced; --list-files exposes their actual roots.
 # Partition mode starts with full source-aware analysis, never changed-only
 # or --fast, and does not accept explicit paths. Each partition also runs
 # workflow lint and backend-purity checks, keeping either invocation
@@ -709,7 +709,7 @@ fm_lint_run_backend_purity() {
   }
 }
 
-JOBS=${FM_LINT_JOBS:-2}
+JOBS=${FM_LINT_JOBS:-}
 TELEMETRY=${FM_LINT_TELEMETRY:-}
 FAST=0
 ANALYSIS_MODE=full
@@ -737,7 +737,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --partition)
-      [ "$#" -ge 2 ] || { printf 'fm-lint.sh: --partition requires 1of2 or 2of2.\n' >&2; exit 2; }
+      [ "$#" -ge 2 ] || { printf 'fm-lint.sh: --partition requires 1of3, 2of3, or 3of3.\n' >&2; exit 2; }
       PARTITION=$2
       PARTITION_REQUESTED=1
       shift 2
@@ -768,6 +768,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+if [ -z "$JOBS" ]; then
+  if [ -n "$PARTITION" ]; then JOBS=1; else JOBS=2; fi
+fi
 case "$JOBS" in
   1|2) ;;
   *) printf 'fm-lint.sh: jobs must be 1 or 2, got %s.\n' "$JOBS" >&2; exit 2 ;;
@@ -776,17 +779,17 @@ esac
 case "$PARTITION" in
   '')
     if [ "$PARTITION_REQUESTED" -eq 1 ]; then
-      printf 'fm-lint.sh: --partition requires 1of2 or 2of2.\n' >&2
+      printf 'fm-lint.sh: --partition requires 1of3, 2of3, or 3of3.\n' >&2
       exit 2
     fi
     ;;
-  1of2|2of2)
+  1of3|2of3|3of3)
     if [ "$FAST" -eq 1 ] || [ "$#" -gt 0 ]; then
       printf 'fm-lint.sh: --partition requires full canonical lint; omit --fast and explicit paths.\n' >&2
       exit 2
     fi
     ;;
-  *) printf 'fm-lint.sh: --partition must be 1of2 or 2of2, got %s.\n' "$PARTITION" >&2; exit 2 ;;
+  *) printf 'fm-lint.sh: --partition must be 1of3, 2of3, or 3of3, got %s.\n' "$PARTITION" >&2; exit 2 ;;
 esac
 
 if [ "$FAST" -eq 1 ] && { [ "${GITHUB_ACTIONS:-}" = true ] || [ "${CI:-}" = true ]; }; then
@@ -893,7 +896,14 @@ if [ -n "$PARTITION" ]; then
   while IFS="$TAB" read -r index path; do
     PARTITION_ROOTS+=("$path")
   done < <(printf '%s\n' "$partition_weights" | LC_ALL=C sort -t "$TAB" -k1,1nr -k2,2n | awk -F '\t' -v want="${PARTITION%%of*}" '
-    { shard=(load[2] < load[1]) ? 2 : 1; load[shard]+=$1; if (shard == want) print $2 "\t" $3 }
+    {
+      shard=1
+      for (candidate=2; candidate<=3; candidate++) {
+        if (load[candidate] < load[shard]) shard=candidate
+      }
+      load[shard]+=$1
+      if (shard == want) print $2 "\t" $3
+    }
   ' | LC_ALL=C sort -t "$TAB" -k1,1n)
   ROOTS=("${PARTITION_ROOTS[@]}")
 fi
@@ -908,14 +918,13 @@ if [ "$LIST_FILES" -eq 1 ]; then
   exit 0
 fi
 
-if ! command -v shellcheck >/dev/null 2>&1; then
+if ! SHELLCHECK_BIN=$(type -P shellcheck); then
   printf 'fm-lint.sh: ShellCheck not found; install ShellCheck %s with bin/fm-install-shellcheck.sh <destination-directory> and put that directory on PATH.\n' \
     "$REQUIRED_SHELLCHECK" >&2
   exit 1
 fi
 unset SHELLCHECK_OPTS
-SHELLCHECK_BIN=$(command -v shellcheck)
-if ! PERL_BIN=$(command -v perl); then
+if ! PERL_BIN=$(type -P perl); then
   printf 'fm-lint.sh: perl is required for bounded worker cleanup.\n' >&2
   exit 127
 fi
