@@ -182,6 +182,12 @@
 #                          budget and is parked until a probe reads it live
 #                          again (FM_SECONDMATE_LIVENESS_MAX_ATTEMPTS and
 #                          FM_SECONDMATE_LIVENESS_WINDOW_SECS)
+#   check: task-budget task=<id> period=<n> age=<s>s ...
+#                          a ship/scout task that is not done or failed crossed
+#                          its recorded wall-clock budget (period 0) or another
+#                          FM_BUDGET_REPEAT_SECS past it; firstmate decides
+#                          whether it continues (task_budget_tick owns cadence
+#                          and persisted dedupe)
 # For normal supervision, resume the session-start primary-harness protocol
 # after each printed reason. Direct duplicate invocations of this script still
 # no-op through the watcher singleton lock. A live holder whose beacon is stale
@@ -250,12 +256,16 @@ WATCH_HOME_EXISTED=0
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
+# shellcheck source=bin/fm-task-budget-lib.sh
+. "$SCRIPT_DIR/fm-task-budget-lib.sh"
 # Steering-inbox loss detection: bin/fm-task-inbox-lib.sh owns the record,
 # doorbell, re-ring ladder, and unavailable-endpoint contracts; this watcher
 # supplies their live endpoint and busy checks plus wake emission
 # (inbox_steer_check below).
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
+# shellcheck source=bin/fm-pane-question-lib.sh
+. "$SCRIPT_DIR/fm-pane-question-lib.sh"
 # The away-posture record (state/.afk-contract) is the posture in both the
 # attended and the afk session; bin/fm-afk-contract.sh owns its schema and its
 # away-or-quiet reading, which is all this watcher reads (away_record_present
@@ -3503,6 +3513,80 @@ rerecord_device_shifted_pr_poll() {  # <id>
   return 0
 }
 
+# A budget is independent of pane liveness and status events: inspect every
+# recorded ship/scout task on every cycle, even if a different signal is due.
+# Lock the queue and the high-water marker together so an acknowledged wake
+# cannot be reissued on a watcher restart. The marker stores the largest period
+# seen for this task's original start, so a backward clock cannot reopen it.
+# A failed marker publication warns and retries next cycle without stopping
+# supervision; a queued key prevents a duplicate before acknowledgement.
+# Queue keys include the period so
+# distinct four-hour repeats cannot be coalesced by the drain.
+# A task whose latest event is done or failed is waiting on firstmate, not
+# spending budget; a later event resumes the original clock and marker.
+task_budget_tick() {
+  local meta task kind marker recorded_id recorded_period key queued queued_key reason tmp period status_verb failed=0
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    task=${meta##*/}; task=${task%.meta}
+    case "$task" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    kind=$(fm_task_budget_meta_value "$meta" kind)
+    case "$kind" in ship|scout) ;; *) continue ;; esac
+    fm_task_budget_snapshot "$meta" "$STATE/$task.status" || continue
+    period=$FM_BUDGET_PERIOD
+    [ "$period" -ge 0 ] || continue
+    status_line_verb "$FM_BUDGET_STATUS_LINE" status_verb
+    case "$status_verb" in done|failed) continue ;; esac
+    marker="$STATE/.budget-wake-$task"
+    key="task-budget:$task:$FM_BUDGET_ID:$period"
+    if ! fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"; then
+      failed=1
+      continue
+    fi
+    recorded_id='' recorded_period=''
+    if [ -e "$marker" ] || [ -L "$marker" ]; then
+      if [ ! -f "$marker" ] || [ -L "$marker" ]; then
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        failed=1
+        continue
+      fi
+      read -r recorded_id recorded_period < "$marker" || true
+    fi
+    if [ "$recorded_id" = "$FM_BUDGET_ID" ] \
+      && [[ "$recorded_period" =~ ^[0-9]+$ ]] && [ "$recorded_period" -ge "$period" ]; then
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      continue
+    fi
+    reason="check: task-budget task=$task period=$period $(fm_task_budget_detail)"
+    queued=0
+    while IFS= read -r queued_key; do
+      [ "$queued_key" = "$key" ] && queued=1
+    done < <(fm_wake_queued_keys_locked check)
+    if [ "$queued" -eq 0 ]; then
+      fm_wake_append_locked check "$key" "$reason" || {
+        fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+        failed=1
+        continue
+      }
+    fi
+    tmp=$(mktemp "$STATE/.budget-wake.XXXXXX") || {
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      failed=1
+      continue
+    }
+    if ! printf '%s %s\n' "$FM_BUDGET_ID" "$period" > "$tmp" \
+      || ! chmod 0600 "$tmp" || ! _fm_atomic_replace "$tmp" "$marker"; then
+      rm -f -- "$tmp"
+      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+      failed=1
+      continue
+    fi
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    wake "$reason"
+  done
+  return "$failed"
+}
+
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
   # Re-announcing from this cycle is what turned a lost handshake into an
@@ -3619,6 +3703,9 @@ while :; do
     echo "watcher: secondmate wake-loop observation failed" >&2
     exit 1
   }
+  # Check cumulative cost before signal triage; a chatty worker cannot starve it.
+  task_budget_tick || echo "watcher: task budget check failed; retrying next cycle" >&2
+  watch_step_done task-budget
 
   # Process-to-event liveness repair. This never discovers a result by polling:
   # each registered source has its own child blocking on that source, and this
@@ -3791,7 +3878,10 @@ EOF
   pending=$(scan_signals)
   if [ -n "$pending" ]; then
     sleep "$SIGNAL_GRACE"
-    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)")
+    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)" | awk -F '\t' '
+      NF >= 3 { if (!seen[$3]++) order[++n] = $3; row[$3] = $0 }
+      END { for (i = 1; i <= n; i++) print row[order[i]] }
+    ')
     # The final coalesced signal set is the watcher-carried status-change
     # trigger for this home's published summary. Start it before either
     # surfacing or absorbing the signal, but never wait on it: see
@@ -3831,6 +3921,35 @@ EOF
     # status span, and the capture only once the authoritative verdict comes up short.
     FM_SIGNAL_SURFACE_ENDPOINTS=''
     FM_SIGNAL_NEEDS_DECISION_FILES=''
+    FM_PANE_QUESTION_FILES=''
+    FM_PANE_QUESTION_OFFSETS=''
+    while IFS=$(printf '\t') read -r sf sig f; do
+      case "$f" in *.turn-ended) ;; *) continue ;; esac
+      task=${f##*/}; task=${task%.turn-ended}
+      meta="$STATE/$task.meta"
+      [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+      [ "$(fm_meta_get "$meta" kind)" != secondmate ] || continue
+      w=$(fm_meta_get "$meta" window)
+      [ -n "$w" ] || continue
+      backend=$(fm_backend_of_meta "$meta")
+      capture=$(fm_backend_capture "$backend" "$w" 40 "$(window_label "$w")" 2>/dev/null) || continue
+      if fm_pane_question_turn "$STATE" "$task" "$sig" "$capture"; then
+        FM_PANE_QUESTION_FILES="${FM_PANE_QUESTION_FILES} $f"
+        FM_PANE_QUESTION_OFFSETS="${FM_PANE_QUESTION_OFFSETS}${f}"$'\t'"${FM_PANE_QUESTION_SIZE}"$'\n'
+        # The signature identifies this one turn in the durable inbox body.
+        # An interrupted queue write may be retried without duplicating a nudge.
+        # The example is one copyable command: placeholder brackets were read as
+        # template markers and dropped, and a fixed at= epoch was copied verbatim.
+        status_q=$(printf '%s' "$STATE/$task.status" | sed "s/'/'\\\\''/g")
+        nudge="Your last turn ended on a question. If it needs a decision, file it by running this command:
+echo \"needs-decision [at=\$(date +%s)] [key=api-shape]: Should I use REST or RPC?\" >> '$status_q'
+Keep the square brackets and the \$(date +%s) stamp exactly as written; change only the key and the question. (turn $sig)"
+        rec=$(fm_task_inbox_write_idempotent "$STATE" "$task" "$nudge") || exit 1
+        fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || true
+      fi
+    done <<EOF
+$pending
+EOF
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
@@ -3843,15 +3962,30 @@ EOF
     # decision-owned row off the supervision branch (fm-branch-dispatch.ts,
     # fm-primary-pi-watch.ts), and the away daemon, whose handle_durable_wakes
     # passes it to handle_wake (see the comment above handle_wake in
-    # bin/fm-supervise-daemon.sh).
+    # bin/fm-supervise-daemon.sh). A turn end that fm_pane_question_turn found
+    # ending on an unfiled question is marked "signal: decision-pending <file>"
+    # instead; both readers treat it as decision-owned, and the away daemon's
+    # classify_signal escalates it.
     # shellcheck disable=SC2086  # same space-separated status-path list
-    if afk_present || [ "$signal_actionable" -eq 0 ] \
+    if afk_present || [ -n "$FM_PANE_QUESTION_FILES" ] || [ "$signal_actionable" -eq 0 ] \
       || { ! signal_crew_provably_working $files && ! signal_turnend_panes_churned $files; }; then
       while IFS=$(printf '\t') read -r sf sig f; do
         [ -n "$sf" ] || continue
         file_reason="$reason"
         case " $FM_SIGNAL_NEEDS_DECISION_FILES " in *" $f "*) file_reason="needs-decision:$files" ;; esac
+        case " $FM_PANE_QUESTION_FILES " in *" $f "*) file_reason="signal: decision-pending ${f##*/}" ;; esac
         fm_wake_append signal "$(basename "$f")" "$file_reason" || exit 1
+        case " $FM_PANE_QUESTION_FILES " in
+          *" $f "*)
+            task=${f##*/}; task=${task%.turn-ended}
+            while IFS=$(printf '\t') read -r question_file question_size; do
+              [ "$question_file" = "$f" ] || continue
+              printf '%s\t%s\t%s\n' "$sig" "$question_size" "$question_size" > "$STATE/.pane-question-$task" || exit 1
+            done <<OFFSETS
+$FM_PANE_QUESTION_OFFSETS
+OFFSETS
+            ;;
+        esac
       done <<EOF
 $pending
 EOF
