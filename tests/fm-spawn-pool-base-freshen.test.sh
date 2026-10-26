@@ -52,9 +52,13 @@ $1
 EOF
 }
 
+# Each spawn models a fresh session. A spawn leaves its window behind (a refused
+# one deliberately, for inspection), and the stateful fake tmux would otherwise
+# report it as a duplicate when a case reuses its task id.
 run_spawn() {
   local id=$1
   shift
+  : > "$FAKEBIN_DIR/.spawn-window"
   fm_test_run_spawn "$HOME_DIR" "$POOL_DIR" "$FAKEBIN_DIR" \
     "$id" "$PROJECT_DIR" "$@"
 }
@@ -1069,7 +1073,9 @@ case "$cmd" in
     rm -f "$world/$w.id" "$world/$w.path"
     ;;
   send-keys)
-    if [ "$text" = "treehouse get Enter" ]; then
+    # The spawn binds each allocation to a per-clone pool with --root.
+    case "$text" in "treehouse get Enter"|"treehouse --root "*" get Enter") alloc=1 ;; *) alloc=0 ;; esac
+    if [ "$alloc" = 1 ]; then
       w=$(window_name "$target")
       for slot in "$slots"/*/project; do
         grep -qxF -- "$slot" "$world"/*.path 2>/dev/null && continue

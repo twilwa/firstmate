@@ -12,6 +12,7 @@ This document records the deterministic mechanism, structured surfaces, compatib
 | --- | --- |
 | What is a captain call, and which subcommand does what? | [Mechanism](#mechanism) |
 | Why does cleanup of finished work leave a captain call open? | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
+| How does a captain's "later" keep the call held behind a date? | [Deferring a call](#deferring-a-call-answer---defer-until) |
 | How does a keyed answer from chat or a board reach the call? | [Answer-time resolution](#answer-time-resolution) |
 | How is a call closed when it stopped being a question? | [Reconcile](#reconcile-re-check-reality-never-a-blind-close) |
 | Why did a decision card disappear from the board? | [Card hygiene](#card-hygiene-a-landed-subject-is-not-a-live-call) |
@@ -60,9 +61,9 @@ Publishing the stamp first ensures a snapshot cannot observe a newly captain-hel
 Repeat and edge cases:
 
 - Retries of an active hold preserve its hold-set timestamp.
-- Re-holding released work starts a new timestamped lifecycle.
+- Re-holding released work starts a new timestamped lifecycle whose stamp is strictly later than the one its previous answer recorded.
 - A closed task is refused rather than reopened.
-- `--until` stores the captain's own deferral date through tasks-axi's date gate.
+- `--until` gates the hold behind a date through tasks-axi's date gate while recording no answer of its own.
 - Before the backend hold runs, `--origin` records the origin the call is held for on its own `Captain hold origin:` body line, which `complete` and `verify` check using backend identities rather than alias spellings.
   If that write fails, the backend hold is not attempted.
 - The reason may contain parentheses, semicolons, quotes, and line breaks.
@@ -76,11 +77,12 @@ The `answer` subcommand records the captain's exact words and resolves the call 
 | --- | --- |
 | `answer` | Closes a question-shaped call. |
 | `answer --release` | Frees a captain-gated work item to proceed without completing it. |
+| `answer --defer-until YYYY-MM-DD` | Re-dates the call's existing captain hold through the same `tasks-axi hold --until` gate, so the answered call remains held behind its date; see [Deferring a call](#deferring-a-call-answer---defer-until). |
 
 It requires a non-empty captain decision file of at most 8192 bytes.
 It then works in this order:
 
-1. It durably writes a resolution block carrying the decision digest and a `Resolution mode:`.
+1. It durably writes a resolution block carrying the decision digest, a `Resolution mode:`, and a `Captain hold answered:` copy of the answered call's hold-set stamp when it has one.
 2. It retains the leading hold-set stamp until the selected `tasks-axi done` or `tasks-axi unhold` transition succeeds.
 3. It then restores the successful record's resolution-first body ordering.
    The previous body remains preserved below the block and archived through tasks-axi `--archive-body`.
@@ -88,13 +90,26 @@ It then works in this order:
 If the close is interrupted, the still-held task therefore keeps its original age basis.
 A matching retry also completes any resolution-first normalization left unfinished after the close itself succeeded.
 
+### Deferring a call (`answer --defer-until`)
+
+A recorded-answer defer requires a date strictly later than today's UTC calendar date.
+Direct `answer --defer-until`, the keyed `defer` mode, and chat's `--defer-until` preflight refuse past and same-day values before recording or delivery, while bare `hold --until` continues to accept any valid calendar date.
+
+A deferral continues the call it answers rather than opening another:
+
+- It leaves the `Captain hold set:` stamp alone, including preserving its absence on a legacy stampless hold.
+- It carries the hold's existing reason forward as the gate text rather than inventing one.
+- It keeps one age basis for a live and an already-expired hold instead of the expired one restarting the clock.
+- It publishes only its `resolved ... deferred until <date>` parent line, never a fresh `needs-decision` for the question the captain just postponed.
+
 ### Answer retries and tasks closed elsewhere
 
 - An exact retry is idempotent only when the requested close mode matches the newest record.
 - A drifted answer or a mode mismatch is rejected.
 - A re-held task accepts a new answer as a new record on top.
+- A defer date belongs to the recorded decision's digest, so repeating the same words with a new date is a genuinely new answer that records its own deferral and re-dates the hold, while an exact redelivery stays an idempotent replay.
 
-On a task closed outside the script, `answer` records the missing block only when the captain-hold annotations tasks-axi preserves through a close prove the captain owned it.
+On a task closed outside the script, `answer` records the missing terminal block only when the captain-hold annotations tasks-axi preserves through a close prove the captain owned it.
 It also verifies the task stays closed.
 A deferred record is non-terminal, so it neither satisfies `verify` after an out-of-band close nor blocks `answer` from recording the later close as a repair.
 
@@ -193,16 +208,17 @@ Only `answer` with the captain's words or evidence-backed `reconcile close` reso
 
 "A keyed answer resolves its matching captain-held task" is one capability with one owner.
 `answers` is its channel-agnostic entry point.
-It reads `<task-id>\t<answer>\t<label>[\t<mode>]` lines and resolves each named task through the same `answer` path.
+It reads `<task-id>\t<answer>\t<label>[\t<mode>[\t<until>]]` lines and resolves each named task through the same `answer` path.
 Every guard therefore applies identically no matter which channel the answer arrived on.
 
-The optional mode column carries a card-declared close:
+The optional mode column carries a caller-declared outcome:
 
 | Mode | Effect |
 | --- | --- |
 | `done` (default) | Completes the task. |
 | `release` | Lifts the hold so held work resumes. |
-| Any other value | Skipped. |
+| `defer` | Requires a fifth YYYY-MM-DD field strictly later than today's UTC date, records the answer, and leaves the task held behind that date. |
+| Any other value, a missing, past, or same-day defer date, or a date on another mode | Skipped. |
 
 Each key is reported as follows:
 
@@ -211,8 +227,9 @@ Each key is reported as follows:
 | Names no task, names a task that is not captain-held, or names a task already closed | Reported as `skipped:` and feeds nothing. |
 | A replay whose answer and requested close mode match the newest record | An idempotent `closed:`. |
 | A replay with a mode mismatch | Skipped. |
+| A deferral | Reported as `deferred: <id> until <date>` and counted in `deferred=` rather than `closed=`, because the task stays queued, held, and dated. |
 
-The command exits nonzero when any key was skipped.
+The command exits nonzero when any key was skipped; only `skipped=` decides the exit status.
 `--source` is provenance text recorded in the durable decision, never a behavior switch, and the command carries no per-channel branch.
 
 ### Source bindings
@@ -230,6 +247,8 @@ Two channels feed that one intake today, and both are ordinary callers rather th
 - For a key the status log still owns, that script's header owns the status-log close.
 - A key the status log no longer owns is resolved to a still-open captain-held task and fed as one keyed line.
   The script tries the key as a task id first, then the legacy derived identity.
+- `--defer-until YYYY-MM-DD` selects the dated mode for those captain-held keys and preflights the strict UTC-future boundary before delivery.
+  It carries that one preflight UTC-day observation into the keyed intake, so a delivery that crosses midnight cannot turn an accepted answer into an unrecorded post-delivery refusal.
 
 `bin/fm-procevent.sh` is the captured-result channel:
 
@@ -239,8 +258,8 @@ Two channels feed that one intake today, and both are ordinary callers rather th
 - The runner names no adapter, parses no result, and carries no decision rule.
 
 `bin/fm-procevent-lavish.sh answers` is one such built-in adapter command.
-It reads only rows tagged `choice` and relays a card's declared close mode.
-It can never let freeform captain prose forge a task id or a mode.
+It reads only rows tagged `choice` and relays a card's declared close mode or a selected option's own defer date.
+It can never let freeform captain prose forge a task id, mode, or date.
 
 Trusted external process-event adapters intentionally expose no answer operation and cannot feed this authority-bearing intake; [`extension-bindings.md`](extension-bindings.md#trust-boundary) owns that boundary.
 
@@ -527,14 +546,17 @@ The suite does not test the accepted merge-to-cleanup re-hold window or asynchro
 
 - A report-only unresolved captain call refuses `--none` completion before teardown can erase the source.
 - Non-forced scout teardown always requires the durable inventory verification.
-- The recorded-answer guard holds: a bare `tasks-axi done` close fails `verify` until `answer` records the captain's word, and an ordinary finished task cannot be dressed up as an answered call.
+- The recorded-answer guard holds: a bare `tasks-axi done` close fails `verify` until `answer` records the captain's word, a deferred record remains non-terminal after an out-of-band close and accepts a later terminal repair, and an ordinary finished task cannot be dressed up as an answered call.
 - An answered call that markdown Done retention moved into the Done archive still passes `verify`, `complete`, and scout teardown, while an archived close carrying no recorded answer still refuses teardown, and an attested call found nowhere is refused by name.
 
 ### Answers, stamps, and deferral
 
 - Answer-time resolution works through a bound channel with task-id keys.
-  This includes the `release` mode, mode-matched replay idempotence, and the refusal of drifted, mode-mismatched, absent, unheld, and already-closed keys.
-- The chat channel reaches the same intake.
+  This includes the `release` and dated `defer` modes, exact replay idempotence, and the refusal of missing dates, impossible calendar dates, past and same-day dates before mutation or chat delivery, drifted answers, mode mismatches, absent tasks, unheld tasks, and already-closed keys.
+- A repeated deferral with a new date records its own answer and re-dates the hold.
+- A deferral preserves the hold-set age basis of a live, already-expired, or legacy stampless hold and the gate text each was held under.
+- The parent channel receives only the deferral's `resolved ... deferred until` line.
+- The chat channel carries the same dated defer into the shared intake.
 - Hold-set stamping precedes visible hold state, preserves an active lifecycle's timestamp, and resets after release.
 - Interrupted answer closure retains the stamp until close and restores resolution-first ordering on retry.
 - Deferral through `--until` leaves `captain_actionable` false until due.
@@ -596,10 +618,12 @@ Around those outcomes, it proves:
 - Every failed retirement is surfaced with its pending request retained.
 - Incompatible resolution modes cannot replay as captain answers.
 - Normal close, release, and replay paths retire pending requests.
+- A defer and its replay preserve them.
 
 The captured-source coverage proves:
 
 - Lavish deduplicates each card before separating versioned structured selections from notes.
+- Lavish carries an option-declared defer and date into the shared intake.
 - Bare and annotated Reconcile choices never reach keyed answers.
 - Genuine current and legacy choices still close normally.
 - Legacy bare and separator-annotated reconcile values feed neither intake.
@@ -614,6 +638,7 @@ The board's half is pinned in `tests/fm-bearings-board.test.sh`:
 
 - Every published decision card carries exactly one reconcile option.
 - Authored options reserve that value across every card type.
+- An option's optional defer date is accepted while an impossible one is refused.
 - Recommendations name authored options.
 - A decision card whose structured subject appears in the payload's landed rows is dropped.
   A genuinely open one is kept even when an unrelated landed id contains its key after a newline.
@@ -623,6 +648,11 @@ The board's half is pinned in `tests/fm-bearings-board.test.sh`:
 
 That suite drives its Lavish session through a protocol-shaped stub.
 `tests/fm-bearings-board-lavish-live-e2e.test.sh` is the default-on capability guard for the installed provider, and [`verification/process-event-sources.md`](verification/process-event-sources.md) owns the version-scoped evidence.
+
+The shipped board template's own half is pinned in `tests/fm-bearings-board-render.test.sh`.
+An option carrying `until` shows the date it commits the call to on the card and in the queued confirmation and emits the dated defer answer context over any card close.
+An option without one shows no date and leaves the card's close governing.
+
 [`verification/process-event-sources.md`](verification/process-event-sources.md) owns the process-event ownership and reclamation evidence exercised by `tests/fm-procevent.test.sh`.
 
 ### Classifier and projection suites
@@ -644,7 +674,7 @@ The exact commands and their summarized outputs are recorded in the shipping PR'
 To refresh this record, run:
 
 - The four suites above: `tests/fm-captain-hold-lifecycle.test.sh`, `tests/fm-classify-decision-key.test.sh`, `tests/fm-fleet-snapshot-view.test.sh`, and `tests/fm-bearings-snapshot.test.sh`.
-- `tests/fm-send-resolve-key.test.sh`, `tests/fm-bearings-board.test.sh`, and `tests/fm-procevent.test.sh`.
+- `tests/fm-send-resolve-key.test.sh`, `tests/fm-bearings-board.test.sh`, `tests/fm-bearings-board-render.test.sh`, and `tests/fm-procevent.test.sh`.
 - `bin/fm-lint.sh`.
 
 After a lavish-axi upgrade, run `FM_BEARINGS_LAVISH_LIVE=1 tests/fm-bearings-board-lavish-live-e2e.test.sh`.

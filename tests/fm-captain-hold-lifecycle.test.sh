@@ -80,6 +80,13 @@ tasks_in() {  # <home> <tasks-axi args...>
   (cd "$home" && tasks-axi "$@")
 }
 
+# Hold reasons are stored encoded (bin/fm-hold-reason-lib.sh), so assertions on
+# a reason's text read through the public reader, which decodes each reason and
+# prints it as a JSON-quoted string.
+public_show() {  # <home> <task-id>
+  FM_HOME="$1" "$ROOT/bin/fm-tasks-axi.sh" show "$2" --full
+}
+
 run_captain() {  # <home> <command args...>
   local home=$1
   shift

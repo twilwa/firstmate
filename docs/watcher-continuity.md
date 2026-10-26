@@ -417,6 +417,7 @@ The file is size-capped through `FM_WATCH_CYCLE_LOG_MAX_BYTES` and `FM_WATCH_CYC
 
 The default 300-second grace is unchanged.
 Only the watcher process touches `state/.last-watcher-beat`.
+[`turnend-guard.md`](turnend-guard.md#guard-grace-and-the-poll-cadence) owns when it renews within a cycle.
 No helper process can make a wedged watcher appear healthy.
 A step that itself stalls past the grace still requires investigation.
 `FM_WATCH_TRACE` is an opt-in diagnostic and test hook that appends `<epoch> <pid> <step>` lines to the named file; it is off by default and is not part of the liveness contract.

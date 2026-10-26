@@ -5639,7 +5639,19 @@ elif [ "$RELAUNCH" -eq 1 ]; then
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # A t3code slot was leased and validated in its target branch above.
   if [ "$BACKEND" != t3code ]; then
-    spawn_send_text_line "$WT_TARGET" 'treehouse get'
+    # Bind new allocations to this clone, even when homes share an origin or an
+    # ambient Treehouse root is set, by keying the root on a hash of the clone's
+    # canonical common git dir. The root sits under the user's HOME rather than
+    # beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
+    # of a crew slot. Relaunch uses the recorded slot unchanged.
+    if command -v shasum >/dev/null 2>&1; then
+      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+    elif command -v sha256sum >/dev/null 2>&1; then
+      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+    else
+      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
+    fi
+    spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$HOME/.treehouse-fm/$pool_hash") get"
 
     # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
     # Target the stable window id, not the name: if the name is ever lost (e.g. an
@@ -5654,10 +5666,10 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     # A single read that already looks isolated is not proof the pane settled
     # there: on some tmux/WSL setups a brand-new window's pane_current_path
     # transiently reports an unrelated stale path (seen live as another real git
-    # checkout entirely) before the shell catches up with treehouse get's cd. That
-    # stale path passes spawn_worktree_isolated too (it resolves to a real,
-    # distinct worktree top-level), so accepting it on one read alone silently
-    # records the wrong worktree= in state/<id>.meta. Require two consecutive
+    # checkout entirely) before the shell catches up with treehouse get's cd.
+    # Foreign clones fail the custody check, but another linked worktree of this
+    # clone can still pass it. Accepting that on one read alone silently records
+    # the wrong worktree= in state/<id>.meta. Require two consecutive
     # reads to agree on the same isolated path before accepting it; a mismatch
     # just becomes the new candidate rather than resetting the wait, so a pane
     # that is already settled by the first real read only costs the one existing

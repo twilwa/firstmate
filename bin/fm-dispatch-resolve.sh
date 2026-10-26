@@ -9,7 +9,8 @@
 #
 # Opt-in gate: FM_DISPATCH_PROVIDER and FM_DISPATCH_MODEL select the provider
 #   and model from the environment or $FM_HOME/.env (environment wins). With no
-#   provider set, retain the original typesafe.ai/jev-latest key gate exactly.
+#   provider set, retain the original typesafe.ai key gate exactly, with the
+#   model pinned to jev-1.13.0.
 #   OpenRouter requires both its provider selection and a model. The selected
 #   key lives in a non-exported shell variable and reaches curl through fd 3,
 #   never argv, logs, or child environments.
@@ -73,9 +74,9 @@
 #   briefly for the lock, so a contended resolve receipt is dropped rather
 #   than delaying the block already printed.
 #   Exit 2 only for a usage or configuration error (unreadable brief, an
-#   existing unreadable rules file, malformed rules, missing jq, an unknown
-#   provider, or OpenRouter without a model), which is actionable, never
-#   selected around.
+#   existing unreadable rules file, malformed rules, missing jq once a rules
+#   file exists to match against, an unknown provider, or OpenRouter without a
+#   model), which is actionable, never selected around.
 #
 # Environment:
 #   FM_DISPATCH_PROVIDER, FM_DISPATCH_MODEL, TYPESAFE_API_KEY, and
@@ -575,7 +576,7 @@ command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
       -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$OPENROUTER_API_KEY_PRIVATE") \
       --data-binary @- 2>/dev/null) || HTTP=000
   else
-    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
+    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -D "$RESP_HEADERS" -o "$RESP_FILE" -w '%{http_code}' \
       -X POST "$TS_BASE/v1/systemone" -H 'Content-Type: application/json' \
       -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$TYPESAFE_API_KEY_PRIVATE") \
       --data-binary @- 2>/dev/null) || HTTP=000

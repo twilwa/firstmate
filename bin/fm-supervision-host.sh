@@ -55,9 +55,12 @@
 #     pass-through starts the successor watcher cycle and leaves it running
 #     before the close is printed, so supervision continues when the session
 #     drops the handoff. It confirms no handling handoff and republishes the
-#     recovery marker as downtime, even over handling an earlier engine turn
-#     left, so the re-arm owner delivers the close to main; a failed publish
-#     prints a watcher FAILED line instead of the close. The host records that successor's arm before relinquishing it
+#     recovery marker as downtime before the successor starts and again once it
+#     runs, even over handling an earlier engine turn left, so the re-arm owner
+#     delivers the close to main. A failed publish before the start starts no
+#     successor, still prints the close, and exits nonzero; a failed publish
+#     after it prints a watcher FAILED line instead of the close. The host
+#     records that successor's arm before relinquishing it
 #     (detach_successor owns the persistence check and failure path). The
 #     session's next park without --restart requests a take-over of its cycle
 #     rather than an ordinary attach; bin/fm-watch-arm.sh's --take-over header owns the
@@ -775,7 +778,8 @@ detach_successor() {
 
 # Main receives this close only on downtime, even when a preceding engine
 # turn left handling behind (autoarm_commit in bin/fm-claude-stop-autoarm.sh)
-# Return 1 on successor failure, 2 on an undeliverable recovery marker
+# Return 1 on a failed pre-start publish or successor failure, 2 on an
+# undeliverable recovery marker after the successor started
 leave_successor_for_main() {
   if ! fm_recovery_marker_publish "$STATE/.watcher-down" downtime >/dev/null 2>&1; then
     log_line "pass-through	downtime-unrestored	$(printf '%s\n' "$REASON" | head -n 1)"
