@@ -292,12 +292,15 @@ fm_herdr_cleanup_reclaim_recorded_lock() { # <lock-path> <owner-pid> <owner-iden
 }
 
 fm_herdr_cleanup_recover_interrupted_candidate() { # <lock-record>
+  local record=$1 id task_lock presentation_lock owner_pid owner_identity namespace
   [ -f "$record" ] && [ ! -L "$record" ] || return 0
   case "$record" in "$STATE"/.herdr-cleanup-locks.*) ;; *) return 0 ;; esac
   IFS=$'\t' read -r id task_lock presentation_lock owner_pid owner_identity < "$record" || return 0
   fm_task_id_creation_valid "$id" || return 0
   [ "$task_lock" = "$STATE/.spawn-$id.lock" ] || return 0
+  namespace=$(fm_backend_herdr_presentation_lock_namespace) || return 0
   case "$presentation_lock" in
+    "$namespace"/order-????????????????????????????????.lock) ;;
     *) return 0 ;;
   esac
   case "$owner_pid" in ''|*[!0-9]*|0) return 0 ;; esac

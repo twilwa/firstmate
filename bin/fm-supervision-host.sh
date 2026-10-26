@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# ABOUTME: Routes watcher wakes through bounded supervision or back to the primary.
+# ABOUTME: Preserves process ownership and recovery state across each handoff.
 # fm-supervision-host.sh - the supervision host: watcher-cycle ownership plus a
 # headless engine session that runs the supervision branch's contract beside a
 # non-Pi primary (docs/supervision-host.md owns the design).
@@ -775,6 +777,10 @@ detach_successor() {
 # turn left handling behind (autoarm_commit in bin/fm-claude-stop-autoarm.sh)
 # Return 1 on successor failure, 2 on an undeliverable recovery marker
 leave_successor_for_main() {
+  if ! fm_recovery_marker_publish "$STATE/.watcher-down" downtime >/dev/null 2>&1; then
+    log_line "pass-through	downtime-unrestored	$(printf '%s\n' "$REASON" | head -n 1)"
+    return 1
+  fi
   if ! ARM_OWN_GROUP=1 start_successor "$CLOSED_ARM_PID"; then
     log_line "pass-through	successor-unverified	$(printf '%s\n' "$REASON" | head -n 1)"
     return 1
@@ -1173,6 +1179,10 @@ while :; do
         if [ "$PASS_THROUGH_RC" -eq 2 ]; then
           # An actionable banner cannot commit while the marker is handling
           printf 'watcher: FAILED - the main-only hand-back could not restore watcher downtime\n'
+          exit 1
+        fi
+        if [ "$PASS_THROUGH_RC" -ne 0 ]; then
+          emit
           exit 1
         fi
       fi

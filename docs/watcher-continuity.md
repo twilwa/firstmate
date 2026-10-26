@@ -186,6 +186,10 @@ This is the shape `bin/fm-startup-network.sh` uses, and [`verification/supervisi
 
 The next Stop's foreground arm attaches to that live cycle.
 A successor that confirms no live watcher adds one line to the rewake banner and never withholds the wake.
+If the supervision host hands back an actionable wake whose handling episode prevents the rewake commit, the hook delivers a failure notice even when a successor is healthy.
+A healthy successor watches later events; it does not prove this wake reached the primary.
+If that handback's failure-notice marker cannot be written, a separate ownership-checked failure commit still permits delivery to the primary.
+The notice can repeat until its marker becomes writable.
 The next Stop then re-arms as before.
 
 ### Durable queue and turn-end backstop
@@ -414,6 +418,8 @@ The file is size-capped through `FM_WATCH_CYCLE_LOG_MAX_BYTES` and `FM_WATCH_CYC
 The default 300-second grace is unchanged.
 Only the watcher process touches `state/.last-watcher-beat`.
 No helper process can make a wedged watcher appear healthy.
+A step that itself stalls past the grace still requires investigation.
+`FM_WATCH_TRACE` is an opt-in diagnostic and test hook that appends `<epoch> <pid> <step>` lines to the named file; it is off by default and is not part of the liveness contract.
 An arm whose own script path sits under a disposable no-mistakes validation checkout (`.no-mistakes/worktrees/`) refuses with the typed failure line before touching any state, because a watcher started there outlives the validation step and keeps writing the real home's state from a checkout about to be deleted.
 Once per poll the watcher checks that its home, its state directory, and its own code root still exist, and exits with a logged reason when one is gone, scoped to itself alone, so a torn-down temporary home or a discarded checkout never leaves an orphan watcher behind.
 The arm applies the same rule to its own ground: when its script, its state directory, or an `FM_HOME` that existed at start disappears, it fails with `watcher: FAILED - arm ground removed: <path> no longer exists` instead of polling on; the `bin/fm-watch-arm.sh` header owns the timing bound.
@@ -485,6 +491,7 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 `tests/fm-watch-triage.test.sh` proves TERM stops a watcher blocked inside a poll's pane capture and still releases its lock and records an acknowledgeable stop.
 It also exercises a single TERM with a live foreign downtime-marker lock holder, retained stale singleton and subsequent arm-style recovery, including decimal `08` and zero `00` cleanup bounds.
 It checks that a newly appended keyed decision is classified without rereading earlier status bytes, so signal handling can return to the watcher's beacon refresh even when the status history is long.
+`tests/fm-watch-beacon.test.sh` proves a live watcher renews a beacon that went stale during a slow registered check before its next terminal wait.
 `tests/fm-wake-queue.test.sh` proves TERM likewise stops a watcher blocked in the drain-ring idle check's pane capture.
 
 `tests/fm-watcher-lock.test.sh` covers:

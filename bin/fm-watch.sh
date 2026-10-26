@@ -3070,6 +3070,7 @@ signal_files_actionable() {  # <status-file> ...
     status_span_first_actionable_record "$f" \
       "$(fm_wake_signal_seen_size "$STATE" "$f")" record needs_decision
     rc=$?
+    watch_step_done "signal:$task"
     [ "$rc" -eq 1 ] && [ -z "$record" ] && continue
     if [ "$rc" -eq 2 ]; then
       # Could not classify this log. Surface it rather than absorbing it, and
@@ -3133,6 +3134,7 @@ heartbeat_scan_finds_actionable() {
     task=$(basename "$f"); task="${task%.status}"
     record=$(status_span_first_actionable_record "$f" "$(hb_surfaced_offset "$task")")
     rc=$?
+    watch_step_done "heartbeat:$task"
     [ "$rc" -eq 1 ] && [ -z "$record" ] && continue
     if [ "$rc" -eq 2 ]; then
       sig=$(status_observed_signature "$f")
@@ -3244,12 +3246,24 @@ event_wait_or_sleep() {
   esac
 }
 
+# A cycle can outlast the poll-derived grace while still doing useful work.
+# Refresh only after completed steps, including each direct report; a blocked
+# step does not claim progress indefinitely. Trace is opt-in for diagnosis.
+watch_step_done() {
+  [ "${FM_WATCH_STEP_ENABLED:-}" = 1 ] || return 0
+  touch "$STATE/.last-watcher-beat" || return 1
+  if [ -n "${FM_WATCH_TRACE:-}" ]; then
+    printf '%s %s %s\n' "$(date +%s)" "$$" "$1" >> "$FM_WATCH_TRACE"
+  fi
+}
+
 # --- Main entry: the runtime below runs only when this file is executed as a
 # script. When sourced (unit tests loading the functions above), return here
 # before acquiring the singleton lock or entering the blocking loop.
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then
   return 0
 fi
+FM_WATCH_STEP_ENABLED=1
 
 # FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS is validated here, at arm time, and an
 # unusable value refuses to arm. This is deliberately NOT symmetry with the
@@ -3652,13 +3666,13 @@ while :; do
     exit 0
   fi
 
-  # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
-  # alive. Supervision scripts warn when this goes stale with tasks in flight.
-  touch "$STATE/.last-watcher-beat"
+  # Liveness beacon for fm-guard.sh: renew only after lock ownership is proven.
+  watch_step_done cycle-start
 
   # Opt-in fleet activity ledger (docs/fleet-ledger.md): pick up newly appended
   # status lines before this cycle can exit on a wake. Off costs one file test.
   [ ! -e "$CONFIG/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-fleet-ledger.sh" capture || true
+  watch_step_done fleet-ledger
   # Opt-in Herdr project groups (docs/herdr-backend.md "Project groups"):
   # display-only tags and agents view, never a wake. Off costs one file test.
   [ ! -e "$CONFIG/herdr-project-groups" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-herdr-groups.sh" sync || true
@@ -3674,6 +3688,7 @@ while :; do
   if [ "$(age_of "$STATE/home-summary.json")" -ge "$HOME_SUMMARY_INTERVAL" ]; then
     home_summary_refresh_detached
   fi
+  watch_step_done home-summary
   # Opt-in lane capacity facts: off costs one file test.
   if [ -e "$CONFIG/lane-capacity" ] && [ "$(age_of "$STATE/lane-capacity.json")" -ge 30 ]; then
     lane_capacity_publish_detached
@@ -3685,12 +3700,14 @@ while :; do
   if reconcile_requests_pending; then
     reconcile_requests_detached
   fi
+  watch_step_done reconcile-requests
 
   # Parent-owned secondmate pending-reply reconciliation: resolve correlated
   # parent reports, observe backend busy/idle turn completion, send one recovery
   # repost after grace, and escalate once if the recovery turn is also missed.
   # No conversation scraping; unresolved records are never silently expired.
   fm_pending_reply_tick "$STATE" || true
+  watch_step_done pending-replies
 
   # Endpoint liveness runs before queue observation: a positively dead or
   # missing secondmate endpoint is relaunched here on a bounded cadence, which
@@ -3701,6 +3718,7 @@ while :; do
     echo "watcher: secondmate liveness check failed" >&2
     exit 1
   }
+  watch_step_done secondmate-liveness
 
   # A live secondmate endpoint does not prove that its own wake loop is alive.
   # Observe the foreign queue before the rest of this cycle so an aged row wakes
@@ -3709,6 +3727,8 @@ while :; do
     echo "watcher: secondmate wake-loop observation failed" >&2
     exit 1
   }
+  watch_step_done secondmate-stall
+
   # Check cumulative cost before signal triage; a chatty worker cannot starve it.
   task_budget_tick || echo "watcher: task budget check failed; retrying next cycle" >&2
   watch_step_done task-budget
@@ -3723,6 +3743,7 @@ while :; do
   # Then deliver any queued-but-unsurfaced result, including one a runner
   # published while this watcher was between cycles.
   procevent_surface_queued
+  watch_step_done procevent
 
   # A process-event result carries richer adapter-owned wake context than the
   # generic recovery reason, so give that owner first refusal.
@@ -3741,6 +3762,8 @@ while :; do
     triage_log "inactive-outcome reconciliation unavailable"
   fi
 
+  watch_step_done inactive-outcomes
+
   # Slow per-task checks (firstmate writes these, e.g. a merged-PR poll).
   # Time-based via .last-check mtime so the cadence survives watcher restarts.
   # Evaluated BEFORE the signal scan: wake() exits the cycle, so a check placed
@@ -3753,6 +3776,7 @@ while :; do
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue
+      watch_step_done "check:${c##*/}"
       is_pr_poll=0
       if [ "$(basename "$c")" = x-watch.check.sh ]; then
         if fmx_poll_shim_valid "$c" "$FM_HOME" "$FM_ROOT" \
@@ -3876,12 +3900,15 @@ EOF
     fi
   fi
 
+  watch_step_done checks
+
   # On the first changed signal, linger one grace period and re-scan before
   # classifying: a crewmate's final status write and the same turn's turn-end
   # hook land seconds apart, and reporting them as separate actionable wakes
   # costs a full firstmate turn each. The re-scan also picks up a newer
   # signature for an already-pending file (last write wins below).
   pending=$(scan_signals)
+  watch_step_done signal-scan
   if [ -n "$pending" ]; then
     sleep "$SIGNAL_GRACE"
     pending=$(printf '%s\n%s' "$pending" "$(scan_signals)" | awk -F '\t' '
@@ -3959,6 +3986,7 @@ EOF
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
     signal_files_actionable $files
     signal_actionable=$?
+    watch_step_done signal-triage
     # A decision-owned file's queued row payload is marked "needs-decision:"
     # instead of the ordinary "signal:" below (other files in the same batch
     # keep the ordinary payload). The wake reason line itself, and every
@@ -4072,9 +4100,13 @@ EOF
     # this guard: reaching it would require backlog reads for windows this gate
     # deliberately skips, putting that read on the ordinary poll hot path.
     if [ "$kind" = secondmate ] && ! status_is_paused_or_captain_held "$last"; then
+      watch_step_done "report:$task"
       continue
     fi
-    watcher_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" || continue
+    watcher_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" || {
+      watch_step_done "report:$task"
+      continue
+    }
     tail40=$WATCHER_CAPTURE
     # The matcher is already defined in this shell. It reads the capture this
     # poll already takes, and a miss drops a name the away daemon saved.
@@ -4297,6 +4329,7 @@ EOF
         clear_pause_tracking "$key"
       fi
     fi
+    watch_step_done "report:$task"
   done < <(recorded_windows)
 
   # Heartbeat: the watcher runs a cheap fleet-scan at a regular cadence no matter
@@ -4337,6 +4370,8 @@ EOF
       triage_log "absorbed heartbeat (no captain-relevant change)"
     fi
   fi
+
+  watch_step_done heartbeat
 
   # Terminal wait: a bounded native-event wait for push-capable homes (herdr, rex),
   # else the blind poll sleep. See event_wait_or_sleep.
