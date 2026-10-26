@@ -74,6 +74,24 @@ make_case() {
   printf '%s\n' "$case_dir"
 }
 
+write_review_policy() {
+  local case_dir=$1 handoff_policy=$2
+  mkdir -p "$case_dir/.github"
+  printf '{"require_reviewed_head_handoff":%s,"ledger_directory":"pr-review-ledger"}\n' "$handoff_policy" \
+    > "$case_dir/.github/firstmate-review-policy.json"
+}
+
+# Args: case_dir pr_number merge_decision_json
+write_review_ledger() {
+  local case_dir=$1 number=$2 decision=$3
+  mkdir -p "$case_dir/home/data/pr-review-ledger"
+  jq -n --arg url "https://github.com/example/repo/pull/$number" --argjson decision "$decision" '{
+    schema:"firstmate-pr-review-ledger.v1",task:"task-x1",url:$url,
+    current_head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    generations:[{head:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",merge_decision:$decision}]
+  }' > "$case_dir/home/data/pr-review-ledger/github--example--repo--$number.json"
+}
+
 # The base branch's required checks as GitHub reports them: the classic branch
 # protection summary on the branch, and the active ruleset rules for it. Each
 # name is given as classic:<context> or ruleset:<context>; with no names the
@@ -658,8 +676,18 @@ glab_merge_line() {
 }
 
 run_pr_merge() {
-  local case_dir=$1 rc; shift
-  FM_ROOT_OVERRIDE="$ROOT" \
+  local case_dir=$1 rc reviewed_head entry=("$PR_MERGE"); shift
+  # FM_TEST_MERGE_VIA_REVIEW=1 enters through bin/fm-pr-review.sh merge, which
+  # records the ledger merge decision and hands its head to this script.
+  [ "${FM_TEST_MERGE_VIA_REVIEW:-0}" != 1 ] || entry=("$ROOT/bin/fm-pr-review.sh" merge)
+  if [ "${FM_PR_REVIEW_EXPECTED_HEAD+x}" = x ]; then
+    reviewed_head=$FM_PR_REVIEW_EXPECTED_HEAD
+  elif [ "${2:-}" != "${2#https://github.com/}" ] && [ -s "$case_dir/github-head" ]; then
+    reviewed_head=$(cat "$case_dir/github-head")
+  else
+    reviewed_head=
+  fi
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-$ROOT}" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
@@ -688,12 +716,13 @@ run_pr_merge() {
   FM_TEST_AWAY_MUTATE_RC="$case_dir/away-mutate-rc" \
   FM_TEST_AWAY_WORDS_AT_MERGE="$case_dir/away-words-at-merge" \
   FM_TEST_REAL_MV="$REAL_MV" \
+  FM_PR_REVIEW_EXPECTED_HEAD="$reviewed_head" \
   FM_TEST_GLAB_LOG="$case_dir/glab.log" \
   FM_TEST_GLAB_JSON="$case_dir/mr.json" \
   FM_TEST_TEA_LOG="$case_dir/tea.log" \
   HOME="${FM_TEST_USER_HOME:-$case_dir/user-home}" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_MERGE" "$@"
+    "${entry[@]}" "$@"
   rc=$?
   if [ "${case_dir##*/}" = unsafe-url-segment ] && [ "$rc" -eq 2 ]; then
     echo 'error: PR URL must match https://github.com/<owner>/<repo>/pull/<number>' >&2
@@ -718,6 +747,20 @@ write_away_record() {
     "$ROOT/bin/fm-afk-contract.sh" enter "$@" >/dev/null
 }
 
+# The review-ledger merge decision bin/fm-pr-review.sh merge records for the
+# live head once every ledger gate passes, which a GitHub merge needs while the
+# away-posture record exists; run_pr_merge hands that head over as the wrapper
+# does. Args: case_dir pr_number
+write_away_merge_decision() {
+  local case_dir=$1 number=$2 head
+  head=$(cat "$case_dir/github-head")
+  mkdir -p "$case_dir/home/data/pr-review-ledger"
+  jq -n --arg url "https://github.com/example/repo/pull/$number" --arg head "$head" '{
+    schema:"firstmate-pr-review-ledger.v1",task:"task-x1",url:$url,current_head:$head,
+    generations:[{head:$head,merge_decision:{decision:"merge",reviewed_head:$head,verified_head:$head}}]
+  }' > "$case_dir/home/data/pr-review-ledger/github--example--repo--$number.json"
+}
+
 test_verified_merge_records_pr_and_head() {
   local case_dir rc
   case_dir=$(make_case records-before-merge)
@@ -738,6 +781,131 @@ test_verified_merge_records_pr_and_head() {
     "records-before-merge: pr_head= was not recorded"
   assert_logged_gh_merge "$case_dir" 9 example/repo --squash
   pass "fm-pr-merge records pr= and pr_head= for a verified GitHub merge"
+}
+
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false() {
+  local case_dir rc policy
+  for policy in absent false; do
+    case_dir=$(make_case "github-no-handoff-$policy")
+    mkdir -p "$case_dir/wt"
+    add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    if [ "$policy" = false ]; then
+      write_review_policy "$case_dir" false
+    fi
+
+    set +e
+    FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+      run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+        > "$case_dir/stdout" 2> "$case_dir/stderr"
+    rc=$?
+    set -e
+
+    expect_code 0 "$rc" "github-no-handoff-$policy: an unconfigured handoff must not block merging"
+    assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  done
+  pass "direct GitHub merges allow an absent or false reviewed-head handoff policy"
+}
+
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in() {
+  local case_dir rc
+  case_dir=$(make_case github-requires-review-handoff)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" true
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-requires-review-handoff: policy opt-in must require the handoff"
+  assert_grep 'GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true' \
+    "$case_dir/stderr" "github-requires-review-handoff: refusal did not name the policy requirement"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "github-requires-review-handoff: the unreviewed PR was recorded"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-requires-review-handoff: gh ran without review coverage"
+  pass "direct GitHub merges require the handoff only when the repository policy opts in"
+}
+
+test_direct_github_merge_rejects_invalid_review_handoff_policy() {
+  local case_dir rc
+  case_dir=$(make_case github-invalid-review-policy)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" '"true"'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-invalid-review-policy: handoff policy must be boolean"
+  assert_grep 'require_reviewed_head_handoff must be boolean' "$case_dir/stderr" \
+    "github-invalid-review-policy: invalid handoff policy was not named"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-invalid-review-policy: gh ran with malformed policy"
+  pass "direct GitHub merge refuses a malformed reviewed-head policy"
+}
+
+test_direct_github_merge_refuses_unreleased_review_ledger_hold() {
+  local case_dir rc
+  case_dir=$(make_case github-review-ledger-hold)
+  mkdir -p "$case_dir/wt"
+  write_review_policy "$case_dir" false
+  write_review_ledger "$case_dir" 90 \
+    '{"decision":"hold","reason":"captain must approve the spend"}'
+  add_gh_mocks "$case_dir" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 2 "$rc" "github-review-ledger-hold: a held PR must not merge directly"
+  assert_grep 'the review ledger holds this pull request: captain must approve the spend' \
+    "$case_dir/stderr" "github-review-ledger-hold: refusal did not name the hold"
+  assert_no_grep '^pr=' "$case_dir/state/task-x1.meta" \
+    "github-review-ledger-hold: the held PR was recorded"
+  [ ! -s "$case_dir/gh.log" ] || fail "github-review-ledger-hold: gh ran for a held PR"
+
+  write_review_ledger "$case_dir" 90 null
+  set +e
+  FM_TEST_ROOT_OVERRIDE="$case_dir" FM_PR_REVIEW_EXPECTED_HEAD='' \
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "github-review-ledger-hold: a released hold must not block merging"
+  assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+  pass "direct GitHub merge refuses an unreleased review-ledger hold and proceeds once released"
+}
+
+test_reviewed_head_handoff_refuses_a_later_push() {
+  local case_dir rc live reviewed
+  case_dir=$(make_case reviewed-head-race)
+  mkdir -p "$case_dir/wt"
+  live=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  reviewed=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  add_gh_mocks "$case_dir" "$live"
+
+  set +e
+  FM_PR_REVIEW_EXPECTED_HEAD="$reviewed" run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "reviewed-head-race: a push after ledger verification must refuse"
+  assert_grep "live head $live does not equal ledger-reviewed head $reviewed" "$case_dir/stderr" \
+    "reviewed-head-race: refusal did not name both exact heads"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "reviewed-head-race: the forge merge ran for an unreviewed head"
+  pass "fm-pr-merge refuses when its live head differs from the ledger-reviewed handoff"
 }
 
 # The forge call is the point of no return: once gh-axi has merged, nothing this
@@ -1306,6 +1474,7 @@ test_away_plan_gated_403_does_not_block_the_merge() {
   printf 'gh: Upgrade to GitHub Pro or make this repository public to enable this feature (HTTP 403)\n' \
     > "$case_dir/github-rules-fail-body"
   printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  write_away_merge_decision "$case_dir" 91
   write_away_record "$case_dir"
   FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" \
@@ -2927,6 +3096,11 @@ test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
 test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
+test_direct_github_merge_allows_no_handoff_when_policy_is_absent_or_false
+test_direct_github_merge_requires_reviewed_head_handoff_when_policy_opts_in
+test_direct_github_merge_rejects_invalid_review_handoff_policy
+test_direct_github_merge_refuses_unreleased_review_ledger_hold
+test_reviewed_head_handoff_refuses_a_later_push
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
 test_github_open_unqueued_outcome_refuses
@@ -3560,16 +3734,18 @@ test_allow_red_requires_one_separate_name() {
   pass "fm-pr-merge accepts exactly one separately named red-check waiver"
 }
 
-test_away_record_permits_any_green_merge_under_away_authority() {
+test_away_record_permits_a_reviewed_green_merge_under_away_authority() {
   local case_dir rc url head
   head=acacacacacacacacacacacacacacacacacacacac
   url=https://github.com/example/repo/pull/83
 
-  # No yolo, no per-task grant: the record's presence is the whole mechanical
-  # fact, so a green merge proceeds and the ledger tags it away.
+  # No yolo, no per-task grant: the record's presence plus the review ledger's
+  # recorded merge decision is the whole mechanical fact, so a green merge
+  # proceeds and the outcome ledger tags it away.
   case_dir=$(make_case away-green)
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
+  write_away_merge_decision "$case_dir" 83
   write_away_record "$case_dir" --words 'merge the windows fix when green'
   FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "away-green: a green merge under the record should succeed: $(cat "$case_dir/stderr")"
@@ -3587,6 +3763,7 @@ test_away_record_permits_any_green_merge_under_away_authority() {
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
   printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  write_away_merge_decision "$case_dir" 83
   write_away_record "$case_dir"
   FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "away-yolo: yolo green merge should succeed"
@@ -3598,6 +3775,7 @@ test_away_record_permits_any_green_merge_under_away_authority() {
   case_dir=$(make_case away-attended-override)
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
+  write_away_merge_decision "$case_dir" 83
   write_away_record "$case_dir" --words 'merge it when green'
   FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" --attended-override \
     > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "away-attended-override: a green merge should succeed: $(cat "$case_dir/stderr")"
@@ -3614,12 +3792,217 @@ test_away_record_permits_any_green_merge_under_away_authority() {
     *"$url") ;;
     *) fail "attended-untagged: the attended outcome carried an authority tag: $(grep -F 'merge landed' "$case_dir/state/.wake-queue")" ;;
   esac
-  pass "while the away-posture record exists any green merge lands under away authority, yolo or not, and attended merges stay untagged"
+  pass "while the away-posture record exists a reviewed green merge lands under away authority, yolo or not, and attended merges stay untagged"
+}
+
+# The 2026-10-13 away window merged a high-stakes pull request with no
+# exact-model attestation by calling this script directly. While away, a GitHub
+# merge proceeds only on the ledger merge decision bin/fm-pr-review.sh merge
+# records for the live head after every review gate passes; attended merges
+# are unchanged.
+test_away_github_merge_requires_the_review_ledger_merge_decision() {
+  local case_dir rc head url refusal
+  head=b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+  url=https://github.com/example/repo/pull/240
+  refusal='while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge'
+
+  # A direct call beside a ledger that records no merge decision.
+  case_dir=$(make_case away-direct-without-decision)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_review_ledger "$case_dir" 240 null
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  set +e
+  FM_PR_REVIEW_EXPECTED_HEAD='' FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "away-direct-without-decision: a direct away merge must be refused"
+  assert_grep "$refusal" "$case_dir/stderr" \
+    "away-direct-without-decision: the refusal did not name the review-ledger merge path"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "away-direct-without-decision: gh pr merge ran without a recorded ledger merge decision"
+
+  # The live head handed over by hand records nothing in the ledger.
+  case_dir=$(make_case away-handoff-without-decision)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_review_ledger "$case_dir" 240 null
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  set +e
+  FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "away-handoff-without-decision: a hand-set reviewed head must not stand in for the ledger"
+  assert_grep "$refusal" "$case_dir/stderr" \
+    "away-handoff-without-decision: the refusal did not name the review-ledger merge path"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "away-handoff-without-decision: gh pr merge ran on a hand-set reviewed head"
+
+  # No review ledger at all.
+  case_dir=$(make_case away-without-ledger)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  set +e
+  FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "away-without-ledger: an away merge with no review ledger must be refused"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "away-without-ledger: gh pr merge ran with no review ledger"
+
+  # A merge decision recorded for an earlier head does not cover the live one.
+  case_dir=$(make_case away-stale-decision)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_review_ledger "$case_dir" 240 \
+    '{"decision":"merge","reviewed_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","verified_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  set +e
+  FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "away-stale-decision: a decision for another head must be refused"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "away-stale-decision: gh pr merge ran on a decision recorded for another head"
+
+  # The decision recorded for the live head lands the green merge under away
+  # authority.
+  case_dir=$(make_case away-recorded-decision)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_away_merge_decision "$case_dir" 240
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "away-recorded-decision: the recorded ledger merge decision did not land: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 240 example/repo --squash
+  assert_grep "merge landed: task-x1 $url away" "$case_dir/state/.wake-queue" \
+    "away-recorded-decision: the durable outcome did not tag away"
+
+  # Attended, the same direct call still merges.
+  case_dir=$(make_case attended-direct-without-decision)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_review_ledger "$case_dir" 240 null
+  FM_PR_REVIEW_EXPECTED_HEAD='' FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "attended-direct-without-decision: an attended direct merge was refused: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 240 example/repo --squash
+  pass "while away a GitHub merge needs the review ledger's recorded merge decision for the live head, and attended direct merges are unchanged"
+}
+
+# A pull request reviewed through the real bin/fm-pr-review.sh ledger, then
+# merged through its merge wrapper against the case's faked forge. The wrapper's
+# live review snapshot reads are served here from case files, and every other
+# call reaches the forge mock add_gh_mocks wrote. The base requires no checks,
+# so the snapshot records none. Args: case_dir pr_number files_json attest|no-attest
+review_pull_request_for_merge() {
+  local case_dir=$1 number=$2 files=$3 attest=$4 url head snapshot final
+  url="https://github.com/example/repo/pull/$number"
+  head=$(cat "$case_dir/github-head")
+  snapshot="$case_dir/review-snapshot.json"
+  final="$url#issuecomment-901"
+  mv "$case_dir/fakebin/gh" "$case_dir/fakebin/gh-forge"
+  cat > "$case_dir/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+fakebin=$(dirname "$0")
+case_dir=$(dirname "$fakebin")
+case "${1:-} ${2:-}" in
+  "api user") printf '%s\n' '{"login":"maintainer"}'; exit 0 ;;
+  "pr checks") printf "%s\n" "no required checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "api graphql")
+    case " $* " in
+      *" --input "*)
+        printf '{"data":{"repository":{"pullRequest":{"headRefOid":"%s","reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' \
+          "$(cat "$FM_TEST_GH_HEAD")"
+        exit 0
+        ;;
+    esac
+    ;;
+  "api /repos/"*)
+    case "$2" in
+      */files*) printf '[%s]\n' "$(cat "$case_dir/review-files.json")" ;;
+      */comments*) printf '[%s]\n' "$(cat "$case_dir/review-comments.json")" ;;
+      */reviews*) printf '%s\n' '[[]]' ;;
+      *) printf '{"head":{"sha":"%s"},"base":{"ref":"main"},"user":{"login":"worker"},"requested_reviewers":[],"requested_teams":[]}\n' \
+           "$(cat "$FM_TEST_GH_HEAD")" ;;
+    esac
+    exit 0
+    ;;
+esac
+exec "$fakebin/gh-forge" "$@"
+SH
+  chmod +x "$case_dir/fakebin/gh"
+  printf '%s\n' "$files" > "$case_dir/review-files.json"
+  printf '[{"id":901,"html_url":"%s","user":{"login":"maintainer"},"body":"final disposition","updated_at":"2026-10-13T15:42:10Z"}]\n' \
+    "$final" > "$case_dir/review-comments.json"
+  jq -n --arg url "$url" --arg head "$head" --argjson files "$files" '{
+    schema:"firstmate-pr-review-snapshot.v1",url:$url,head:$head,collector_actor:"maintainer",
+    pending_reviews:[],comments:[],checks:[],files:$files}' > "$snapshot"
+  FM_HOME="$case_dir/home" FM_REVIEW_NOW_EPOCH=1000 "$ROOT/bin/fm-pr-review.sh" \
+    init task-x1 "$url" --snapshot "$snapshot" >/dev/null || fail "review init failed for $url"
+  FM_HOME="$case_dir/home" FM_REVIEW_NOW_EPOCH=1600 "$ROOT/bin/fm-pr-review.sh" \
+    checkpoint "$url" --snapshot "$snapshot" >/dev/null || fail "review checkpoint failed for $url"
+  if [ "$attest" = attest ]; then
+    FM_HOME="$case_dir/home" "$ROOT/bin/fm-pr-review.sh" \
+      attest "$url" "$head" no-mistakes claude-opus-5-5 'gate run at the configured model' >/dev/null \
+      || fail "review attestation failed for $url"
+  fi
+  FM_HOME="$case_dir/home" "$ROOT/bin/fm-pr-review.sh" \
+    final-disposition "$url" "$head" "$final" >/dev/null || fail "final disposition failed for $url"
+}
+
+# The two halves of the 2026-10-13 away window through the merge wrapper: a
+# high-stakes pull request with every gate passed lands at its reviewed head,
+# and one with no exact-model attestation never reaches the forge.
+test_away_review_merge_lands_only_a_ledger_that_passes_every_gate() {
+  local case_dir rc head url ledger high
+  head=e2c4e2c4e2c4e2c4e2c4e2c4e2c4e2c4e2c4e2c4
+  high='[{"filename":"bin/fm-teardown.sh","status":"modified","additions":5,"deletions":1}]'
+
+  url=https://github.com/example/repo/pull/218
+  case_dir=$(make_case away-review-merge-ready)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  review_pull_request_for_merge "$case_dir" 218 "$high" attest
+  write_away_record "$case_dir" --words 'keep the lanes running'
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "away-review-merge-ready: a ledger that passes every gate did not merge: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 218 example/repo --squash
+  assert_grep "merge landed: task-x1 $url away" "$case_dir/state/.wake-queue" \
+    "away-review-merge-ready: the durable outcome did not tag away"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--218.json"
+  assert_equals "merge $head" "$(jq -r '.generations[-1].merge_decision | "\(.decision) \(.verified_head)"' "$ledger")" \
+    "away-review-merge-ready: the ledger did not record the merge decision for the reviewed head"
+
+  url=https://github.com/example/repo/pull/240
+  case_dir=$(make_case away-review-merge-unattested)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  review_pull_request_for_merge "$case_dir" 240 "$high" no-attest
+  write_away_record "$case_dir" --words 'land further fixes, improvements'
+  set +e
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "away-review-merge-unattested: high-stakes work without the exact-model attestation merged"
+  assert_grep 'high-stakes work lacks a no-mistakes attestation for the configured exact model' "$case_dir/stderr" \
+    "away-review-merge-unattested: the refusal did not name the missing exact-model attestation"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "away-review-merge-unattested: gh pr merge ran without the exact-model attestation"
+  pass "while away the merge wrapper lands a ledger that passes every gate at its reviewed head and refuses one without the exact-model attestation"
 }
 
 # While the away-posture record exists main is parked, so the supervision
 # branch actor may reach the merge gate - and meets exactly the gate main
-# would: any task merges green at its live head under away authority, a red
+# would: a reviewed task merges green at its live head under away authority, a red
 # one is refused whatever the words say, and without the record the branch is
 # refused at the role partition before any forge call
 # (docs/pi-supervision-branch.md "Postures").
@@ -3642,10 +4025,11 @@ test_away_branch_actor_merges_green_under_the_record() {
   [ ! -e "$case_dir/gh.log" ] || assert_no_grep 'pr ' "$case_dir/gh.log" \
     "away-branch-attended: gh ran for an attended branch merge"
 
-  # No yolo and no grant list: the record alone relocates the green merge.
+  # No yolo and no grant list: the record alone relocates the reviewed green merge.
   case_dir=$(make_case away-branch-green)
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
+  write_away_merge_decision "$case_dir" 93
   write_away_record "$case_dir" --words 'merge the windows fix when green'
   FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
     > "$case_dir/stdout" 2> "$case_dir/stderr" \
@@ -3663,6 +4047,7 @@ test_away_branch_actor_merges_green_under_the_record() {
   add_gh_mocks "$case_dir" "$head"
   write_github_rollup_json "$case_dir" "$head" \
     '{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-01T00:00:00Z"}'
+  write_away_merge_decision "$case_dir" 93
   write_away_record "$case_dir" --words 'merge task-x1 even if lint is red'
   set +e
   FM_SUPERVISION_ACTOR=branch FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
@@ -3700,6 +4085,7 @@ test_away_branch_refuses_when_record_archived_during_preflight() {
   case_dir=$(make_case away-branch-archived-during-preflight)
   mkdir -p "$case_dir/wt" "$case_dir/home"
   add_gh_mocks "$case_dir" "$head"
+  write_away_merge_decision "$case_dir" 127
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   : > "$case_dir/away-record-after-view"
   set +e
@@ -3743,6 +4129,7 @@ test_away_posture_refuses_asynchronous_merge_paths() {
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" "$head"
   printf 'merge_method=MERGE\n' > "$case_dir/github-rules"
+  write_away_merge_decision "$case_dir" 89
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   set +e
   run_pr_merge "$case_dir" task-x1 "$url" \
@@ -3799,6 +4186,7 @@ test_away_record_does_not_bypass_red_or_identity() {
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" "$head"
   write_github_red_json "$case_dir" "$head" lint
+  write_away_merge_decision "$case_dir" 84
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   set +e
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/84 \
@@ -3876,6 +4264,7 @@ test_away_record_cannot_change_between_the_authority_read_and_the_merge() {
   case_dir=$(make_case away-archive-at-merge)
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" 1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b
+  write_away_merge_decision "$case_dir" 71
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   mutate=$(away_change_script "$case_dir" archive-at-merge <<'SH'
 "$CONTRACT" archive
@@ -3911,6 +4300,7 @@ SH
   case_dir=$(make_case away-replace-at-merge)
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" 2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c
+  write_away_merge_decision "$case_dir" 72
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   mutate=$(away_change_script "$case_dir" replace-at-merge <<'SH'
 "$CONTRACT" enter --words 'hold everything for my return'
@@ -3943,6 +4333,7 @@ test_a_record_made_unreadable_before_the_merge_refuses_it() {
   mkdir -p "$case_dir/wt"
   add_gh_mocks "$case_dir" 3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d
   printf 'not-a-contract\n' > "$case_dir/away-record-after-view"
+  write_away_merge_decision "$case_dir" 73
   write_away_record "$case_dir" --words 'merge task-x1 when green'
 
   set +e
@@ -4389,6 +4780,7 @@ test_allow_missing_follows_the_allow_red_rules() {
   case_dir=$(make_case github-unreported-away)
   add_gh_mocks "$case_dir" "$head"
   write_github_required "$case_dir" ruleset:validate
+  write_away_merge_decision "$case_dir" 103
   write_away_record "$case_dir" --words 'merge task-x1 when green'
   run_required_case "$case_dir" 103
   expect_code 1 "$RC" "unreported-away: the away record must not waive an unreported check"
@@ -4595,7 +4987,9 @@ test_allow_red_still_waives_only_the_current_failure
 test_allow_red_is_refused_while_away
 test_quiet_record_keeps_merges_attended
 test_allow_red_requires_one_separate_name
-test_away_record_permits_any_green_merge_under_away_authority
+test_away_record_permits_a_reviewed_green_merge_under_away_authority
+test_away_github_merge_requires_the_review_ledger_merge_decision
+test_away_review_merge_lands_only_a_ledger_that_passes_every_gate
 test_away_branch_actor_merges_green_under_the_record
 test_away_branch_refuses_when_record_archived_during_preflight
 test_away_posture_refuses_asynchronous_merge_paths

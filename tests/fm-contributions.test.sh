@@ -1559,6 +1559,22 @@ test_unavailable_forge_records_error_and_wakes_once_per_episode() { # genuine ou
   pass 'a genuinely unavailable forge records an error and wakes once per failure episode'
 }
 
+test_large_contribution_input_stays_off_argv() {
+  local home title i out
+  home=$(new_home large-contribution-input)
+  title=$(printf '%2048s' '' | tr ' ' x)
+  i=1
+  while [ "$i" -le 72 ]; do
+    printf -- '- [ ] large-%03d - %s\n' "$i" "$title" >> "$home/data/backlog.md"
+    i=$((i + 1))
+  done
+  out=$(with_home "$home" "$ROOT/bin/fm-fleet-snapshot.sh" --contribution-input) \
+    || fail 'large contribution input exceeded the process argument limit'
+  printf '%s' "$out" | jq -e '(.backlog.records | length) == 72 and (.tasks | type) == "array"' >/dev/null \
+    || fail 'large contribution input returned an incomplete backlog/task pair'
+  pass 'large contribution input is transported through files rather than process arguments'
+}
+
 test_late_owner_keeps_failure_episode_suppressed() {
   local why='core read exited 1 with Ns of budget left: gh: Bad Gateway (HTTP 502)' home out task
   local line="contributions: observation unavailable for https://github.com/o/r/pull/8 - $why"

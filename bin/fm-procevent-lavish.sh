@@ -758,9 +758,10 @@ cmd_silent() {
   [ "$content_rc" -eq 1 ]
 }
 
-# Print `key<TAB>answer<TAB>label[<TAB>mode]` for each non-reconcile structured choice the
+# Print `key<TAB>answer<TAB>label[<TAB>mode[<TAB>until]]` for each non-reconcile structured choice the
 # captain submitted in a captured result; the optional mode column relays the
-# card's declared close mode (`done` or `release`) to the keyed-answer intake.
+# card's declared close mode (`done`, `release`, or dated `defer`) to the
+# keyed-answer intake.
 # Items come from the shared result parser above, in either emission form, and
 # only items whose `tag` field is `choice` are read.
 # The header owns the partial-output and failure contract.
@@ -822,10 +823,19 @@ cmd_choice_rows() {
       }
       next unless $key =~ /\A[A-Za-z0-9._-]{1,128}\z/;
       my $mode = "";
+      my $until = "";
       if (exists $data->{close}) {
         next if !defined($data->{close}) || ref($data->{close})
-          || ($data->{close} ne "done" && $data->{close} ne "release");
+          || ($data->{close} ne "done" && $data->{close} ne "release"
+            && $data->{close} ne "defer");
         $mode = $data->{close};
+      }
+      if ($mode eq "defer") {
+        next if !exists($data->{until}) || !defined($data->{until}) || ref($data->{until})
+          || $data->{until} !~ /\A[0-9]{4}-[0-9]{2}-[0-9]{2}\z/;
+        $until = $data->{until};
+      } else {
+        next if exists $data->{until};
       }
       my $label = defined $f{text} ? $f{text} : "";
       s/[\x00-\x1f\x7f]/ /g for ($answer, $note, $label);
@@ -834,7 +844,7 @@ cmd_choice_rows() {
       $seen{$key} = scalar @choices;
       push @choices, {
         key => $key, selection => $selected, note => $note, legacy => $legacy,
-        answer => $answer, label => $label, mode => $mode
+        answer => $answer, label => $label, mode => $mode, until => $until
       };
     }
     for my $choice (grep { defined } @choices) {
@@ -849,7 +859,8 @@ cmd_choice_rows() {
       }
       next if $choice->{selection} eq "reconcile";
       print length $choice->{mode}
-        ? "$choice->{key}\t$choice->{answer}\t$choice->{label}\t$choice->{mode}\n"
+        ? "$choice->{key}\t$choice->{answer}\t$choice->{label}\t$choice->{mode}"
+          . (length($choice->{until}) ? "\t$choice->{until}" : "") . "\n"
         : "$choice->{key}\t$choice->{answer}\t$choice->{label}\n";
     }
     if ($malformed || @$items != $want) {

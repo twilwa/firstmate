@@ -908,6 +908,14 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the firstmate-specific local test 
 
 Portable shard evidence and coverage rules are in [fm-test-portable-shards.md](fm-test-portable-shards.md); [herdr-backend.md](herdr-backend.md#destructive-lab-safety) owns the real-Herdr lane's isolation boundary, and [runtime-backends.md](verification/runtime-backends.md#herdr) owns active evidence.
 
+## Pull-request reviewer policy (.github/firstmate-review-policy.json)
+
+The tracked policy file configures the GitHub PR review ledger without changing no-mistakes itself.
+It fixes the data-relative ledger directory, the first review checkpoint at roughly ten minutes, the bounded retry delays for explicitly pending reviews, conservative broad and low-stakes size thresholds, reviewer-check name markers, the configured high-stakes no-mistakes model, and the independent-agent review count.
+The optional `require_reviewed_head_handoff` boolean requires the reviewed-head handoff for GitHub merges when set to `true`; an absent or `false` value leaves it optional while attended, though a direct GitHub merge still refuses while the pull request's review ledger records an unreleased hold, and while the away-posture record exists every GitHub merge requires the handoff whatever this setting says.
+`bin/fm-pr-risk.sh` owns the classification decision, while `bin/fm-pr-review.sh` owns the private data-relative ledger schema, the authenticated watcher shim, and the head-keyed post-merge Ready for QA gate.
+The agent-only [`pr-review-policy` skill](../.agents/skills/pr-review-policy/SKILL.md) owns the operating procedure and the preserved human gates.
+
 ## Captain Preferences (data/captain.md / data/captain-shared.md)
 
 Domain-local preferences for one captain's fleet live locally in each home's `data/captain.md`; it is gitignored and printed in the session-start context digest after `data/projects.md` and optional `data/secondmates.md`.
@@ -1637,7 +1645,7 @@ Set it high when a wrong pick is costly and low when the rule is a safe runner-u
 A profile `provider` optionally names the quota-axi provider family whose rows apply to that profile; when present, profile and rule-floor provider IDs must match the strict whole-string pattern `^[a-z0-9]+(-[a-z0-9]+)*\z`.
 Bootstrap's resolver-only validation gate is described under "Validation and diagnostics" below.
 
-Typed resolution additively recognizes `gemini` because AGENTS.md section 4 verifies it for crewmate and scout dispatch.
+Typed resolution additively recognizes `gemini` because `harness-adapters` verifies it for crewmate and scout dispatch.
 
 | Harness | Provider declaration on the opted-in resolver path |
 | --- | --- |
@@ -1697,6 +1705,7 @@ Rules come only from the effective home's `config/crew-dispatch.json`; `FM_CONFI
 
 ```sh
 bin/fm-dispatch-resolve.sh data/<id>/brief.md --project <name>        # TOON block on stdout
+bin/fm-dispatch-resolve.sh --record-dispatch data/<id>/brief.md --harness <name> [--model <name>] [--effort <level>]   # after the spawn
 ```
 
 **When firstmate invokes the resolver**
@@ -1790,6 +1799,20 @@ The tool never replaces firstmate's judgment, `quota-array-dispatch`, the captai
 By accepted design, a `clear` result does not enforce catalog/authentication, reasoning-class, or completion-runway gates.
 
 Firstmate passes its profile line unless it states a reason to override, such as the brief's reasoning class or an eligible-unranked-candidate note; every non-clear result returns to the full existing intake.
+
+**Resolution and dispatch receipts**
+
+Every keyed outcome also appends one resolution receipt to the home's gitignored `state/dispatch-receipts.jsonl`, holding the brief and rules content hashes, the answering model id, the request id, usage, the full probabilities, the confidence, the reason a non-clear outcome gives, and the chosen profile, and never the key or any rule `why`.
+On `clear` only, after passing the profile line to `fm-spawn`, firstmate reruns the script with `--record-dispatch` for the profile it actually dispatched, which appends a dispatch receipt joined by brief content hash to that brief's latest resolution, so chosen-versus-dispatched disagreement is inspectable; no other outcome records a dispatch.
+The dispatch receipt copies that resolution's row, so its `resolution_id` names the one resolution instance the dispatch joined even when a brief resolves several times under the same content hash.
+Read that disagreement by projecting both `chosen_profile` and `dispatched_profile` to `{harness, model, effort}` and comparing the projections: `chosen_profile` is the rules file's profile verbatim and may also carry the declared `provider` or `floor`, which no dispatch flag can express, so comparing the whole objects reports a disagreement on profiles the dispatch in fact matched exactly.
+Resolve-path receipt writes are best-effort but never silent: a failure changes neither the resolver's stdout nor its exit status, because every receipt is written after its block is printed, and on every outcome, clear or not, the run prints the one fixed line `dispatch-resolve: no resolution receipt for this run` on stderr, which carries nothing from the receipt, the brief, the model's answer, or the key.
+On `clear` the same loss is additionally detectable later, when the `--record-dispatch` run for that brief reports on stderr that no resolution receipt carries its content hash; the other outcomes record no dispatch, so the stderr line is the whole of their visibility.
+It does cost the resolver's own process lifetime after the block, and that cost is bounded rather than incidental: receipt work stays at or under a 100 ms median on an idle home and at or under 200 ms under the held-lock fixture, both measured in [`verification/dispatch-resolve.md`](verification/dispatch-resolve.md).
+Those two figures are the accepted governing bound for the receipt path, adopted in place of any looser few-milliseconds reading, so a run that exceeds them is a regression to fix here rather than a cost to renegotiate.
+A `--record-dispatch` run that cannot land its join instead names the reason on one stderr line and still exits 0, so an absent dispatch receipt is never mistaken for an agreeing one; the file is append-only and unbounded, and the home's `state/` directory is gitignored.
+A line torn by a failed append, such as on a full disk, is skipped by the join rather than failing every later one, and the next append starts on its own line so the torn fragment never swallows it.
+Both paths append only to a regular file at that exact path: a `state/dispatch-receipts.jsonl` that is a symlink, live or dangling, is refused rather than followed, so relocating the receipts elsewhere by symlink drops every record instead of writing through it.
 
 **Key handling and provider settings**
 
@@ -2927,7 +2950,7 @@ FM_STATE_OVERRIDE=       # alternate state dir, mainly for tests
 FM_DATA_OVERRIDE=        # alternate data dir, mainly for tests
 FM_PROJECTS_OVERRIDE=    # alternate projects dir, mainly for tests
 FM_CONFIG_OVERRIDE=      # alternate config dir, mainly for tests
-FM_PROC_ROOT_OVERRIDE=   # alternate /proc root for Linux process-identity reads in fm-wake-lib.sh and fm-teardown.sh, mainly for tests
+FM_PROC_ROOT_OVERRIDE=   # alternate /proc root for Linux process-identity reads in fm-wake-lib.sh, fm-teardown.sh, and fm-herdr-session-cleanup.sh, mainly for tests
 FM_BACKEND=             # optional runtime backend override for new spawns; tmux/herdr/zellij/orca/cmux/paseo/rex/t3code/tern support ship/scout spawns, codex-app is not accepted
 FM_T3CODE_ORIGIN=       # optional T3 Code server origin for bin/fm-t3-mcp.mjs login; the default is read from ~/.t3/userdata/server-runtime.json
 FM_TRACE_CONTEXT=       # optional trace-context override; see "Trace context propagation"
@@ -2949,6 +2972,7 @@ FM_BACKLOG_ROW_TIMEOUT_SECS=10   # seconds bounding each backlog row read (bin/f
 FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
 FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (local steps only), or only (network steps only); see bin/fm-bootstrap.sh
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the deferred inactive-outcome scan plus network checks, including the lock waits the worker makes before them; hitting it prints an actionable NETWORK_CHECKS line, and a lock a live process still holds at the deadline ends the worker with a failed-rerun record (publication and delivery are bounded by FM_SESSION_START_TIMEOUT the same way)
+FM_HERDR_SESSION_CLEANUP_TIMEOUT=30   # herdr-only: seconds bounding the complete locked session-start projection cleanup pass; hitting it preserves unfinished candidates and warns that cleanup coverage is unconfirmed; invalid or zero values use 30
 FM_SECONDMATE_CONVERGENCE_TIMEOUT=75   # shared per-mate deadline in seconds for remote startup tracked-file sync and inheritance push; bin/fm-bootstrap.sh owns its scope and timeout handling
 FM_REMOTE_INHERIT_PUSH_JOBS=4   # inherited items one remote inheritance push sends at a time, 1 for strictly one after another; capped at 16 (bin/fm-remote-inherit-push.sh)
 FM_TASKS_AXI_COMPATIBLE=   # internal one-hop handoff of an already-computed tasks-axi compatibility verdict (0 or 1); consumed when bin/fm-tasks-axi-lib.sh is sourced
@@ -2957,7 +2981,7 @@ FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppres
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically
 FM_POLL=15              # seconds between watcher poll cycles
 FM_HOME_SUMMARY_INTERVAL=300   # seconds before a live watcher refreshes this home's state/home-summary.json even without a status signal; invalid or zero values use 300
-FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort home-summary refresh, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60
+FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort home-summary refresh, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60; the session-start refresh is capped at FM_STARTUP_NETWORK_TIMEOUT
 FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES=65536   # approximate size cap for state/.home-summary-refresh.log before it is trimmed to the newest 200 lines; invalid or zero values use 65536
 FM_HOME_SUMMARY_FAILURE_REPORT=2   # recorded publication failures since the ledger's own last publication before session start reports a HOME_SUMMARY line; invalid or zero values use 2
 FM_SNAPSHOT_CREW_STATE_TIMEOUT=10   # seconds bounding each local per-task current-state read inside bin/fm-fleet-snapshot.sh; remote endpoint liveness is not probed on the snapshot path

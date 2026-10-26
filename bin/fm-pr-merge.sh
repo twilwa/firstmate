@@ -28,10 +28,11 @@
 # once that bound is spent it reports mergeability still pending rather than
 # unmergeable, with the same nonzero exit as any other refusal.
 # A required check that never reported is absent from the checks
-# list rather than red, so github_read_required_contexts below reads the
-# required set from classic branch protection and active rulesets. Check-run
-# requirements retain their producer app binding: a same-named check run from another app cannot
-# satisfy them, and a duplicate name-only entry cannot weaken that binding.
+# list rather than red, so fm_pr_github_read_required_contexts in
+# bin/fm-pr-lib.sh reads the required set from classic branch protection and
+# active rulesets. Check-run requirements retain their producer app binding:
+# a same-named check run from another app cannot satisfy them, and a duplicate
+# name-only entry cannot weaken that binding.
 # Unbound requirements match by name. A bound requirement reported as a check
 # run also needs a matching producer in the check-runs read at the verified
 # head, while one reported as a commit status matches by name, because the
@@ -41,7 +42,7 @@
 # An unreadable producer read still refuses.
 # Successfully read requirements remain checked even if another
 # source fails, so known missing checks and all read errors are reported together.
-# github_branch_rules_unavailable_on_plan owns the narrow plan-unavailable
+# fm_pr_github_branch_rules_unavailable_on_plan owns the narrow plan-unavailable
 # exception; every other unreadable required source refuses.
 # Every failing condition is reported, not just the first.
 # The verified head is then passed to gh as
@@ -142,12 +143,13 @@
 # unreadable row refuses before that command, so a captain approval must be
 # recorded as an `answer --release` before this entrypoint is invoked. While
 # an away record exists (a quiet-mode record is a present captain, so its
-# merges stay attended: bin/fm-afk-contract.sh mode) any green merge may
-# proceed under away authority:
-# the record's presence is the whole mechanical fact, and which merge the
-# captain's away words meant is the supervision session's reading
-# (bin/fm-branch-prompt.sh "Postures"). An unreadable record refuses rather
-# than being skipped, neither posture releases a captain hold, and away
+# merges stay attended: bin/fm-afk-contract.sh mode) a green merge may proceed
+# under away authority, and a GitHub one only through bin/fm-pr-review.sh merge,
+# whose recorded ledger merge decision for the live head proves every review
+# gate passed: the record's presence is the posture's whole mechanical fact,
+# and which merge the captain's away words meant is the supervision session's
+# reading (bin/fm-branch-prompt.sh "Postures"). An unreadable record refuses
+# rather than being skipped, neither posture releases a captain hold, and away
 # authority lapses when the record is archived.
 # The authority read and synchronous forge command share the away record's
 # cross-subsystem lock, which bin/fm-afk-contract.sh owns, closing the common
@@ -177,6 +179,17 @@
 # away-record read, or a captain hold.
 #
 # Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+# The repository policy in .github/firstmate-review-policy.json may set
+# require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
+# from fm-pr-review.sh for GitHub merges.
+# When supplied, the live pre-merge head must equal that reviewed head, so a
+# push between ledger verification and this script refuses rather than merging
+# a different head. GitLab callers use this script directly and must not
+# provide the GitHub-only handoff.
+# A GitHub merge also refuses while the PR's review ledger records an unreleased
+# hold on its current generation, whether or not the handoff is required, and
+# while the away-posture record exists it needs the handoff together with the
+# ledger merge decision recorded for that head, whatever the policy setting.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -226,6 +239,51 @@ PR_NUMBER=$FM_PR_NUMBER
 # per-call host handling.
 if [ "$PROVIDER" = github ]; then
   fm_pr_github_host_export "$PR_HOST"
+fi
+FM_PR_REVIEW_EXPECTED_HEAD=${FM_PR_REVIEW_EXPECTED_HEAD:-}
+if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
+  && { [ "$PROVIDER" != github ] || ! fm_pr_head_valid "$FM_PR_REVIEW_EXPECTED_HEAD"; }; then
+  echo "error: invalid reviewed-head merge handoff" >&2
+  exit 2
+fi
+REVIEW_POLICY="$FM_ROOT/.github/firstmate-review-policy.json"
+REVIEWED_HEAD_HANDOFF_REQUIRED=false
+REVIEW_LEDGER=
+if [ "$PROVIDER" = github ] && { [ -e "$REVIEW_POLICY" ] || [ -L "$REVIEW_POLICY" ]; }; then
+  [ -f "$REVIEW_POLICY" ] && [ ! -L "$REVIEW_POLICY" ] || {
+    echo "error: GitHub review policy is not a regular file" >&2
+    exit 2
+  }
+  command -v jq >/dev/null 2>&1 || {
+    echo "error: jq is required to read the GitHub review policy" >&2
+    exit 2
+  }
+  REVIEWED_HEAD_HANDOFF_REQUIRED=$(jq -r '
+    if type != "object" then "invalid"
+    elif has("require_reviewed_head_handoff") then
+      if (.require_reviewed_head_handoff | type) == "boolean" then
+        (.require_reviewed_head_handoff | tostring)
+      else "invalid" end
+    else "false" end
+  ' "$REVIEW_POLICY") || {
+    echo "error: GitHub review policy is invalid" >&2
+    exit 2
+  }
+  case "$REVIEWED_HEAD_HANDOFF_REQUIRED" in
+    true|false) ;;
+    *) echo "error: require_reviewed_head_handoff must be boolean" >&2; exit 2 ;;
+  esac
+  REVIEW_LEDGER_DIR=$(jq -er '.ledger_directory | select(type == "string" and length > 0)' "$REVIEW_POLICY") || {
+    echo "error: GitHub review policy ledger_directory is invalid" >&2
+    exit 2
+  }
+  case "$REVIEW_LEDGER_DIR" in
+    /*|.|..|*/../*|../*|*/..|*//*|*[!A-Za-z0-9._/-]*)
+      echo "error: GitHub review policy ledger_directory is unsafe" >&2
+      exit 2
+      ;;
+  esac
+  REVIEW_LEDGER="${FM_DATA_OVERRIDE:-$FM_HOME/data}/$REVIEW_LEDGER_DIR/github--$PR_OWNER--$PR_REPO--$PR_NUMBER.json"
 fi
 # glab resolves the instance from the project URL passed to -R, so the host is
 # rebuilt from the parsed identity rather than read from any ambient default.
@@ -465,8 +523,9 @@ META="$STATE/$ID.meta"
 # branch reports the green PR and never merges (contract: bin/fm-lease-lib.sh;
 # no-op in homes without a branch actor). While the away-posture record exists
 # main is parked and this one action relocates to the branch, which then meets
-# exactly the same gates below as main would: green at its live head,
-# synchronous, under the record lock. This precedes
+# exactly the same gates below as main would: green at its live head, on
+# GitHub through the review ledger's recorded merge decision, synchronous,
+# under the record lock. This precedes
 # reading the task record, because the wrong actor is refused for its role
 # whatever that record says.
 # shellcheck source=bin/fm-lease-lib.sh
@@ -476,6 +535,28 @@ fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
 if [ ! -f "$META" ] || [ -L "$META" ]; then
   echo "error: task metadata is unavailable" >&2
   exit 1
+fi
+if [ "$PROVIDER" = github ] \
+  && [ "$REVIEWED_HEAD_HANDOFF_REQUIRED" = true ] \
+  && [ -z "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+  echo "error: GitHub merges require the reviewed-head handoff when require_reviewed_head_handoff is true" >&2
+  exit 2
+fi
+if [ -n "$REVIEW_LEDGER" ] && { [ -e "$REVIEW_LEDGER" ] || [ -L "$REVIEW_LEDGER" ]; }; then
+  REVIEW_HOLD_REASON=$( [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] && jq -er --arg url "$URL" '
+    select(.url == $url and (.generations | type == "array" and length > 0))
+    | .generations[-1].merge_decision
+    | if (.decision // "") == "hold"
+      then ((.reason // "") | if . == "" then "no reason recorded" else . end)
+      else "" end
+  ' "$REVIEW_LEDGER") || {
+    echo "error: the review ledger for this pull request is unreadable" >&2
+    exit 2
+  }
+  if [ -n "$REVIEW_HOLD_REASON" ]; then
+    echo "error: GitHub merge refused: the review ledger holds this pull request: $REVIEW_HOLD_REASON; record the human decision with bin/fm-pr-review.sh release-hold before merging" >&2
+    exit 2
+  fi
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then
   echo "error: PR merge refused: $FM_BACKLOG_TRANSITION_ERROR" >&2
@@ -927,70 +1008,6 @@ github_checks_not_green() {
   ' 2>/dev/null || return 1
 }
 
-FM_PR_GITHUB_REQUIRED=
-FM_PR_GITHUB_REQUIRED_ERROR=
-github_read_required_contexts() {
-  local base=$1 branch_path branch_json rules_json classic='' ruleset='' api_err api_err_text
-  FM_PR_GITHUB_REQUIRED='[]'
-  FM_PR_GITHUB_REQUIRED_ERROR=
-  branch_path=$(github_urlencode_path_segment "$base")
-
-  if ! branch_json=$(gh api "repos/$PR_OWNER/$PR_REPO/branches/$branch_path" 2>/dev/null) \
-    || [ -z "$branch_json" ] \
-    || ! classic=$(printf '%s' "$branch_json" | jq -c '
-      if type != "object" or (.protected | type) != "boolean" then
-        error("branch payload is unreadable")
-      elif .protected == false then
-        empty
-      elif (.protection.required_status_checks | type) != "object" then
-        error("branch protection summary is unreadable")
-      else
-        .protection.required_status_checks
-        | ((.checks // []) | if type == "array" then .[] else error("invalid checks") end
-           | {context, app_id}),
-          ((.contexts // []) | if type == "array" then .[] else error("invalid contexts") end
-           | {context: ., app_id: null})
-        | if (.context | type) == "string" and (.context | length) > 0
-             and (.app_id == null or (.app_id | type) == "number")
-          then . else error("invalid required check") end
-        | if .app_id == -1 then .app_id = null else . end
-      end' 2>/dev/null); then
-    classic=''
-    FM_PR_GITHUB_REQUIRED_ERROR="the branch protection summary for base branch $base could not be read"
-  fi
-
-  if ! api_err=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-required-rules.XXXXXX"); then
-    FM_PR_GITHUB_REQUIRED_ERROR="${FM_PR_GITHUB_REQUIRED_ERROR:+$FM_PR_GITHUB_REQUIRED_ERROR
-}the branch rules for base branch $base could not be read"
-  else
-    if ! rules_json=$(gh api --paginate "repos/$PR_OWNER/$PR_REPO/rules/branches/$branch_path" 2>"$api_err"); then
-      api_err_text=$(cat "$api_err" 2>/dev/null)
-      if ! github_branch_rules_unavailable_on_plan "$api_err_text"; then
-        FM_PR_GITHUB_REQUIRED_ERROR="${FM_PR_GITHUB_REQUIRED_ERROR:+$FM_PR_GITHUB_REQUIRED_ERROR
-}the branch rules for base branch $base could not be read"
-      fi
-    elif [ -z "$rules_json" ] || ! ruleset=$(printf '%s' "$rules_json" | jq -c '
-        if type != "array" then error("rules payload is unreadable") else .[] end
-        | select(type != "object" or .type == "required_status_checks")
-        | if type == "object" and (.parameters.required_status_checks | type) == "array"
-          then .parameters.required_status_checks[] else error("invalid required check rule") end
-        | if type == "object" and (.context | type) == "string" and (.context | length) > 0
-             and (.integration_id == null or (.integration_id | type) == "number")
-          then {context, app_id: .integration_id} else error("invalid required check rule") end
-        | if .app_id == -1 then .app_id = null else . end' 2>/dev/null); then
-      ruleset=''
-      FM_PR_GITHUB_REQUIRED_ERROR="${FM_PR_GITHUB_REQUIRED_ERROR:+$FM_PR_GITHUB_REQUIRED_ERROR
-}the branch rules for base branch $base could not be read"
-    fi
-    rm -f "$api_err"
-  fi
-
-  FM_PR_GITHUB_REQUIRED=$(printf '%s\n%s\n' "$classic" "$ruleset" | jq -sc '
-    unique_by([.context, .app_id]) | group_by(.context)
-    | map(if any(.[]; .app_id != null) then map(select(.app_id != null)) else . end) | add // []')
-  [ -z "$FM_PR_GITHUB_REQUIRED_ERROR" ]
-}
-
 github_required_checks_missing() {
   local json=$1 required=$2 producers=$3
   printf '%s' "$json" | jq -r --argjson required "$required" --argjson producers "$producers" '
@@ -1062,6 +1079,11 @@ FIELDS
     echo "error: could not read the GitHub pull request head commit before merging" >&2
     return 1
   fi
+  if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] && [ "$live_head" != "$FM_PR_REVIEW_EXPECTED_HEAD" ]; then
+    printf 'error: refusing to merge %s\n  - live head %s does not equal ledger-reviewed head %s\n' \
+      "$URL" "$live_head" "$FM_PR_REVIEW_EXPECTED_HEAD" >&2
+    return 1
+  fi
   if ! red=$(github_checks_not_green "$json"); then
     echo "error: could not read the GitHub pull request state before merging" >&2
     return 1
@@ -1103,7 +1125,7 @@ $red
 EOF
 
   unreported=''
-  if ! github_read_required_contexts "$base"; then
+  if ! fm_pr_github_read_required_contexts "$PR_OWNER" "$PR_REPO" "$base"; then
     while IFS= read -r line; do
       refusals="$refusals  - $line, so a required check that has not reported cannot be ruled out
 "
@@ -1256,38 +1278,6 @@ github_read_outcome() {
   return 1
 }
 
-github_urlencode_path_segment() {
-  local LC_ALL=C input=$1 encoded='' char octet hex
-  while [ -n "$input" ]; do
-    char=${input%"${input#?}"}
-    input=${input#?}
-    case "$char" in
-      [-._~a-zA-Z0-9]) encoded=$encoded$char ;;
-      *)
-        printf -v octet '%d' "'$char"
-        [ "$octet" -ge 0 ] || octet=$((octet + 256))
-        printf -v hex '%02X' "$octet"
-        encoded=$encoded%$hex
-        ;;
-    esac
-  done
-  printf '%s' "$encoded"
-}
-
-# Whether a failed branch-rules read (the gh stderr given) is GitHub's
-# plan-gated 403 ("Upgrade to GitHub Pro or make this repository public"),
-# which means the repository's plan cannot expose branch rules at all, on
-# GitHub or GitHub Enterprise Server - not that this script failed to read
-# them, and not that the token lacks a permission. Such a repository has no
-# active ruleset rule of any kind. Any other failure (auth, rate limit,
-# network, a 404, an unrelated 403) is not this and stays unreadable.
-github_branch_rules_unavailable_on_plan() {
-  case "$1" in
-    *"Upgrade to GitHub Pro or make this repository public"*) return 0 ;;
-  esac
-  return 1
-}
-
 # Read the effective merge-queue method for the observed base branch. The four
 # situations the refusal has to keep apart - no queue rule, a rules response
 # that could not be read, several rules that disagree, and a rule whose method
@@ -1304,7 +1294,7 @@ github_read_queue_method() {
   FM_PR_GITHUB_QUEUE_STATUS=unreadable
   command -v gh >/dev/null 2>&1 || return 0
   [ -n "$FM_PR_GITHUB_BASE" ] || return 0
-  branch_path=$(github_urlencode_path_segment "$FM_PR_GITHUB_BASE")
+  branch_path=$(fm_pr_github_urlencode_path_segment "$FM_PR_GITHUB_BASE")
   api_err=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-queue-rules.XXXXXX") || return 0
   if ! methods=$(gh api \
     --paginate "repos/$PR_OWNER/$PR_REPO/rules/branches/$branch_path" \
@@ -1315,7 +1305,7 @@ github_read_queue_method() {
     # A repository that cannot have branch rules cannot have a merge_queue
     # rule either, so that specific refusal resolves to no queue rather than
     # the generic unreadable status.
-    if github_branch_rules_unavailable_on_plan "$api_err_text"; then
+    if fm_pr_github_branch_rules_unavailable_on_plan "$api_err_text"; then
       FM_PR_GITHUB_QUEUE_STATUS=none
     fi
     return 0
@@ -1442,6 +1432,28 @@ require_current_away_authority() {
     echo "error: --allow-no-pipeline is attended-only; while the away-posture record exists a GitLab merge requires a successful head pipeline" >&2
     return 2
   fi
+  require_away_review_merge_decision
+}
+
+# While away, a GitHub merge lands only through bin/fm-pr-review.sh merge, which
+# records the ledger merge decision for the live head after every review gate
+# passes and hands that head over here, where github_verify_mergeable binds it
+# to the live head. A direct call, a hand-set handoff, or a decision recorded
+# for another head is refused, so the review policy is enforced by this script
+# rather than by the away session's judgment.
+require_away_review_merge_decision() {
+  [ "$FM_PR_AWAY_POSTURE" = true ] && [ "$PROVIDER" = github ] && [ -n "$REVIEW_LEDGER" ] || return 0
+  if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
+    && [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
+    && jq -e --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
+      .url == $url and (.generations | type == "array" and length > 0)
+      and .generations[-1].merge_decision.decision == "merge"
+      and .generations[-1].merge_decision.verified_head == $head
+    ' "$REVIEW_LEDGER" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged" >&2
+  return 2
 }
 
 persist_accepted_merge_authority() {

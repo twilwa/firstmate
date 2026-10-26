@@ -43,8 +43,8 @@
 # floored age), and are counted in omitted[].
 # --all-decisions reveals every captain hold available within the bounded snapshot
 # and drops its gate, so a hold is never in both Captain's Call and Charted Next.
-# Aging is a projection safety net only; the durable
-# deferral remains re-holding with --until.
+# Aging is a projection safety net only; the durable deferral is the recorded
+# `answer --defer-until` (the keyed intake's `defer` mode).
 #
 # Ordinary Charted Next gates are ordered by durable filed date, newest first,
 # before the FM_BEARINGS_GATES bound is applied. Gates without a comparable filed

@@ -40,8 +40,8 @@
 #     captain_actionable means "waiting on the captain now" and is exactly
 #     hold_bucket == "live".
 #     hold_age_days is the hold's age when computable, else null.
-#     Aging is a projection safety net only: the durable deferral remains
-#     re-holding with --until.
+#     Aging is a projection safety net only: the durable deferral is the
+#     recorded `answer --defer-until` (the keyed intake's `defer` mode).
 #     Renderers keep every non-live bucket out of the default Captain's Call,
 #     project it as a Charted Next gate stating why, and disclose it in
 #     omitted[]; --all-decisions reveals every captain hold available within the
@@ -282,7 +282,8 @@ never from hold reason or body prose: "blocked", "dated", "aged", or "live".
 An undated hold ages once its hold-set timestamp is at least
 FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old (default 14; 0 ages every hold with a
 non-negative computed age); legacy holds without a stamp fall back to their
-since date, and re-holding with --until remains the durable deferral.
+since date, and the recorded answer --defer-until (the keyed intake's defer
+mode) remains the durable deferral.
 EOF
 }
 

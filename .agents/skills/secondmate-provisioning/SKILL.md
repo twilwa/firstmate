@@ -11,7 +11,8 @@ metadata:
 
 Use this reference before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a persistent secondmate, and before editing `data/secondmates.md`.
 
-Keep the always-inline routing rules in `AGENTS.md` authoritative: route by natural-language `scope:`, local-only projects stay with the main firstmate, and secondmates are idle by default.
+Keep the always-inline routing rules in `AGENTS.md` section 7 authoritative: route by natural-language `scope:`; a local-only project's landing authority stays with the primary that seeded its bound copy.
+The charter `bin/fm-brief.sh` seeds into the secondmate's own `data/charter.md` owns idle-by-default.
 
 ## Routing table
 
@@ -211,6 +212,8 @@ It refuses any destination that is not a genuine seeded firstmate home with safe
 Do not hand off `local-only` items.
 
 ## Recovery
+
+Ordinary supervision also performs a cadence-gated liveness tick through [`bin/fm-secondmate-liveness-lib.sh`](../../../bin/fm-secondmate-liveness-lib.sh), so a mate that dies mid-session is relaunched without waiting for the next session start.
 
 For local `kind=secondmate` meta with no window, treat the secondmate as a dead persistent direct report and respawn it with:
 

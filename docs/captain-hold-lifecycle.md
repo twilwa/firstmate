@@ -96,6 +96,7 @@ A matching retry also completes any resolution-first normalization left unfinish
 
 On a task closed outside the script, `answer` records the missing block only when the captain-hold annotations tasks-axi preserves through a close prove the captain owned it.
 It also verifies the task stays closed.
+A deferred record is non-terminal, so it neither satisfies `verify` after an out-of-band close nor blocks `answer` from recording the later close as a repair.
 
 A hold whose `--until` date has passed keeps those annotations while tasks-axi reports it no longer held.
 An expired deferral therefore remains answerable.
@@ -305,7 +306,8 @@ Each outcome requires both the pending board-created request and the operator in
   A later request with the same finding still receives its own dated note.
 
 `reconcile list` is the read-only enumeration of pending requests filed by board answers.
-A successful normal answer also retires any pending request, because an answered call has no remaining re-check obligation.
+A successful terminal answer also retires any pending request, because an answered call has no remaining re-check obligation.
+A deferral leaves the call open and therefore preserves its pending reconcile request for the still-owed re-check.
 
 Every retirement is checked.
 If request removal fails after an answer, close, or note is already durable, the durable outcome stands, but the command fails and leaves the pending request visible for retry.
@@ -369,7 +371,7 @@ No captain hold can fall through them and none can match two, which is what keep
 
 Existing undated holds without a hold-set stamp fall back to the task's `since` date.
 That aging is a projection safety net only.
-The durable deferral remains re-holding with `--until`.
+The durable deferral is the recorded answer - `answer --defer-until <date>`, or the keyed intake's `defer` mode with its date - which stores what the captain said alongside the date.
 
 The fleet snapshot's secondmate-home summary classifies an actionable captain hold as `captain_decision`.
 It preserves every captain hold in the bounded queued inventory of the owning home.
@@ -396,7 +398,7 @@ Three accepted limits remain deliberate:
 - Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`.
   A remote deferred hold beyond those bounds is not exported, so it can be neither gated nor revealed.
 
-Re-holding through the wrapper with `--until` remains the durable fix rather than relying on the projection safety net.
+Recording a dated defer through `answer --defer-until` or the keyed intake remains the durable fix rather than relying on the projection safety net.
 
 ### Recently Landed notes
 

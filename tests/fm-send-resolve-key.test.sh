@@ -632,6 +632,21 @@ test_flag_misuse_refuses() {
   [ "$rc" -ne 0 ] || fail "a malformed key should refuse"
   assert_contains "$(cat "$err")" "not a valid decision key" "the malformed-key refusal should be explicit"
 
+  # Supplying an empty defer value still marks the flag present, so a second
+  # spelling is a duplicate rather than silently replacing the empty first use.
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" t7 --resolve-key k --defer-until= --defer-until 2026-10-01 \
+      "answer" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "an empty equals defer value hid a duplicate flag"
+  assert_contains "$(cat "$err")" "duplicate --defer-until" \
+    "the duplicate after an empty equals value was not detected"
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" t7 --resolve-key k --defer-until "" --defer-until=2026-10-01 \
+      "answer" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "an empty spaced defer value hid a duplicate flag"
+  assert_contains "$(cat "$err")" "duplicate --defer-until" \
+    "the duplicate after an empty spaced value was not detected"
+
   [ ! -s "$log" ] || fail "a refused misuse still typed text: $(cat "$log")"
   if grep -F 'resolved' "$home/state/t7.status" >/dev/null; then
     fail "a refused misuse still closed something: $(cat "$home/state/t7.status")"

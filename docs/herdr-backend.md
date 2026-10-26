@@ -438,6 +438,8 @@ Any foreground command, child process, active shell job, unknown shell, unreadab
 An unconfirmed close retains the journal.
 A confirmed close may retire it even when focus restoration reported an error after the close.
 A second run finds no matching title or journal and is a no-op.
+Discovery validates this home's journals once per pass, but every locked mutation check rereads them.
+`FM_HERDR_SESSION_CLEANUP_TIMEOUT` bounds the complete pass; at the deadline Firstmate reclaims a recorded lock only while it is free or still provably owned by the timed-out worker (the recorded PID, now a zombie, with its recorded process identity), warns about any lock it cannot reclaim safely, preserves every unfinished candidate, and warns that cleanup coverage is unconfirmed.
 
 Any of these preserves the candidate and lets session startup continue with at most a concise warning:
 
