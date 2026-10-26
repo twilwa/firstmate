@@ -641,6 +641,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "tests/safe-suite-exclusions.txt",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/agent-skill-trigger-index/SKILL.md",
       "audience": "agent-runtime"
     },

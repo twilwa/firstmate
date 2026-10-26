@@ -83,6 +83,13 @@
 # membership pinned when its watch is armed, because the merge watch follows one
 # change.
 # It defaults to squash on gerrit and is refused without it.
+# --tests selects the task's local test scope: none, focused, safe-suite, or full.
+# It defaults to none for no-mistakes and direct-PR ship briefs, whose CI runs
+# the tests, and to focused for local-only and scout briefs, which reach no CI.
+# The scaffold has no reliable signal for upstream-bound work, so firstmate must
+# pass --tests full explicitly for it.
+# safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
+# owned by bin/fm-test-run.sh; bin/fm-dod-lib.sh owns the rendered section, which
 # --upstream-consent <host>/<owner>/<repo> records the captain's one-off
 # approval for this one task to publish to that repository when it is
 # firstmate's own upstream. It renders as an `upstream-consent=` token on the
@@ -213,6 +220,8 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+TEST_SCOPE=
+TEST_SCOPE_SET=0
 BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
 BASE_BRANCH=
@@ -238,6 +247,7 @@ for a in "$@"; do
       base-branch) BASE_BRANCH=$a; BASE_BRANCH_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
+      tests) TEST_SCOPE=$a; TEST_SCOPE_SET=1 ;;
       upstream-consent) UPSTREAM_CONSENT=$a; UPSTREAM_CONSENT_SET=1 ;;
       project) PROJECT_DIR=$a; PROJECT_DIR_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
@@ -260,6 +270,8 @@ for a in "$@"; do
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
     --shape=*) SHAPE=${a#--shape=}; SHAPE_SET=1 ;;
+    --tests) want_value=tests ;;
+    --tests=*) TEST_SCOPE=${a#--tests=}; TEST_SCOPE_SET=1 ;;
     --upstream-consent) want_value="upstream-consent" ;;
     --upstream-consent=*) UPSTREAM_CONSENT=${a#--upstream-consent=}; UPSTREAM_CONSENT_SET=1 ;;
     --project) want_value="project" ;;
@@ -291,6 +303,16 @@ elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
 fi
+if [ "$KIND" = secondmate ] && [ "$TEST_SCOPE_SET" -eq 1 ]; then
+  echo "error: --tests applies only to ship or scout task briefs, not a persistent secondmate charter" >&2
+  exit 1
+fi
+if [ "$TEST_SCOPE_SET" -eq 0 ]; then
+  case "$KIND:$MODE" in
+    *) TEST_SCOPE=focused ;;
+  esac
+fi
+fm_test_scope_valid "$TEST_SCOPE" || exit 1
 
 # A ship branch's prefix is optional per-project cosmetics, not a delivery
 # decision, but it still only makes sense where a branch is actually created.
@@ -591,6 +613,7 @@ fi
 
 REPO=${POS[1]}
 
+
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -636,8 +659,10 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 {FIRSTMATE_SPEC}
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
+TASK_SECTION="$TASK_SECTION
 
-# One shared string keeps the ship and scout infrastructure rule identical.
+$TEST_SCOPE_SECTION"
+
 # Rule 2 governs file edits, so it does not prohibit pool administration.
 # The secondmate charter deliberately omits this rule because a secondmate
 # legitimately allocates and returns slots for crewmates in its own home.
@@ -666,6 +691,17 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
    `blocked [at=<epoch>]: {what you need}` and stop; firstmate arranges it.
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
+
+# home brief include exists. The optional include remains additive.
+IFS= read -r -d '' SHARED_HOST_SAFETY <<EOF || true
+# Shared-host safety
+Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use \`type -P <name>\`, never \`command -v\`.
+
+Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
+
+Run anything approved from this gate inside a systemd-run user scope, sized to the job; see \`$FM_ROOT/docs/configuration.md\` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with \`type -P\` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with \`head -n2\` before use. A self-referencing shim can trigger uncontrolled process recursion.
+EOF
+SHARED_HOST_SAFETY=${SHARED_HOST_SAFETY%$'\n'}
 
 # One shared string keeps the ship and scout shell-path rule identical.
 IFS= read -r -d '' SHARED_NO_CD_RULE <<'EOF' || true
@@ -723,6 +759,8 @@ $CREWMATE_PAUSE_INSTRUCTIONS
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
 $SHARED_NO_CD_RULE
+
+$SHARED_HOST_SAFETY
 
 $WAIT_BLOCK$INBOX_SECTION
 
@@ -804,6 +842,8 @@ $ASK_USER_BLOCK
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
 $SHARED_NO_CD_RULE
+
+$SHARED_HOST_SAFETY
 
 $WAIT_BLOCK$INBOX_SECTION
 

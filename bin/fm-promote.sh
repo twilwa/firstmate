@@ -41,7 +41,10 @@
 # binding and bin/fm-dod-lib.sh owns what it changes for the worker, including
 # the refusal of a forge on local-only. A forge=external project is refused
 # outright, because its push guard is installed only by a ship spawn.
-# Usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--upstream-consent <host>/<owner>/<repo>]
+# --tests selects the promoted task's local test scope exactly as bin/fm-brief.sh
+# does, defaulting to focused; pass --tests full for upstream-bound work. The same
+# `## Test scope` section, rendered by bin/fm-dod-lib.sh, supersedes the scout's.
+# Usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--upstream-consent <host>/<owner>/<repo>]
 # --upstream-consent records the captain's one-off approval for this task to
 # publish to firstmate's own upstream repository; promotion applies the same
 # self-repository publication gate as bin/fm-spawn.sh (bin/fm-role-lib.sh), so
@@ -77,6 +80,7 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 MODE=
 YOLO=
 BRANCH_PREFIX=fm/
+TEST_SCOPE=focused
 MODE_SET=0
 YOLO_SET=0
 FORGE=none
@@ -93,6 +97,7 @@ for a in "$@"; do
       mode) MODE=$a; MODE_SET=1 ;;
       yolo) YOLO=$a; YOLO_SET=1 ;;
       branch-prefix) BRANCH_PREFIX=$a ;;
+      tests) TEST_SCOPE=$a ;;
       upstream-consent) UPSTREAM_CONSENT=$a; UPSTREAM_CONSENT_SET=1 ;;
     esac
     want_value=
@@ -105,6 +110,8 @@ for a in "$@"; do
     --yolo=*) YOLO=${a#--yolo=}; YOLO_SET=1 ;;
     --branch-prefix) want_value="branch-prefix" ;;
     --branch-prefix=*) BRANCH_PREFIX=${a#--branch-prefix=} ;;
+    --tests) want_value=tests ;;
+    --tests=*) TEST_SCOPE=${a#--tests=} ;;
     --upstream-consent) want_value="upstream-consent" ;;
     --upstream-consent=*) UPSTREAM_CONSENT=${a#--upstream-consent=}; UPSTREAM_CONSENT_SET=1 ;;
     *) POS+=("$a") ;;
@@ -131,6 +138,8 @@ case "$YOLO" in
   on|off) ;;
   *) echo "error: --yolo must be on or off (got '$YOLO')" >&2; exit 1 ;;
 esac
+fm_test_scope_valid "$TEST_SCOPE" || exit 1
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "$MODE")
 if [ "$UPSTREAM_CONSENT_SET" -eq 1 ]; then
   [ -n "$UPSTREAM_CONSENT" ] || { echo "error: --upstream-consent requires a non-empty <host>/<owner>/<repo> value" >&2; exit 1; }
   if [ "$MODE" = local-only ]; then
@@ -298,7 +307,7 @@ If these promotion steps were already completed before a relaunch, preserve the 
 3. Return to a clean $PROMOTE_BASE_WORDS, then create your branch: \`git checkout -b $BRANCH_Q --\`.
 4. Carry over only the intended fix changes. Leave scratch commits, debug edits, and experiment files behind.
 5. If you reproduced a bug, turn that reproduction into a regression test.
-6. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or current ship-time instructions.
+6. Treat the scout-time Firstmate spec, its Test scope, and any unmarked legacy \`# Task\` text as investigation context, not captain intent or current ship-time instructions; the Test scope below is current.
 7. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule, except where the current delivery contract below explicitly replaces scout-only delivery rules.
 EOF
 promote_delivery_contract() {
@@ -340,6 +349,8 @@ EOF
 ## Firstmate spec
 $PROMOTION_SHIP_SPEC
 
+$TEST_SCOPE_SECTION
+
 EOF
   promote_delivery_contract
 } > "$TMP" || { echo "error: could not render ship instructions for mode=$MODE" >&2; exit 1; }
@@ -355,6 +366,7 @@ BRIEF_REPLACEMENT="$DATA/$ID/.brief.md.promote.${BASHPID:-$$}"
   cat "$SCOUT_BRIEF"
   printf '\n\n'
   printf '# Current ship Firstmate spec\n%s\n\n' "$PROMOTION_SHIP_SPEC"
+  printf '%s\n\n' "$TEST_SCOPE_SECTION"
   promote_delivery_contract
 } > "$BRIEF_REPLACEMENT" || {
   echo "error: could not render the promoted brief for mode=$MODE" >&2
