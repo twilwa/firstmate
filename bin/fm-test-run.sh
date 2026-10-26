@@ -345,10 +345,11 @@ family_for_basename() {
     fm-remote-transport-lanes.test.sh|\
     fm-remote-reply.test.sh|fm-remote-secondmate-lifecycle-e2e.test.sh|\
     fm-remote-secondmate-trace-context.test.sh|\
+    fm-local-handoff.test.sh|\
     fm-secondmate-harness.test.sh|fm-secondmate-lifecycle-e2e.test.sh|\
     fm-secondmate-liveness.test.sh|fm-secondmate-reconcile.test.sh|\
     fm-secondmate-restart.test.sh|fm-remote-secondmate-relaunch.test.sh|\
-    fm-secondmate-safety.test.sh|fm-secondmate-sync.test.sh|\
+    fm-secondmate-safety.test.sh|fm-secondmate-sleep.test.sh|fm-secondmate-sync.test.sh|\
     fm-startup-memory-budget.test.sh|fm-stow-cascade.test.sh|\
     fm-send-secondmate-marker.test.sh|fm-shared-captain-inheritance.test.sh)
       printf '%s\n' secondmate
@@ -1573,6 +1574,12 @@ families_for_changed_path() {
       printf '%s\n' secondmate
       printf '%s\n' session-bootstrap
       ;;
+    bin/fm-local-handoff*)
+      # Local-only child custody is seeded by the secondmate path and consumed
+      # by the landing and cleanup guards, so both families prove a change here.
+      printf '%s\n' secondmate
+      printf '%s\n' pr-forge
+      ;;
     bin/fm-secondmate*)
       printf '%s\n' secondmate
       printf '%s\n' "__script__:fm-backend-t3code.test.sh"
@@ -1685,11 +1692,16 @@ families_for_changed_path() {
       printf '%s\n' watcher-wake-lock
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
       ;;
-    bin/fm-teardown.sh)
+    bin/fm-merge-local.sh|bin/fm-teardown.sh)
+      # Both carry local-only child custody - the guarded delegated landing and
+      # the receipt-gated cleanup - beside their ordinary forge paths, so each
+      # is proven by the custody suite as well as its own family. Teardown also
+      # retires T3 Code secondmate homes.
       printf '%s\n' pr-forge
-      printf '%s\n' "__script__:fm-backend-t3code.test.sh"
+      printf '%s\n' "__script__:fm-local-handoff.test.sh"
+      [ "$path" != bin/fm-teardown.sh ] || printf '%s\n' "__script__:fm-backend-t3code.test.sh"
       ;;
-    bin/fm-pr-*|bin/fm-merge-local.sh|bin/fm-review-diff.sh|\
+    bin/fm-pr-*|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*|bin/fm-pipeline-spend.sh)
       printf '%s\n' pr-forge
       ;;

@@ -49,8 +49,8 @@ This touches only the firstmate repo and its own worktrees, never anything under
 
    The two second-mate sets are disjoint and the script owns the split; do not re-derive it.
    `restart-secondmates:` carries every live mate the pass left on the latest commit, whether it advanced or was already there.
-   A mate reaches neither set only because its home was skipped, because it has no live endpoint recorded here, or because its endpoint was positively classified as dead or missing.
-   A skipped genuine divergence still requires attention through its durable reconciliation record; the other two cases need no update action from you.
+   A mate reaches neither set only because its home was skipped, because it is asleep (its own `asleep since ...; not restarted` line), because it has no live endpoint recorded here, or because its endpoint was positively classified as dead or missing.
+   A skipped genuine divergence still requires attention through its durable reconciliation record; the other cases need no update action from you, and an asleep mate comes up on the latest when it is woken on purpose.
 
 2. **Re-read AGENTS.md if your own instructions changed.**
    When the updater printed `reread-firstmate: yes`, the tracked instruction surface (`AGENTS.md`, `bin/`, or `.agents/skills/`) just advanced under you.
@@ -76,6 +76,7 @@ This touches only the firstmate repo and its own worktrees, never anything under
    - `nudged: <id>: <reason>` - the restart was not safe, so the mate got the older re-read message instead and is still running the conversation and launch-time settings it started with.
      Never report one of these as a clean reload.
    - `unreached: <id>: <reason>` - no safe running outcome could be confirmed, including an ambiguous relaunch result.
+   - `asleep: <id>: <reason>` - that mate is asleep on purpose and was left so; it comes up on the latest when it is woken.
 
 4. **Send the re-read message to the rest.**
    For every target on the `nudge-secondmates:` line (do nothing when it says `none`), send the one-line re-read steer:

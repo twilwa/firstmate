@@ -15,6 +15,9 @@
 # obligation across a partial, unknown, or killed completion. Unchanged homes send no
 # reread unless a previous reread is still owed. For local routes only,
 # data/captain-shared.md-only updates send no new reread pointer.
+# A home whose mate is asleep (bin/fm-secondmate-sleep.sh) is skipped whole: it
+# has no agent to steer, any reread generation it already holds stays durable,
+# and its wake launch converges its inherited material.
 # Warnings-only skips exit 0; real propagation or reread-send errors exit non-zero.
 set -u
 
@@ -36,7 +39,7 @@ This is local-material-only:
 
 Live homes come from state/*.meta records with kind=secondmate.
 data/secondmates.md is only a fallback for missing home= fields in older or
-incomplete meta records.
+incomplete meta records. A home whose mate is asleep is skipped until it wakes.
 
 Environment overrides follow the rest of firstmate:
   FM_HOME            active firstmate home
@@ -80,6 +83,8 @@ SECONDMATES_MD="$DATA/secondmates.md"
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
 # shellcheck source=bin/fm-secondmate-nudge-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
+# shellcheck source=bin/fm-secondmate-sleep-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-sleep-lib.sh"
 
 print_item_report() {
   local report=$1 item status reason
@@ -117,6 +122,11 @@ seen_homes=""
 errors=0
 while IFS='|' read -r id home _window meta; do
   [ -n "$id" ] || continue
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    printf 'secondmate %s: skipped - %s; its inherited material converges when it wakes\n' \
+      "$id" "$(fm_secondmate_asleep_line)"
+    continue
+  fi
   if [ -z "$home" ]; then
     printf 'secondmate %s: skipped - no home= in %s and no registry home\n' "$id" "$meta"
     continue

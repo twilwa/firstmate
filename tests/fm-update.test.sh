@@ -245,6 +245,30 @@ test_dead_secondmate_gets_no_action() {
   pass "T3d an already-stopped secondmate is left to startup recovery"
 }
 
+# --- T3f: an asleep mate is listed asleep and never restarted ---------------
+# Its endpoint reads live here on purpose, so only the sleep marker can be what
+# keeps a restartable mate and an unprovable one out of both action sets.
+test_asleep_secondmates_get_no_action() {
+  local w out
+  w=$(new_world t3f)
+  add_sm "$w" sm1
+  add_sm "$w" sm2 claude zellij
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$w/home/state/sm1.asleep"
+  printf 'since=2026-10-06T12:00:00Z\nby=captain\nreason=parked\n' > "$w/home/state/sm2.asleep"
+  bump_origin "$w" instr
+
+  out=$(run_update "$w")
+
+  assert_contains "$out" "secondmate sm1: updated " "an asleep mate's safe checkout still advances"
+  assert_contains "$out" "secondmate sm1: asleep since 2026-10-06T12:00:00Z (by captain): parked; not restarted" \
+    "an asleep restartable mate must be listed as asleep"
+  assert_contains "$out" "secondmate sm2: asleep since 2026-10-06T12:00:00Z (by captain): parked; not restarted" \
+    "an asleep unprovable mate must be listed as asleep"
+  assert_contains "$out" "restart-secondmates: none" "an asleep mate must never be restarted"
+  assert_contains "$out" "nudge-secondmates: none" "an asleep mate must never be steered"
+  pass "T3f asleep secondmates are listed asleep and kept out of both action sets"
+}
+
 # --- T3e: a legacy remote advance still restarts ---------------------------
 # The host's instr= suffix is reporting detail; the parent no longer routes on it,
 # so an older host that cannot report a diff can no longer suppress the restart.
@@ -561,6 +585,7 @@ test_reread_gate_is_instruction_only
 test_bin_only_advance_restarts
 test_unprovable_runtime_gets_fallback_nudge
 test_dead_secondmate_gets_no_action
+test_asleep_secondmates_get_no_action
 test_legacy_remote_advance_restarts
 test_dirty_secondmate_skipped
 test_diverged_secondmate_skipped

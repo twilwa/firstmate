@@ -42,8 +42,11 @@
 # surface therefore is NOT evidence that the running agent is already on the
 # current behavior, so an ALREADY-CURRENT home restarts too.
 #
-# Only two things keep a live mate out of the restart set, and neither is papered
+# Only three things keep a live mate out of the restart set, and none is papered
 # over as a reload:
+#   - it is ASLEEP (bin/fm-secondmate-sleep.sh). Its home still fast-forwards,
+#     but it is listed as asleep, never restarted or steered; its wake launch
+#     comes up on the new bytes.
 #   - its home was SKIPPED (dirty, uniquely diverged, offline, unsafe). It is not
 #     on the new bytes, nothing here forces, stashes, or discards it, and it gets
 #     no action at all. A divergence remains in the durable reconciliation record
@@ -74,6 +77,8 @@ SECONDMATES_MD="$FM_HOME/data/secondmates.md"
 . "$SCRIPT_DIR/fm-ff-lib.sh"
 # shellcheck source=bin/fm-secondmate-restart-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
+# shellcheck source=bin/fm-secondmate-sleep-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-sleep-lib.sh"
 
 "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -143,11 +148,16 @@ selector_claimed() {  # <selector>
 
 # Route one secondmate whose home this pass left on the target commit. Restart is
 # the outcome unless its runtime cannot prove one, in which case it keeps the
-# re-read steer and is reported as a nudge rather than as a reload. A stopped
-# endpoint has no agent to replace and is left to startup recovery.
+# re-read steer and is reported as a nudge rather than as a reload. An asleep
+# mate is listed and left asleep. A stopped endpoint has no agent to replace and
+# is left to startup recovery.
 claim_settled_secondmate() {  # <id>
   local id=$1
   selector_claimed "fm-$id" && return 0
+  if fm_secondmate_asleep "$STATE" "$id"; then
+    echo "secondmate $id: $(fm_secondmate_asleep_line); not restarted"
+    return 0
+  fi
   secondmate_agent_may_be_alive "$id" || return 0
   if fm_secondmate_restart_capable "$STATE/$id.meta"; then
     FF_RESTART_WINDOWS="$FF_RESTART_WINDOWS fm-$id"
