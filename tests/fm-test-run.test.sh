@@ -992,6 +992,24 @@ test_exclude_family() {
   pass "exclude-family drops the named primary family after selection"
 }
 
+test_exclude_script() {
+  local listed all estimate full err
+  listed=$("$RUNNER" --list --all --exclude-script tests/fm-lint.test.sh)
+  all=$("$RUNNER" --list --all)
+  printf '%s\n' "$listed" | grep -Fxq 'tests/fm-lint.test.sh' \
+    && fail "exclude-script left the named script selected"
+  [ "$(printf '%s\n' "$listed" | wc -l)" -eq $(( $(printf '%s\n' "$all" | wc -l) - 1 )) ] \
+    || fail "exclude-script must drop exactly the named script"
+  estimate=$("$RUNNER" --estimate-ms --all --exclude-script tests/fm-lint.test.sh)
+  full=$("$RUNNER" --estimate-ms --all)
+  [ "$estimate" -lt "$full" ] || fail "exclude-script must also narrow --estimate-ms ($estimate vs $full)"
+  err=$("$RUNNER" --list --all --exclude-script tests/fm-no-such-suite.test.sh 2>&1) \
+    && fail "exclude-script must refuse a script that does not exist"
+  printf '%s\n' "$err" | grep -Fq 'tests/fm-no-such-suite.test.sh' \
+    || fail "the refusal must name the missing script: $err"
+  pass "exclude-script drops one named script after selection and refuses an unknown one"
+}
+
 test_tern_family_selection() {
   local listed families
   families=$("$RUNNER" --list-families)
@@ -2122,6 +2140,7 @@ test_a_run_that_ran_records_no_skip_reason
 test_live_guards_expect_a_capability_skip_class
 test_fail_on_gate_skip_token
 test_exclude_family
+test_exclude_script
 test_tern_family_selection
 test_list_scheduled_proven_isolated_uses_serial_weights
 test_list_scheduled_non_lane_selections_use_serial_weights

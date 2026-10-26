@@ -100,7 +100,7 @@
 # the tests, and to focused for local-only and scout briefs, which reach no CI.
 # The scaffold has no reliable signal for upstream-bound work, so firstmate must
 # pass --tests full explicitly for it.
-# safe-suite uses tests/safe-suite-exclusions.txt, whose family selections are
+# safe-suite uses tests/safe-suite-exclusions.txt, whose family and script exclusions are
 # owned by bin/fm-test-run.sh; bin/fm-dod-lib.sh owns the rendered section, which
 # bin/fm-promote.sh shares. Only ship, scout, and landing-crew task briefs accept this flag.
 # --upstream-consent <host>/<owner>/<repo> records the captain's one-off

@@ -19,7 +19,7 @@
 #   fm-test-run.sh --list --lane portable-parallel-1
 #   fm-test-run.sh --list-scheduled --family <name>
 #   fm-test-run.sh --list-scheduled --lane portable-parallel-1
-#   fm-test-run.sh --estimate-ms --all [--exclude-family <name>...]
+#   fm-test-run.sh --estimate-ms --all [--exclude-family <name>...] [--exclude-script <path>...]
 #   fm-test-run.sh --list-families
 #   fm-test-run.sh --list-concurrent-safe-families
 #   fm-test-run.sh --concurrent-safe-family-jobs-max <name>
@@ -50,6 +50,10 @@
 #                   drop scripts whose primary family matches <name> after selection
 #                   (repeatable; portable CI lanes exclude real-herdr-gated so the
 #                   dedicated required Herdr lane owns that coverage)
+#   --exclude-script <tests/name.test.sh>
+#                   drop one named script after selection (repeatable); a name
+#                   that matches no existing script is refused, so a stale
+#                   exclusion cannot pass silently
 #   --fail-on-gate-skip <token>
 #                   after each script, fail the run if any output line contains
 #                   "skip: <token>" (e.g. --fail-on-gate-skip 'herdr not found').
@@ -197,6 +201,7 @@ BASE_REF=origin/main
 JSON_PATH=
 SCRIPTS=()
 EXCLUDE_FAMILIES=()
+EXCLUDE_SCRIPTS=()
 FAIL_ON_GATE_SKIP=
 JOBS=1
 JOBS_EXPLICIT=0
@@ -1994,6 +1999,28 @@ detect_gate_skip_token() {
   grep -F -q "skip: $token" "$file" 2>/dev/null
 }
 
+apply_exclude_scripts() {
+  local s ex keep
+  local -a drop=() kept=()
+  [ "${#EXCLUDE_SCRIPTS[@]}" -gt 0 ] || return 0
+  for ex in "${EXCLUDE_SCRIPTS[@]}"; do
+    ex=$(normalize_script_path "$ex")
+    [ -f "$ex" ] || die "--exclude-script names no existing script: $ex"
+    drop+=("$ex")
+  done
+  for s in "${SCRIPTS[@]+"${SCRIPTS[@]}"}"; do
+    keep=1
+    for ex in "${drop[@]}"; do
+      if [ "$s" = "$ex" ]; then
+        keep=0
+        break
+      fi
+    done
+    [ "$keep" -eq 1 ] && kept+=("$s")
+  done
+  SCRIPTS=("${kept[@]+"${kept[@]}"}")
+}
+
 apply_exclude_families() {
   local s fam keep ex
   local -a kept=()
@@ -2229,6 +2256,15 @@ while [ "$#" -gt 0 ]; do
       EXCLUDE_FAMILIES+=("${1#--exclude-family=}")
       shift
       ;;
+    --exclude-script)
+      [ "$#" -gt 1 ] || die "--exclude-script requires a script path"
+      EXCLUDE_SCRIPTS+=("$2")
+      shift 2
+      ;;
+    --exclude-script=*)
+      EXCLUDE_SCRIPTS+=("${1#--exclude-script=}")
+      shift
+      ;;
     --fail-on-gate-skip)
       [ "$#" -gt 1 ] || die "--fail-on-gate-skip requires a token (e.g. 'herdr not found')"
       FAIL_ON_GATE_SKIP=$2
@@ -2362,6 +2398,10 @@ esac
 apply_exclude_families
 if [ "${#EXCLUDE_FAMILIES[@]}" -gt 0 ]; then
   SELECTION_DESC="${SELECTION_DESC};exclude-family=$(IFS=,; printf '%s' "${EXCLUDE_FAMILIES[*]}")"
+fi
+apply_exclude_scripts
+if [ "${#EXCLUDE_SCRIPTS[@]}" -gt 0 ]; then
+  SELECTION_DESC="${SELECTION_DESC};exclude-script=$(IFS=,; printf '%s' "${EXCLUDE_SCRIPTS[*]}")"
 fi
 if [ -n "$FAIL_ON_GATE_SKIP" ]; then
   SELECTION_DESC="${SELECTION_DESC};fail-on-gate-skip=$FAIL_ON_GATE_SKIP"

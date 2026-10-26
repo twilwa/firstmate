@@ -1,2 +1,3 @@
 --exclude-family real-herdr-gated
 --exclude-family live-harness-optin
+--exclude-script tests/fm-backend-t3code.test.sh
