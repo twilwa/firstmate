@@ -1743,14 +1743,18 @@ families_for_changed_path() {
       printf '%s\n' watcher-wake-lock
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
       ;;
-    bin/fm-merge-local.sh|bin/fm-teardown.sh)
-      # Both carry local-only child custody - the guarded delegated landing and
-      # the receipt-gated cleanup - beside their ordinary forge paths, so each
-      # is proven by the custody suite as well as its own family. Teardown also
-      # retires T3 Code secondmate homes.
+    bin/fm-merge-local.sh)
+      # The guarded delegated landing of local-only child custody sits beside
+      # the ordinary forge path, so the custody suite proves it too.
       printf '%s\n' pr-forge
       printf '%s\n' "__script__:fm-local-handoff.test.sh"
-      [ "$path" != bin/fm-teardown.sh ] || printf '%s\n' "__script__:fm-backend-t3code.test.sh"
+      ;;
+    bin/fm-teardown.sh)
+      # Teardown carries the receipt-gated local-only custody cleanup and
+      # retires T3 Code secondmate homes beside its ordinary forge path.
+      printf '%s\n' pr-forge
+      printf '%s\n' "__script__:fm-local-handoff.test.sh"
+      printf '%s\n' "__script__:fm-backend-t3code.test.sh"
       ;;
     bin/fm-pr-*|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*|bin/fm-pipeline-spend.sh)
