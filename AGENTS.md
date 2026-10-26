@@ -239,6 +239,7 @@ The path's worker, automated gates, and captain approval remain authoritative:
 Delivery mode and `yolo` are orthogonal.
 `yolo` governs merge authority only: with it off, the captain approves every PR merge and every local-only landing; with it on, firstmate merges green, in-scope work itself.
 Never merge a red PR, or one with a required check that has not reported, under either setting unless a current explicit captain instruction names the GitHub check to waive or orders that merge for a GitLab merge request with no head pipeline; `bin/fm-pr-merge.sh`'s header owns the attended-only waiver mechanics and remaining guards.
+A merge-queue candidate's green run proves only that its members combine; it never stands in for a member's own required checks, review ledger, or merge authority.
 Destructive, irreversible, and security-sensitive merges still escalate.
 Without a current explicit captain instruction that states the concrete merge, the green default stands, and standing `yolo` cannot authorize a red merge; section 1 owns when such an instruction overrides a Firstmate-written standing rule within its exact scope.
 Load `ask-user-authority` and `validation-supervision` before deciding or answering any ask-user finding; the implementation worker never answers its own finding.
@@ -253,6 +254,10 @@ Load `validation-supervision` when a ship starts or already has an active no-mis
 ### PR ready, landing, and teardown
 
 Load `ship-landing` when a ship reports a PR or ready branch, when deciding or monitoring landing, and before task cleanup.
+Never merge or rebase the default branch into a PR branch that does not conflict with it, unless the forge requires an up-to-date branch to merge, because a refresh discards that head's green checks and review-ledger generation and costs a full CI run.
+When more than two review-complete PRs wait on one project, land them through the in-house merge queue: a landing crew builds a candidate branch from current origin default branch plus the next members in landing order, and firstmate grants each push only under the project's cap on concurrent full CI runs, counting the default branch's own.
+After one green candidate run, the batch lands as one batch PR, or, where a project does not land through one, each member merges in order on its own unchanged green head, always through the guarded merge path; a member that conflicts is dropped and refreshed alone, and no member whose own head is red ever merges.
+`ship-landing` owns the batch procedure and [`docs/merge-queue.md`](docs/merge-queue.md) its mechanics and rationale.
 
 ### Scout outcome and promotion
 
