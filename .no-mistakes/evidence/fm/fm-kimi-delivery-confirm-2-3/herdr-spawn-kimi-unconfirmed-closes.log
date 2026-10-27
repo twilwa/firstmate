@@ -1,0 +1,27 @@
+# private herdr config dir=/tmp/fmhx.m9alqh (operator ~/.config/herdr untouched)
+# session=fm-lab-kimi-unconfirmed-2970461-18913 lab=/tmp/fm-lab.GD7hZH project=/tmp/fm-kimi-spawn-work.Nxeitz/project kimi=2.3.3 herdr=herdr 0.9.5
+# extra env: FM_COMPOSER_KIMI_CONTEXT_ROW_RE=^FM-LAB-NEVER-MATCHES$ FM_KIMI_DELIVERY_POLLS=20
+$ fm-spawn.sh kimi-unconfirmed <project> --harness kimi --backend herdr --mode no-mistakes --yolo off
+warning: /tmp/fm-lab.GD7hZH/data/kimi-unconfirmed/launch-brief.md records no ship branch; defaulting to legacy branch fm/kimi-unconfirmed
+warning: /tmp/fm-lab.GD7hZH/data/kimi-unconfirmed/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+error: kimi brief pointer delivery was not confirmed; closed window fm-lab-kimi-unconfirmed-2970461-18913:w1:p2
+# spawn exit=1
+# --- state after spawn ---
+meta present: no
+status file:
+failed [at=1793134288]: kimi brief pointer delivery was not confirmed
+# treehouse pool for this clone (fm-spawn's --root):
+
+base  main  (repository default)
+1     available    ~/.treehouse-fm/57a2da50f047/.treehouse/project-75906a/1/project  (detached)
+# slot-owner claims in this clone's pool:
+no .fm-slot-owner claim present
+slot /home/firstmate/.treehouse-fm/57a2da50f047/.treehouse/project-75906a/1/project HEAD: HEAD
+# local branches in project: main 
+# lab panes:
+
+# kimi processes in the lab worktrees:
+none
+# lab session fm-lab-kimi-unconfirmed-2970461-18913 torn down
+# removed disposable treehouse pool 57a2da50f047

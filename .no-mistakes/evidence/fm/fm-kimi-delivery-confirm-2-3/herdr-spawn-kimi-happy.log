@@ -1,0 +1,69 @@
+# private herdr config dir=/tmp/fmhx.99wW1e (operator ~/.config/herdr untouched)
+# session=fm-lab-kimi-happy-2901897-4937 lab=/tmp/fm-lab.e23tzX project=/tmp/fm-kimi-spawn-work.H72CAI/project kimi=2.3.3 herdr=herdr 0.9.5
+# extra env: none
+$ fm-spawn.sh kimi-happy <project> --harness kimi --backend herdr --mode no-mistakes --yolo off
+warning: /tmp/fm-lab.e23tzX/data/kimi-happy/launch-brief.md records no ship branch; defaulting to legacy branch fm/kimi-happy
+warning: /tmp/fm-lab.e23tzX/data/kimi-happy/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+spawned kimi-happy harness=kimi kind=ship mode=no-mistakes yolo=off window=fm-lab-kimi-happy-2901897-4937:w1:p2 worktree=/home/firstmate/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project
+# spawn exit=0
+# --- state after spawn ---
+meta present: yes
+window=fm-lab-kimi-happy-2901897-4937:w1:p2
+worktree=/home/firstmate/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project
+harness=kimi
+branch=fm/kimi-happy
+backend=herdr
+status file:
+
+# treehouse pool status:
+A new version of treehouse is available: v3.1.6 → v3.1.7
+Run "treehouse update" to update
+
+base  main  (repository default)
+🌳 No worktrees in pool.
+# lab panes:
+{"pane_id":"w1:p2","cwd":"/home/firstmate/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project","agent":"kimi"}
+# kimi processes in the lab worktrees:
+none
+# --- visible pane w1:p2 (20s after spawn) ---
+firstmate@vmi3582798:~/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project$ export GOTMPDIR=/tmp/fm-kimi-hap
+py/gotmp
+firstmate@vmi3582798:~/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project$ export FM_TASK_ID=kimi-happy
+firstmate@vmi3582798:~/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project$ . '/tmp/fm-kimi-happy+c11e90adcd
+146fb1dd6613a14f462cb9c858b963bc9675720faed5ddeca1ed36/launch.s1793134146.2902847.9677.sh'
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                   │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                   │
+ │  ▐█████▌  Send /help for help information.                                                                        │
+ │                                                                                                                   │
+ │  Directory: /home/firstmate/.treehouse-fm/897be930f88a/.treehouse/project-562baf/1/project                        │
+ │  Session:   session_1a0aa9eb-9ac0-4449-a00d-525cfbfdf1ec                                                          │
+ │  Model:     K3.1 Pro                                                                                              │
+ │  Version:   2.3.3                                                                                                 │
+ │                                                                                                                   │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+
+ ❯ Read the brief at /tmp/fm-lab.e23tzX/data/kimi-happy/launch-brief.md and follow it exactly.
+
+ ● I need read brief exactly. Perhaps use Read path.
+
+ ● Used Read (/tmp/fm-lab.e23tzX/data/kimi-happy/launch-brief.md) · 28 lines
+
+ ● Should have single word DONE, no edits/run. I used Read allowed. Respond exactly.
+
+ ● DONE
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  …/project-562baf/1/project                         ctrl+o expand | ctrl+c: cancel
+                                                                                                context: 3% (21.2k/1M)
+# lab session fm-lab-kimi-happy-2901897-4937 torn down

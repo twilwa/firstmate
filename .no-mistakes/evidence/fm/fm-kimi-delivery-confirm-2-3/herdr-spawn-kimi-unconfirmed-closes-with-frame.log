@@ -1,0 +1,68 @@
+# private herdr config dir=/tmp/fmhx.zvCKmL (operator ~/.config/herdr untouched)
+# session=fm-lab-kimi-unconf2-3026501-5742 lab=/tmp/fm-lab.zTMtgV project=/tmp/fm-kimi-spawn-work.JRNKwP/project kimi=2.3.3 herdr=herdr 0.9.5
+# extra env: FM_COMPOSER_KIMI_CONTEXT_ROW_RE=^FM-LAB-NEVER-MATCHES$ FM_KIMI_DELIVERY_POLLS=30
+$ fm-spawn.sh kimi-unconf2 <project> --harness kimi --backend herdr --mode no-mistakes --yolo off
+warning: /tmp/fm-lab.zTMtgV/data/kimi-unconf2/launch-brief.md records no ship branch; defaulting to legacy branch fm/kimi-unconf2
+warning: /tmp/fm-lab.zTMtgV/data/kimi-unconf2/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+error: kimi brief pointer delivery was not confirmed; closed window fm-lab-kimi-unconf2-3026501-5742:w1:p2
+# spawn exit=1
+# --- state after spawn ---
+meta present: no
+status file:
+failed [at=1793134375]: kimi brief pointer delivery was not confirmed
+# treehouse pool for this clone (fm-spawn's --root):
+
+base  main  (repository default)
+1     available    ~/.treehouse-fm/0ca3b8ff1271/.treehouse/project-fe57ae/1/project  (detached)
+# slot-owner claims in this clone's pool:
+no .fm-slot-owner claim present
+slot /home/firstmate/.treehouse-fm/0ca3b8ff1271/.treehouse/project-fe57ae/1/project HEAD: HEAD
+# local branches in project: main 
+# lab panes:
+
+# kimi processes in the lab worktrees:
+none
+# --- last recorded frame of pane w1:p2 before the spawn returned ---
+firstmate@vmi3582798:~/.treehouse-fm/0ca3b8ff1271/.treehouse/project-fe57ae/1/project$ export FM_TASK_ID=kimi-unconf2
+firstmate@vmi3582798:~/.treehouse-fm/0ca3b8ff1271/.treehouse/project-fe57ae/1/project$ . '/tmp/fm-kimi-unconf2+1c057ff3
+88f78b9934e623b81b988282e1f017e1ffd347133fafc28bb3414a1c/launch.s1793134332.3028624.7324.sh'
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                   │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                   │
+ │  ▐█████▌  Send /help for help information.                                                                        │
+ │                                                                                                                   │
+ │  Directory: /home/firstmate/.treehouse-fm/0ca3b8ff1271/.treehouse/project-fe57ae/1/project                        │
+ │  Session:   session_cf7824c2-4e68-4355-a517-0ae4dcce1512                                                          │
+ │  Model:     K3.1 Pro                                                                                              │
+ │  Version:   2.3.3                                                                                                 │
+ │                                                                                                                   │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+
+ ❯ Read the brief at /tmp/fm-lab.zTMtgV/data/kimi-unconf2/launch-brief.md and follow it exactly.
+
+ ● I need act. Should read brief exactly. I need likely complex repo modifications. First Read brief.
+
+ ● I’ll read the launch brief, inspect the project, and follow its requirements exactly.
+
+ ● Used Read (/tmp/fm-lab.zTMtgV/data/kimi-unconf2/launch-brief.md) · 28 lines
+
+ ● I'll reply single word DONE stop. Do not edit/create/run anything. I already Read required. No tools. Respond
+   exactly DONE.
+
+ ● DONE
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  …/project-fe57ae/1/project                                          ctrl+o expand
+                                                                                                context: 3% (21.2k/1M)
+# kimi processes 15s after spawn returned:
+# lab session fm-lab-kimi-unconf2-3026501-5742 torn down
+# removed disposable treehouse pool 0ca3b8ff1271

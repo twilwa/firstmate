@@ -1,0 +1,112 @@
+# private herdr config dir=/tmp/fmhx.2dxgWH (operator ~/.config/herdr untouched)
+# session=fm-lab-kimi-prefix-3095241-26243 lab=/tmp/fm-lab.3J905p project=/tmp/fm-kimi-spawn-work.OrvYhA/project kimi=2.3.3 herdr=herdr 0.9.5
+# extra env: none
+$ fm-spawn.sh kimi-prefix <project> --harness kimi --backend herdr --mode no-mistakes --yolo off
+warning: /tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md records no ship branch; defaulting to legacy branch fm/kimi-prefix
+warning: /tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+error: kimi brief pointer delivery was not confirmed; inspect window fm-lab-kimi-prefix-3095241-26243:w1:p2
+warning: leaving task kimi-prefix's slot claim on /home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project in place; the Treehouse project lock is no longer held, so the next spawn's claim replaces it
+# spawn exit=1
+# --- state after spawn ---
+meta present: no
+status file:
+failed [at=1793134502]: kimi brief pointer delivery was not confirmed
+# treehouse pool for this clone (fm-spawn's --root):
+
+base  main  (repository default)
+1     in-use       ~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project  (detached)
+                   bash (3097344), kimi-code (3099562)
+# slot-owner claims in this clone's pool:
+CLAIM /home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/.fm-slot-owner: task=kimi-prefix home=/tmp/fm-lab.3J905p 
+slot /home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project HEAD: HEAD
+# local branches in project: main 
+# lab panes:
+{"pane_id":"w1:p2","cwd":"/home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project","agent":"kimi"}
+# kimi processes in the lab worktrees:
+none
+# --- last recorded frame of pane w1:p1 before the spawn returned ---
+firstmate@vmi3582798:/tmp/fm-kimi-spawn-work.OrvYhA/project$
+# --- last recorded frame of pane w1:p2 before the spawn returned ---
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export GOTMPDIR=/tmp/fm-kimi-pre
+fix/gotmp
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export FM_TASK_ID=kimi-prefix
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ . '/tmp/fm-kimi-prefix+90d6b3a69
+56637b385cdf813cf95a1c9f49e930978c4c9ead0440192fe1d5d47/launch.s1793134448.3095845.175.sh'
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                   │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                   │
+ │  ▐█████▌  Send /help for help information.                                                                        │
+ │                                                                                                                   │
+ │  Directory: /home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project                        │
+ │  Session:   session_6249c160-d0f1-4014-ae16-1a068044c242                                                          │
+ │  Model:     K3.1 Pro                                                                                              │
+ │  Version:   2.3.3                                                                                                 │
+ │                                                                                                                   │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+
+ ❯ Read the brief at /tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md and follow it exactly.
+
+ ● I need act read brief exact. Should use Read concrete.
+
+ ● Used Read (/tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md) · 28 lines
+
+ ● I must respond DONE single word. No more tools.
+
+ ● DONE
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  …/project-f3c016/1/project                                          ctrl+o expand
+                                                                                                context: 3% (21.2k/1M)
+# kimi processes 15s after spawn returned:
+# --- visible pane w1:p2 (20s after spawn) ---
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export GOTMPDIR=/tmp/fm-kimi-pre
+fix/gotmp
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ export FM_TASK_ID=kimi-prefix
+firstmate@vmi3582798:~/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project$ . '/tmp/fm-kimi-prefix+90d6b3a69
+56637b385cdf813cf95a1c9f49e930978c4c9ead0440192fe1d5d47/launch.s1793134448.3095845.175.sh'
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                   │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                   │
+ │  ▐█████▌  Send /help for help information.                                                                        │
+ │                                                                                                                   │
+ │  Directory: /home/firstmate/.treehouse-fm/7a50cd406d59/.treehouse/project-f3c016/1/project                        │
+ │  Session:   session_6249c160-d0f1-4014-ae16-1a068044c242                                                          │
+ │  Model:     K3.1 Pro                                                                                              │
+ │  Version:   2.3.3                                                                                                 │
+ │                                                                                                                   │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+
+ ❯ Read the brief at /tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md and follow it exactly.
+
+ ● I need act read brief exact. Should use Read concrete.
+
+ ● Used Read (/tmp/fm-lab.3J905p/data/kimi-prefix/launch-brief.md) · 28 lines
+
+ ● I must respond DONE single word. No more tools.
+
+ ● DONE
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  …/project-f3c016/1/project                                          ctrl+o expand
+                                                                                                context: 3% (21.2k/1M)
+# lab session fm-lab-kimi-prefix-3095241-26243 torn down
+# removed disposable treehouse pool 7a50cd406d59
