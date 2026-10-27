@@ -5330,11 +5330,11 @@ kimi_spawn_fail() { # <detail>
 }
 
 # The slot as it stood before the pointer was typed: HEAD, the task branch
-# tip, and the status of the tree, so a refused spawn can tell whether its
-# worker changed anything there.
+# tip (scouts and secondmates have none), and the status of the tree, so a
+# refused spawn can tell whether its worker changed anything there.
 kimi_slot_snapshot() {
   git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || return 1
-  git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" 2>/dev/null || echo "no-branch"
+  [ -n "${BRANCH:-}" ] && git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" 2>/dev/null || echo "no-branch"
   git -C "$WT" status --porcelain=v1 --untracked-files=all 2>/dev/null
 }
 

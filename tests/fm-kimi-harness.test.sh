@@ -355,7 +355,7 @@ run_spawn() {
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
     PATH="$fakebin:$BASE_PATH" \
-    "$SPAWN" "$id" "$proj" --harness kimi --mode no-mistakes --yolo off "$@" 2>&1
+    "$SPAWN" "$id" "$proj" --harness kimi ${FM_TEST_SHIP_FLAGS---mode no-mistakes --yolo off} "$@" 2>&1
 }
 
 read_spawn_record() {
@@ -859,6 +859,29 @@ test_kimi_233_idle_pane_after_submit_is_refused_and_closed() {
   assert_absent "$HOME_DIR/state/$id.meta" "the refused kimi spawn must not leave its task record"
   [ ! -e "$claim" ] || fail "the refused kimi spawn left a slot claim naming a task with no record: $(cat "$claim")"
   pass "fm-spawn: kimi 2.3.3 refuses an idle pane after submit, closes the worker, and drops its slot claim"
+}
+
+# A scout has no task branch, so the refusal's slot snapshot must not depend
+# on one: an untouched scout slot still closes the window and drops the record.
+test_kimi_233_refused_scout_with_an_unchanged_slot_is_closed() {
+  local id rec out rc claim
+  id="kimi-233-scout-z20-$$"
+  rec=$(make_spawn_case kimi-233-scout "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  rc=0
+  out=$(FM_TEST_SHIP_FLAGS= FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" --scout) || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unconfirmed kimi scout delivery must fail the spawn: $out"
+  assert_not_contains "$out" "unbound variable" "the kimi scout refusal hit an unset variable"
+  assert_contains "$out" "kimi brief pointer delivery was not confirmed; closed window" \
+    "the refused kimi scout with an unchanged slot must close its window"
+  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "the refused kimi scout must close the pane running Kimi"
+  assert_absent "$HOME_DIR/state/$id.meta" "the refused kimi scout must not leave its task record"
+  [ ! -e "$claim" ] || fail "the refused kimi scout left a slot claim naming a task with no record: $(cat "$claim")"
+  pass "fm-spawn: a refused kimi scout whose slot is unchanged closes the worker and drops its record"
 }
 
 test_kimi_233_pointer_left_in_the_composer_is_refused() {
@@ -1541,6 +1564,7 @@ test_kimi_missing_binary_refuses_before_pane_creation
 test_kimi_unconfirmed_delivery_fails_loudly
 test_kimi_233_submitted_brief_is_confirmed
 test_kimi_233_idle_pane_after_submit_is_refused_and_closed
+test_kimi_233_refused_scout_with_an_unchanged_slot_is_closed
 test_kimi_233_pointer_left_in_the_composer_is_refused
 test_kimi_233_pointer_in_the_composer_is_refused_despite_moved_usage
 test_kimi_233_stale_turn_in_scrollback_does_not_confirm
