@@ -1,0 +1,15 @@
+# scenario=herdr-refused kimi=2.3.3 herdr=herdr 0.9.5 session=fm-lab-kimirefused-1924393-6393 lab=/tmp/fm-kimi-herdr.02OfRC
+$ HERDR_SESSION=fm-lab-kimirefused-1924393-6393 FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimihrefusedscout $PROJ --scout --harness kimi --backend herdr  (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-herdr.02OfRC/fm
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+error: kimi brief pointer delivery was not confirmed; closed window fm-lab-kimirefused-1924393-6393:w1:p2
+--- state after spawn
+meta present: no
+status file:
+failed [at=1793144428]: kimi brief pointer delivery was not confirmed
+lab panes: []
+live default session (must be untouched, outside XDG): default stopped
+slot status: 

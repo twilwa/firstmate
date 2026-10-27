@@ -1,0 +1,67 @@
+# scenario=herdr-ok kimi=2.3.3 herdr=herdr 0.9.5 session=fm-lab-kimiok-1971069-5991 lab=/tmp/fm-kimi-herdr.VmQM2k
+$ HERDR_SESSION=fm-lab-kimiok-1971069-5991 FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimihokship $PROJ --mode local-only --yolo off --harness kimi --backend herdr  (FM_KIMI_DELIVERY_POLLS=default)
+exit=0
+--- stdout
+spawned kimihokship harness=kimi kind=ship mode=local-only yolo=off window=fm-lab-kimiok-1971069-5991:w1:p2 worktree=/tmp/fm-kimi-herdr.VmQM2k/wt
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-herdr.VmQM2k/fm
+notice: kimihokship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+--- state after spawn
+meta present: yes
+window=fm-lab-kimiok-1971069-5991:w1:p2
+worktree=/tmp/fm-kimi-herdr.VmQM2k/wt
+harness=kimi
+kind=ship
+backend=herdr
+status file:
+lab panes (raw pane list): {"id":"cli:pane:list","result":{"panes":[{"agent":"kimi","agent_status":"idle","cwd":"/tmp/fm-kimi-herdr.VmQM2k/project","focused":true,"foreground_cwd":"/tmp/fm-kimi-herdr.VmQM2k/wt","pane_id":"w1:p2","revision":1,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":40},"tab_id":"w1:t2","terminal_id":"term_65edafb0d94bb2","terminal_title":"Read the brief at /tmp/fm-kimi-h","terminal_title_stripped":"Read the brief at /tmp/fm-kimi-h","workspace_id":"w1"}],"type":"pane_list"}} 
+live default session (must be untouched, outside XDG): default stopped
+slot status: 
+answer.txt: 80235
+composer state now (cursorless herdr read): empty
+--- worker pane (fm-lab-kimiok-1971069-5991:w1:p2)
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/640ef1e15fed' get
+bash-5.2$ cd -- '/tmp/fm-kimi-herdr.VmQM2k/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimihokship/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimihokship
+bash-5.2$ . '/tmp/fm-kimihokship+fe846cb0104664d6cb36a74c5595be2aac5312cdeb7791e2916c5641733bfe51/launch.s1793144470.19
+73164.12346.sh'
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                   │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                   │
+ │  ▐█████▌  Send /help for help information.                                                                        │
+ │                                                                                                                   │
+ │  Directory: /tmp/fm-kimi-herdr.VmQM2k/wt                                                                          │
+ │  Session:   session_ce3304c3-c1f5-4b5c-b021-529a32f15b47                                                          │
+ │  Model:     K3.1 Pro                                                                                              │
+ │  Version:   2.3.3                                                                                                 │
+ │                                                                                                                   │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+
+ ❯ Read the brief at /tmp/fm-kimi-herdr.VmQM2k/fm/data/kimihokship/launch-brief.md and follow it exactly.
+
+ ● I need read brief. Should follow exactly. I'll inspect.
+
+ ● Used Read (/tmp/fm-kimi-herdr.VmQM2k/fm/data/kimihokship/launch-brief.md) · 21 lines
+
+ ● Should use shell write text 80235 into answer.txt current dir, no other work. Brief says shell tool. Should echo >
+   file dedicated Write but explicitly use shell tool and runtime verification spawn. Use Bash printf '80235' >
+   answer.txt. No read? user says exactly. Do it.
+
+ ● Ran a command · $ printf '80235' > answer.txt
+   Command executed successfully.
+
+  🌘 · Tip: /plugins: manage plugins — try the "Kimi Datasource" for reliable financial, economic, and academic data
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                 │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-herdr.VmQM2k/wt  kimi-live                             ctrl+o expand
+                                                                                                context: 3% (21.1k/1M)

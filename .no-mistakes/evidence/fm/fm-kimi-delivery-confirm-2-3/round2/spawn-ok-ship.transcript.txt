@@ -1,0 +1,69 @@
+# scenario=ok kimi=2.3.3 lab=/tmp/fm-kimi-spawn.30pku4
+$ FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimiokship $PROJ --mode local-only --yolo off --harness kimi   (FM_KIMI_DELIVERY_POLLS=default)
+exit=0
+--- stdout
+spawned kimiokship harness=kimi kind=ship mode=local-only yolo=off window=firstmate:fm-kimiokship worktree=/tmp/fm-kimi-spawn.30pku4/wt
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-spawn.30pku4/fm
+notice: kimiokship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+--- state after spawn
+meta present: yes
+window=firstmate:fm-kimiokship
+worktree=/tmp/fm-kimi-spawn.30pku4/wt
+harness=kimi
+kind=ship
+status file:
+tmux windows: firstmate:0 lab;firstmate:1 fm-kimiokship;
+slot status: 
+answer.txt: 80235
+--- worker pane (firstmate:fm-kimiokship)
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/7ad315191ed0' get
+bash-5.2$ cd -- '/tmp/fm-kimi-spawn.30pku4/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimiokship/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimiokship
+bash-5.2$ . '/tmp/fm-kimiokship+473422eb8ebb6fcbb44bf76c2502732045deba5f6b910961a95ac8e4f4e8d7f6/launch.s1793144275.1823844.14815.sh'
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                                                            │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                                                            │
+ │  ▐█████▌  Send /help for help information.                                                                                                                 │
+ │                                                                                                                                                            │
+ │  Directory: /tmp/fm-kimi-spawn.30pku4/wt                                                                                                                   │
+ │  Session:   session_a0061eca-df27-41c5-96d8-17e6f7211dc9                                                                                                   │
+ │  Model:     K3.1 Pro                                                                                                                                       │
+ │  Version:   2.3.3                                                                                                                                          │
+ │                                                                                                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+ ❯ Read the brief at /tmp/fm-kimi-spawn.30pku4/fm/data/kimiokship/launch-brief.md and follow it exactly.
+
+ ● I need read brief.
+
+ ● Used Read (/tmp/fm-kimi-spawn.30pku4/fm/data/kimiokship/launch-brief.md) · 21 lines
+
+ ● I'll use shell to write exactly answer.txt current dir. No other work. Bash printf 80235 > answer.txt (brief says shell).
+
+ ● Running a command · $ printf '80235' > answer.txt
+
+  🌑 · Tip: /plugins: manage plugins — try the "Kimi Datasource" for reliable financial, economic, and academic data
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-spawn.30pku4/wt  kimi-live                       ctrl+o expand | /web: use the Web UI for a better experience
+                                                                                                                                         context: 3% (21.1k/1M)
+
+
+
+
+
+
+
+
+

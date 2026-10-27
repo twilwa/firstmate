@@ -1,0 +1,4 @@
+# kimi 2.3.3: confirmed while working on: prompt-echo spinner
+ok - kimi 2.3.3: a submitted brief is confirmed while the turn runs, with an empty composer read with and without a cursor
+ok - kimi 2.3.3: after the turn the composer still reads empty both ways and the pane still shows the brief was taken
+exit=0

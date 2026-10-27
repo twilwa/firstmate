@@ -1,0 +1,2 @@
+teardown rc=0 session=fm-lab-kimiok-1971069-5991
+isolated universe sessions after teardown: name                 status   directory                                        socket;default              stopped  /tmp/fm-kimi-herdr.VmQM2k/xdg/herdr              /tmp/fm-kimi-herdr.VmQM2k/xdg/herdr/herdr.sock;

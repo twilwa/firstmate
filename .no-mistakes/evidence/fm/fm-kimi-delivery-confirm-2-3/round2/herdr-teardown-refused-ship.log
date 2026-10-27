@@ -1,0 +1,2 @@
+teardown rc=0 session=fm-lab-kimirefused-1943948-29879
+isolated universe sessions after teardown: name                 status   directory                                        socket;default              stopped  /tmp/fm-kimi-herdr.8ViBpc/xdg/herdr              /tmp/fm-kimi-herdr.8ViBpc/xdg/herdr/herdr.sock;

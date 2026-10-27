@@ -1,0 +1,71 @@
+# scenario=changed kimi=2.3.3 lab=/tmp/fm-kimi-spawn.fD5jf5
+$ FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimichangedship $PROJ --mode local-only --yolo off --harness kimi   (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-spawn.fD5jf5/fm
+notice: kimichangedship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+error: kimi brief pointer delivery was not confirmed; its local copy /tmp/fm-kimi-spawn.fD5jf5/wt changed after the pointer was typed, so window firstmate:fm-kimichangedship stays open, and task kimichangedship's record is kept for teardown
+--- side writer
+side-writer dirtied slot at 00:13:07.363024184
+--- state after spawn
+meta present: yes
+window=firstmate:fm-kimichangedship
+worktree=/tmp/fm-kimi-spawn.fD5jf5/wt
+harness=kimi
+kind=ship
+status file:
+failed [at=1793142792]: kimi brief pointer delivery was not confirmed
+tmux windows: firstmate:0 lab;firstmate:1 fm-kimichangedship;
+slot status: ?? side-write.txt;
+--- still-open pane firstmate:1
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/26699745792e' get
+bash-5.2$ cd -- '/tmp/fm-kimi-spawn.fD5jf5/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimichangedship/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimichangedship
+bash-5.2$ . '/tmp/fm-kimichangedship+66633b3203bcfa078ff80a6b14b9b58f01b8201921acc2aa3e0e63b186c48a5a/launch.s1793142781.613769.32571.sh'
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                                                            │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                                                            │
+ │  ▐█████▌  Send /help for help information.                                                                                                                 │
+ │                                                                                                                                                            │
+ │  Directory: /tmp/fm-kimi-spawn.fD5jf5/wt                                                                                                                   │
+ │  Session:   session_d32421b2-d373-43d8-a9a9-a1510fa6b884                                                                                                   │
+ │  Model:     K3.1 Pro                                                                                                                                       │
+ │  Version:   2.3.3                                                                                                                                          │
+ │                                                                                                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+ ❯ Read the brief at /tmp/fm-kimi-spawn.fD5jf5/fm/data/kimichangedship/launch-brief.md and follow it exactly.
+
+  🌘 · Tip: /plugins: manage plugins — try the "Kimi Datasource" for reliable financial, economic, and academic data
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-spawn.fD5jf5/wt  kimi-live                                                          /init: generate AGENTS.md
+                                                                                                                                             context: 0% (0/1M)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

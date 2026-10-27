@@ -1,0 +1,50 @@
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/51445f7e0cc8' get
+bash-5.2$ cd -- '/tmp/fm-kimi-spawn.GLUVsE/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimirefusedscout/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimirefusedscout
+bash-5.2$ . '/tmp/fm-kimirefusedscout+3319786df5149b3596bc4061e796f75506e61152daaee1e6816e49a5a1a338a0/launch.s1793142714.573783.21549.sh'
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                                                            │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                                                            │
+ │  ▐█████▌  Send /help for help information.                                                                                                                 │
+ │                                                                                                                                                            │
+ │  Directory: /tmp/fm-kimi-spawn.GLUVsE/wt                                                                                                                   │
+ │  Session:   session_2b46826e-4e03-40fd-b006-14a288a4e696                                                                                                   │
+ │  Model:     K3.1 Pro                                                                                                                                       │
+ │  Version:   2.3.3                                                                                                                                          │
+ │                                                                                                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+ ❯ Read the brief at /tmp/fm-kimi-spawn.GLUVsE/fm/data/kimirefusedscout/launch-brief.md and follow it exactly.
+
+  🌗 · Tip: /plugins: manage plugins — try the "Kimi Datasource" for reliable financial, economic, and academic data
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-spawn.GLUVsE/wt  kimi-live                                                               /model: switch model
+                                                                                                                                             context: 0% (0/1M)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

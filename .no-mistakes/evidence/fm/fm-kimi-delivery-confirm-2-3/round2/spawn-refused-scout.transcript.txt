@@ -1,0 +1,13 @@
+# scenario=refused kimi=2.3.3 lab=/tmp/fm-kimi-spawn.n1MYwT
+$ FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimirefusedscout $PROJ --scout --harness kimi   (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-spawn.n1MYwT/fm
+error: kimi brief pointer delivery was not confirmed; closed window firstmate:fm-kimirefusedscout
+--- state after spawn
+meta present: no
+status file:
+failed [at=1793144211]: kimi brief pointer delivery was not confirmed
+tmux windows: firstmate:0 lab;
+slot status: 

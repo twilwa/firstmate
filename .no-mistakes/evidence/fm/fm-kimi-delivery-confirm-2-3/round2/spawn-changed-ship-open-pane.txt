@@ -1,0 +1,50 @@
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/ee6050f243f0' get
+bash-5.2$ cd -- '/tmp/fm-kimi-spawn.gmOOwF/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimichangedship/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimichangedship
+bash-5.2$ . '/tmp/fm-kimichangedship+4b1a5010d0fd45bba9317d8b5fe9fb651c4a6c4949fbc249d458c8ba5f4b4efc/launch.s1793144254.1808598.15809.sh'
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                                                            │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                                                            │
+ │  ▐█████▌  Send /help for help information.                                                                                                                 │
+ │                                                                                                                                                            │
+ │  Directory: /tmp/fm-kimi-spawn.gmOOwF/wt                                                                                                                   │
+ │  Session:   session_eaf7e62c-9c32-4d05-81e2-6beb1c7b1c1a                                                                                                   │
+ │  Model:     K3.1 Pro                                                                                                                                       │
+ │  Version:   2.3.3                                                                                                                                          │
+ │                                                                                                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+ ❯ Read the brief at /tmp/fm-kimi-spawn.gmOOwF/fm/data/kimichangedship/launch-brief.md and follow it exactly.
+
+  🌘 · Tip: /tasks to check progress and status for background tasks
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-spawn.gmOOwF/wt  kimi-live                                                               /model: switch model
+                                                                                                                                             context: 0% (0/1M)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

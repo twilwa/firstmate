@@ -1,0 +1,1 @@
+140dd4487ccfece20d45b2821370f071174e1520c29a51a4ce5621fa8dd40f0e  /home/firstmate/.kimi-code/config.toml

@@ -1,0 +1,69 @@
+# scenario=refused kimi=2.3.3 lab=/tmp/fm-kimi-spawn.GLUVsE
+$ FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimirefusedscout $PROJ --scout --harness kimi   (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-spawn.GLUVsE/fm
+/home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M5ZQWWSBCHGE8XBRG5TPD782/bin/fm-spawn.sh: line 5337: BRANCH: unbound variable
+error: kimi brief pointer delivery was not confirmed; its local copy /tmp/fm-kimi-spawn.GLUVsE/wt changed after the pointer was typed, so window firstmate:fm-kimirefusedscout stays open, and task kimirefusedscout's record is kept for teardown
+--- state after spawn
+meta present: yes
+window=firstmate:fm-kimirefusedscout
+worktree=/tmp/fm-kimi-spawn.GLUVsE/wt
+harness=kimi
+kind=scout
+status file:
+failed [at=1793142722]: kimi brief pointer delivery was not confirmed
+tmux windows: firstmate:0 lab;firstmate:1 fm-kimirefusedscout;
+slot status: 
+--- still-open pane firstmate:1
+bash-5.2$ treehouse --root '/home/firstmate/.treehouse-fm/51445f7e0cc8' get
+bash-5.2$ cd -- '/tmp/fm-kimi-spawn.GLUVsE/wt'
+bash-5.2$ export GOTMPDIR=/tmp/fm-kimirefusedscout/gotmp
+bash-5.2$ export COMPACT_ADVISER_DISABLE=1
+bash-5.2$ export FM_TASK_ID=kimirefusedscout
+bash-5.2$ . '/tmp/fm-kimirefusedscout+3319786df5149b3596bc4061e796f75506e61152daaee1e6816e49a5a1a338a0/launch.s1793142714.573783.21549.sh'
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                                                            │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                                                            │
+ │  ▐█████▌  Send /help for help information.                                                                                                                 │
+ │                                                                                                                                                            │
+ │  Directory: /tmp/fm-kimi-spawn.GLUVsE/wt                                                                                                                   │
+ │  Session:   session_2b46826e-4e03-40fd-b006-14a288a4e696                                                                                                   │
+ │  Model:     K3.1 Pro                                                                                                                                       │
+ │  Version:   2.3.3                                                                                                                                          │
+ │                                                                                                                                                            │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+ ❯ Read the brief at /tmp/fm-kimi-spawn.GLUVsE/fm/data/kimirefusedscout/launch-brief.md and follow it exactly.
+
+  🌗 · Tip: /plugins: manage plugins — try the "Kimi Datasource" for reliable financial, economic, and academic data
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  /tmp/fm-kimi-spawn.GLUVsE/wt  kimi-live                                                               /model: switch model
+                                                                                                                                             context: 0% (0/1M)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

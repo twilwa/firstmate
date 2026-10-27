@@ -1,0 +1,16 @@
+# scenario=herdr-refused kimi=2.3.3 herdr=herdr 0.9.5 session=fm-lab-kimirefused-1943948-29879 lab=/tmp/fm-kimi-herdr.8ViBpc
+$ HERDR_SESSION=fm-lab-kimirefused-1943948-29879 FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimihrefusedship $PROJ --mode local-only --yolo off --harness kimi --backend herdr  (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-herdr.8ViBpc/fm
+notice: kimihrefusedship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+error: kimi brief pointer delivery was not confirmed; closed window fm-lab-kimirefused-1943948-29879:w1:p2
+--- state after spawn
+meta present: no
+status file:
+failed [at=1793144460]: kimi brief pointer delivery was not confirmed
+lab panes (raw pane list): {"id":"cli:pane:list","result":{"panes":[],"type":"pane_list"}} 
+live default session (must be untouched, outside XDG): default stopped
+slot status: 

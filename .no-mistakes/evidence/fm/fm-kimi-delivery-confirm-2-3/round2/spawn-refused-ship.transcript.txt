@@ -1,0 +1,14 @@
+# scenario=refused kimi=2.3.3 lab=/tmp/fm-kimi-spawn.hedviu
+$ FM_SPAWN_NO_GUARD=1 bin/fm-spawn.sh kimirefusedship $PROJ --mode local-only --yolo off --harness kimi   (FM_KIMI_DELIVERY_POLLS=0)
+exit=1
+--- stdout
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-kimi-spawn.hedviu/fm
+notice: kimirefusedship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+error: kimi brief pointer delivery was not confirmed; closed window firstmate:fm-kimirefusedship
+--- state after spawn
+meta present: no
+status file:
+failed [at=1793144224]: kimi brief pointer delivery was not confirmed
+tmux windows: firstmate:0 lab;
+slot status: 
