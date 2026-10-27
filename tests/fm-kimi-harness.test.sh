@@ -149,6 +149,10 @@ case "${1:-}" in
     exit 0 ;;
   kill-window)
     [ "${FM_FAKE_TMUX_KILL_FAILS:-no}" != yes ] || exit 1
+    if [ "${FM_FAKE_KIMI_WORKER_COMMITS_ON_KILL:-no}" = yes ]; then
+      git -C "$FM_FAKE_PANE_PATH" -c user.name=worker -c user.email=worker@example.invalid \
+        commit -q --allow-empty -m "worker commit" >/dev/null 2>&1
+    fi
     : > "$FM_FAKE_KIMI_STATE.window"; exit 0 ;;
   has-session|new-session) exit 0 ;;
   send-keys)
@@ -924,6 +928,30 @@ test_kimi_233_refusal_keeps_a_slot_the_worker_changed() {
   pass "fm-spawn: a refused kimi spawn whose worker changed its slot keeps the window, record, and claim"
 }
 
+# A worker that commits while its window is being closed still changed its
+# slot, so the closed window's task record and slot claim stay for teardown.
+test_kimi_233_refusal_keeps_a_slot_the_worker_changed_during_the_close() {
+  local id rec out rc claim
+  id="kimi-233-lateclose-z19-$$"
+  rec=$(make_spawn_case kimi-233-lateclose "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no FM_FAKE_KIMI_WORKER_COMMITS_ON_KILL=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery must still fail the spawn: $out"
+  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "the refusal must close the window while the slot still looked unchanged"
+  assert_contains "$out" "is closed, but its local copy" \
+    "the refusal must say the window is closed and the slot changed"
+  assert_contains "$out" "record is kept for teardown" \
+    "the refusal must say the task record was kept for the changed slot"
+  assert_present "$HOME_DIR/state/$id.meta" "a slot changed during the close must keep its task record"
+  assert_grep "task=$id" "$claim" "a slot changed during the close must keep its claim"
+  pass "fm-spawn: a refused kimi spawn whose worker changed its slot during the close keeps its record and claim"
+}
+
 # A close that cannot be confirmed may leave Kimi running, so the record that
 # names its window stays, and the slot claim with it.
 test_kimi_233_refusal_keeps_the_record_when_the_close_fails() {
@@ -1479,6 +1507,7 @@ test_kimi_233_pointer_left_in_the_composer_is_refused
 test_kimi_233_pointer_in_the_composer_is_refused_despite_moved_usage
 test_kimi_233_stale_turn_in_scrollback_does_not_confirm
 test_kimi_233_refusal_keeps_a_slot_the_worker_changed
+test_kimi_233_refusal_keeps_a_slot_the_worker_changed_during_the_close
 test_kimi_233_refusal_keeps_the_record_when_the_close_fails
 test_kimi_submit_refused_before_typing_keeps_the_window
 test_kimi_readiness_gate_precedes_pointer

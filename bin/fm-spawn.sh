@@ -5367,8 +5367,8 @@ kimi_keep_task_record() {
 # blocking dialog or an unrecordable dialog check) leaves an idle Kimi with
 # nothing to work on, so its window stays open for inspection, as for a
 # readiness failure. Otherwise the window is closed and the record dropped only
-# when the slot is unchanged and the close is confirmed; every other case keeps
-# the record for teardown.
+# when the slot is unchanged both before and after a confirmed close; every
+# other case keeps the record for teardown.
 kimi_spawn_fail_after_typing() { # <detail> [submit]
   local detail=$1 why
   printf '%s\n' "$(status_stamp_line "failed: $detail")" >>"$STATE/$ID.status"
@@ -5385,11 +5385,14 @@ kimi_spawn_fail_after_typing() { # <detail> [submit]
     why="its local copy $WT changed after the pointer was typed, so window $T stays open"
   else
     kimi_endpoint_close
-    if [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; then
+    if [ "$SPAWN_ENDPOINT_CLOSED" != 1 ]; then
+      why="window $T could not be confirmed closed"
+    elif kimi_slot_unchanged; then
       echo "error: $detail; closed window $T" >&2
       return 0
+    else
+      why="window $T is closed, but its local copy $WT changed before the close"
     fi
-    why="window $T could not be confirmed closed"
   fi
   if kimi_keep_task_record; then
     echo "error: $detail; $why, and task $ID's record is kept for teardown" >&2
