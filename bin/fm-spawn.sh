@@ -1879,7 +1879,11 @@ spawn_abort_cleanup() {
       { [ "${HARNESS:-}" = kimi ] && [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; }; } &&
       [ -n "$SPAWN_TREEHOUSE_PROJECT_LOCK" ] &&
       fm_lock_try_acquire "$SPAWN_TREEHOUSE_PROJECT_LOCK"; then
-      fm_treehouse_slot_owner_release "$WT" "$ID" || true
+      # Rechecked under the lock: a same-id retry claims and publishes its
+      # record under this lock, so a claim it wrote is never read as ours.
+      if [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
+        fm_treehouse_slot_owner_release "$WT" "$ID" || true
+      fi
       fm_lock_release "$SPAWN_TREEHOUSE_PROJECT_LOCK" || true
     else
       echo "warning: leaving task $ID's slot claim on $WT in place; the Treehouse project lock is no longer held, so the next spawn's claim replaces it" >&2
@@ -5304,7 +5308,7 @@ kimi_wait_for_ready() {
 # which the live guards share; an empty composer is the veto in front of it.
 kimi_delivery_is_confirmed() { # <plain-pane-capture>
   kimi_composer_is_empty || return 1
-  kimi_pane_shows_brief_taken "$1"
+  kimi_pane_shows_brief_taken "$1" "$KIMI_PRE_TYPING_PANE"
 }
 
 kimi_wait_for_delivery() {
@@ -5323,13 +5327,74 @@ kimi_spawn_fail() { # <detail>
   echo "error: $1; inspect window $T" >&2
 }
 
-kimi_spawn_fail_closing() { # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+# The slot as it stood before the pointer was typed: HEAD, the task branch
+# tip, and the status of the tree, so a refused spawn can tell whether its
+# worker changed anything there.
+kimi_slot_snapshot() {
+  git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || return 1
+  git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" 2>/dev/null || echo "no-branch"
+  git -C "$WT" status --porcelain=v1 --untracked-files=all 2>/dev/null
+}
+
+kimi_slot_unchanged() {
+  local now
+  [ -n "$KIMI_PRE_TYPING_SLOT" ] || return 1
+  now=$(kimi_slot_snapshot) || return 1
+  [ "$now" = "$KIMI_PRE_TYPING_SLOT" ]
+}
+
+# Herdr's close reports success even when it skipped the pane, so a close only
+# counts there once the pane is confirmed gone, as bin/fm-teardown.sh requires.
+kimi_endpoint_close() {
   rovo_endpoint_cleanup
-  if [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; then
-    echo "error: $1; closed window $T" >&2
+  if [ "$SPAWN_ENDPOINT_CLOSED" = 1 ] && [ "$BACKEND" = herdr ] &&
+    ! fm_backend_herdr_endpoint_confirmed_gone "$T" 2>/dev/null; then
+    SPAWN_ENDPOINT_CLOSED=0
+  fi
+}
+
+# A refusal that may leave a live worker, or work it made, keeps the task
+# record and moves the backlog item In flight with it, so supervision and
+# bin/fm-teardown.sh's landed-work check own the window, slot, and claim.
+kimi_keep_task_record() {
+  [ "$RELAUNCH" -eq 0 ] || return 0
+  spawn_commit_backlog_transition || return 1
+  SPAWN_FRESH_COMMIT_PENDING=0
+}
+
+# A failure after the pointer may have reached Kimi. A failed submit whose
+# pointer never reached the pane (the submit helper refuses before typing on a
+# blocking dialog or an unrecordable dialog check) leaves an idle Kimi with
+# nothing to work on, so its window stays open for inspection, as for a
+# readiness failure. Otherwise the window is closed and the record dropped only
+# when the slot is unchanged and the close is confirmed; every other case keeps
+# the record for teardown.
+kimi_spawn_fail_after_typing() { # <detail> [submit]
+  local detail=$1 why
+  printf '%s\n' "$(status_stamp_line "failed: $detail")" >>"$STATE/$ID.status"
+  if [ "${2:-}" = submit ]; then
+    case "$(kimi_capture)" in
+      *'Read the brief at'*) ;;
+      *)
+        echo "error: $detail before the pointer reached the pane; inspect window $T" >&2
+        return 0
+        ;;
+    esac
+  fi
+  if ! kimi_slot_unchanged; then
+    why="its local copy $WT changed after the pointer was typed, so window $T stays open"
   else
-    echo "error: $1; could not close window $T, inspect it" >&2
+    kimi_endpoint_close
+    if [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; then
+      echo "error: $detail; closed window $T" >&2
+      return 0
+    fi
+    why="window $T could not be confirmed closed"
+  fi
+  if kimi_keep_task_record; then
+    echo "error: $detail; $why, and task $ID's record is kept for teardown" >&2
+  else
+    echo "error: $detail; $why, and task $ID's record could not be kept ($FM_BACKLOG_TRANSITION_ERROR); inspect window $T and local copy $WT before reusing them" >&2
   fi
 }
 
@@ -7467,20 +7532,23 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
   KIMI_SUBMIT_SETTLE=${FM_KIMI_SUBMIT_SETTLE:-0}
-  # From here the pointer may have reached Kimi, so a failure closes the
-  # endpoint rather than leave an autonomous worker no task record owns.
+  # The baselines the delivery evidence and a refusal's cleanup compare with.
+  KIMI_PRE_TYPING_PANE=$(kimi_capture)
+  KIMI_PRE_TYPING_SLOT=$(kimi_slot_snapshot) || KIMI_PRE_TYPING_SLOT=
+  # From here the pointer may have reached Kimi, so a failure must not leave an
+  # autonomous worker no task record owns.
   if ! KIMI_SUBMIT_VERDICT=$(fm_backend_send_text_submit \
     "$BACKEND" "$T" "$KIMI_POINTER" "$KIMI_SUBMIT_RETRIES" \
     "$KIMI_SUBMIT_SLEEP" "$KIMI_SUBMIT_SETTLE" "$W"); then
-    kimi_spawn_fail_closing "kimi brief pointer could not be submitted"
+    kimi_spawn_fail_after_typing "kimi brief pointer could not be submitted" submit
     exit 1
   fi
   if [ "$KIMI_SUBMIT_VERDICT" = send-failed ]; then
-    kimi_spawn_fail_closing "kimi brief pointer could not be submitted"
+    kimi_spawn_fail_after_typing "kimi brief pointer could not be submitted" submit
     exit 1
   fi
   if ! kimi_wait_for_delivery; then
-    kimi_spawn_fail_closing "kimi brief pointer delivery was not confirmed"
+    kimi_spawn_fail_after_typing "kimi brief pointer delivery was not confirmed"
     exit 1
   fi
 fi

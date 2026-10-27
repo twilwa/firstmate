@@ -53,6 +53,10 @@ fake_screen() {
       ready) cat "$FM_FAKE_KIMI_CAPTURES_233/ready.pane"; return ;;
       pointer-typed) cat "$FM_FAKE_KIMI_CAPTURES_233/pointer-typed.pane"; return ;;
       delivered) cat "$FM_FAKE_KIMI_CAPTURES_233/submitted.pane"; return ;;
+      # The pointer still in the composer while the usage row has moved.
+      pointer-stuck-busy)
+        sed 's|context: 0% (0/1M)|context: 3% (20.8k/1M)|' "$FM_FAKE_KIMI_CAPTURES_233/pointer-typed.pane"
+        return ;;
     esac
   fi
   case "$state" in
@@ -103,6 +107,10 @@ fake_screen() {
   esac
 }
 fake_history() {
+  # An earlier Kimi turn still in the scrollback above the current screen.
+  if [ "${FM_FAKE_KIMI_HISTORY_STALE_TURN:-no}" = yes ]; then
+    cat "$FM_FAKE_KIMI_CAPTURES_233/idle-after-turn.pane"
+  fi
   if [ "${FM_FAKE_KIMI_HISTORY_KEEPS_DIALOG:-no}" = yes ] \
      && [ -s "$FM_FAKE_KIMI_TRUST_ENTER_LOG" ]; then
     printf '╭─ Trust this folder? ─╮\n│ ↑↓ navigate · Enter select · Esc exit │\n│ ❯ Trust this folder │\n│   Don'"'"'t trust │\n╰──────────────────────╯\n'
@@ -111,7 +119,7 @@ fake_history() {
 fake_cursor_y() {
   if [ "${FM_FAKE_KIMI_PANES:-}" = 233 ]; then
     case "$state" in
-      ready|pointer-typed) printf '21\n'; return ;;
+      ready|pointer-typed|pointer-stuck-busy) printf '21\n'; return ;;
       delivered) printf '24\n'; return ;;
     esac
   fi
@@ -139,7 +147,9 @@ case "${1:-}" in
     done
     printf '%s\n' "$name" > "$FM_FAKE_KIMI_STATE.window"
     exit 0 ;;
-  kill-window) : > "$FM_FAKE_KIMI_STATE.window"; exit 0 ;;
+  kill-window)
+    [ "${FM_FAKE_TMUX_KILL_FAILS:-no}" != yes ] || exit 1
+    : > "$FM_FAKE_KIMI_STATE.window"; exit 0 ;;
   has-session|new-session) exit 0 ;;
   send-keys)
     prev=
@@ -214,8 +224,14 @@ case "${1:-}" in
             printf 'enter\n' >> "$FM_FAKE_KIMI_STRAY_ENTER_LOG"
             ;;
           pointer-typed)
+            if [ "${FM_FAKE_KIMI_WORKER_COMMITS:-no}" = yes ]; then
+              git -C "$FM_FAKE_PANE_PATH" -c user.name=worker -c user.email=worker@example.invalid \
+                commit -q --allow-empty -m "worker commit" >/dev/null 2>&1
+            fi
             if [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = stuck ]; then
               :
+            elif [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = stuck-busy ]; then
+              printf 'pointer-stuck-busy\n' > "$FM_FAKE_KIMI_STATE"
             elif [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = yes ]; then
               if [ "${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" = yes ] \
                  && [ ! -f "$FM_FAKE_KIMI_SWALLOWED" ]; then
@@ -854,6 +870,99 @@ test_kimi_233_pointer_left_in_the_composer_is_refused() {
   pass "fm-spawn: kimi 2.3.3 refuses a brief pointer still sitting in its composer"
 }
 
+# The empty-composer veto holds even when the pane shows a sign of a turn.
+test_kimi_233_pointer_in_the_composer_is_refused_despite_moved_usage() {
+  local id rec out rc
+  id="kimi-233-stuck-busy-z14-$$"
+  rec=$(make_spawn_case kimi-233-stuck-busy "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=stuck-busy run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a pointer still in the composer must fail the spawn whatever the usage row says: $out"
+  assert_contains "$out" "kimi brief pointer delivery was not confirmed" \
+    "the stuck-composer refusal lost its diagnostic"
+  assert_absent "$HOME_DIR/state/$id.meta" "a pointer still in the composer must not leave a task record"
+  pass "fm-spawn: kimi 2.3.3 refuses a pointer still in its composer even when context usage has moved"
+}
+
+# The delivery capture reaches into scrollback, where an earlier turn's echo,
+# usage figure, and spinner can still sit; none of them confirms this pointer.
+test_kimi_233_stale_turn_in_scrollback_does_not_confirm() {
+  local id rec out rc
+  id="kimi-233-stale-z15-$$"
+  rec=$(make_spawn_case kimi-233-stale "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no FM_FAKE_KIMI_HISTORY_STALE_TURN=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an earlier turn in the scrollback must not confirm a dropped pointer: $out"
+  assert_contains "$out" "kimi brief pointer delivery was not confirmed" \
+    "the stale-scrollback refusal lost its diagnostic"
+  pass "fm-spawn: kimi ignores delivery signs that were already in the scrollback before the pointer was typed"
+}
+
+# A worker that committed in its slot before the refusal keeps its window,
+# its task record, and its slot claim, so teardown's landed-work check owns it.
+test_kimi_233_refusal_keeps_a_slot_the_worker_changed() {
+  local id rec out rc claim
+  id="kimi-233-work-z16-$$"
+  rec=$(make_spawn_case kimi-233-work "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no FM_FAKE_KIMI_WORKER_COMMITS=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery must still fail the spawn: $out"
+  assert_contains "$out" "record is kept for teardown" \
+    "the refusal must say the task record was kept for the changed slot"
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "a refusal must not close the window of a worker that changed its slot"
+  assert_present "$HOME_DIR/state/$id.meta" "a slot the worker changed must keep its task record"
+  assert_grep "task=$id" "$claim" "a slot the worker changed must keep its claim"
+  pass "fm-spawn: a refused kimi spawn whose worker changed its slot keeps the window, record, and claim"
+}
+
+# A close that cannot be confirmed may leave Kimi running, so the record that
+# names its window stays, and the slot claim with it.
+test_kimi_233_refusal_keeps_the_record_when_the_close_fails() {
+  local id rec out rc claim
+  id="kimi-233-noclose-z17-$$"
+  rec=$(make_spawn_case kimi-233-noclose "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no FM_FAKE_TMUX_KILL_FAILS=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery must still fail the spawn: $out"
+  assert_contains "$out" "could not be confirmed closed, and task $id's record is kept for teardown" \
+    "the refusal must say the window may still be open and the record was kept"
+  assert_present "$HOME_DIR/state/$id.meta" "a window that may still be open must keep its task record"
+  assert_grep "task=$id" "$claim" "a window that may still be open must keep its slot claim"
+  pass "fm-spawn: a refused kimi spawn whose window could not be closed keeps its record and claim"
+}
+
+# The submit helper refuses before typing when its dialog check cannot be
+# recorded; Kimi never saw the pointer, so its window stays for inspection.
+test_kimi_submit_refused_before_typing_keeps_the_window() {
+  local id rec out rc
+  id="kimi-pretype-z18-$$"
+  rec=$(make_spawn_case kimi-pretype "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_COMPOSER_DIALOG_SINK="$CASE_DIR/no-such-dir/dialog" run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a submit refused before typing must fail the spawn: $out"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "the pointer was typed although the submit refused first"
+  assert_contains "$out" "before the pointer reached the pane; inspect window" \
+    "the refusal must point at the window it left open"
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "a submit refused before typing must not close the window"
+  pass "fm-spawn: a kimi submit refused before typing leaves the window open for inspection"
+}
+
 test_kimi_readiness_gate_precedes_pointer() {
   local id rec out rc
   id=kimi-not-ready-z3
@@ -1367,6 +1476,11 @@ test_kimi_unconfirmed_delivery_fails_loudly
 test_kimi_233_submitted_brief_is_confirmed
 test_kimi_233_idle_pane_after_submit_is_refused_and_closed
 test_kimi_233_pointer_left_in_the_composer_is_refused
+test_kimi_233_pointer_in_the_composer_is_refused_despite_moved_usage
+test_kimi_233_stale_turn_in_scrollback_does_not_confirm
+test_kimi_233_refusal_keeps_a_slot_the_worker_changed
+test_kimi_233_refusal_keeps_the_record_when_the_close_fails
+test_kimi_submit_refused_before_typing_keeps_the_window
 test_kimi_readiness_gate_precedes_pointer
 test_kimi_fresh_worktree_trust_is_answered_and_verified
 test_kimi_swallowed_trust_enter_is_retried_until_the_dialog_clears

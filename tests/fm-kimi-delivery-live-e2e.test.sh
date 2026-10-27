@@ -32,7 +32,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Mirror bin/fm-spawn.sh's own resolution order so the guard covers the binary
 # firstmate would launch: PATH first, then the installer's default location.
-KIMI_BIN=$(command -v kimi 2>/dev/null || true)
+KIMI_BIN=$(type -P kimi 2>/dev/null || true)
 if [ -z "$KIMI_BIN" ] && [ -n "${HOME:-}" ] && [ -x "$HOME/.kimi-code/bin/kimi" ]; then
   KIMI_BIN=$HOME/.kimi-code/bin/kimi
 fi
@@ -41,7 +41,7 @@ VERSION=$("$KIMI_BIN" --version 2>/dev/null | head -1 | tr -d '\r')
 [ -n "$VERSION" ] || VERSION=unknown
 WHO="kimi $VERSION"
 
-REAL_TMUX=$(command -v tmux)
+REAL_TMUX=$(type -P tmux)
 SOCKET="fm-kimi-delivery-$$"
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-kimi-delivery.XXXXXX")
 

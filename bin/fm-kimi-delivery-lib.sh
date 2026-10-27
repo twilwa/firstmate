@@ -19,18 +19,39 @@
 #     bin/fm-composer-lib.sh owns (fm_busy_lines_match kimi), which the caller
 #     must already have loaded, as every fm_backend_source does.
 # A pointer dropped during Kimi's startup input window shows none of them.
+# The capture reaches into scrollback, so a sign only counts when the capture
+# taken before the pointer was typed did not already show it: a stale echo,
+# usage figure, or spinner from earlier output can never confirm this pointer.
 # Composer emptiness is a separate veto the caller reads through the shared
 # composer classifier, because a pointer still in the composer is not delivered
 # whatever else the pane shows.
 
-# kimi_pane_shows_brief_taken <plain-pane-capture>
-kimi_pane_shows_brief_taken() {
-  local pane=$1
-  case "$pane" in
-    *'✨'*'Read the brief at'* | *'Read the brief at'*'✨'*) return 0 ;;
+# _kimi_pane_has_sign <echo-2.0|echo-2.3|context|spinner> <plain-pane-capture>
+_kimi_pane_has_sign() {
+  case "$1" in
+    echo-2.0)
+      case "$2" in
+        *'✨'*'Read the brief at'* | *'Read the brief at'*'✨'*) return 0 ;;
+      esac
+      return 1
+      ;;
+    echo-2.3) printf '%s\n' "$2" | grep -Eq '^[[:space:]]*❯[[:space:]]+Read the brief at' ;;
+    context)
+      printf '%s\n' "$2" |
+        grep -qiE 'context:[[:space:]]*(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*([.][0-9]+)?)[[:space:]]*%'
+      ;;
+    spinner) printf '%s\n' "$2" | fm_busy_lines_match kimi ;;
+    *) return 1 ;;
   esac
-  printf '%s\n' "$pane" | grep -Eq '^[[:space:]]*❯[[:space:]]+Read the brief at' && return 0
-  printf '%s\n' "$pane" |
-    grep -qiE 'context:[[:space:]]*(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*([.][0-9]+)?)[[:space:]]*%' && return 0
-  printf '%s\n' "$pane" | fm_busy_lines_match kimi
+}
+
+# kimi_pane_shows_brief_taken <plain-pane-capture> [<capture-before-typing>]
+kimi_pane_shows_brief_taken() {
+  local pane=$1 before=${2:-} sign
+  for sign in echo-2.0 echo-2.3 context spinner; do
+    _kimi_pane_has_sign "$sign" "$pane" || continue
+    [ -n "$before" ] && _kimi_pane_has_sign "$sign" "$before" && continue
+    return 0
+  done
+  return 1
 }

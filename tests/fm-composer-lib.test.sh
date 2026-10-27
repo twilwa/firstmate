@@ -1260,14 +1260,17 @@ test_matrix_kimi_233_footer_directly_under_box() {
 }
 
 test_kimi_footer_needs_its_context_row() {
-  # The footer is accepted only as Kimi draws it: at most one row, then the
-  # context-usage row, then nothing. Anything else under the box stays the
-  # unclaimed activity that makes the box stale.
+  # The footer is accepted only as Kimi draws it: at most its mode/model row,
+  # then the context-usage row, then nothing. Anything else under the box stays
+  # the unclaimed activity that makes the box stale.
   local box=$'╭────────────────────────╮\n│ >                      │\n╰────────────────────────╯' screen
   screen="$box"$'\nNever Ask  K3.1 Pro thinking: high  …/work'
   assert_screen "kimi mode row with no context row" unknown "$CAPS_STYLED" "$screen"
   screen="$box"$'\nNever Ask  K3.1 Pro\nWorking on request...\n                    context: 3% (20.8k/1M)'
   assert_screen "two rows before the context row" unknown "$CAPS_STYLED" "$screen"
+  screen="$box"$'\nWorking on request...\n                    context: 3% (20.8k/1M)'
+  assert_screen "an activity row before the context row" unknown "$CAPS_STYLED" "$screen"
+  assert_screen "an activity row before the context row, unstyled" unknown "$CAPS_PLAIN" "$screen"
   screen="$box"$'\n                    context: 3% (20.8k/1M)\nWorking on request...'
   assert_screen "activity below the context row" unknown "$CAPS_STYLED" "$screen"
   screen="$box"$'\nNever Ask  K3.1 Pro\n                    context: lots'

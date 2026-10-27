@@ -586,7 +586,9 @@ FM_COMPOSER_PI_STATUS_RE_DEFAULT='^\$[0-9]+(\.[0-9]+)?([[:space:]]|$)'
 # model is configured). Verified live on 2.3.3 at 60, 80, and 120 columns;
 # tests/captures/kimi-code-2.3.3/README.md owns the captures. The usage row is
 # the proof: consulted only as the boundary below a box, see
-# _fm_composer_kimi_footer_after.
+# _fm_composer_kimi_footer_after. The mode/model row starts with Kimi's own
+# approval-mode label, one of the three the 2.3.3 binary defines.
+FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT='^(Always Ask|Ask When Needed|Never Ask)( |$)'
 FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT='^context: [0-9]+([.][0-9]+)?%( [(][0-9]+([.][0-9]+)?[kKmMgG]?/[0-9]+([.][0-9]+)?[kKmMgG]?[)])?$'
 # Braille-pattern cells (U+2800..U+28FF) are animation furniture: codex-cli
 # 0.154.0 draws an idle "starfield" of them on the row above its `›` prompt
@@ -1413,9 +1415,11 @@ _fm_composer_row_is_omp_status() {  # <trimmed-row>
 # _fm_composer_kimi_footer_after: 0 when the rows of <plain> starting at <row>,
 # directly under a box's bottom border, are Kimi's footer (see
 # FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT): its context-usage row, optionally
-# preceded by exactly one non-structural row. Records the usage row in
-# FM_COMPOSER_KIMI_FOOTER_LAST. The staleness probe then resumes below it, so
-# any further activity there still makes the box stale.
+# preceded by exactly one mode/model row (FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT),
+# so any other row between the box and a usage row keeps the box stale.
+# Records the usage row in FM_COMPOSER_KIMI_FOOTER_LAST. The staleness probe
+# then resumes below it, so any further activity there still makes the box
+# stale.
 _fm_composer_kimi_footer_after() {  # <plain> <row>
   local plain=$1 row=$2 trimmed re
   re=${FM_COMPOSER_KIMI_CONTEXT_ROW_RE:-$FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT}
@@ -1424,7 +1428,8 @@ _fm_composer_kimi_footer_after() {  # <plain> <row>
   fm_composer_normalize_trim_var trimmed
   [ -n "$trimmed" ] || return 1
   if ! fm_composer_idle_matches "$trimmed" "$re" sensitive; then
-    fm_composer_row_has_edge "$trimmed" && return 1
+    fm_composer_idle_matches "$trimmed" \
+      "${FM_COMPOSER_KIMI_MODE_ROW_RE:-$FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT}" sensitive || return 1
     row=$((row + 1))
     trimmed=$(_fm_composer_screen_row "$row" "$plain")
     fm_composer_normalize_trim_var trimmed
