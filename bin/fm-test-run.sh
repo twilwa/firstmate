@@ -388,7 +388,7 @@ family_for_basename() {
     fm-cursor-primary-live-e2e.test.sh|\
     fm-grok-stop-live-e2e.test.sh|fm-harness-adapter-instructions-live-e2e.test.sh|\
     fm-harness-liveness-drift-live-e2e.test.sh|\
-    fm-kimi-trust-prompt-live-e2e.test.sh|\
+    fm-kimi-trust-prompt-live-e2e.test.sh|fm-kimi-delivery-live-e2e.test.sh|\
     fm-devin-signals-live-e2e.test.sh|fm-commandcode-signals-live-e2e.test.sh|fm-cortex-signals-live-e2e.test.sh|fm-muse-signals-live-e2e.test.sh|fm-rovo-signals-live-e2e.test.sh|fm-agy-signals-live-e2e.test.sh|fm-polytoken-signals-live-e2e.test.sh|\
     fm-launch-prompt-signals-live-e2e.test.sh|fm-backend-t3code-live-e2e.test.sh|\
     fm-backend-t3code-pr-tools-live-e2e.test.sh|\
@@ -840,6 +840,7 @@ tests/fm-inactive-reconcile.test.sh 62609
 tests/fm-inbox.test.sh 6328
 tests/fm-jev-mem-guard.test.sh 335
 tests/fm-kimi-harness.test.sh 62802
+tests/fm-kimi-delivery-live-e2e.test.sh 130
 tests/fm-kimi-trust-prompt-live-e2e.test.sh 60
 tests/fm-launch-prompt-signals-live-e2e.test.sh 69
 tests/fm-lint-workflows.test.sh 1704
@@ -1791,10 +1792,11 @@ families_for_changed_path() {
         printf '%s\n' '__script__:fm-treehouse-clone-custody.test.sh'
       fi
       ;;
-    bin/fm-kimi-trust-lib.sh)
-      # Kimi's folder-prompt predicates are vendor-rendered signal: the Kimi
-      # suite replays recorded prompts, and the live guard
-      # (fm-kimi-trust-prompt-live-e2e) asks the installed binary.
+    bin/fm-kimi-trust-lib.sh|bin/fm-kimi-delivery-lib.sh)
+      # Kimi's folder-prompt and delivery predicates are vendor-rendered
+      # signal: the Kimi suite replays recorded panes, and the live guards
+      # (fm-kimi-trust-prompt-live-e2e, fm-kimi-delivery-live-e2e) ask the
+      # installed binary.
       printf '%s\n' pure-contract-unit
       printf '%s\n' live-harness-optin
       ;;

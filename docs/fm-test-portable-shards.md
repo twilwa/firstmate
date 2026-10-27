@@ -42,6 +42,7 @@ They are not a formality: without a hint the suite is packed on the 45000 ms def
 The same run measured the wedge-cap parity suite at 27763 ms in place of the provisional 209000 ms local measurement.
 `tests/fm-watch-wedge-cap.test.sh` failed in run 40030970526 and did not exist on the baseline run, so it keeps that 374225 ms measurement, while the 2026-10-24 refresh replaced its two companions' values.
 The 2026-10-23 Kimi folder-prompt live guard, `tests/fm-kimi-trust-prompt-live-e2e.test.sh`, carries a provisional 60 ms skip measured on the Linux host that recorded its captures, until the next CI refresh replaces it with an Ubuntu measurement.
+The 2026-10-27 opt-in Kimi delivery live guard, `tests/fm-kimi-delivery-live-e2e.test.sh`, carries a provisional 130 ms skip measured the same way on the Linux host that recorded its 2.3.3 captures.
 `test_portable_serial_packing_budget_boundary` now pins every other fixture script to 1 ms, so packing exactly at the 1200000 ms budget is accepted and one millisecond above it is refused even when real serial members have no hint.
 The coverage-guard test owns modeled real-hint headroom under that budget.
 The 2026-10-24 refresh replaced the session-start hint's pre-optimization maximum with a CI measurement of the shorter fixture-only home-summary bound; do not discount a local speedup from CI packing weights.

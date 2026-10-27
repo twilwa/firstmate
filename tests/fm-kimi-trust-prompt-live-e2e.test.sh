@@ -5,6 +5,10 @@
 # bin/fm-kimi-trust-lib.sh:
 #   - a directory with no project MCP servers shows a prompt the
 #     complete-dialog test recognizes, and Enter clears it into a ready pane;
+#   - that ready pane, and the brief pointer typed into it, read the same
+#     through the composer classifier with and without a cursor (the read every
+#     backend but tmux performs), and neither they nor a submit Kimi cannot act
+#     on show bin/fm-kimi-delivery-lib.sh's delivery evidence;
 #   - a directory declaring project MCP servers in a root .mcp.json, and one
 #     declaring them in .kimi-code/mcp.json, each show a prompt the
 #     announcement test refuses, and the declared command never runs;
@@ -20,10 +24,11 @@
 #
 # Kimi is launched bare in a private tmux server with a disposable HOME and
 # KIMI_CODE_HOME and its updater off, so the real trust store, configuration,
-# and install are untouched. The prompt shows before any login, no prompt text
-# is ever submitted, and the only keys sent are Enter on the plain prompt and
-# Escape to leave the others, so this spends no model tokens and needs no
-# credentials. Run it after every Kimi upgrade.
+# and install are untouched. The prompt shows before any login, and the one
+# submitted message reaches a Kimi with no login, which refuses it locally, so
+# this spends no model tokens and needs no credentials. A worker that really
+# takes its brief is tests/fm-kimi-delivery-live-e2e.test.sh's question, which
+# spends tokens and is opt-in. Run both after every Kimi upgrade.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -160,6 +165,62 @@ done
 [ "$cleared" -eq 1 ] || fail "$WHO: plain directory: the prompt did not clear into an empty composer within 60s after Enter; visible pane:
 $PANE"
 pass "$WHO: a plain directory's folder prompt is the complete dialog, and Enter clears it into a ready pane"
+
+# --- the same ready pane: composer reads and delivery evidence ---------------
+# Every backend but tmux reads the composer with no cursor, which is the read
+# Kimi 2.3's footer directly under its box used to break. No login exists here,
+# so the submit below spends no tokens: Kimi answers it with an error and never
+# takes it, which is the "empty composer, no activity" case the spawn refuses.
+CURSORLESS_CAPS=$'styled=1\ncursor=0\nidentity=1\nrows=40'
+cursorless_state() { # <target>
+  fm_composer_classify_screen "$CURSORLESS_CAPS" "$("$REAL_TMUX" -L "$SOCKET" capture-pane -e -p -t "$1")"
+}
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-kimi-delivery-lib.sh"
+[ "$(cursorless_state plain)" = empty ] \
+  || fail "$WHO: plain directory: the ready composer reads $(cursorless_state plain) with no cursor, expected empty; visible pane:
+$PANE"
+if kimi_pane_shows_brief_taken "$PANE"; then
+  fail "$WHO: plain directory: a fresh ready pane already shows delivery evidence; visible pane:
+$PANE"
+fi
+POINTER="Read the brief at $LAB/brief.md and follow it exactly."
+fm_backend_tmux_send_literal plain "$POINTER" || fail "$WHO: plain directory: the pointer could not be typed"
+typed=0
+for _ in $(seq 1 50); do
+  if [ "$(fm_backend_composer_state tmux plain 2>/dev/null)" = pending ] \
+    && [ "$(cursorless_state plain)" = pending ]; then
+    typed=1
+    break
+  fi
+  sleep 0.2
+done
+PANE=$(fm_backend_capture tmux plain 120 2>/dev/null || true)
+[ "$typed" -eq 1 ] || fail "$WHO: plain directory: the typed pointer did not read pending with and without a cursor within 10s; pane:
+$PANE"
+if kimi_pane_shows_brief_taken "$PANE"; then
+  fail "$WHO: plain directory: a pointer still in the composer reads as delivered; pane:
+$PANE"
+fi
+fm_backend_send_key tmux plain Enter || fail "$WHO: plain directory: Enter could not be sent"
+refused=0
+for _ in $(seq 1 50); do
+  if [ "$(fm_backend_composer_state tmux plain 2>/dev/null)" = empty ] \
+    && [ "$(cursorless_state plain)" = empty ]; then
+    refused=1
+    break
+  fi
+  sleep 0.2
+done
+sleep 2
+PANE=$(fm_backend_capture tmux plain 120 2>/dev/null || true)
+[ "$refused" -eq 1 ] || fail "$WHO: plain directory: the composer did not clear after Enter within 10s; pane:
+$PANE"
+if kimi_pane_shows_brief_taken "$PANE"; then
+  fail "$WHO: plain directory: a submit Kimi could not act on without a login reads as delivered; pane:
+$PANE"
+fi
+pass "$WHO: the ready and typed composer read the same with and without a cursor, and neither they nor an unanswerable submit show delivery evidence"
 
 # --- declaring directories: recognized, announced, never answered ------------
 for case_name in root-mcp-json kimi-code-mcp-json; do

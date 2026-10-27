@@ -214,6 +214,9 @@
 #   once to drop its claim after metadata publication too, and before its launch
 #   is delivered it closes the endpoint whose `treehouse get` shell leases the
 #   slot and removes the wiring, task temp root, and staged launch file it wrote.
+#   A kimi spawn whose brief pointer was typed but not confirmed closes its
+#   endpoint, so no unsupervised Kimi keeps working there, and retakes that lock
+#   the same way to drop its claim.
 #   The local root is whatever bin/fm-wake-lib.sh's
 #   fm_firstmate_root_home resolves, so a home seeded from another machine anchors
 #   that lock itself rather than failing to resolve one;
@@ -900,6 +903,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-kimi-trust-lib.sh
 . "$SCRIPT_DIR/fm-kimi-trust-lib.sh"
+# shellcheck source=bin/fm-kimi-delivery-lib.sh
+. "$SCRIPT_DIR/fm-kimi-delivery-lib.sh"
 # shellcheck source=bin/fm-control-lib.sh
 . "$SCRIPT_DIR/fm-control-lib.sh"
 # shellcheck source=bin/fm-gate-refuse-lib.sh
@@ -1861,15 +1866,18 @@ spawn_abort_cleanup() {
   # claim is still held (aborts before metadata publication); a later abort has
   # already released that lock and leaves the claim for the next spawn's
   # atomic replacement rather than racing it. A polytoken spawn instead retakes
-  # that lock once for a later failure whose record was rolled back. The
-  # release itself never removes another task's claim.
+  # that lock once for a later failure whose record was rolled back, and so
+  # does a kimi spawn whose failed delivery closed the endpoint it launched.
+  # The release itself never removes another task's claim.
   if [ "$SPAWN_SLOT_CLAIMED" = 1 ] && [ -n "${WT:-}" ] &&
     [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ] &&
     fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
     SPAWN_SLOT_CLAIMED=0
     if [ "$SPAWN_TREEHOUSE_PROJECT_LOCK_HELD" = 1 ]; then
       fm_treehouse_slot_owner_release "$WT" "$ID" || true
-    elif [ "${HARNESS:-}" = polytoken ] && [ -n "$SPAWN_TREEHOUSE_PROJECT_LOCK" ] &&
+    elif { [ "${HARNESS:-}" = polytoken ] ||
+      { [ "${HARNESS:-}" = kimi ] && [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; }; } &&
+      [ -n "$SPAWN_TREEHOUSE_PROJECT_LOCK" ] &&
       fm_lock_try_acquire "$SPAWN_TREEHOUSE_PROJECT_LOCK"; then
       fm_treehouse_slot_owner_release "$WT" "$ID" || true
       fm_lock_release "$SPAWN_TREEHOUSE_PROJECT_LOCK" || true
@@ -5292,16 +5300,11 @@ kimi_wait_for_ready() {
   return 1
 }
 
+# The evidence that Kimi took the brief comes from bin/fm-kimi-delivery-lib.sh,
+# which the live guards share; an empty composer is the veto in front of it.
 kimi_delivery_is_confirmed() { # <plain-pane-capture>
-  local pane=$1
   kimi_composer_is_empty || return 1
-  if { printf '%s\n' "$pane" | grep -Fq '✨' &&
-    printf '%s\n' "$pane" | grep -Fq 'Read the brief at'; } ||
-    printf '%s\n' "$pane" |
-    grep -qiE 'context:[[:space:]]*(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*([.][0-9]+)?)[[:space:]]*%'; then
-    return 0
-  fi
-  return 1
+  kimi_pane_shows_brief_taken "$1"
 }
 
 kimi_wait_for_delivery() {
@@ -7454,18 +7457,23 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
   KIMI_SUBMIT_SETTLE=${FM_KIMI_SUBMIT_SETTLE:-0}
+  # From here the pointer may have reached Kimi, so a failure closes the
+  # endpoint rather than leave an autonomous worker no task record owns.
   if ! KIMI_SUBMIT_VERDICT=$(fm_backend_send_text_submit \
     "$BACKEND" "$T" "$KIMI_POINTER" "$KIMI_SUBMIT_RETRIES" \
     "$KIMI_SUBMIT_SLEEP" "$KIMI_SUBMIT_SETTLE" "$W"); then
     kimi_spawn_fail "kimi brief pointer could not be submitted"
+    rovo_endpoint_cleanup
     exit 1
   fi
   if [ "$KIMI_SUBMIT_VERDICT" = send-failed ]; then
     kimi_spawn_fail "kimi brief pointer could not be submitted"
+    rovo_endpoint_cleanup
     exit 1
   fi
   if ! kimi_wait_for_delivery; then
     kimi_spawn_fail "kimi brief pointer delivery was not confirmed"
+    rovo_endpoint_cleanup
     exit 1
   fi
 fi

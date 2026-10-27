@@ -46,6 +46,15 @@ set -u
 printf '%s\n' "$*" >> "$FM_FAKE_TMUX_CALL_LOG"
 state=$(cat "$FM_FAKE_KIMI_STATE" 2>/dev/null || true)
 fake_screen() {
+  # Recorded from Kimi Code CLI 2.3.3; tests/captures/kimi-code-2.3.3/README.md
+  # owns the provenance.
+  if [ "${FM_FAKE_KIMI_PANES:-}" = 233 ]; then
+    case "$state" in
+      ready) cat "$FM_FAKE_KIMI_CAPTURES_233/ready.pane"; return ;;
+      pointer-typed) cat "$FM_FAKE_KIMI_CAPTURES_233/pointer-typed.pane"; return ;;
+      delivered) cat "$FM_FAKE_KIMI_CAPTURES_233/submitted.pane"; return ;;
+    esac
+  fi
   case "$state" in
     ready)
       printf 'Welcome to Kimi Code!\ncontext: 0%% (0/256k)\n╭────────────────────────────────╮\n│ >                              │\n╰────────────────────────────────╯\n'
@@ -100,6 +109,12 @@ fake_history() {
   fi
 }
 fake_cursor_y() {
+  if [ "${FM_FAKE_KIMI_PANES:-}" = 233 ]; then
+    case "$state" in
+      ready|pointer-typed) printf '21\n'; return ;;
+      delivered) printf '24\n'; return ;;
+    esac
+  fi
   case "$state" in
     pointer-typed) printf '3\n' ;;
     ready|delivered) printf '3\n' ;;
@@ -199,7 +214,9 @@ case "${1:-}" in
             printf 'enter\n' >> "$FM_FAKE_KIMI_STRAY_ENTER_LOG"
             ;;
           pointer-typed)
-            if [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = yes ]; then
+            if [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = stuck ]; then
+              :
+            elif [ "${FM_FAKE_KIMI_DELIVERY:-yes}" = yes ]; then
               if [ "${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" = yes ] \
                  && [ ! -f "$FM_FAKE_KIMI_SWALLOWED" ]; then
                 : > "$FM_FAKE_KIMI_SWALLOWED"
@@ -312,6 +329,8 @@ run_spawn() {
     FM_FAKE_KIMI_SWALLOW_FIRST="${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
     FM_FAKE_KIMI_CAPTURES="$ROOT/tests/captures/kimi-code-2.3.0" \
+    FM_FAKE_KIMI_CAPTURES_233="$ROOT/tests/captures/kimi-code-2.3.3" \
+    FM_FAKE_KIMI_PANES="${FM_FAKE_KIMI_PANES:-}" \
     FM_FAKE_MCP_MARKER_LOG="$case_dir/marker.log" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
@@ -766,6 +785,70 @@ test_kimi_unconfirmed_delivery_fails_loudly() {
   assert_grep 'failed: kimi brief pointer delivery was not confirmed' <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
     "unconfirmed kimi delivery did not leave a supervisor-visible failure"
   pass "fm-spawn: kimi treats a silent pointer drop as a failed spawn"
+}
+
+# Kimi 2.3.x echoes a submitted message behind `❯` instead of `✨`, and its
+# context usage still reads 0% for the first seconds of the turn, so the
+# pre-2.3 confirmation never saw a worker that had taken its brief.
+test_kimi_233_submitted_brief_is_confirmed() {
+  local id rec out rc
+  id="kimi-233-ok-z11-$$"
+  rec=$(make_spawn_case kimi-233-ok "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  expect_code 0 "$rc" "a kimi 2.3.3 worker that took its brief should be confirmed: $out"
+  assert_contains "$out" "spawned $id harness=kimi" "kimi 2.3.3 spawn did not report success"
+  assert_present "$HOME_DIR/state/$id.meta" "a confirmed kimi 2.3.3 spawn must keep its task record"
+  pass "fm-spawn: kimi 2.3.3's submitted-brief pane confirms delivery before its context usage moves"
+}
+
+# move_case_worktree_into_pool: make the case's worktree a Treehouse pool slot,
+# so the spawn claims it, and print the claim path.
+move_case_worktree_into_pool() {
+  local slot_root="$CASE_DIR/slots"
+  mkdir -p "$slot_root/1"
+  git -C "$PROJ_DIR" worktree move "$WT_DIR" "$slot_root/1/project"
+  WT_DIR="$slot_root/1/project"
+  printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$WT_DIR" > "$slot_root/treehouse-state.json"
+  printf '%s\n' "$slot_root/1/.fm-slot-owner"
+}
+
+# A 2.3.3 pane that is ready again after Enter, with no echo, no spinner, and
+# no context usage, never took the brief. The refusal must not leave a live
+# Kimi behind in a pane no task record owns, or the slot claim with it.
+test_kimi_233_idle_pane_after_submit_is_refused_and_closed() {
+  local id rec out rc claim
+  id="kimi-233-idle-z12-$$"
+  rec=$(make_spawn_case kimi-233-idle "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a kimi 2.3.3 pane with no sign of the brief must fail the spawn"
+  assert_contains "$out" "kimi brief pointer delivery was not confirmed" \
+    "the kimi 2.3.3 refusal lost its diagnostic"
+  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "the refused kimi spawn must close the pane running Kimi"
+  assert_absent "$HOME_DIR/state/$id.meta" "the refused kimi spawn must not leave its task record"
+  [ ! -e "$claim" ] || fail "the refused kimi spawn left a slot claim naming a task with no record: $(cat "$claim")"
+  pass "fm-spawn: kimi 2.3.3 refuses an idle pane after submit, closes the worker, and drops its slot claim"
+}
+
+test_kimi_233_pointer_left_in_the_composer_is_refused() {
+  local id rec out rc
+  id="kimi-233-stuck-z13-$$"
+  rec=$(make_spawn_case kimi-233-stuck "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=stuck run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a kimi 2.3.3 pointer still in the composer must fail the spawn"
+  assert_not_contains "$out" "spawned $id" "a pointer left in the composer must not report success"
+  pass "fm-spawn: kimi 2.3.3 refuses a brief pointer still sitting in its composer"
 }
 
 test_kimi_readiness_gate_precedes_pointer() {
@@ -1278,6 +1361,9 @@ test_kimi_teardown_removes_pointer_and_registry_token
 test_kimi_falls_back_to_expanded_home_binary
 test_kimi_missing_binary_refuses_before_pane_creation
 test_kimi_unconfirmed_delivery_fails_loudly
+test_kimi_233_submitted_brief_is_confirmed
+test_kimi_233_idle_pane_after_submit_is_refused_and_closed
+test_kimi_233_pointer_left_in_the_composer_is_refused
 test_kimi_readiness_gate_precedes_pointer
 test_kimi_fresh_worktree_trust_is_answered_and_verified
 test_kimi_swallowed_trust_enter_is_retried_until_the_dialog_clears
