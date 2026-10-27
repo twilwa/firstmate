@@ -952,6 +952,44 @@ test_kimi_233_refusal_keeps_a_slot_the_worker_changed_during_the_close() {
   pass "fm-spawn: a refused kimi spawn whose worker changed its slot during the close keeps its record and claim"
 }
 
+# A backlog whose In-flight move fails, so a refusal cannot keep its record.
+fail_backlog_dispatch() {  # <fakebin>
+  cat > "$1/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf '0.2.6\n' ;;
+  update) printf '%s\n' '--archive-body' ;;
+  mv) printf '%s\n' '[<id>...]' ;;
+  show) printf 'task:\n  state: queued\n  held: no\n  blocked: no\n' ;;
+  start) echo 'error: "backlog is unwritable"' >&2; exit 1 ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$1/tasks-axi"
+}
+
+# A slot changed during the close stays claimed even when its record could not
+# be kept, so no later spawn takes the worker's changes for a clean slot.
+test_kimi_233_refusal_keeps_the_claim_when_a_changed_slot_loses_its_record() {
+  local id rec out rc claim
+  id="kimi-233-nokeep-z20-$$"
+  rec=$(make_spawn_case kimi-233-nokeep "$id")
+  read_spawn_record "$rec"
+  claim=$(move_case_worktree_into_pool)
+  WT_DIR="$CASE_DIR/slots/1/project"
+  fail_backlog_dispatch "$FAKEBIN_DIR"
+  rc=0
+  out=$(TASKS_AXI_BACKEND=beads FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no \
+    FM_FAKE_KIMI_WORKER_COMMITS_ON_KILL=yes run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery must still fail the spawn: $out"
+  assert_contains "$out" "record could not be kept" \
+    "the refusal must say the task record could not be kept"
+  assert_absent "$HOME_DIR/state/$id.meta" "a record that could not be kept must be rolled back"
+  assert_grep "task=$id" "$claim" "a slot changed during the close must keep its claim without a record"
+  pass "fm-spawn: a refused kimi spawn whose changed slot lost its record still keeps the slot claim"
+}
+
 # A close that cannot be confirmed may leave Kimi running, so the record that
 # names its window stays, and the slot claim with it.
 test_kimi_233_refusal_keeps_the_record_when_the_close_fails() {
@@ -1508,6 +1546,7 @@ test_kimi_233_pointer_in_the_composer_is_refused_despite_moved_usage
 test_kimi_233_stale_turn_in_scrollback_does_not_confirm
 test_kimi_233_refusal_keeps_a_slot_the_worker_changed
 test_kimi_233_refusal_keeps_a_slot_the_worker_changed_during_the_close
+test_kimi_233_refusal_keeps_the_claim_when_a_changed_slot_loses_its_record
 test_kimi_233_refusal_keeps_the_record_when_the_close_fails
 test_kimi_submit_refused_before_typing_keeps_the_window
 test_kimi_readiness_gate_precedes_pointer

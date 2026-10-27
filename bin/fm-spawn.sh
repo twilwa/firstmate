@@ -1618,6 +1618,7 @@ CONFIG_INHERIT_LOCK_HELD=0
 GIT_HOOKS_DIR=
 SPAWN_LAUNCH_SENT=0
 SPAWN_ENDPOINT_CLOSED=0
+KIMI_SLOT_CHANGED=0
 SPAWN_STAGED_LAUNCH_FILE=
 
 spawn_fresh_commit_rollback() {
@@ -1867,7 +1868,8 @@ spawn_abort_cleanup() {
   # already released that lock and leaves the claim for the next spawn's
   # atomic replacement rather than racing it. A polytoken spawn instead retakes
   # that lock once for a later failure whose record was rolled back, and so
-  # does a kimi spawn whose failed delivery closed the endpoint it launched.
+  # does a kimi spawn whose failed delivery closed the endpoint it launched
+  # over a slot its worker left unchanged.
   # The release itself never removes another task's claim.
   if [ "$SPAWN_SLOT_CLAIMED" = 1 ] && [ -n "${WT:-}" ] &&
     [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ] &&
@@ -1876,7 +1878,7 @@ spawn_abort_cleanup() {
     if [ "$SPAWN_TREEHOUSE_PROJECT_LOCK_HELD" = 1 ]; then
       fm_treehouse_slot_owner_release "$WT" "$ID" || true
     elif { [ "${HARNESS:-}" = polytoken ] ||
-      { [ "${HARNESS:-}" = kimi ] && [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; }; } &&
+      { [ "${HARNESS:-}" = kimi ] && [ "$SPAWN_ENDPOINT_CLOSED" = 1 ] && [ "$KIMI_SLOT_CHANGED" = 0 ]; }; } &&
       [ -n "$SPAWN_TREEHOUSE_PROJECT_LOCK" ] &&
       fm_lock_try_acquire "$SPAWN_TREEHOUSE_PROJECT_LOCK"; then
       # Rechecked under the lock: a same-id retry claims and publishes its
@@ -5382,6 +5384,7 @@ kimi_spawn_fail_after_typing() { # <detail> [submit]
     esac
   fi
   if ! kimi_slot_unchanged; then
+    KIMI_SLOT_CHANGED=1
     why="its local copy $WT changed after the pointer was typed, so window $T stays open"
   else
     kimi_endpoint_close
@@ -5391,6 +5394,7 @@ kimi_spawn_fail_after_typing() { # <detail> [submit]
       echo "error: $detail; closed window $T" >&2
       return 0
     else
+      KIMI_SLOT_CHANGED=1
       why="window $T is closed, but its local copy $WT changed before the close"
     fi
   fi
