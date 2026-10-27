@@ -329,7 +329,9 @@ EOF
 
 run_spawn() {
   local case_dir=$1 home=$2 proj=$3 wt=$4 fakebin=$5 id=$6
+  local ship_flags=(--mode no-mistakes --yolo off)
   shift 6
+  [ -z "${FM_TEST_SHIP_FLAGS+set}" ] || ship_flags=()
   HOME="$home" FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
@@ -355,7 +357,7 @@ run_spawn() {
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
     PATH="$fakebin:$BASE_PATH" \
-    "$SPAWN" "$id" "$proj" --harness kimi ${FM_TEST_SHIP_FLAGS---mode no-mistakes --yolo off} "$@" 2>&1
+    "$SPAWN" "$id" "$proj" --harness kimi ${ship_flags[@]+"${ship_flags[@]}"} "$@" 2>&1
 }
 
 read_spawn_record() {
@@ -871,7 +873,7 @@ test_kimi_233_refused_scout_with_an_unchanged_slot_is_closed() {
   claim=$(move_case_worktree_into_pool)
   WT_DIR="$CASE_DIR/slots/1/project"
   rc=0
-  out=$(FM_TEST_SHIP_FLAGS= FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no run_spawn \
+  out=$(FM_TEST_SHIP_FLAGS='' FM_FAKE_KIMI_PANES=233 FM_FAKE_KIMI_DELIVERY=no run_spawn \
     "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" --scout) || rc=$?
   [ "$rc" -ne 0 ] || fail "an unconfirmed kimi scout delivery must fail the spawn: $out"
   assert_not_contains "$out" "unbound variable" "the kimi scout refusal hit an unset variable"
