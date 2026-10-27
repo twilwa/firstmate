@@ -469,7 +469,7 @@ ok - kimi 2.3.3: a submitted brief is confirmed while the turn runs, with an emp
 ok - kimi 2.3.3: after the turn the composer still reads empty both ways and the pane still shows the brief was taken
 ```
 
-The portable regressions replay the recorded panes: `tests/fm-composer-lib.test.sh` reads each one on the Herdr, Zellij, cmux/Orca, and tmux capability sets and refuses a box whose rows below are not exactly Kimi's footer, and `tests/fm-kimi-harness.test.sh` confirms the submitted pane, refuses a pane idle again after Enter and a pointer left in the composer, and closes the refused worker's endpoint and drops its slot claim.
+The portable regressions replay the recorded panes: `tests/fm-composer-lib.test.sh` reads each one on the Herdr, Zellij, cmux/Orca, and tmux capability sets and refuses a box whose rows below are not exactly Kimi's footer, and `tests/fm-kimi-harness.test.sh` confirms the submitted pane, refuses a pane idle again after Enter and a pointer left in the composer, and closes the refused worker's endpoint and drops its slot claim while the slot is unchanged, keeping the record and claim when the worker changed the slot before or during the close or the close fails.
 Each case is non-vacuous: without the footer rule every recorded 2.3.3 pane reads `unknown` on Herdr, with only the pre-2.3 `✨` and context signals the submitted pane is refused, and without the endpoint close or the claim release the refused spawn leaves a live pane or a claim behind.
 
 ## Claude workspace trust

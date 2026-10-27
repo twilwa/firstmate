@@ -216,7 +216,9 @@
 #   slot and removes the wiring, task temp root, and staged launch file it wrote.
 #   A kimi spawn whose brief pointer was typed but not confirmed closes its
 #   endpoint, so no unsupervised Kimi keeps working there, and retakes that lock
-#   the same way to drop its claim.
+#   the same way to drop its claim only while its slot stayed unchanged; a
+#   changed slot or an unconfirmed close keeps the record and the claim
+#   (kimi_spawn_fail_after_typing).
 #   The local root is whatever bin/fm-wake-lib.sh's
 #   fm_firstmate_root_home resolves, so a home seeded from another machine anchors
 #   that lock itself rather than failing to resolve one;
