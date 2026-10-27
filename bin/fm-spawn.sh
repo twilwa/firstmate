@@ -5370,7 +5370,7 @@ kimi_keep_task_record() {
 # when the slot is unchanged both before and after a confirmed close; every
 # other case keeps the record for teardown.
 kimi_spawn_fail_after_typing() { # <detail> [submit]
-  local detail=$1 why
+  local detail=$1 why inspect
   printf '%s\n' "$(status_stamp_line "failed: $detail")" >>"$STATE/$ID.status"
   if [ "${2:-}" = submit ]; then
     case "$(kimi_capture)" in
@@ -5397,7 +5397,9 @@ kimi_spawn_fail_after_typing() { # <detail> [submit]
   if kimi_keep_task_record; then
     echo "error: $detail; $why, and task $ID's record is kept for teardown" >&2
   else
-    echo "error: $detail; $why, and task $ID's record could not be kept ($FM_BACKLOG_TRANSITION_ERROR); inspect window $T and local copy $WT before reusing them" >&2
+    inspect="window $T and local copy $WT before reusing them"
+    [ "$SPAWN_ENDPOINT_CLOSED" != 1 ] || inspect="local copy $WT before reusing it"
+    echo "error: $detail; $why, and task $ID's record could not be kept ($FM_BACKLOG_TRANSITION_ERROR); inspect $inspect" >&2
   fi
 }
 
