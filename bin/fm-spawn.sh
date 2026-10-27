@@ -5323,6 +5323,16 @@ kimi_spawn_fail() { # <detail>
   echo "error: $1; inspect window $T" >&2
 }
 
+kimi_spawn_fail_closing() { # <detail>
+  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  rovo_endpoint_cleanup
+  if [ "$SPAWN_ENDPOINT_CLOSED" = 1 ]; then
+    echo "error: $1; closed window $T" >&2
+  else
+    echo "error: $1; could not close window $T, inspect it" >&2
+  fi
+}
+
 # rovo mirrors kimi's launch-then-send shape exactly: a positional brief is
 # dead-on-arrival, so rovo launches bare and takes its brief pointer only after a
 # readiness gate, then a delivery-confirmation gate. Both route their
@@ -7462,18 +7472,15 @@ if [ "$HARNESS" = kimi ]; then
   if ! KIMI_SUBMIT_VERDICT=$(fm_backend_send_text_submit \
     "$BACKEND" "$T" "$KIMI_POINTER" "$KIMI_SUBMIT_RETRIES" \
     "$KIMI_SUBMIT_SLEEP" "$KIMI_SUBMIT_SETTLE" "$W"); then
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
-    rovo_endpoint_cleanup
+    kimi_spawn_fail_closing "kimi brief pointer could not be submitted"
     exit 1
   fi
   if [ "$KIMI_SUBMIT_VERDICT" = send-failed ]; then
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
-    rovo_endpoint_cleanup
+    kimi_spawn_fail_closing "kimi brief pointer could not be submitted"
     exit 1
   fi
   if ! kimi_wait_for_delivery; then
-    kimi_spawn_fail "kimi brief pointer delivery was not confirmed"
-    rovo_endpoint_cleanup
+    kimi_spawn_fail_closing "kimi brief pointer delivery was not confirmed"
     exit 1
   fi
 fi

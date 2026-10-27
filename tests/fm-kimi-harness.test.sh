@@ -833,6 +833,9 @@ test_kimi_233_idle_pane_after_submit_is_refused_and_closed() {
     "the kimi 2.3.3 refusal lost its diagnostic"
   assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
     "the refused kimi spawn must close the pane running Kimi"
+  assert_contains "$out" "kimi brief pointer delivery was not confirmed; closed window" \
+    "the refused kimi spawn must report that its window was closed"
+  case "$out" in *"inspect window"*) fail "the refused kimi spawn pointed the operator at the window it closed: $out" ;; esac
   assert_absent "$HOME_DIR/state/$id.meta" "the refused kimi spawn must not leave its task record"
   [ ! -e "$claim" ] || fail "the refused kimi spawn left a slot claim naming a task with no record: $(cat "$claim")"
   pass "fm-spawn: kimi 2.3.3 refuses an idle pane after submit, closes the worker, and drops its slot claim"
