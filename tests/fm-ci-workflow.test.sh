@@ -200,9 +200,9 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # Tier membership is the executable inventory of the timeout policy: a new job
 # must join a tier, and a job-level value outside these tiers is exactly the
 # one-off number the policy removed.
-FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate'
+FAST_TIER_JOBS='tests-timing-aggregate'
 NORMAL_TIER_JOBS='lint macos-stock-bash'
-PORTABLE_TIER_JOBS='tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial'
+PORTABLE_TIER_JOBS='tests-portable-pool tests-portable-serial'
 HEAVY_TIER_JOBS='tests-herdr'
 
 # Seconds a portable job may spend before its runner step starts: checkout,
@@ -483,7 +483,7 @@ raise "lint failures must not cancel another partition" unless lint.fetch("fail-
 matrix = lint.fetch("matrix")
 raise "unexpected lint dimensions" unless matrix.keys == ["partition"]
 parts = matrix.fetch("partition")
-raise "lint needs three memory-bounded partitions" unless parts == [1, 2, 3]
+raise "lint needs four memory-bounded partitions" unless parts == [1, 2, 3, 4]
 roots = parts.flat_map do |p|
   output, result = Open3.capture2(File.join(root, "bin/fm-lint.sh"), "--partition", "#{p}of#{parts.length}", "--list-files")
   raise "unsupported lint partition" unless result.success?
@@ -491,6 +491,16 @@ roots = parts.flat_map do |p|
 end
 canonical, result = Open3.capture2({"CI" => "true"}, File.join(root, "bin/fm-lint.sh"), "--list-files")
 raise "lint matrix loses or duplicates canonical roots" unless result.success? && roots.sort == canonical.lines.map(&:strip).sort
+
+# The two folded standalone guards must still execute inside existing jobs:
+# the coverage proof at the start of the pool job and the repo invariants once
+# on lint partition 1.
+pool_steps = jobs.fetch("tests-portable-pool").fetch("steps")
+coverage = pool_steps.index { |s| s.fetch("run", "").include?("--check-coverage") }
+raise "coverage guard must fold into the pool job" unless coverage
+lint_steps = jobs.fetch("lint").fetch("steps")
+folded = lint_steps.select { |s| s["if"].to_s.include?("matrix.partition == 1") }
+raise "repo invariants must fold into lint partition 1" if folded.length < 2
 RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
