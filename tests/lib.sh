@@ -123,12 +123,24 @@ fm_test_launch_git_prefix() {  # <launch>
   printf '%s env-file %s%s' "$helper" "$tail" "$end"
 }
 
+# The mise trust statement every pane launch starts with, for a worker whose
+# resolved directory is <worktree>. Its shell behavior is proven by
+# tests/fm-launch-mise-env.test.sh; launch-layout assertions reuse it.
+fm_test_launch_mise_prefix() {  # <worktree>
+  (
+    # shellcheck source=bin/fm-launch-mise-env-lib.sh
+    . "$ROOT/bin/fm-launch-mise-env-lib.sh"
+    fm_launch_mise_env "$(CDPATH='' cd -- "$1" && pwd -P)" ''
+  )
+}
+
 # The command a pane runs after the launch's Git configuration prefix and its
 # leading export statements, for suites that split it into arguments.
 fm_test_launch_command() {  # <launch>
   local command=$1 end=' || return 1 2>/dev/null || exit 1; '
   case "$command" in *"$end"*) command=${command#*"$end"} ;; esac
-  while [[ "$command" == export\ *\;* ]]; do
+  # shellcheck disable=SC2016 # The mise statement's expansion is literal launch text.
+  while [[ "$command" == export\ *\;* || "$command" == '[ -n "$MISE_TRUSTED_CONFIG_PATHS" ] '*\;* ]]; do
     command=${command#*; }
   done
   printf '%s' "$command"
