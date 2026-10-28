@@ -128,6 +128,16 @@
 # glyph deliberately outside the agent set, so no opencode shape recorded here
 # can prove a left-bar envelope and open a zone under it.
 #
+# KIMI'S FOOTER is the one rule that moves a cursorless verdict toward `empty`,
+# so it carries its own proof instead of the footer zone's: Kimi 2.3.x draws a
+# mode/model row and a context-usage row directly under its composer box, and
+# the staleness probe read that as activity below a stale box, so every idle
+# Kimi read `unknown` on every backend without a cursor (Herdr launches never
+# confirmed a delivered brief). The probe resumes past those rows only when
+# Kimi's usage row closes them within two rows of the box's bottom border
+# (_fm_composer_kimi_footer_after); any other row there, or anything non-blank
+# below the usage row, still makes the box stale.
+#
 # THE SAFETY RULE for glyphs: a bare shell prompt glyph (`>` `$` `%` `#`) -
 # what a pane shows once its agent has exited to a plain login shell - is a
 # genuine empty agent composer ONLY inside a bordered container. On a bare row
@@ -569,6 +579,17 @@ FM_COMPOSER_OMP_STATUS_RE_DEFAULT='^[[:space:]]*(π|󰵗)[[:space:]]+·[[:space:
 # Consulted only as the dead-shell exception below, never as composer content,
 # so the same string typed between the separator pair still reads pending.
 FM_COMPOSER_PI_STATUS_RE_DEFAULT='^\$[0-9]+(\.[0-9]+)?([[:space:]]|$)'
+# Kimi Code CLI 2.3.x draws two footer rows directly under its composer box,
+# with no blank row between: a mode/model row (`Never Ask  K3.1 Pro thinking:
+# high  …/work`, whose right-hand hint rotates) and its right-aligned
+# context-usage row (`context: 3% (20.8k/1M)`, or a bare `context: 0%` before a
+# model is configured). Verified live on 2.3.3 at 60, 80, and 120 columns;
+# tests/captures/kimi-code-2.3.3/README.md owns the captures. The usage row is
+# the proof: consulted only as the boundary below a box, see
+# _fm_composer_kimi_footer_after. The mode/model row starts with Kimi's own
+# approval-mode label, one of the three the 2.3.3 binary defines.
+FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT='^(Always Ask|Ask When Needed|Never Ask)( |$)'
+FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT='^context: [0-9]+([.][0-9]+)?%( [(][0-9]+([.][0-9]+)?[kKmMgG]?/[0-9]+([.][0-9]+)?[kKmMgG]?[)])?$'
 # Braille-pattern cells (U+2800..U+28FF) are animation furniture: codex-cli
 # 0.154.0 draws an idle "starfield" of them on the row above its `›` prompt
 # row, on the `›` row itself after the dim `Ask Codex to do anything`
@@ -1391,6 +1412,32 @@ _fm_composer_row_is_omp_status() {  # <trimmed-row>
   fm_composer_idle_matches "$1" "${FM_COMPOSER_OMP_STATUS_RE:-$FM_COMPOSER_OMP_STATUS_RE_DEFAULT}" sensitive
 }
 
+# _fm_composer_kimi_footer_after: 0 when the rows of <plain> starting at <row>,
+# directly under a box's bottom border, are Kimi's footer (see
+# FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT): its context-usage row, optionally
+# preceded by exactly one mode/model row (FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT),
+# so any other row between the box and a usage row keeps the box stale.
+# Records the usage row in FM_COMPOSER_KIMI_FOOTER_LAST. The staleness probe
+# then resumes below it, so any further activity there still makes the box
+# stale.
+_fm_composer_kimi_footer_after() {  # <plain> <row>
+  local plain=$1 row=$2 trimmed re
+  re=${FM_COMPOSER_KIMI_CONTEXT_ROW_RE:-$FM_COMPOSER_KIMI_CONTEXT_ROW_RE_DEFAULT}
+  FM_COMPOSER_KIMI_FOOTER_LAST=-1
+  trimmed=$(_fm_composer_screen_row "$row" "$plain")
+  fm_composer_normalize_trim_var trimmed
+  [ -n "$trimmed" ] || return 1
+  if ! fm_composer_idle_matches "$trimmed" "$re" sensitive; then
+    fm_composer_idle_matches "$trimmed" \
+      "${FM_COMPOSER_KIMI_MODE_ROW_RE:-$FM_COMPOSER_KIMI_MODE_ROW_RE_DEFAULT}" sensitive || return 1
+    row=$((row + 1))
+    trimmed=$(_fm_composer_screen_row "$row" "$plain")
+    fm_composer_normalize_trim_var trimmed
+    fm_composer_idle_matches "$trimmed" "$re" sensitive || return 1
+  fi
+  FM_COMPOSER_KIMI_FOOTER_LAST=$row
+}
+
 # _fm_composer_row_is_pi_status: 0 when the trimmed row is Pi's dollar-first
 # footer stats row (FM_COMPOSER_PI_STATUS_RE_DEFAULT above). Furniture below
 # the separated pair; a `$` cost cell must not count as a dead-shell prompt.
@@ -1942,6 +1989,9 @@ _fm_composer_select_cursorless() {
     next=$((boundary + 1))
     if [ "$footer" = 1 ] && [ "$FM_COMPOSER_FOOTER_AFTER" = "$boundary" ]; then
       next=$((FM_COMPOSER_FOOTER_LAST + 1))
+    elif [ "$FM_COMPOSER_SELECTED_KIND" = box ] \
+       && _fm_composer_kimi_footer_after "$plain" "$next"; then
+      next=$((FM_COMPOSER_KIMI_FOOTER_LAST + 1))
     fi
     raw=$(_fm_composer_screen_row "$next" "$plain")
     trimmed=$raw

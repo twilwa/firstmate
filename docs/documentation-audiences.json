@@ -645,6 +645,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "tests/captures/kimi-code-2.3.3/README.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "tests/safe-suite-exclusions.txt",
       "audience": "agent-runtime"
     },

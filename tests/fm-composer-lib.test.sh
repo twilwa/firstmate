@@ -1239,6 +1239,47 @@ test_matrix_kimi_bordered_shell_glyph_box() {
   pass "matrix: kimi's bordered shell-glyph box reads empty through the shared owner (spawn's fourth copy retired)"
 }
 
+test_matrix_kimi_233_footer_directly_under_box() {
+  # Real Kimi Code CLI 2.3.3 panes (tests/captures/kimi-code-2.3.3/README.md):
+  # the mode/model row and the `context:` usage row sit directly under the
+  # composer box with no blank row, which every cursorless read used to take
+  # for activity below a stale box.
+  local dir="$ROOT/tests/captures/kimi-code-2.3.3" shape plain ansi want
+  for shape in ready:empty pointer-typed:pending submitted:empty working:empty idle-after-turn:empty; do
+    want=${shape#*:}
+    shape=${shape%%:*}
+    plain=$(<"$dir/$shape.pane")
+    ansi=$(<"$dir/$shape.ansi")
+    assert_screen "kimi 2.3.3 $shape on herdr" "$want" "$CAPS_STYLED" "$ansi"
+    assert_screen "kimi 2.3.3 $shape on zellij" "$want" "$CAPS_STYLED_NOID" "$ansi"
+    assert_screen "kimi 2.3.3 $shape on cmux/orca" "$want" "$CAPS_PLAIN" "$plain"
+  done
+  assert_screen "kimi 2.3.3 ready on tmux" empty "$CAPS_TMUX" "$(<"$dir/ready.ansi")" 21
+  assert_screen "kimi 2.3.3 pointer-typed on tmux" pending "$CAPS_TMUX" "$(<"$dir/pointer-typed.ansi")" 21
+  pass "matrix: kimi 2.3.3's footer directly under its box reads as that composer's furniture on every backend"
+}
+
+test_kimi_footer_needs_its_context_row() {
+  # The footer is accepted only as Kimi draws it: at most its mode/model row,
+  # then the context-usage row, then nothing. Anything else under the box stays
+  # the unclaimed activity that makes the box stale.
+  local box=$'╭────────────────────────╮\n│ >                      │\n╰────────────────────────╯' screen
+  screen="$box"$'\nNever Ask  K3.1 Pro thinking: high  …/work'
+  assert_screen "kimi mode row with no context row" unknown "$CAPS_STYLED" "$screen"
+  screen="$box"$'\nNever Ask  K3.1 Pro\nWorking on request...\n                    context: 3% (20.8k/1M)'
+  assert_screen "two rows before the context row" unknown "$CAPS_STYLED" "$screen"
+  screen="$box"$'\nWorking on request...\n                    context: 3% (20.8k/1M)'
+  assert_screen "an activity row before the context row" unknown "$CAPS_STYLED" "$screen"
+  assert_screen "an activity row before the context row, unstyled" unknown "$CAPS_PLAIN" "$screen"
+  screen="$box"$'\n                    context: 3% (20.8k/1M)\nWorking on request...'
+  assert_screen "activity below the context row" unknown "$CAPS_STYLED" "$screen"
+  screen="$box"$'\nNever Ask  K3.1 Pro\n                    context: lots'
+  assert_screen "a context row with no usage percentage" unknown "$CAPS_STYLED" "$screen"
+  screen="$box"$'\nNever Ask  …/work\n                    context: 0%'
+  assert_screen "kimi footer before any model is configured" empty "$CAPS_PLAIN" "$screen"
+  pass "fm_composer_classify_screen: only kimi's own two-row footer under a box is furniture"
+}
+
 test_matrix_claude_inside_zellij_ansi_dump() {
   # Real claude captured through `zellij action dump-screen --ansi`
   # (capability established by the audit): `ESC[m` `❯` U+00A0.
@@ -1484,6 +1525,8 @@ test_matrix_grok_titled_bottom_border
 test_matrix_claude_titled_top_rule
 test_matrix_grok_144_approval_titled_bottom_border
 test_matrix_kimi_bordered_shell_glyph_box
+test_matrix_kimi_233_footer_directly_under_box
+test_kimi_footer_needs_its_context_row
 test_matrix_claude_inside_zellij_ansi_dump
 test_strict_blank_row_divergence
 test_bare_wrap_region_classifies

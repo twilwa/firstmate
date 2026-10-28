@@ -441,6 +441,37 @@ The portable regression `tests/fm-kimi-harness.test.sh` replays the recorded pan
 Each case is non-vacuous: dropping the 2.3.0 option pair from the complete-dialog test fails the plain case, making the announcement test never fire fails the root `.mcp.json` case, and making the page test never fire fails the paged case.
 The 2.0.0 wording keeps its existing cases in the same suite.
 
+## Kimi brief delivery
+
+Verified on 2026-10-27 on Linux with tmux 3.4 against the installed Kimi Code CLI 2.3.3, model K3.1 Pro.
+Kimi 2.3.3 echoes a submitted message as a transcript row led by `❯` instead of 2.0.0's `✨`, keeps `context: 0%` for the first seconds of the turn while its moon-phase spinner already runs, and draws its mode/model row and `context:` usage row directly under the composer box.
+Before the fix the cursorless composer read every captured 2.3.3 pane `unknown`, so on Herdr the delivery gate could never pass, and on tmux its context-only fallback lagged the echo by several seconds.
+`bin/fm-kimi-delivery-lib.sh` owns the delivery evidence, `bin/fm-composer-lib.sh` the footer rule, and `tests/captures/kimi-code-2.3.3/README.md` the recorded panes.
+The extended default-on folder-prompt guard now also proves, with no login and no tokens, that the ready and typed composer read the same with and without a cursor and that neither shows delivery evidence:
+
+```sh
+FM_KIMI_TRUST_PROMPT_LIVE=1 bin/fm-test-run.sh tests/fm-kimi-trust-prompt-live-e2e.test.sh
+```
+
+```text
+ok - kimi 2.3.3: the ready and typed composer read the same with and without a cursor, and neither they nor an unanswerable submit show delivery evidence
+```
+
+The opt-in delivery guard submits one short brief with the operator's own login and refreshes the taken-brief evidence:
+
+```sh
+FM_KIMI_DELIVERY_LIVE=1 bin/fm-test-run.sh tests/fm-kimi-delivery-live-e2e.test.sh
+```
+
+```text
+# kimi 2.3.3: confirmed while working on: prompt-echo spinner
+ok - kimi 2.3.3: a submitted brief is confirmed while the turn runs, with an empty composer read with and without a cursor
+ok - kimi 2.3.3: after the turn the composer still reads empty both ways and the pane still shows the brief was taken
+```
+
+The portable regressions replay the recorded panes: `tests/fm-composer-lib.test.sh` reads each one on the Herdr, Zellij, cmux/Orca, and tmux capability sets and refuses a box whose rows below are not exactly Kimi's footer, and `tests/fm-kimi-harness.test.sh` confirms the submitted pane, refuses a pane idle again after Enter and a pointer left in the composer, and closes the refused worker's endpoint and drops its slot claim while the slot is unchanged, keeping the record and claim when the worker changed the slot before or during the close or the close fails.
+Each case is non-vacuous: without the footer rule every recorded 2.3.3 pane reads `unknown` on Herdr, with only the pre-2.3 `✨` and context signals the submitted pane is refused, and without the endpoint close or the claim release the refused spawn leaves a live pane or a claim behind.
+
 ## Claude workspace trust
 
 Verified 2026-09-03 on Claude Code 2.1.259.

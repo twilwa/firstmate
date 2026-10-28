@@ -1,0 +1,36 @@
+
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │                                                                                                                    │
+ │  ▐█▛█▛█▌  Welcome to Kimi Code!                                                                                    │
+ │  ▐█████▌  Send /help for help information.                                                                         │
+ │                                                                                                                    │
+ │  Directory: /lab/work                                                                                              │
+ │  Session:   session_00000000-0000-0000-0000-000000000000                                                           │
+ │  Model:     K3.1 Pro                                                                                               │
+ │  Version:   2.3.3                                                                                                  │
+ │                                                                                                                    │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ✦ Kimi K3.1 Pro is ready - use the model in a fresh session for the best results
+   Standard: Plus/Moderato and above; Highspeed: Pro/Allegretto and above
+
+   No session yet — one will be created on your first message.
+   tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and
+ restart tmux.
+
+ ❯ Read the brief at /fm-home/data/kimi-lab/launch-brief.md and follow it exactly.
+
+ ● Kimi needs to read the brief.
+
+ ● Used Read (/fm-home/data/kimi-lab/launch-brief.md) · 1 line
+
+ ● Should obey brief exactly run command once then single word. Kimi has enough to respond and should do nothing else.
+
+ ● Running a command · $ sleep 20 && echo LAB-OK
+
+  🌕 · Tip: /init: generate AGENTS.md
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ >                                                                                                                  │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Never Ask  K3.1 Pro thinking: high  …/lab/work                                                           ctrl+o expand
+                                                                                                 context: 3% (20.8k/1M)
