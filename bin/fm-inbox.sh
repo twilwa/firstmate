@@ -1094,7 +1094,7 @@ PY
     --model-id "$ASK_MODEL" \
     --messages "file://$msg" \
     --system '[{"text":"You are a terse engineering assistant answering a side question. Be direct and concrete. No preamble. If you are not sure, say so."}]' \
-    --inference-config '{"maxTokens":700,"temperature":0.2}' \
+    --inference-config '{"maxTokens":700}' \
     --query 'output.message.content[0].text' --output text \
     || die "ask failed"
 }

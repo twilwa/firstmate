@@ -418,6 +418,28 @@ assert_absent "$AWS_CALLED" \
   "no case above may reach a model: the aws stub recorded an attempt"
 pass "the model-backed subcommands refuse by name while note keeps working"
 
+# Exercise the configured ask at the AWS boundary without contacting Bedrock.
+# Newer models reject a non-default temperature; retain only the token limit.
+printf 'eu-somewhere-1\n' > "$CONFIG_HOME/config/inbox-region"
+printf 'test-ask-model\n' > "$CONFIG_HOME/config/inbox-ask-model"
+set +e
+ask_out=$(env "${inbox_env[@]}" FM_INBOX_PROFILE= \
+  "$ROOT/bin/fm-inbox.sh" ask "how is the fleet" 2>&1)
+ask_code=$?
+set -e
+[ "$ask_code" -ne 0 ] || fail "ask should report the AWS stub failure"
+python3 - "$AWS_CALLED" <<'PY' || fail "ask inference config must be model-compatible"
+import json, re, sys
+with open(sys.argv[1]) as handle:
+    invocation = handle.read()
+match = re.search(r'--inference-config (\S+)', invocation)
+assert match, "ask did not send an inference config to AWS"
+config = json.loads(match.group(1))
+assert config == {"maxTokens": 700}, config
+PY
+rm -f "$CONFIG_HOME/config/inbox-region" "$CONFIG_HOME/config/inbox-ask-model"
+pass "ask sends only its token limit to Bedrock"
+
 # --help prints the whole header block, and finds where that block ends rather
 # than counting lines to it, so growing the header cannot silently truncate the
 # help again. The PRIVACY paragraph is the part that matters: it is the only place
