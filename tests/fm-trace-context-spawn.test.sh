@@ -394,7 +394,8 @@ test_failed_metadata_append_unsets_carrier_and_still_launches() {
 
   ! grep -q '^traceparent=' "$meta" \
     || fail "failed metadata append must not leave a traceparent= claim in meta"
-  grep -q '^unset TRACEPARENT; .*claude' "$LAUNCH_LOG" \
+  awk -v p="$(fm_test_launch_mise_prefix "$WT_DIR")unset TRACEPARENT; " \
+    'index($0, p) == 1 && /claude/ { found = 1 } END { exit !found }' "$LAUNCH_LOG" \
     || fail "failed metadata append must unset TRACEPARENT in the launch command"
   pass "failed traceparent metadata append removes the carrier from the launched task"
 }
