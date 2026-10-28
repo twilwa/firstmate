@@ -1732,6 +1732,7 @@ families_for_changed_path() {
       printf '%s\n' __script__:fm-procevent.test.sh
       printf '%s\n' __script__:fm-procevent-when.test.sh
       printf '%s\n' __script__:fm-remote-reply.test.sh
+      printf '%s\n' __script__:fm-procevent-retire-task.test.sh
       ;;
     bin/fm-timeout-lib.sh)
       # The shared hard bound: session start's runtime bound, the fleet/bearings
@@ -1750,12 +1751,13 @@ families_for_changed_path() {
       printf '%s\n' pr-forge
       printf '%s\n' "__script__:fm-local-handoff.test.sh"
       ;;
-    bin/fm-teardown.sh)
+    bin/fm-teardown.sh|bin/fm-teardown-procevent-lib.sh)
       # Teardown carries the receipt-gated local-only custody cleanup and
       # retires T3 Code secondmate homes beside its ordinary forge path.
       printf '%s\n' pr-forge
       printf '%s\n' "__script__:fm-local-handoff.test.sh"
       printf '%s\n' "__script__:fm-backend-t3code.test.sh"
+      printf '%s\n' "__script__:fm-teardown-procevent.test.sh"
       ;;
     bin/fm-pr-*|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*|bin/fm-pipeline-spend.sh)

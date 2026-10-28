@@ -41,6 +41,14 @@
 # lift the deferral (it authorizes discarding unlanded WORK, never the
 # captain's question), and bin/fm-captain-hold.sh answer stays the only act
 # that closes the call.
+# After the landed-work check, retire this task's process-event registrations
+# through fm-procevent.sh retire --if-owner <task-id>. A pending round, uncertain
+# runner identity, or any other retirement failure refuses before destructive
+# cleanup and retains the task record; --force does not bypass this protection.
+# Repeat the retirement pass after endpoint closure, immediately before task
+# record removal, to catch sources the worker registered during cleanup.
+# Tasks without registered sources are unaffected.
+#
 # REFUSES if the worktree holds work that has not LANDED, because cleanup
 # hard-resets/removes the worktree and kills its processes. Work has landed when it is
 # reachable from any remote-tracking branch (a fork counts as a remote, so
@@ -393,7 +401,8 @@ for _teardown_source in \
   fm-nm-run-lib.sh \
   fm-wake-lib.sh \
   fm-path-lib.sh \
-  fm-lease-lib.sh
+  fm-lease-lib.sh \
+  fm-teardown-procevent-lib.sh
 do
   teardown_require_source "$SCRIPT_DIR/$_teardown_source"
 done
@@ -426,6 +435,8 @@ unset _teardown_source
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
 # shellcheck source=bin/fm-local-handoff-lib.sh
 . "$SCRIPT_DIR/fm-local-handoff-lib.sh"
+# shellcheck source=bin/fm-teardown-procevent-lib.sh
+. "$SCRIPT_DIR/fm-teardown-procevent-lib.sh"
 # Archive paths live only in teardown; presentation/wake readers stay unaware.
 teardown_archive_directory() {  # <directory>
   if [ -L "$1" ] || { [ -e "$1" ] && [ ! -d "$1" ]; }; then
@@ -3780,6 +3791,8 @@ if teardown_owns_worktree && { [ -d "$WT" ] || task_clone_is_bound_local_only; }
   fi
 fi
 
+teardown_retire_process_events "$STATE" "$ID" "$SCRIPT_DIR" || exit 1
+
 # A Herdr close may reposition shared workspace order, so the whole
 # destructive sequence below (worktree return, pane close, record removal)
 # runs under the named-session presentation lock, acquired BEFORE anything is
@@ -4191,6 +4204,12 @@ if [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ];
     echo "warning: retaining herdr presentation journal for $ID; it still names a projected workspace the session-start sweep owns, not the closed endpoint" >&2
   fi
 fi
+# The early pass keeps retirement refusals ahead of destructive cleanup. Now
+# that the endpoint is closed, catch any source it registered after that pass
+# before dropping its last durable ownership record. A refusal retains the
+# record for retry even though the endpoint has already been closed.
+teardown_retire_process_events "$STATE" "$ID" "$SCRIPT_DIR" || exit 1
+
 # The record is gone, so the backlog must not still show this task in flight
 # when teardown reports success. Still under this task's meta lock, so a steer
 # racing the same id stays serialized exactly as it was before. A captain-held

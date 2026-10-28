@@ -525,6 +525,19 @@ fm_procevent_extension_registration_load_locked() {  # <state> <source-id>
   fm_procevent_extension_registration_token_valid "$FM_PROCEVENT_EXTENSION_REGISTRATION_TOKEN" || return 2
 }
 
+# Task ownership is the canonical registration header, not text in its argv.
+fm_procevent_task_registration_owned_locked() {  # <state> <source-id> <task-id>
+  local file adapter kind owner
+  file="$(fm_procevent_registry_dir "$1")/$2.source"
+  [ -f "$file" ] && [ ! -L "$file" ] || return 1
+  {
+    IFS= read -r adapter && IFS= read -r kind && IFS= read -r owner
+  } < "$file" || return 1
+  case "$adapter" in adapter=*) ;; *) return 1 ;; esac
+  fm_procevent_adapter_valid "${adapter#adapter=}" || return 1
+  [ "$kind" = kind=task-owned ] && [ "$owner" = "owner_task=$3" ]
+}
+
 # Exact legacy registration comparison used by conditional built-in retirement.
 fm_procevent_registration_matches_locked() {  # <state> <adapter> <source-id> <argv...>
   local state=$1 adapter=$2 id=$3 reg dest tmp arg status=1
