@@ -424,6 +424,12 @@
 #   On backend=orca the destination is an Orca terminal whose environment comes
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
+# Mise config trust (all command-launch harnesses):
+#   Before any launch command or task prep runs, export the resolved worktree's
+#   existing mise.toml, .mise.toml, .mise/config.toml and .tool-versions paths in
+#   MISE_TRUSTED_CONFIG_PATHS. This explicit assignment survives allowlist
+#   filtering; destination trust is retained only when inherited or allowlisted.
+#   No interactive mise command or persistent trust-store change is performed.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -7382,6 +7388,11 @@ if [ -n "$SPAWN_TRACEPARENT" ]; then
   fi
 fi
 fi
+# Compose explicit worktree trust inside the filtering boundary, before the
+# command (including any configured task prep) can invoke mise.
+# shellcheck source=bin/fm-launch-mise-env-lib.sh
+. "$SCRIPT_DIR/fm-launch-mise-env-lib.sh"
+LAUNCH=$(fm_launch_mise_env "$WT" "$LAUNCH")
 if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
   LAUNCH_ENV_PREFIX='/usr/bin/env -i'
   # A configured Orca source replaces destination expansion of allowlisted

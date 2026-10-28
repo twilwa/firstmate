@@ -1492,6 +1492,12 @@ The allowlist floor also retains Tern block markers `TERN_IDENTITY`, `TERN_PANE`
 Other ambient names must be listed explicitly, including custom credential-store locations, proxy settings, and certificate overrides when required by the selected tools.
 The command shell and worker may still create their own variables.
 
+For every command-launch harness, Firstmate explicitly adds existing `mise.toml`, `.mise.toml`, `.mise/config.toml`, and `.tool-versions` files in the resolved worker directory to `MISE_TRUSTED_CONFIG_PATHS` before the launch command (including task prep) runs.
+These absolute paths are colon-separated and survive allowlist filtering without listing the variable; launches with no matching files leave it unchanged.
+Existing destination trust is preserved when inherited, or when the variable is explicitly allowlisted under filtering; Firstmate does not copy its own ambient trust into the worker.
+This avoids interactive mise trust prompts for fresh isolated copies without running `mise trust` or modifying a persistent trust store.
+T3 Code's server-started provider has no command-launch environment and is not covered by this assignment.
+
 Unless the Orca environment source below is configured, allowed values come from the destination pane at execution time; they are neither copied from the invoking Firstmate process nor written into the launch command.
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
 
