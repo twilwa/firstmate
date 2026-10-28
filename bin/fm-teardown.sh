@@ -41,6 +41,12 @@
 # lift the deferral (it authorizes discarding unlanded WORK, never the
 # captain's question), and bin/fm-captain-hold.sh answer stays the only act
 # that closes the call.
+# After the landed-work check, retire this task's process-event registrations
+# through fm-procevent.sh retire --if-owner <task-id>. A pending round, uncertain
+# runner identity, or any other retirement failure refuses before destructive
+# cleanup and retains the task record; --force does not bypass this protection.
+# Tasks without registered sources are unaffected.
+#
 # REFUSES if the worktree holds work that has not LANDED, because cleanup
 # hard-resets/removes the worktree and kills its processes. Work has landed when it is
 # reachable from any remote-tracking branch (a fork counts as a remote, so
@@ -3779,6 +3785,10 @@ if teardown_owns_worktree && { [ -d "$WT" ] || task_clone_is_bound_local_only; }
     fi
   fi
 fi
+
+# shellcheck source=bin/fm-teardown-procevent-lib.sh
+. "$SCRIPT_DIR/fm-teardown-procevent-lib.sh"
+teardown_retire_process_events "$STATE" "$ID" "$SCRIPT_DIR" || exit 1
 
 # A Herdr close may reposition shared workspace order, so the whole
 # destructive sequence below (worktree return, pane close, record removal)

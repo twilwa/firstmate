@@ -12,7 +12,7 @@
 #   fm-procevent.sh reconcile
 #   fm-procevent.sh classify <result-file>
 #   fm-procevent.sh handled <source-id> <sequence>
-#   fm-procevent.sh retire <source-id> [--if-absent|--if-matches <adapter> -- <argv>...|--if-owner <registration-token>]
+#   fm-procevent.sh retire <source-id> [--if-absent|--if-matches <adapter> -- <argv>...|--if-owner <registration-token|task-id>]
 #   fm-procevent.sh sweep-home [--preflight]
 #   fm-procevent.sh binding-retirement-preflight <binding-digest>
 #   fm-procevent.sh extension-retirement <binding|transfer> <retirement-arguments...>
@@ -111,9 +111,9 @@
 #            unconditional built-in retirement remains compatible. An external
 #            registration requires --if-owner. --if-matches compares a complete
 #            built-in registration, --if-absent refuses while any registration
-#            exists, and --if-owner removes only the exact extension registration
-#            token printed by register-extension, so a stale owner cannot retire
-#            a replacement generation.
+#            exists, and --if-owner accepts either the exact extension registration
+#            token printed by register-extension (protecting replacement generations)
+#            or the owning task id of a task-owned registration. Other owners refuse.
 # sweep-home Retire a bounded snapshot of this home's registrations and owned
 #            claims, then refuse unless no registration, runner record, or owned
 #            claim remains. Used by supported Firstmate home retirement.
@@ -2142,7 +2142,8 @@ cmd_retire() {
       [ "$#" -eq 3 ] || usage
       expected_owner=${3-}
       fm_procevent_extension_registration_token_valid "$expected_owner" \
-        || die "extension registration owner token is invalid"
+        || fm_pr_task_id_valid "$expected_owner" \
+        || die "registration owner must be an extension token or task id"
       ;;
     --if-matches)
       adapter=${3-}
@@ -2187,14 +2188,16 @@ cmd_retire() {
         fi
         ;;
       --if-owner)
-        fm_procevent_extension_registration_load_locked "$STATE" "$id"
-        owner_state=$?
-        if [ "$owner_state" -ne 0 ] \
-          || [ "$FM_PROCEVENT_EXTENSION_REGISTRATION_TOKEN" != "$expected_owner" ]; then
-          fm_procevent_source_lock_release "$id"
-          die "source registration does not match the expected owner: $id"
+        if ! fm_procevent_task_registration_owned_locked "$STATE" "$id" "$expected_owner"; then
+          fm_procevent_extension_registration_load_locked "$STATE" "$id"
+          owner_state=$?
+          if [ "$owner_state" -ne 0 ] \
+            || [ "$FM_PROCEVENT_EXTENSION_REGISTRATION_TOKEN" != "$expected_owner" ]; then
+            fm_procevent_source_lock_release "$id"
+            die "source registration does not match the expected owner: $id"
+          fi
+          extension_binding_digest=$FM_PROCEVENT_EXTENSION_BINDING_DIGEST
         fi
-        extension_binding_digest=$FM_PROCEVENT_EXTENSION_BINDING_DIGEST
         ;;
     esac
   elif [ "$condition" = --if-owner ] \

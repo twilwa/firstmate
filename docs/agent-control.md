@@ -61,6 +61,9 @@ T3 Code has no composer and its `/mcp` tools offer no session stop, so `exit` re
 **Teardown and discard are not verbs and will not become verbs.**
 `exit` stops an agent and preserves everything else.
 Removing a worktree, closing an endpoint, or discarding work stays with [`bin/fm-teardown.sh`](../bin/fm-teardown.sh), which owns the landed-work test.
+After that test passes, teardown retires the task's registered process-event sources with `fm-procevent.sh retire <source-id> --if-owner <task-id>` before destructive cleanup.
+A retirement refusal (including an unacknowledged captured round or uncertain runner identity) stops teardown, names the source and reason, and retains the task record for retry; `--force` does not bypass this step.
+Tasks with no registered sources are unaffected.
 
 **`resume` is not a verb.**
 It is not deterministic across the verified adapters: codex, grok, gemini, devin, commandcode, and cortex resume only from a session id printed at exit, polytoken resumes only from a session id held in its own sessions registry, opencode continues the most recent session for the cwd, and claude, pi, pi-signed, omp, kimi, and agy have no verified general pane-resume contract.
