@@ -1025,15 +1025,15 @@ test_tern_family_selection() {
   pass "fm-test-run: family tern selects the tern suite and smoke test, and the lane coverage guard accepts them"
 }
 
-test_list_scheduled_proven_isolated_uses_serial_weights() {
-  local tmp
-  tmp=$(fm_test_tmproot fm-test-run-proven-schedule)
-  "$RUNNER" --list --proven-isolated | LC_ALL=C sort >"$tmp/expected"
-  "$RUNNER" --list-scheduled --proven-isolated >"$tmp/actual" \
+test_list_scheduled_proven_isolated_uses_pool_weights() {
+  local first
+  first=$("$RUNNER" --list-scheduled --proven-isolated | head -n 1) \
     || fail "--list-scheduled --proven-isolated failed"
-  cmp -s "$tmp/expected" "$tmp/actual" \
-    || fail "proven-isolated scheduling must break serial-default ties by path"
-  pass "proven-isolated scheduling ignores parallel hints"
+  # The proven set shares the pool lane's hint table, so its schedule must lead
+  # with that table's heaviest member rather than falling back to serial hints.
+  [ "$first" = "tests/fm-captain-hold-lifecycle.test.sh" ] \
+    || fail "proven-isolated scheduling must order by pool hints, got $first"
+  pass "proven-isolated scheduling orders by pool hints"
 }
 
 test_list_scheduled_non_lane_selections_use_serial_weights() {
@@ -1079,68 +1079,56 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     cmp -s "$tmp/expected" "$tmp/actual" \
       || fail "$selection scheduling must use serial hints and path-ordered default ties"
   done
-  pass "family, all, changed, and script selections ignore parallel hints"
+  pass "family, all, changed, and script selections ignore pool hints"
 }
 
 test_portable_shard_union_and_coverage_guard() {
-  local s1 s2 proven serial herdr all_count union_count overlap out lane
-  s1=$("$RUNNER" --list --lane portable-parallel-1)
-  s2=$("$RUNNER" --list --lane portable-parallel-2)
+  local pool proven serial herdr all_count union_count out
+  pool=$("$RUNNER" --list --lane portable-pool)
   proven=$("$RUNNER" --list --proven-isolated)
   serial=$("$RUNNER" --list --lane portable-serial)
   herdr=$("$RUNNER" --list --family real-herdr-gated)
-  [ -n "$s1" ] && [ -n "$s2" ] || fail "portable parallel shards must be non-empty"
-  # Shards disjoint.
-  overlap=$(comm -12 <(printf '%s\n' "$s1" | LC_ALL=C sort) <(printf '%s\n' "$s2" | LC_ALL=C sort) || true)
-  [ -z "$overlap" ] || fail "portable parallel shards overlap: $overlap"
-  # Union of shards equals proven-isolated.
-  [ "$(printf '%s\n' "$s1" "$s2" | LC_ALL=C sort -u)" = \
+  [ -n "$pool" ] || fail "portable pool lane must be non-empty"
+  # The pool lane equals proven-isolated exactly.
+  [ "$(printf '%s\n' "$pool" | LC_ALL=C sort -u)" = \
     "$(printf '%s\n' "$proven" | LC_ALL=C sort -u)" ] \
-    || fail "shard union must equal proven-isolated set"
+    || fail "pool lane must equal the proven-isolated set"
   # No herdr in portable lanes.
-  printf '%s\n' "$s1" "$s2" "$serial" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
+  printf '%s\n' "$pool" "$serial" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     && fail "portable lanes must not include real-herdr-gated smoke"
   printf '%s\n' "$herdr" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     || fail "herdr family must include smoke"
   out=$("$RUNNER" --check-coverage)
   assert_contains "$out" "FM_TEST_COVERAGE ok" "coverage guard success marker"
   all_count=$("$RUNNER" --list --all | wc -l | tr -d ' ')
-  union_count=$(printf '%s\n' "$s1" "$s2" "$serial" "$herdr" | LC_ALL=C sort -u | wc -l | tr -d ' ')
+  union_count=$(printf '%s\n' "$pool" "$serial" "$herdr" | LC_ALL=C sort -u | wc -l | tr -d ' ')
   [ "$union_count" = "$all_count" ] \
     || fail "union of lanes ($union_count) must equal --all ($all_count)"
-  # No duplicates across the four partitions.
-  [ "$(printf '%s\n' "$s1" "$s2" "$serial" "$herdr" | LC_ALL=C sort | uniq -d | wc -l | tr -d ' ')" = "0" ] \
+  # No duplicates across the three partitions.
+  [ "$(printf '%s\n' "$pool" "$serial" "$herdr" | LC_ALL=C sort | uniq -d | wc -l | tr -d ' ')" = "0" ] \
     || fail "lanes must not duplicate scripts"
-  # LPT execution order, asserted against the runner's own measured schedule
-  # rather than against a script name: naming the current longest script here is
-  # what let the recorded lane duration go stale unnoticed in the first place.
-  for lane in portable-parallel-1 portable-parallel-2; do
-    [ "$("$RUNNER" --list --lane "$lane")" = "$("$RUNNER" --list-scheduled --lane "$lane")" ] \
-      || fail "$lane membership must be stored longest-measured-first"
-  done
-  pass "portable shard union, disjointness, and coverage guard hold"
+  pass "portable pool union, disjointness, and coverage guard hold"
 }
 
-# The two parallel lanes are only "duration-balanced" while every member has a
-# measured hint and the packing over those hints stays even. Both halves went
-# unchecked until one lane grew past its CI job cap and was cancelled on every
-# run, so assert them through the guard's own reported numbers.
-test_portable_parallel_lanes_stay_duration_balanced() {
-  local out max imbalance unhinted
+# The pool lane schedules from measured hints, so an unhinted member is handed
+# to workers on a guess and the modeled makespan is the only sanity check the
+# guard can report. Assert every member is hinted and the four-worker model
+# stays positive and inside the normal CI tier.
+test_portable_pool_stays_fully_hinted_and_bounded() {
+  local out hint modeled unhinted
   out=$("$RUNNER" --check-coverage)
-  unhinted=$(printf '%s\n' "$out" | sed -n 's/.*parallel_unhinted=\([0-9]*\).*/\1/p')
-  max=$(printf '%s\n' "$out" | sed -n 's/.*parallel_max_ms=\([0-9]*\).*/\1/p')
-  imbalance=$(printf '%s\n' "$out" | sed -n 's/.*parallel_imbalance_ms=\([0-9]*\).*/\1/p')
-  [ -n "$unhinted" ] && [ -n "$max" ] && [ -n "$imbalance" ] \
-    || fail "coverage guard must report parallel_unhinted, parallel_max_ms, parallel_imbalance_ms: $out"
+  unhinted=$(printf '%s\n' "$out" | sed -n 's/.*pool_unhinted=\([0-9]*\).*/\1/p')
+  hint=$(printf '%s\n' "$out" | sed -n 's/.*pool_hint_ms=\([0-9]*\).*/\1/p')
+  modeled=$(printf '%s\n' "$out" | sed -n 's/.*pool_modeled_ms=\([0-9]*\).*/\1/p')
+  [ -n "$unhinted" ] && [ -n "$hint" ] && [ -n "$modeled" ] \
+    || fail "coverage guard must report pool_unhinted, pool_hint_ms, pool_modeled_ms: $out"
   [ "$unhinted" = "0" ] \
-    || fail "$unhinted proven-isolated scripts have no measured parallel hint, so the lanes are packed on a guess"
-  [ "$max" -gt 0 ] || fail "parallel_max_ms must be a positive packed duration, got $max"
-  # 5% of the worst lane: wide enough that one script's growth does not trip it,
-  # narrow enough that a lopsided partition cannot call itself balanced.
-  [ "$((imbalance * 20))" -le "$max" ] \
-    || fail "parallel lanes differ by ${imbalance}ms against a ${max}ms worst lane, more than 5%"
-  pass "portable parallel lanes are fully hinted and packed within 5% of each other"
+    || fail "$unhinted proven-isolated scripts have no measured pool hint, so the schedule is packed on a guess"
+  [ "$hint" -gt 0 ] || fail "pool_hint_ms must be a positive summed cost, got $hint"
+  [ "$modeled" -gt 0 ] || fail "pool_modeled_ms must be a positive makespan, got $modeled"
+  [ "$modeled" -le 1200000 ] \
+    || fail "pool models ${modeled}ms, above the twenty-minute serial budget scale"
+  pass "portable pool is fully hinted and models inside the worker bound"
 }
 
 test_portable_serial_shards_partition_the_serial_lane() {
@@ -1876,7 +1864,7 @@ test_aggregate_json() {
   cat >"$tmp/a.json" <<'JSON'
 {
   "run_id": "a",
-  "selection": "lane=portable-parallel-1",
+  "selection": "lane=portable-pool",
   "started_at": "2026-07-22T00:00:00Z",
   "finished_at": "2026-07-22T00:01:00Z",
   "summary": {"total": 1, "failed": 0, "skipped_gate": 0, "duration_ms": 1000},
@@ -2142,10 +2130,10 @@ test_fail_on_gate_skip_token
 test_exclude_family
 test_exclude_script
 test_tern_family_selection
-test_list_scheduled_proven_isolated_uses_serial_weights
+test_list_scheduled_proven_isolated_uses_pool_weights
 test_list_scheduled_non_lane_selections_use_serial_weights
 test_portable_shard_union_and_coverage_guard
-test_portable_parallel_lanes_stay_duration_balanced
+test_portable_pool_stays_fully_hinted_and_bounded
 test_portable_serial_shards_partition_the_serial_lane
 test_portable_serial_hint_coverage_is_reported_and_bounded
 test_portable_serial_packing_budget_boundary

@@ -254,18 +254,13 @@ test_family_map_labels_this_contract() {
   pass "isolation-proof contract test is family-mapped"
 }
 
-test_parallel_shards_consume_the_proven_set() {
-  local proven shards
+test_pool_lane_consumes_the_proven_set() {
+  local proven pool
   proven=$("$PROOF" --list | LC_ALL=C sort -u)
-  shards=$(
-    {
-      "$RUNNER" --list --lane portable-parallel-1
-      "$RUNNER" --list --lane portable-parallel-2
-    } | LC_ALL=C sort -u
-  )
-  [ "$proven" = "$shards" ] \
-    || fail "portable parallel shards must equal isolation-proof --list exactly"
-  pass "parallel shards consume the proven-isolated set only"
+  pool=$("$RUNNER" --list --lane portable-pool | LC_ALL=C sort -u)
+  [ "$proven" = "$pool" ] \
+    || fail "portable pool lane must equal isolation-proof --list exactly"
+  pass "pool lane consumes the proven-isolated set only"
 }
 
 # A fixture repository names its branch, so a suite that resolves `main` gets
@@ -293,5 +288,5 @@ test_candidates_exclude_serial_classes
 test_extra_hermetic_candidates_present
 test_list_exclusions_documents_reasons
 test_family_map_labels_this_contract
-test_parallel_shards_consume_the_proven_set
+test_pool_lane_consumes_the_proven_set
 test_fixture_repo_branch_is_pinned
