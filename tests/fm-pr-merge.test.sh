@@ -262,6 +262,9 @@ case "${1:-} ${2:-}" in
     exit "$merge_rc"
     ;;
   "api graphql")
+    case "$*" in
+      *mergeCommit*) cat "${FM_TEST_GH_OUTCOME%/*}/github-landing.json"; exit $? ;;
+    esac
     if [ -f "${FM_TEST_GH_GRAPHQL_FAIL:-}" ]; then
       echo 'error: could not reach the GitHub API' >&2
       exit 1
@@ -273,6 +276,10 @@ case "${1:-} ${2:-}" in
     # The required-check reads: the branch itself, and its rules read without
     # the merge-queue filter the queue reader below applies.
     case " $* " in
+      *" repos/"*"/commits "*)
+        cat "${FM_TEST_GH_OUTCOME%/*}/github-commits.json"
+        exit $?
+        ;;
       *" repos/"*"/commits/"*"/check-runs"*)
         case "$*" in
           *"/commits/$(cat "$FM_TEST_GH_HEAD")/check-runs"*) ;;
@@ -1182,6 +1189,103 @@ test_github_unreadable_outcome_keeps_pr_bookkeeping() {
   assert_present "$case_dir/state/task-x1.check.sh" \
     "github-outcome-read-fails: no merge poll was armed for a merge that may have landed"
   pass "fm-pr-merge keeps PR bookkeeping when it cannot read a successful merge call's outcome"
+}
+
+# The public merge command must recover a landing even when GitHub rejects
+# the mutation and its ordinary outcome view still says OPEN.
+make_github_base_modified_case() {
+  local case_dir
+  case_dir=$(make_case "$1")
+  add_gh_mocks "$case_dir" 6161616161616161616161616161616161616161
+  printf '%s\n' 'GraphQL: Base branch was modified. Review and try the merge again.' \
+    > "$case_dir/github-merge-output"
+  printf '1\n' > "$case_dir/github-merge-rc"
+  write_github_outcome "$case_dir" OPEN false false main
+  printf '%s\n' "$case_dir"
+}
+
+test_github_base_modified_recovers_merged_state() {
+  local case_dir rc
+  case_dir=$(make_github_base_modified_case github-base-modified-merged)
+  printf '%s\n' '{"data":{"repository":{"pullRequest":{"state":"MERGED","merged":true,"mergeCommit":{"oid":"cccccccccccccccccccccccccccccccccccccccc"},"baseRefName":"main"}}}}' \
+    > "$case_dir/github-landing.json"
+  printf '[]\n' > "$case_dir/github-commits.json"
+
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 0 "$rc" "base-modified-merged: the confirmed landing must succeed: $(cat "$case_dir/stderr")"
+  assert_grep 'cccccccccccccccccccccccccccccccccccccccc' "$case_dir/stdout" \
+    "base-modified-merged: the landing commit was not reported"
+  assert_grep 'pr=https://github.com/example/repo/pull/123' "$case_dir/state/task-x1.meta" \
+    "base-modified-merged: normal PR metadata missing"
+  assert_grep 'pr_head=6161616161616161616161616161616161616161' "$case_dir/state/task-x1.meta" \
+    "base-modified-merged: normal head metadata missing"
+  assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" \
+    "base-modified-merged: normal merge outcome not published"
+  [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 1 ] \
+    || fail "base-modified-merged: duplicate merge attempted"
+  pass "fm-pr-merge recovers the commit from merged PR state after a base-modified error"
+}
+
+test_github_base_modified_recovers_stale_pr_from_base() {
+  local case_dir rc
+  case_dir=$(make_github_base_modified_case github-base-modified-stale)
+  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
+    > "$case_dir/github-landing.json"
+  printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"Fix duplicate squash (#123)\n\nSquashed body"}}]' \
+    > "$case_dir/github-commits.json"
+
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 0 "$rc" "base-modified-stale: a base landing must succeed: $(cat "$case_dir/stderr")"
+  assert_grep 'cccccccccccccccccccccccccccccccccccccccc' "$case_dir/stdout" \
+    "base-modified-stale: the squash commit was not reported"
+  assert_grep 'pr=https://github.com/example/repo/pull/123' "$case_dir/state/task-x1.meta" \
+    "base-modified-stale: normal PR metadata missing"
+  assert_grep 'pr_head=6161616161616161616161616161616161616161' "$case_dir/state/task-x1.meta" \
+    "base-modified-stale: normal head metadata missing"
+  assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" \
+    "base-modified-stale: normal merge outcome not published"
+  [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 1 ] \
+    || fail "base-modified-stale: duplicate merge attempted"
+  pass "fm-pr-merge recovers a base squash when PR state remains stale after a base-modified error"
+}
+
+test_github_base_modified_without_landing_keeps_retry() {
+  local case_dir rc
+  case_dir=$(make_github_base_modified_case github-base-modified-unmerged)
+  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
+    > "$case_dir/github-landing.json"
+  # Neither another PR's suffix nor a mention in a body proves this landing.
+  printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"Other work (#456)\n\nRelated (#123)"}}]' \
+    > "$case_dir/github-commits.json"
+
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "base-modified-unmerged: an unproved landing must refuse"
+  assert_grep 'state=OPEN, merged=false, isInMergeQueue=false' "$case_dir/stderr" \
+    "base-modified-unmerged: original refusal missing"
+  assert_no_grep 'verified:' "$case_dir/stdout" \
+    "base-modified-unmerged: unrelated commits were accepted as proof"
+  assert_absent "$case_dir/state/.wake-queue" \
+    "base-modified-unmerged: unproved merge outcome published"
+  assert_present "$case_dir/state/task-x1.check.sh" \
+    "base-modified-unmerged: merge poll lost"
+
+  # With neither proof of a landing, a later caller may still merge normally.
+  printf '0\n' > "$case_dir/github-merge-rc"
+  : > "$case_dir/github-merge-output"
+  write_github_outcome "$case_dir" MERGED true false main
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/retry.stdout" 2> "$case_dir/retry.stderr" || rc=$?
+  expect_code 0 "$rc" "base-modified-unmerged: genuine retry must still succeed"
+  assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" \
+    "base-modified-unmerged: retry lost normal merge bookkeeping"
+  pass "fm-pr-merge preserves refusal and a later valid retry when neither source proves a landing"
 }
 
 test_github_refusal_quotes_the_forge_output() {
@@ -4954,6 +5058,9 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
   pass "fm-pr-merge --allow-no-pipeline is attended-only, takes no value, and applies only to GitLab"
 }
 
+test_github_base_modified_recovers_merged_state
+test_github_base_modified_recovers_stale_pr_from_base
+test_github_base_modified_without_landing_keeps_retry
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route

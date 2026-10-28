@@ -68,6 +68,12 @@
 # own view still proves a landed merge, and every outcome it cannot prove
 # refuses, reporting the failed gh read and naming both failed reads when the
 # gh-axi view could not prove the outcome either.
+# After the specific GraphQL "Base branch was modified" refusal, re-read the
+# PR's merged state and mergeCommit and, if those do not prove a landing, scan
+# the base's latest 100 commits for GitHub's squash-title suffix " (#<number>)".
+# A proved landing is reported with its commit and follows normal successful-
+# merge bookkeeping; no second merge is issued. Only without either proof does
+# the ordinary refusal and retry guidance remain.
 # If the pull request remains open and the base branch has an effective
 # merge_queue rule, an attended refusal names the queue's configured merge
 # method and exact --attended-override -- --auto --<method> retry flags. While
@@ -1278,6 +1284,36 @@ github_read_outcome() {
   return 1
 }
 
+# GitHub can land a squash despite reporting that the base changed, while its
+# ordinary outcome view still lags behind. Recover the concrete landing before
+# reporting a refusal that would invite a duplicate merge.
+FM_PR_GITHUB_RECOVERED_COMMIT=
+github_recover_base_modified_landing() {
+  local json commit=''
+  # shellcheck disable=SC2016 # GraphQL variables are literal query syntax.
+  if json=$(gh api graphql \
+    -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){merged mergeCommit{oid}}}}' \
+    -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" 2>/dev/null); then
+    commit=$(printf '%s' "$json" | jq -er '
+      .data.repository.pullRequest | select(.merged == true) | .mergeCommit.oid
+      | select(type == "string" and test("^[0-9a-fA-F]{40}$"))' 2>/dev/null) || commit=''
+  fi
+  if [ -z "$commit" ] && [ -n "$FM_PR_GITHUB_BASE" ]; then
+    if json=$(gh api --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
+      -f "sha=$FM_PR_GITHUB_BASE" -f per_page=100 2>/dev/null); then
+      commit=$(printf '%s' "$json" | jq -er --arg number "$PR_NUMBER" '
+        [ .[] | select((.commit.message | split("\n")[0]) | endswith(" (#" + $number + ")"))
+          | .sha | select(type == "string" and test("^[0-9a-fA-F]{40}$")) ][0] // empty' \
+        2>/dev/null) || commit=''
+    fi
+  fi
+  [ -n "$commit" ] || return 1
+  FM_PR_GITHUB_RECOVERED_COMMIT=$commit
+  FM_PR_GITHUB_STATE=MERGED
+  FM_PR_GITHUB_MERGED=true
+  FM_PR_GITHUB_QUEUED=false
+}
+
 # Read the effective merge-queue method for the observed base branch. The four
 # situations the refusal has to keep apart - no queue rule, a rules response
 # that could not be read, several rules that disagree, and a rule whose method
@@ -1721,6 +1757,17 @@ case "$PROVIDER" in
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
       "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?
+    github_landing_recovered=false
+    if [ "$merge_status" -ne 0 ]; then
+      case "$merge_output" in
+        *'GraphQL: Base branch was modified. Review and try the merge again.'*)
+          if github_recover_base_modified_landing; then
+            github_landing_recovered=true
+            merge_status=0
+          fi
+          ;;
+      esac
+    fi
     if [ "$merge_status" -eq 0 ]; then
       FM_PR_GITHUB_MERGE_ACCEPTED=true
       persist_accepted_merge_authority || exit 1
@@ -1742,13 +1789,16 @@ case "$PROVIDER" in
       fi
       exit "$merge_status"
     fi
-    if ! github_read_outcome; then
+    if [ "$github_landing_recovered" != true ] && ! github_read_outcome; then
       github_report_forge_output "$merge_output"
       exit 1
     fi
     if [ "$FM_PR_GITHUB_MERGED" = true ]; then
       printf 'verified: %s is merged (state=%s, merged=%s, isInMergeQueue=%s)\n' \
         "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED"
+      if [ -n "$FM_PR_GITHUB_RECOVERED_COMMIT" ]; then
+        printf 'verified: landing commit %s; do not retry the merge\n' "$FM_PR_GITHUB_RECOVERED_COMMIT"
+      fi
     elif [ "$FM_PR_GITHUB_QUEUED" = true ]; then
       printf 'verified: %s is queued (state=%s, merged=%s, isInMergeQueue=%s)\n' \
         "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED"
