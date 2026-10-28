@@ -93,6 +93,9 @@ SH
   ln -s "$ROOT/bin/fm-secondmate-sleep-lib.sh" "$fake/bin/fm-secondmate-sleep-lib.sh"
   # fm-local-handoff-lib.sh: teardown sources it for the bound local-only landed proof.
   ln -s "$ROOT/bin/fm-local-handoff-lib.sh" "$fake/bin/fm-local-handoff-lib.sh"
+  # fm-teardown-procevent-lib.sh: teardown sources it to retire task-owned
+  # process-event sources; this fixture registers none.
+  ln -s "$ROOT/bin/fm-teardown-procevent-lib.sh" "$fake/bin/fm-teardown-procevent-lib.sh"
   # Receiver-wake retirement sources the pending-reply library, which in turn
   # requires the marker helper even for this ordinary-task teardown fixture.
   ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
@@ -200,6 +203,7 @@ SH
   ln -s "$ROOT/bin/fm-secondmate-parent-lib.sh" "$fake/bin/fm-secondmate-parent-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-sleep-lib.sh" "$fake/bin/fm-secondmate-sleep-lib.sh"
   ln -s "$ROOT/bin/fm-local-handoff-lib.sh" "$fake/bin/fm-local-handoff-lib.sh"
+  ln -s "$ROOT/bin/fm-teardown-procevent-lib.sh" "$fake/bin/fm-teardown-procevent-lib.sh"
   ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
   ln -s "$ROOT/bin/fm-marker-lib.sh" "$fake/bin/fm-marker-lib.sh"
   ln -s "$ROOT/bin/fm-operational-input.sh" "$fake/bin/fm-operational-input.sh"
