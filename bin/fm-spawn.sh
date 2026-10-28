@@ -424,11 +424,12 @@
 #   On backend=orca the destination is an Orca terminal whose environment comes
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
-# Mise config trust (all command-launch harnesses):
+# Mise config trust (every harness and backend):
 #   Before any launch command or task prep runs, export the resolved worktree's
 #   existing mise.toml, .mise.toml, .mise/config.toml and .tool-versions paths in
 #   MISE_TRUSTED_CONFIG_PATHS. This explicit assignment survives allowlist
 #   filtering; destination trust is retained only when inherited or allowlisted.
+#   On backend=t3code the same paths become a harness config entry instead.
 #   No interactive mise command or persistent trust-store change is performed.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
@@ -911,6 +912,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-kimi-trust-lib.sh
 . "$SCRIPT_DIR/fm-kimi-trust-lib.sh"
+# shellcheck source=bin/fm-launch-mise-env-lib.sh
+. "$SCRIPT_DIR/fm-launch-mise-env-lib.sh"
 # shellcheck source=bin/fm-kimi-delivery-lib.sh
 . "$SCRIPT_DIR/fm-kimi-delivery-lib.sh"
 # shellcheck source=bin/fm-control-lib.sh
@@ -7333,6 +7336,10 @@ if [ "$BACKEND" = t3code ]; then
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
   fi
+  T3CODE_MISE_PATHS=$(fm_launch_mise_paths "$WT")
+  if [ -n "$T3CODE_MISE_PATHS" ]; then
+    T3CODE_ENV+=("MISE_TRUSTED_CONFIG_PATHS=$T3CODE_MISE_PATHS")
+  fi
   if [ "$KIND" = secondmate ]; then
     # The secondmate launch prefix above, value for value, plus the supervisor
     # identity its own away daemon cannot discover from inside a T3 thread.
@@ -7390,8 +7397,6 @@ fi
 fi
 # Compose explicit worktree trust inside the filtering boundary, before the
 # command (including any configured task prep) can invoke mise.
-# shellcheck source=bin/fm-launch-mise-env-lib.sh
-. "$SCRIPT_DIR/fm-launch-mise-env-lib.sh"
 LAUNCH=$(fm_launch_mise_env "$WT" "$LAUNCH")
 if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
   LAUNCH_ENV_PREFIX='/usr/bin/env -i'

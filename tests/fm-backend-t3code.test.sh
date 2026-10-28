@@ -198,6 +198,17 @@ t3_excluded() {
   grep -qxF "$2" "$excl"
 }
 
+# fm_git_worktree with <file>... committed on main first, so the leased slot
+# carries committed mise configs and stays clean.
+t3_git_worktree_with() {  # <repo> <worktree> <branch> <file>...
+  local repo=$1 worktree=$2 branch=$3
+  shift 3
+  fm_git_init_commit "$repo"
+  (cd "$repo" && touch "$@" && git add "$@" && git -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm 'mise configs')
+  fm_git_add_origin "$repo" "$repo.origin.git"
+  git -C "$repo" worktree add --quiet -b "$branch" "$worktree"
+}
+
 t3_json_field() {  # <file> <js expression over the parsed document d>
   node -e '
 const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -1510,7 +1521,7 @@ test_spawn_leases_slot_creates_thread_and_starts_launch_turn() {
   wt="$CASE_DIR/spawn-wt"
   data="$CASE_DIR/data"
   state="$CASE_DIR/state"
-  fm_git_worktree "$proj" "$wt" "fm/$id"
+  t3_git_worktree_with "$proj" "$wt" "fm/$id" mise.toml
   mkdir -p "$data/$id" "$state" "$CASE_DIR/home/state"
   write_spawn_brief "$data" "$id"
   touch "$state/.last-watcher-beat"
@@ -1557,7 +1568,8 @@ test_spawn_leases_slot_creates_thread_and_starts_launch_turn() {
   [ "$(t3_json_field "$settings" 'd.env.GIT_CONFIG_COUNT')" = 1 ] || fail "T3 workers must select one Git config override"
   [ "$(t3_json_field "$settings" 'd.env.TRACEPARENT')" = undefined ] || fail "TRACEPARENT must be absent when trace context is off"
   [ "$(t3_json_field "$settings" 'd.env.COMPACT_ADVISER_DISABLE')" = 1 ] || fail "settings env must carry the compact-adviser kill switch every launch carries"
-  [ "$(t3_json_field "$settings" 'Object.keys(d.env).sort().join(" ")')" = "COMPACT_ADVISER_DISABLE FM_T3CODE_ENV_KEYS FM_TASK_ID FM_TASK_INBOX GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GOTMPDIR" ] || fail "a worker env block carries the task inbox and Git hook with the launch environment"
+  [ "$(t3_json_field "$settings" 'd.env.MISE_TRUSTED_CONFIG_PATHS')" = "$wt/mise.toml" ] || fail "settings env must pre-trust the worktree's mise config, got '$(t3_json_field "$settings" 'd.env')'"
+  [ "$(t3_json_field "$settings" 'Object.keys(d.env).sort().join(" ")')" = "COMPACT_ADVISER_DISABLE FM_T3CODE_ENV_KEYS FM_TASK_ID FM_TASK_INBOX GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GOTMPDIR MISE_TRUSTED_CONFIG_PATHS" ] || fail "a worker env block carries the task inbox and Git hook with the launch environment"
   t3_excluded "$wt" .claude/settings.local.json || fail "the settings file must be git-excluded"
   assert_present "$wt/CLAUDE.local.md" "a claude worker gets the task-worker channel statement as CLAUDE.local.md"
   assert_grep "task worker launched by Firstmate" "$wt/CLAUDE.local.md" "CLAUDE.local.md must carry the channel statement"
@@ -1578,7 +1590,7 @@ test_spawn_codex_scout_writes_toml_env_with_traceparent() {
   t3_task_id "$id"
   t3_case spawn-codex
   proj="$CASE_DIR/spawn-project"; wt="$CASE_DIR/spawn-wt"; data="$CASE_DIR/data"; state="$CASE_DIR/state"
-  fm_git_worktree "$proj" "$wt" "fm/$id"
+  t3_git_worktree_with "$proj" "$wt" "fm/$id" .mise.toml .tool-versions
   mkdir -p "$data/$id" "$state" "$CASE_DIR/home/state"
   write_spawn_brief "$data" "$id"
   touch "$state/.last-watcher-beat"
@@ -1600,6 +1612,7 @@ test_spawn_codex_scout_writes_toml_env_with_traceparent() {
   [ "$(t3_toml_env "$toml" FM_TASK_INBOX)" = "$state/$id.inbox" ] || fail "a scout's config.toml must set FM_TASK_INBOX"
   [ "$(t3_toml_env "$toml" GIT_CONFIG_VALUE_0)" = "$state/$id.git-hooks" ] || fail "a scout's config.toml must select the installed Git hook"
   [ "$(t3_toml_env "$toml" COMPACT_ADVISER_DISABLE)" = 1 ] || fail "config.toml must set the compact-adviser kill switch"
+  [ "$(t3_toml_env "$toml" MISE_TRUSTED_CONFIG_PATHS)" = "$wt/.mise.toml:$wt/.tool-versions" ] || fail "config.toml must pre-trust the worktree's mise configs, got '$(cat "$toml")'"
   tp=$(t3_toml_env "$toml" TRACEPARENT)
   case "$tp" in 00-????????????????????????????????-????????????????-??) ;; *) fail "config.toml must set a W3C TRACEPARENT when trace context is on, got '$(cat "$toml")'" ;; esac
   grep -qxF "traceparent=$tp" "$state/$id.meta" || fail "the delivered TRACEPARENT must be the one recorded in the meta, got '$(grep '^traceparent=' "$state/$id.meta")'"

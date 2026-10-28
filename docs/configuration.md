@@ -1496,7 +1496,7 @@ For every command-launch harness, Firstmate explicitly adds existing `mise.toml`
 These absolute paths are colon-separated and survive allowlist filtering without listing the variable; launches with no matching files leave it unchanged.
 Existing destination trust is preserved when inherited, or when the variable is explicitly allowlisted under filtering; Firstmate does not copy its own ambient trust into the worker.
 This avoids interactive mise trust prompts for fresh isolated copies without running `mise trust` or modifying a persistent trust store.
-T3 Code's server-started provider has no command-launch environment and is not covered by this assignment.
+On the T3 Code backend, which has no launch command, the same paths are written as `MISE_TRUSTED_CONFIG_PATHS` in the worker's harness environment config alongside its other launch facts; that literal value replaces rather than extends inherited trust.
 
 Unless the Orca environment source below is configured, allowed values come from the destination pane at execution time; they are neither copied from the invoking Firstmate process nor written into the launch command.
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
