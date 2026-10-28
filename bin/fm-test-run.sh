@@ -213,11 +213,10 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # script is tests/fm-watch-triage.test.sh at about 934s under CI load (the
 # hint table below records that loaded figure). 1500s keeps every measured script
 # under the bound with roughly 1.6x headroom over the slowest loaded measurement.
-# The portable CI jobs apply the same bound under a 45-minute job cap, so a
-# wedged script that starts within 20 minutes of job start fails here, with its
-# output, before the job cap cancels the lane; setup plus the scripts packed
-# ahead of it must fit that window, and one starting after minute 20 can still
-# hit the job cap. It is a guard, not a speed control: a HUNG script becomes a
+# The portable CI jobs apply the same bound under a job cap sized to cover setup,
+# PORTABLE_SERIAL_MAX_WEIGHT_MS, and this bound (docs/fm-test-portable-shards.md
+# "Timeouts"), so a wedged script fails here, with its output, before the job
+# cap cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
 # bounded failure instead of an unbounded suite, which is the shape that
 # silently outruns a caller's invocation budget.
 CHANGED_DEFAULT_TIMEOUT_SECS=1500

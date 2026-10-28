@@ -25,12 +25,12 @@ concurrency:
 # Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the four
 # tiers and their rationale; tests/fm-ci-workflow.test.sh guards this workflow.
 # Each job comment identifies the tier implemented by its executable value.
-# The portable test tier pairs a 45-minute job cap with the runner's 1500s
-# per-file bound, so a hung file that starts within 20 minutes of job start
-# fails by name with exit 124 before the cap. Setup and the files packed ahead
-# of it must fit that 20-minute window; the shard packing target alone allows
-# 20 minutes of script time, so a file starting after minute 20 can still hit
-# the job cap as an unexplained timeout.
+# The portable test tier pairs a 50-minute job cap with the runner's 1500s
+# per-file bound. The cap must exceed a 60s setup allowance plus the runner's
+# 1200s packing target plus that bound (2760s < 3000s), so a hung file in a
+# lane packed within its target fails by name with exit 124 before the cap.
+# A file that starts after minute 25, because setup or earlier files overrun
+# their allowance and hints, can still hit the job cap.
 
 # Fork opt-out: a fork sets the repository variable FM_CI_SKIP_PUSH to 1 to
 # skip the push run, and FM_CI_SKIP_MACOS to 1 to skip the macOS job, without
@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Portable test tier (see the timeout policy above).
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
         with:
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Portable test tier (see the timeout policy above).
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
         with:
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Portable test tier (see the timeout policy above).
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false

@@ -320,13 +320,12 @@ test_normal_tier_shares_one_budget() {
   pass "normal tier jobs share one $normal minute budget"
 }
 
-# Portable test tier: the portable lanes share one 45-minute cap above the
+# Portable test tier: the portable lanes share one 50-minute cap above the
 # normal tier and below the heavy backstop. The cap must exceed the setup
-# allowance plus the lane's largest packed weight, as the runner's coverage
-# guard models it, plus the per-file bound the workflow applies, so a hung file
-# in the current packing fails by name before the job cap. The window is only
-# as good as the hints: a file that starts after cap minus bound still hits the
-# job cap.
+# allowance plus the runner's packing target (serial_budget_ms from the
+# coverage guard, never today's packed maximum) plus the per-file bound the
+# workflow applies, so any packing the guard accepts leaves a hung file room to
+# fail by name before the job cap.
 test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   local normal portable heavy coverage
   # shellcheck disable=SC2086
@@ -335,23 +334,19 @@ test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   portable=$(tier_timeout portable $PORTABLE_TIER_JOBS) || exit 1
   # shellcheck disable=SC2086
   heavy=$(tier_timeout heavy $HEAVY_TIER_JOBS) || exit 1
-  [ "$portable" = 45 ] \
-    || fail "portable test tier must be the single 45-minute cap, got $portable"
+  [ "$portable" = 50 ] \
+    || fail "portable test tier must be the single 50-minute cap, got $portable"
   [ "$portable" -gt "$normal" ] && [ "$portable" -lt "$heavy" ] \
     || fail "portable test tier ($portable) must sit above normal ($normal) and below heavy ($heavy)"
   coverage=$("$ROOT/bin/fm-test-run.sh" --check-coverage 2>/dev/null | grep '^FM_TEST_COVERAGE ok ') \
-    || fail "could not read the packed lane weights from the coverage guard"
+    || fail "could not read the packing target from the coverage guard"
   ruby -ryaml -rshellwords - "$CI_WORKFLOW" "$coverage" "$PORTABLE_SETUP_ALLOWANCE_SECS" <<'RUBY' \
-    || fail "portable job cap does not cover setup, pack weight, and the per-file bound"
+    || fail "portable job cap does not cover setup, packing target, and the per-file bound"
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
 setup = Integer(ARGV[2])
-weights = {
-  "tests-portable-parallel-1" => Integer(fields.fetch("parallel_max_ms")),
-  "tests-portable-parallel-2" => Integer(fields.fetch("parallel_max_ms")),
-  "tests-portable-serial" => Integer(fields.fetch("serial_max_ms")),
-}
-weights.each do |job_id, weight_ms|
+budget_ms = Integer(fields.fetch("serial_budget_ms"))
+%w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
   job = jobs.fetch(job_id)
   step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
   raise "#{job_id}: missing runner command" unless step
@@ -360,14 +355,14 @@ weights.each do |job_id, weight_ms|
   raise "#{job_id}: no per-file bound" unless index
   bound = Integer(words.fetch(index + 1))
   cap = job.fetch("timeout-minutes") * 60
-  needed = setup + (weight_ms + 999) / 1000 + bound
+  needed = setup + (budget_ms + 999) / 1000 + bound
   unless cap > needed
-    warn "#{job_id}: cap #{cap}s must exceed setup #{setup}s + pack weight #{weight_ms}ms + per-file bound #{bound}s"
+    warn "#{job_id}: cap #{cap}s must exceed setup #{setup}s + packing target #{budget_ms}ms + per-file bound #{bound}s"
     exit 1
   end
 end
 RUBY
-  pass "portable test tier shares one $portable minute cap above setup, pack weight, and the per-file bound"
+  pass "portable test tier shares one $portable minute cap above setup, packing target, and the per-file bound"
 }
 
 # Heavy tier: Herdr alone carries a job-level last-resort backstop above the
