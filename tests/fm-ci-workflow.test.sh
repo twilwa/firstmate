@@ -322,10 +322,10 @@ test_normal_tier_shares_one_budget() {
 
 # Portable test tier: the portable lanes share one 50-minute cap above the
 # normal tier and below the heavy backstop. The cap must exceed the setup
-# allowance plus the runner's packing target (serial_budget_ms from the
-# coverage guard, never today's packed maximum) plus the per-file bound the
-# workflow applies, so any packing the guard accepts leaves a hung file room to
-# fail by name before the job cap.
+# allowance plus the lane's packing ceiling (parallel_budget_ms or
+# serial_budget_ms from the coverage guard, never today's packed maximum) plus
+# the per-file bound the workflow applies, so any packing the guard accepts
+# leaves a hung file room to fail by name before the job cap.
 test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   local normal portable heavy coverage
   # shellcheck disable=SC2086
@@ -345,8 +345,12 @@ test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
 setup = Integer(ARGV[2])
-budget_ms = Integer(fields.fetch("serial_budget_ms"))
-%w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
+budgets = {
+  "tests-portable-parallel-1" => Integer(fields.fetch("parallel_budget_ms")),
+  "tests-portable-parallel-2" => Integer(fields.fetch("parallel_budget_ms")),
+  "tests-portable-serial" => Integer(fields.fetch("serial_budget_ms")),
+}
+budgets.each do |job_id, budget_ms|
   job = jobs.fetch(job_id)
   step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
   raise "#{job_id}: missing runner command" unless step

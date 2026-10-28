@@ -146,8 +146,10 @@
 # duration-balanced partition of that exact set, packed from the measured hints
 # in portable_parallel_weight_hints (see docs/fm-test-portable-shards.md).
 # --check-coverage reports parallel_max_ms (the larger lane hint sum),
-# parallel_imbalance_ms (the absolute difference between the sums), and
-# parallel_unhinted (the number of members missing a parallel hint).
+# parallel_imbalance_ms (the absolute difference between the sums),
+# parallel_unhinted (the number of members missing a parallel hint), and
+# parallel_budget_ms (the parallel packing ceiling), refusing a lane hint sum
+# above that ceiling.
 # These sums exclude unhinted members and are estimates, not measured job wall
 # times. Missing parallel hints are reported without failing this guard.
 #
@@ -214,7 +216,8 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # hint table below records that loaded figure). 1500s keeps every measured script
 # under the bound with roughly 1.6x headroom over the slowest loaded measurement.
 # The portable CI jobs apply the same bound under a job cap sized to cover setup,
-# PORTABLE_SERIAL_MAX_WEIGHT_MS, and this bound (docs/fm-test-portable-shards.md
+# the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS or
+# PORTABLE_PARALLEL_MAX_WEIGHT_MS), and this bound (docs/fm-test-portable-shards.md
 # "Timeouts"), so a wedged script fails here, with its output, before the job
 # cap cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
 # bounded failure instead of an unbounded suite, which is the shape that
@@ -233,6 +236,10 @@ PORTABLE_SERIAL_DEFAULT_WEIGHT_MS=45000
 # cap for setup and runtime variance. --check-coverage refuses a
 # modeled serial shard above this target; refresh hints or rebalance instead.
 PORTABLE_SERIAL_MAX_WEIGHT_MS=1200000
+
+# Packing ceiling for each portable parallel lane's hint sum, on the same terms
+# as the serial target above. --check-coverage refuses a lane above it.
+PORTABLE_PARALLEL_MAX_WEIGHT_MS=$PORTABLE_SERIAL_MAX_WEIGHT_MS
 
 # Largest share of the serial lane allowed to run on the default weight above.
 # Hints are what keep the shards balanced, so once too much of the lane is
@@ -1307,15 +1314,22 @@ run_coverage_guard() {
   read -r p2_ms p2_unhinted <<<"$(list_portable_parallel_2 | portable_parallel_lane_weight)"
   parallel_max_ms=$p1_ms
   [ "$p2_ms" -le "$parallel_max_ms" ] || parallel_max_ms=$p2_ms
+  if [ "$parallel_max_ms" -gt "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" ]; then
+    log "coverage guard: largest portable parallel lane packs ${parallel_max_ms}ms above the ${PORTABLE_PARALLEL_MAX_WEIGHT_MS}ms target"
+    log "refresh CI hints and rebalance; do not raise the job timeout: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
   parallel_imbalance_ms=$((p1_ms - p2_ms))
   [ "$parallel_imbalance_ms" -ge 0 ] || parallel_imbalance_ms=$((-parallel_imbalance_ms))
 
-  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s parallel_budget_ms=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
     "$(wc -l <"$tmp/shards_union" | tr -d ' ')" \
     "$parallel_max_ms" \
     "$parallel_imbalance_ms" \
     "$((p1_unhinted + p2_unhinted))" \
+    "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" \
     "$(wc -l <"$tmp/serial" | tr -d ' ')" \
     "$PORTABLE_SERIAL_SHARDS" \
     "$unhinted" \
