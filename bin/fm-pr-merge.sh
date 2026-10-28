@@ -68,6 +68,19 @@
 # own view still proves a landed merge, and every outcome it cannot prove
 # refuses, reporting the failed gh read and naming both failed reads when the
 # gh-axi view could not prove the outcome either.
+# After the specific GraphQL "Base branch was modified" refusal, re-read the
+# PR's merged state and mergeCommit and, if those do not prove a landing, scan
+# every page of base commits since five minutes before the merge attempt. A
+# candidate lands only when GitHub's commit-to-PR association lists this PR,
+# which also covers --merge and --rebase landings without a squash title. A
+# commit whose title ends in this PR's squash suffix " (#<number>)" but whose
+# association is empty, unreadable or names another PR is reported as an
+# unconfirmed landing. A proved landing is reported with its commit and follows
+# normal successful-merge bookkeeping; no second merge is issued. An unconfirmed
+# candidate, or an unreadable re-read, base or attempt time, reports that a
+# landing cannot be ruled out, without retry guidance. Only a completed scan with
+# no association and no title match keeps the ordinary refusal and retry
+# guidance.
 # If the pull request remains open and the base branch has an effective
 # merge_queue rule, an attended refusal names the queue's configured merge
 # method and exact --attended-override -- --auto --<method> retry flags. While
@@ -1278,6 +1291,77 @@ github_read_outcome() {
   return 1
 }
 
+# GitHub can land a squash despite reporting that the base changed, while its
+# ordinary outcome view still lags behind. Recover the concrete landing before
+# reporting a refusal that would invite a duplicate merge.
+FM_PR_GITHUB_RECOVERED_COMMIT=
+FM_PR_GITHUB_UNCONFIRMED_COMMIT=
+FM_PR_GITHUB_MERGE_SINCE=
+
+github_read_landing_commit() {
+  local json
+  # shellcheck disable=SC2016 # GraphQL variables are literal query syntax.
+  json=$(gh api graphql \
+    -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){merged mergeCommit{oid}}}}' \
+    -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" 2>/dev/null) || return 2
+  FM_PR_GITHUB_RECOVERED_COMMIT=$(printf '%s' "$json" | jq -er '
+    .data.repository.pullRequest
+    | if .merged == false then ""
+      elif .merged == true and (.mergeCommit.oid | type == "string" and test("^[0-9a-fA-F]{40}$"))
+      then .mergeCommit.oid
+      else error("unreadable landing") end' 2>/dev/null) || return 2
+}
+
+# An association proves identity for every merge method. A squash-title suffix
+# without that association cannot prove the landing, but it cannot be ruled out.
+github_find_associated_base_commit() {
+  local json commits sha titled associated matched unreadable=false
+  [ -n "$FM_PR_GITHUB_BASE" ] && [ -n "$FM_PR_GITHUB_MERGE_SINCE" ] || return 2
+  json=$(gh api --paginate --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
+    -f "sha=$FM_PR_GITHUB_BASE" -f "since=$FM_PR_GITHUB_MERGE_SINCE" \
+    -f per_page=100 2>/dev/null) || return 2
+  commits=$(printf '%s' "$json" | jq -sr --arg number "$PR_NUMBER" '
+    if length > 0 and all(.[]; type == "array") then
+      [ .[][]
+        | if (.sha | type == "string" and test("^[0-9a-fA-F]{40}$"))
+            and (.commit.message | type == "string")
+          then .sha + " " + ((.commit.message | split("\n")[0]
+            | endswith(" (#" + $number + ")")) | tostring)
+          else error("unreadable commit") end ] | unique | .[]
+    else error("unreadable commits") end' 2>/dev/null) || return 2
+  while read -r sha titled; do
+    [ -n "$sha" ] || continue
+    matched=unreadable
+    if associated=$(gh api --paginate "repos/$PR_OWNER/$PR_REPO/commits/$sha/pulls" 2>/dev/null); then
+      matched=$(printf '%s' "$associated" | jq -sr --argjson number "$PR_NUMBER" '
+        if length > 0 and all(.[]; type == "array") then any(.[][]; .number == $number)
+        else error("unreadable associations") end' 2>/dev/null) || matched=unreadable
+    fi
+    if [ "$matched" = true ]; then
+      FM_PR_GITHUB_RECOVERED_COMMIT=$sha
+      return 0
+    elif [ "$titled" = true ]; then
+      [ -n "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ] || FM_PR_GITHUB_UNCONFIRMED_COMMIT=$sha
+    elif [ "$matched" != false ]; then
+      unreadable=true
+    fi
+  done <<COMMITS
+$commits
+COMMITS
+  [ -z "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ] && [ "$unreadable" = false ] || return 2
+}
+
+github_recover_base_modified_landing() {
+  github_read_landing_commit || return 2
+  if [ -z "$FM_PR_GITHUB_RECOVERED_COMMIT" ]; then
+    github_find_associated_base_commit || return 2
+  fi
+  [ -n "$FM_PR_GITHUB_RECOVERED_COMMIT" ] || return 1
+  FM_PR_GITHUB_STATE=MERGED
+  FM_PR_GITHUB_MERGED=true
+  FM_PR_GITHUB_QUEUED=false
+}
+
 # Read the effective merge-queue method for the observed base branch. The four
 # situations the refusal has to keep apart - no queue rule, a rules response
 # that could not be read, several rules that disagree, and a rule whose method
@@ -1718,9 +1802,29 @@ case "$PROVIDER" in
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
     merge_status=0
+    merge_since=$(($(date -u +%s) - 300))
+    FM_PR_GITHUB_MERGE_SINCE=$(date -u -r "$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+      || date -u -d "@$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || FM_PR_GITHUB_MERGE_SINCE=
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
       "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?
+    github_landing_recovered=false
+    github_landing_unruled=false
+    if [ "$merge_status" -ne 0 ]; then
+      case "$merge_output" in
+        *'GraphQL: Base branch was modified. Review and try the merge again.'*)
+          recovery_status=0
+          github_recover_base_modified_landing || recovery_status=$?
+          case "$recovery_status" in
+            0)
+              github_landing_recovered=true
+              merge_status=0
+              ;;
+            2) github_landing_unruled=true ;;
+          esac
+          ;;
+      esac
+    fi
     if [ "$merge_status" -eq 0 ]; then
       FM_PR_GITHUB_MERGE_ACCEPTED=true
       persist_accepted_merge_authority || exit 1
@@ -1732,9 +1836,21 @@ case "$PROVIDER" in
       fm_lock_release "$MERGE_CONTROL_LOCK" || true
       MERGE_CONTROL_LOCK=
       [ -z "$merge_output" ] || printf '%s\n' "$merge_output" >&2
+      if [ -n "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ]; then
+        printf 'error: GitHub reported that the base branch was modified, and base commit %s on %s carries the squash title of %s but GitHub does not associate it with the pull request, so the landing is unconfirmed and cannot be ruled out; check the PR and that commit before retrying; PR metadata and merge poll remain recorded\n' \
+          "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" "$FM_PR_GITHUB_BASE" "$URL" >&2
+      elif [ "$github_landing_unruled" = true ]; then
+        printf 'error: GitHub reported that the base branch was modified, and the landing re-read for %s could not be completed, so a landing cannot be ruled out; check the PR and its association with base branch %s before retrying; PR metadata and merge poll remain recorded\n' \
+          "$URL" "${FM_PR_GITHUB_BASE:-<unknown>}" >&2
+      fi
       if github_read_outcome; then
         if [ "$FM_PR_GITHUB_MERGED" != true ] && [ "$FM_PR_GITHUB_QUEUED" != true ]; then
-          github_report_unmerged_outcome
+          if [ "$github_landing_unruled" = true ]; then
+            printf 'error: GitHub merge outcome reads state=%s, merged=%s, isInMergeQueue=%s, which may be stale after the base-modified error\n' \
+              "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED" >&2
+          else
+            github_report_unmerged_outcome
+          fi
         else
           printf 'actionable: the merge command for %s failed, but the pull request reads back as state=%s, merged=%s, isInMergeQueue=%s\n' \
             "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED" >&2
@@ -1742,13 +1858,16 @@ case "$PROVIDER" in
       fi
       exit "$merge_status"
     fi
-    if ! github_read_outcome; then
+    if [ "$github_landing_recovered" != true ] && ! github_read_outcome; then
       github_report_forge_output "$merge_output"
       exit 1
     fi
     if [ "$FM_PR_GITHUB_MERGED" = true ]; then
       printf 'verified: %s is merged (state=%s, merged=%s, isInMergeQueue=%s)\n' \
         "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED"
+      if [ -n "$FM_PR_GITHUB_RECOVERED_COMMIT" ]; then
+        printf 'verified: landing commit %s; do not retry the merge\n' "$FM_PR_GITHUB_RECOVERED_COMMIT"
+      fi
     elif [ "$FM_PR_GITHUB_QUEUED" = true ]; then
       printf 'verified: %s is queued (state=%s, merged=%s, isInMergeQueue=%s)\n' \
         "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED"
