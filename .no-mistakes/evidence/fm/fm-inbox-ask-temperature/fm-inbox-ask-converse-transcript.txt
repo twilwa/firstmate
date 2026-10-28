@@ -1,0 +1,35 @@
+### target commit c9ec4ddb: bin/fm-inbox.sh ask 'how is the fleet'
+Fleet is fine (maxTokens=700).
+exit=0
+--- request body Bedrock Converse received:
+{
+ "path": "/model/us.anthropic.claude-opus-4-7/converse",
+ "body": {
+  "messages": [
+   {
+    "role": "user",
+    "content": [
+     {
+      "text": "how is the fleet"
+     }
+    ]
+   }
+  ],
+  "system": [
+   {
+    "text": "You are a terse engineering assistant answering a side question. Be direct and concrete. No preamble. If you are not sure, say so."
+   }
+  ],
+  "inferenceConfig": {
+   "maxTokens": 700
+  }
+ }
+}
+
+### base commit b83bda0f (before fix): same ask
+
+An error occurred (ValidationException) when calling the Converse operation: temperature is not supported for this model. Only the default value is allowed.
+fm-inbox: ask failed
+exit=1
+--- request body Bedrock Converse received:
+{"maxTokens": 700, "temperature": 0.2}

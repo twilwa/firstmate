@@ -1,0 +1,15 @@
+## tests/fm-voice-relay.test.sh on target c9ec4ddb
+6:ok - ask sends only its token limit to Bedrock
+56:ok - a finished task's pull request is neither counted nor named
+ok - a reply that arrives before the end of the clip is named as an unusable clock
+all voice relay cases passed
+
+## same test with base b83bda0f bin/fm-inbox.sh
+ok - the relay refuses a desynchronised uplink header instead of waiting for its payload
+ok - the relay reads whose account to use from this home and refuses to guess
+ok - an unconfigured home can still read how to configure the relay
+ok - the model-backed subcommands refuse by name while note keeps working
+Traceback (most recent call last):
+  File "<stdin>", line 7, in <module>
+AssertionError: {'maxTokens': 700, 'temperature': 0.2}
+not ok - ask inference config must be model-compatible
