@@ -75,9 +75,9 @@
 # with the same number, such as one synced from an upstream, cannot qualify.
 # A proved landing is reported with its commit and follows normal successful-
 # merge bookkeeping; no second merge is issued. When either re-read fails or
-# the base is unknown, the refusal says a landing cannot be ruled out and gives
-# no retry guidance. Only reads that complete without either proof keep the
-# ordinary refusal and retry guidance.
+# the base or attempt time is unknown, the refusal says a landing cannot be
+# ruled out and gives no retry guidance. Only reads that complete without
+# either proof keep the ordinary refusal and retry guidance.
 # If the pull request remains open and the base branch has an effective
 # merge_queue rule, an attended refusal names the queue's configured merge
 # method and exact --attended-override -- --auto --<method> retry flags. While
