@@ -399,7 +399,8 @@ for _teardown_source in \
   fm-nm-run-lib.sh \
   fm-wake-lib.sh \
   fm-path-lib.sh \
-  fm-lease-lib.sh
+  fm-lease-lib.sh \
+  fm-teardown-procevent-lib.sh
 do
   teardown_require_source "$SCRIPT_DIR/$_teardown_source"
 done
@@ -432,6 +433,8 @@ unset _teardown_source
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
 # shellcheck source=bin/fm-local-handoff-lib.sh
 . "$SCRIPT_DIR/fm-local-handoff-lib.sh"
+# shellcheck source=bin/fm-teardown-procevent-lib.sh
+. "$SCRIPT_DIR/fm-teardown-procevent-lib.sh"
 # Archive paths live only in teardown; presentation/wake readers stay unaware.
 teardown_archive_directory() {  # <directory>
   if [ -L "$1" ] || { [ -e "$1" ] && [ ! -d "$1" ]; }; then
@@ -3786,8 +3789,6 @@ if teardown_owns_worktree && { [ -d "$WT" ] || task_clone_is_bound_local_only; }
   fi
 fi
 
-# shellcheck source=bin/fm-teardown-procevent-lib.sh
-. "$SCRIPT_DIR/fm-teardown-procevent-lib.sh"
 teardown_retire_process_events "$STATE" "$ID" "$SCRIPT_DIR" || exit 1
 
 # A Herdr close may reposition shared workspace order, so the whole
