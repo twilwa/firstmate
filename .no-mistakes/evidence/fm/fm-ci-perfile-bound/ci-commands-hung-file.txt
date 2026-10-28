@@ -1,0 +1,25 @@
+== tests-portable-parallel-1: timeout-minutes=50 per-file bound=1500s cap 3000s > 60s + 1200000ms + 1500s = 2760s : OK
+   healthy lane portable-parallel-1 (13 files), real 1500s bound: exit=0 in 2.6s; FM_TEST_SUMMARY total=13 failed=0 skipped_gate=0 duration_ms=2291
+   hung tests/fm-captain-hold-lifecycle.test.sh, bound 2s: exit=1 in 5.4s (sleep was 60s)
+     named failure: not ok - tests/fm-captain-hold-lifecycle.test.sh exceeded the per-script bound of 2s and was terminated
+     output kept:   True
+     marker:        FM_TEST_END 2026-10-28T20:59:05Z tests/fm-captain-hold-lifecycle.test.sh exit=124 duration_ms=2114 gate_skip=false
+     summary:       FM_TEST_SUMMARY total=13 failed=1 skipped_gate=0 duration_ms=5079
+     artifact:      ['fm-test-timing-portable-parallel-1.json'] record={"duration_ms": 2114, "exit": 124, "expected_gate_skip": "none", "family": "pure-contract-unit", "gate_skip": false, "gate_skip_reason": "", "path": "tests/fm-captain-hold-lifecycle.test.sh"}
+== tests-portable-parallel-2: timeout-minutes=50 per-file bound=1500s cap 3000s > 60s + 1200000ms + 1500s = 2760s : OK
+   healthy lane portable-parallel-2 (13 files), real 1500s bound: exit=0 in 2.8s; FM_TEST_SUMMARY total=13 failed=0 skipped_gate=0 duration_ms=2568
+   hung tests/fm-pr-merge.test.sh, bound 2s: exit=1 in 4.5s (sleep was 60s)
+     named failure: not ok - tests/fm-pr-merge.test.sh exceeded the per-script bound of 2s and was terminated
+     output kept:   True
+     marker:        FM_TEST_END 2026-10-28T20:59:14Z tests/fm-pr-merge.test.sh exit=124 duration_ms=2079 gate_skip=false
+     summary:       FM_TEST_SUMMARY total=13 failed=1 skipped_gate=0 duration_ms=4218
+     artifact:      ['fm-test-timing-portable-parallel-2.json'] record={"duration_ms": 2079, "exit": 124, "expected_gate_skip": "none", "family": "pr-forge", "gate_skip": false, "gate_skip_reason": "", "path": "tests/fm-pr-merge.test.sh"}
+== tests-portable-serial: timeout-minutes=50 per-file bound=1500s cap 3000s > 60s + 1200000ms + 1500s = 2760s : OK
+   healthy lane portable-serial-1of11 (19 files), real 1500s bound: exit=0 in 7.4s; FM_TEST_SUMMARY total=19 failed=0 skipped_gate=0 duration_ms=7076
+   hung tests/fm-supervision-host.test.sh, bound 2s: exit=1 in 10.1s (sleep was 60s)
+     named failure: not ok - tests/fm-supervision-host.test.sh exceeded the per-script bound of 2s and was terminated
+     output kept:   True
+     marker:        FM_TEST_END 2026-10-28T20:59:35Z tests/fm-supervision-host.test.sh exit=124 duration_ms=2086 gate_skip=false
+     summary:       FM_TEST_SUMMARY total=19 failed=1 skipped_gate=0 duration_ms=9831
+     artifact:      ['fm-test-timing-portable-serial-1.json'] record={"duration_ms": 2086, "exit": 124, "expected_gate_skip": "none", "family": "afk", "gate_skip": false, "gate_skip_reason": "", "path": "tests/fm-supervision-host.test.sh"}
+RESULT PASS

@@ -1,0 +1,7 @@
+== HEAD with portable parallel hint for tests/fm-captain-hold-lifecycle.test.sh inflated 343658 -> 1300000 ms
+fm-test-run: coverage guard: largest portable parallel lane packs 1770039ms above the 1200000ms target
+fm-test-run: refresh CI hints and rebalance; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+== 23d381e9 with portable parallel hint for tests/fm-captain-hold-lifecycle.test.sh inflated 343658 -> 1300000 ms
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1770039 parallel_imbalance_ms=955790 parallel_unhinted=0 serial=262 serial_shards=11 serial_unhinted=5 serial_max_ms=1121272 serial_budget_ms=1200000 herdr=16
+exit=0
