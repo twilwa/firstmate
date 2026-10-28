@@ -1288,6 +1288,42 @@ test_github_base_modified_without_landing_keeps_retry() {
   pass "fm-pr-merge preserves refusal and a later valid retry when neither source proves a landing"
 }
 
+test_github_base_modified_unreadable_recovery_suppresses_retry() {
+  local case_dir rc unreadable
+  for unreadable in landing commits; do
+    case_dir=$(make_github_base_modified_case "github-base-modified-unreadable-$unreadable")
+    if [ "$unreadable" = commits ]; then
+      printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
+        > "$case_dir/github-landing.json"
+    else
+      printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}}]' \
+        > "$case_dir/github-commits.json"
+    fi
+
+    rc=0
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+    expect_code 1 "$rc" "base-modified-unreadable-$unreadable: an unreadable recovery must refuse"
+    assert_grep 'a landing cannot be ruled out; check base branch main for a squash commit titled with (#123) before retrying' \
+      "$case_dir/stderr" "base-modified-unreadable-$unreadable: unruled landing not reported"
+    assert_no_grep 'GitHub merge outcome was not successful' "$case_dir/stderr" \
+      "base-modified-unreadable-$unreadable: ordinary refusal reported as if nothing landed"
+    assert_no_grep 'retry with:' "$case_dir/stderr" \
+      "base-modified-unreadable-$unreadable: retry guidance offered despite an unruled landing"
+    assert_no_grep 'verified:' "$case_dir/stdout" \
+      "base-modified-unreadable-$unreadable: unproved landing reported"
+    assert_absent "$case_dir/state/.wake-queue" \
+      "base-modified-unreadable-$unreadable: unproved merge outcome published"
+    assert_grep 'pr=https://github.com/example/repo/pull/123' "$case_dir/state/task-x1.meta" \
+      "base-modified-unreadable-$unreadable: PR metadata lost"
+    assert_present "$case_dir/state/task-x1.check.sh" \
+      "base-modified-unreadable-$unreadable: merge poll lost"
+    [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 1 ] \
+      || fail "base-modified-unreadable-$unreadable: duplicate merge attempted"
+  done
+  pass "fm-pr-merge reports an unruled landing without retry guidance when a recovery read fails"
+}
+
 test_github_refusal_quotes_the_forge_output() {
   local case_dir rc
   case_dir=$(make_case github-refusal-quotes-forge)
@@ -5061,6 +5097,7 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
 test_github_base_modified_recovers_merged_state
 test_github_base_modified_recovers_stale_pr_from_base
 test_github_base_modified_without_landing_keeps_retry
+test_github_base_modified_unreadable_recovery_suppresses_retry
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route

@@ -72,8 +72,10 @@
 # PR's merged state and mergeCommit and, if those do not prove a landing, scan
 # the base's latest 100 commits for GitHub's squash-title suffix " (#<number>)".
 # A proved landing is reported with its commit and follows normal successful-
-# merge bookkeeping; no second merge is issued. Only without either proof does
-# the ordinary refusal and retry guidance remain.
+# merge bookkeeping; no second merge is issued. When either re-read fails or
+# the base is unknown, the refusal says a landing cannot be ruled out and gives
+# no retry guidance. Only reads that complete without either proof keep the
+# ordinary refusal and retry guidance.
 # If the pull request remains open and the base branch has an effective
 # merge_queue rule, an attended refusal names the queue's configured merge
 # method and exact --attended-override -- --auto --<method> retry flags. While
@@ -1291,21 +1293,24 @@ FM_PR_GITHUB_RECOVERED_COMMIT=
 github_recover_base_modified_landing() {
   local json commit=''
   # shellcheck disable=SC2016 # GraphQL variables are literal query syntax.
-  if json=$(gh api graphql \
+  json=$(gh api graphql \
     -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){merged mergeCommit{oid}}}}' \
-    -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" 2>/dev/null); then
-    commit=$(printf '%s' "$json" | jq -er '
-      .data.repository.pullRequest | select(.merged == true) | .mergeCommit.oid
-      | select(type == "string" and test("^[0-9a-fA-F]{40}$"))' 2>/dev/null) || commit=''
-  fi
-  if [ -z "$commit" ] && [ -n "$FM_PR_GITHUB_BASE" ]; then
-    if json=$(gh api --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
-      -f "sha=$FM_PR_GITHUB_BASE" -f per_page=100 2>/dev/null); then
-      commit=$(printf '%s' "$json" | jq -er --arg number "$PR_NUMBER" '
+    -F "owner=$PR_OWNER" -F "repo=$PR_REPO" -F "number=$PR_NUMBER" 2>/dev/null) || return 2
+  commit=$(printf '%s' "$json" | jq -er '
+    .data.repository.pullRequest
+    | if .merged == false then ""
+      elif .merged == true and (.mergeCommit.oid | type == "string" and test("^[0-9a-fA-F]{40}$"))
+      then .mergeCommit.oid
+      else error("unreadable landing") end' 2>/dev/null) || return 2
+  if [ -z "$commit" ]; then
+    [ -n "$FM_PR_GITHUB_BASE" ] || return 2
+    json=$(gh api --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
+      -f "sha=$FM_PR_GITHUB_BASE" -f per_page=100 2>/dev/null) || return 2
+    commit=$(printf '%s' "$json" | jq -er --arg number "$PR_NUMBER" '
+      if type != "array" then error("unreadable commits") else
         [ .[] | select((.commit.message | split("\n")[0]) | endswith(" (#" + $number + ")"))
-          | .sha | select(type == "string" and test("^[0-9a-fA-F]{40}$")) ][0] // empty' \
-        2>/dev/null) || commit=''
-    fi
+          | .sha | select(type == "string" and test("^[0-9a-fA-F]{40}$")) ][0] // ""
+      end' 2>/dev/null) || return 2
   fi
   [ -n "$commit" ] || return 1
   FM_PR_GITHUB_RECOVERED_COMMIT=$commit
@@ -1758,13 +1763,19 @@ case "$PROVIDER" in
       --match-head-commit "$FM_PR_MERGE_HEAD" \
       "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?
     github_landing_recovered=false
+    github_landing_unruled=false
     if [ "$merge_status" -ne 0 ]; then
       case "$merge_output" in
         *'GraphQL: Base branch was modified. Review and try the merge again.'*)
-          if github_recover_base_modified_landing; then
-            github_landing_recovered=true
-            merge_status=0
-          fi
+          recovery_status=0
+          github_recover_base_modified_landing || recovery_status=$?
+          case "$recovery_status" in
+            0)
+              github_landing_recovered=true
+              merge_status=0
+              ;;
+            2) github_landing_unruled=true ;;
+          esac
           ;;
       esac
     fi
@@ -1779,9 +1790,18 @@ case "$PROVIDER" in
       fm_lock_release "$MERGE_CONTROL_LOCK" || true
       MERGE_CONTROL_LOCK=
       [ -z "$merge_output" ] || printf '%s\n' "$merge_output" >&2
+      if [ "$github_landing_unruled" = true ]; then
+        printf 'error: GitHub reported that the base branch was modified, and the landing re-read for %s could not be completed, so a landing cannot be ruled out; check base branch %s for a squash commit titled with (#%s) before retrying; PR metadata and merge poll remain recorded\n' \
+          "$URL" "${FM_PR_GITHUB_BASE:-<unknown>}" "$PR_NUMBER" >&2
+      fi
       if github_read_outcome; then
         if [ "$FM_PR_GITHUB_MERGED" != true ] && [ "$FM_PR_GITHUB_QUEUED" != true ]; then
-          github_report_unmerged_outcome
+          if [ "$github_landing_unruled" = true ]; then
+            printf 'error: GitHub merge outcome reads state=%s, merged=%s, isInMergeQueue=%s, which may be stale after the base-modified error\n' \
+              "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED" >&2
+          else
+            github_report_unmerged_outcome
+          fi
         else
           printf 'actionable: the merge command for %s failed, but the pull request reads back as state=%s, merged=%s, isInMergeQueue=%s\n' \
             "$URL" "$FM_PR_GITHUB_STATE" "$FM_PR_GITHUB_MERGED" "$FM_PR_GITHUB_QUEUED" >&2
