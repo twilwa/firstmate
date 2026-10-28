@@ -1492,6 +1492,13 @@ The allowlist floor also retains Tern block markers `TERN_IDENTITY`, `TERN_PANE`
 Other ambient names must be listed explicitly, including custom credential-store locations, proxy settings, and certificate overrides when required by the selected tools.
 The command shell and worker may still create their own variables.
 
+For every command-launch harness, Firstmate explicitly adds the resolved worker directory to `MISE_TRUSTED_CONFIG_PATHS` before the launch command (including task prep) runs.
+mise matches that entry as a directory prefix, so every mise config file in the worker directory or beneath it is trusted, whatever its name; paths outside it, including sibling directories, are not.
+The entry is an absolute path, appended after any existing colon-separated entries, and survives allowlist filtering without listing the variable.
+Existing destination trust is preserved when inherited, or when the variable is explicitly allowlisted under filtering; Firstmate does not copy its own ambient trust into the worker.
+This avoids interactive mise trust prompts for fresh isolated copies without running `mise trust` or modifying a persistent trust store.
+On the T3 Code backend, which has no launch command, the same directory is written as `MISE_TRUSTED_CONFIG_PATHS` in the worker's harness environment config alongside its other launch facts; that literal value replaces rather than extends inherited trust.
+
 Unless the Orca environment source below is configured, allowed values come from the destination pane at execution time; they are neither copied from the invoking Firstmate process nor written into the launch command.
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
 

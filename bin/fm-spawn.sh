@@ -424,6 +424,13 @@
 #   On backend=orca the destination is an Orca terminal whose environment comes
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
+# Mise config trust (every harness and backend):
+#   Before any launch command or task prep runs, add the resolved worktree to
+#   MISE_TRUSTED_CONFIG_PATHS, which mise matches as a directory prefix, so every
+#   config beneath it is trusted. This explicit assignment survives allowlist
+#   filtering; destination trust is retained only when inherited or allowlisted.
+#   On backend=t3code the same directory becomes a harness config entry instead.
+#   No interactive mise command or persistent trust-store change is performed.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -905,6 +912,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-kimi-trust-lib.sh
 . "$SCRIPT_DIR/fm-kimi-trust-lib.sh"
+# shellcheck source=bin/fm-launch-mise-env-lib.sh
+. "$SCRIPT_DIR/fm-launch-mise-env-lib.sh"
 # shellcheck source=bin/fm-kimi-delivery-lib.sh
 . "$SCRIPT_DIR/fm-kimi-delivery-lib.sh"
 # shellcheck source=bin/fm-control-lib.sh
@@ -7314,7 +7323,8 @@ if [ "$BACKEND" = t3code ]; then
   # (spawn_t3code_env_install). TRACEPARENT is delivered only once its meta
   # record exists, the same delivered-implies-recorded invariant the pane path
   # keeps by unsetting it when the record fails.
-  T3CODE_ENV=("GOTMPDIR=$TASK_TMP/gotmp" COMPACT_ADVISER_DISABLE=1 "FM_TASK_INBOX=$STATE_REAL/$ID.inbox")
+  T3CODE_ENV=("GOTMPDIR=$TASK_TMP/gotmp" COMPACT_ADVISER_DISABLE=1 "FM_TASK_INBOX=$STATE_REAL/$ID.inbox" \
+    "MISE_TRUSTED_CONFIG_PATHS=$WT")
   if [ "$GIT_HOOKS_INSTALLED" = 1 ]; then
     T3CODE_ENV+=(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath "GIT_CONFIG_VALUE_0=$GIT_HOOKS_DIR")
   fi
@@ -7382,6 +7392,9 @@ if [ -n "$SPAWN_TRACEPARENT" ]; then
   fi
 fi
 fi
+# Compose explicit worktree trust inside the filtering boundary, before the
+# command (including any configured task prep) can invoke mise.
+LAUNCH=$(fm_launch_mise_env "$WT" "$LAUNCH")
 if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
   LAUNCH_ENV_PREFIX='/usr/bin/env -i'
   # A configured Orca source replaces destination expansion of allowlisted
