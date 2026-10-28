@@ -1054,7 +1054,7 @@ assert_claude_stop_hook_notifies_uncommitted_handback_with_live_successor() {  #
   turn_end "$home"
   wait_until 150 watcher_live "$home" || fail "live handback: no initial watcher"
   append_status "$home" 'first actionable wake'
-  wait_until 250 test -e "$home/offer-ready" || fail "live handback: first offer did not reach its boundary"
+  wait_for_host_event 60 test -e "$home/offer-ready" || fail "live handback: first offer did not reach its boundary"
   predecessor=$(sed -n 's/^arm_pid=\([0-9]*\).*/\1/p' "$home/state/.watch-cycle-exits.log" | tail -1)
   [ -n "$predecessor" ] || fail "fixture: the original arm must record its completed cycle"
 
@@ -1166,7 +1166,7 @@ SH
   fi
   successor=$(cat "$home/state/.watch.lock/pid")
   printf 'kind=ship\nbudget_id=handoff\nbudget_start_epoch=1\nbudget_wall_secs=1\nbudget_output_tokens=1000000\n' >> "$home/state/demo.meta"
-  wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "budget handoff: the successor did not close on the real budget wake"
+  wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "budget handoff: the successor did not close on the real budget wake"
   printf 'continue\n' > "$home/stub-release"
   wait_for_host_event 60 hook_exited "$home" || fail "budget handoff: the hook never returned"
   assert_re $'\tpass-through\tattended\tmain-only\tcheck: task-budget' "$home/state/.supervision-host.log" "the budget wake must be handed to main"
@@ -1227,14 +1227,14 @@ SH
   turn_end "$home"
   wait_until 150 watcher_live "$home" || fail "inherited handling: no watcher started"
   append_status "$home" 'measurement driver running' paused
-  wait_until 250 test -e "$home/before-drain.ready" || fail "inherited handling: the first turn never started"
+  wait_for_host_event 60 test -e "$home/before-drain.ready" || fail "inherited handling: the first turn never started"
   successor=$(cat "$home/state/.watch.lock/pid")
   printf 'project=demo\nwindow=fm-beta\nharness=claude\n' > "$home/state/beta.meta"
   printf 'needs-decision [at=%s]: select an export format\n' "$(date +%s)" > "$home/state/beta.status"
-  wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" \
+  wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" \
     || fail "inherited handling: the main-only close did not occur during the first turn"
   : > "$home/before-drain.release"
-  wait_until 250 test -e "$home/before-return.ready" || fail "inherited handling: the engine did not finish handling"
+  wait_for_host_event 60 test -e "$home/before-return.ready" || fail "inherited handling: the engine did not finish handling"
   assert_re '^pending:handling:' "$home/state/.watcher-down" \
     "fixture: the first turn did not leave an inherited handling episode"
   [ "$mode" != refuse ] || : > "$home/fail-downtime-write"
@@ -1395,10 +1395,10 @@ SH
   turn_end "$home"
   wait_until 150 watcher_live "$home" || fail "restore failure: the Stop hook never started a watcher cycle"
   append_status "$home" 'first actionable wake'
-  wait_until 250 test -s "$home/stub-ready" || fail "restore failure: the engine did not reach its hold"
+  wait_for_host_event 60 test -s "$home/stub-ready" || fail "restore failure: the engine did not reach its hold"
   successor=$(cat "$home/state/.watch.lock/pid")
   append_status "$home" 'wake while the engine is handling'
-  wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" \
+  wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" \
     || fail "restore failure: its watcher did not close during the engine turn"
   FM_HOME="$home" bash -c '. "$1"; fm_recovery_marker_begin_handling "$2"' _ \
     "$ROOT/bin/fm-wake-lib.sh" "$home/state/.watcher-down" \
@@ -1613,7 +1613,7 @@ test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end() {
   successor=$(cat "$home/state/.watch.lock/pid")
   main_drain "$home" >/dev/null
   append_status "$home" 'which region?' needs-decision
-  wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "fixture: the successor did not close on the later decision"
+  wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "fixture: the successor did not close on the later decision"
   watcher_live "$home" && fail "the absent opt-in changed the default one-shot successor"
   [ ! -e "$home/state/.supervision-handoff-pending" ] || fail "the absent opt-in queued a hand-back receipt"
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
@@ -2058,7 +2058,7 @@ SH
   echo hang > "$home/stub-mode"
   park_after_stop "$home"
   append_status "$home" 'stopped mid-turn'
-  wait_until 250 test -e "$home/engine-call.3" || fail "mirror boundary: the stopped turn never started"
+  wait_for_host_event 60 test -e "$home/engine-call.3" || fail "mirror boundary: the stopped turn never started"
   assert_re '^\[captain\] third ask, turn stopped$' "$home/engine-call.3" "fixture: the stopped turn did not carry the third dialog"
   kill -TERM "$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")"
   wait_until 200 host_exited "$home" || fail "mirror boundary: the host did not stop mid-turn on TERM"
@@ -2329,7 +2329,7 @@ test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "return-first: the host never started a watcher cycle"
   append_status "$home" 'finishing while the captain comes back'
-  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" \
+  wait_for_host_event 60 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" \
     || fail "return-first: the late outcome was never queued: $(cat "$home/engine-report.log" 2>/dev/null)"
   host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   kill -TERM "$host"
@@ -2362,7 +2362,7 @@ test_next_host_clears_a_turn_its_killed_predecessor_left() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "killed: the host never started a watcher cycle"
   append_status "$home" 'mid-turn when its host is killed'
-  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
+  wait_for_host_event 60 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
   host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   engine=$(cut -f1 "$home/state/.supervision-host.engine-pid")
   kill -KILL "$host"
