@@ -1,0 +1,95 @@
+bin under test: /tmp/fm-base.miLaTI (40429373-base)
+
+$ lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-a/board.html
+session:
+  file: /tmp/fm-lab.XX1CxM/boards/worker-a/board.html
+  url: "http://<host>:47932/session/15da43a6306067d6"
+  status: opened
+self_paint_warning: "This artifact never paints its own page surface: no background on html/body/:root, no bg-* class or data-theme on html/body, and no stylesheet that could set one. Lavish injects no design system, so text that assumes a dark or light host surface can render invisible. Set an explicit background and readable text."
+next_step: "First fix the unpainted page surface flagged in self_paint_warning and save - Lavish live-reloads the artifact automatically, so you do not need to re-run `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-a/board.html`. Do not respond to the user just yet. Now you must run `lavish-axi poll /tmp/fm-lab.XX1CxM/boards/worker-a/board.html`. This command long-polls until the user sends feedback, ends the session, or leaves every review window disconnected past the reconnect grace period, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag \"layout-warnings\" prompt. Do not pass --timeout-ms during normal agent use. Keep the poll in the foreground by default and let it return the feedback directly to the agent. A background poll is allowed only through a harness-native tracked background-job facility whose completion result is guaranteed to resume or notify the same agent. Never use `nohup`, shell `&`, `disown`, redirected fire-and-forget processes, or a detached terminal without an explicit verified callback merely to keep polling alive. If the harness has no completion-aware background facility, use the foreground poll or first wire a verified wake callback into the surrounding supervisor. Do not tell the user the artifact is being monitored until that wake path is live. If the poll gets killed or times out before feedback arrives, re-run it - feedback remains queued until delivery. Poll delivery consumes the response, so read it completely. If it returns browser_disconnected, the review window stayed disconnected past its reconnect grace period but the session remains resumable; ask the user whether to reopen or end it, and do neither uninvited. After applying feedback, run `lavish-axi poll /tmp/fm-lab.XX1CxM/boards/worker-a/board.html --agent-reply \"<message for the user>\"` without --timeout-ms to show a concise response in Lavish Editor and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run `lavish-axi reply /tmp/fm-lab.XX1CxM/boards/worker-a/board.html --agent-reply \"<message for the user>\"` to get an acceptance receipt. Keep the reply concise. Only when a longer reply is genuinely necessary, use Markdown structure - blank-line paragraphs, `- ` / `1. ` lists, `## ` headings - so it renders scannably instead of a wall of text, and pass that body with `--agent-reply-file <path>` (`-` reads stdin) so newlines survive quoting. The Conversation panel's Markdown subset is in `lavish-axi poll --help` and README. If the user ends the session, stop polling and do not reopen it by re-running `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-a/board.html` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-a/board.html --reopen`."
+[exit 0]
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh arm /tmp/fm-lab.XX1CxM/boards/worker-a/board.html --for worker-a
+registered: lavish-15da43a6306067d6 (lavish, task=worker-a)
+armed: lavish-15da43a6306067d6
+artifact: /tmp/fm-lab.XX1CxM/boards/worker-a/board.html
+owner-task: worker-a
+[exit 0]
+
+$ lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-b/board.html
+session:
+  file: /tmp/fm-lab.XX1CxM/boards/worker-b/board.html
+  url: "http://<host>:47932/session/8521989dcf71144d"
+  status: opened
+self_paint_warning: "This artifact never paints its own page surface: no background on html/body/:root, no bg-* class or data-theme on html/body, and no stylesheet that could set one. Lavish injects no design system, so text that assumes a dark or light host surface can render invisible. Set an explicit background and readable text."
+next_step: "First fix the unpainted page surface flagged in self_paint_warning and save - Lavish live-reloads the artifact automatically, so you do not need to re-run `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-b/board.html`. Do not respond to the user just yet. Now you must run `lavish-axi poll /tmp/fm-lab.XX1CxM/boards/worker-b/board.html`. This command long-polls until the user sends feedback, ends the session, or leaves every review window disconnected past the reconnect grace period, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag \"layout-warnings\" prompt. Do not pass --timeout-ms during normal agent use. Keep the poll in the foreground by default and let it return the feedback directly to the agent. A background poll is allowed only through a harness-native tracked background-job facility whose completion result is guaranteed to resume or notify the same agent. Never use `nohup`, shell `&`, `disown`, redirected fire-and-forget processes, or a detached terminal without an explicit verified callback merely to keep polling alive. If the harness has no completion-aware background facility, use the foreground poll or first wire a verified wake callback into the surrounding supervisor. Do not tell the user the artifact is being monitored until that wake path is live. If the poll gets killed or times out before feedback arrives, re-run it - feedback remains queued until delivery. Poll delivery consumes the response, so read it completely. If it returns browser_disconnected, the review window stayed disconnected past its reconnect grace period but the session remains resumable; ask the user whether to reopen or end it, and do neither uninvited. After applying feedback, run `lavish-axi poll /tmp/fm-lab.XX1CxM/boards/worker-b/board.html --agent-reply \"<message for the user>\"` without --timeout-ms to show a concise response in Lavish Editor and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run `lavish-axi reply /tmp/fm-lab.XX1CxM/boards/worker-b/board.html --agent-reply \"<message for the user>\"` to get an acceptance receipt. Keep the reply concise. Only when a longer reply is genuinely necessary, use Markdown structure - blank-line paragraphs, `- ` / `1. ` lists, `## ` headings - so it renders scannably instead of a wall of text, and pass that body with `--agent-reply-file <path>` (`-` reads stdin) so newlines survive quoting. The Conversation panel's Markdown subset is in `lavish-axi poll --help` and README. If the user ends the session, stop polling and do not reopen it by re-running `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-b/board.html` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run `lavish-axi /tmp/fm-lab.XX1CxM/boards/worker-b/board.html --reopen`."
+[exit 0]
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh arm /tmp/fm-lab.XX1CxM/boards/worker-b/board.html --for worker-b
+registered: lavish-8521989dcf71144d (lavish, task=worker-b)
+armed: lavish-8521989dcf71144d
+artifact: /tmp/fm-lab.XX1CxM/boards/worker-b/board.html
+owner-task: worker-b
+[exit 0]
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+lavish-15da43a6306067d6      lavish       task:worker-a/listening 0
+lavish-8521989dcf71144d      lavish       task:worker-b/listening 0
+[exit 0]
+
+$ processes running a lavish listener for this lab
+2868796 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html
+2869188 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html
+2872838 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+2873064 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+
+$ /tmp/fm-base.miLaTI/bin/fm-teardown.sh worker-a --force
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.XX1CxM
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+teardown worker-a complete (window fleet:fm-worker-a, worktree /tmp/fm-lab.XX1CxM/missing-worker-a)
+Backlog: worker-a just finished (this home keeps no markdown backlog at /tmp/fm-lab.XX1CxM/data/backlog.md). Update /tmp/fm-lab.XX1CxM/data/backlog.md - move worker-a to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+[exit 0]
+
+$ task records after teardown
+worker-b.meta
+
+$ tmux windows
+fm-worker-b
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+lavish-15da43a6306067d6      lavish       task:worker-a/listening 0
+lavish-8521989dcf71144d      lavish       task:worker-b/listening 0
+[exit 0]
+
+$ processes running a lavish listener for this lab
+2868796 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html
+2869188 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html
+2872838 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+2873064 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+
+$ simulate a restart: kill any surviving listener for torn-down worker-a
+killed
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+[exit 0]
+
+$ /tmp/fm-base.miLaTI/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+lavish-15da43a6306067d6      lavish       task:worker-a/listening 0
+lavish-8521989dcf71144d      lavish       task:worker-b/listening 0
+[exit 0]
+
+$ processes running a lavish listener for this lab
+2872838 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+2873064 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-b/board.html
+2890253 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html
+2890397 bash /tmp/fm-base.miLaTI/bin/fm-procevent-lavish.sh poll $LAB/boards/worker-a/board.html

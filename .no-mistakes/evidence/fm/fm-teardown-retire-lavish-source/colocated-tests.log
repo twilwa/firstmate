@@ -1,0 +1,7 @@
+ok - matching task owner retires its process-event source
+ok - a different task owner cannot retire a process-event source
+rc=0
+ok - teardown retains task records and explains source retirement refusals
+ok - teardown retires only its own task process-event sources
+ok - teardown without registered process-event sources is unaffected
+rc=0

@@ -1,0 +1,5 @@
+not ok - teardown succeeded even though source retirement refuses an unhandled round
+fm-teardown-procevent rc=1
+error: extension registration owner token is invalid
+not ok - matching task owner could not retire its board: 
+fm-procevent-retire-task rc=1
