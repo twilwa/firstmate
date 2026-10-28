@@ -6,8 +6,9 @@
 # fan-out, and four jobs carried no timeout at all. These tests hold both
 # safeguards: PR runs supersede within one PR while main pushes are never
 # cancelled, and every CI job carries a finite hang tripwire drawn from the
-# three-tier timeout policy that docs/fm-test-portable-shards.md "Timeouts"
-# owns (fast, normal, heavy), so no job drifts back to a one-off number.
+# four-tier timeout policy that docs/fm-test-portable-shards.md "Timeouts"
+# owns (fast, normal, portable test, heavy), so no job drifts back to a one-off
+# number.
 #
 # They also hold the fork opt-out: the repository variables FM_CI_SKIP_PUSH and
 # FM_CI_SKIP_MACOS let a fork skip the push run and the macOS job through a
@@ -200,8 +201,13 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # must join a tier, and a job-level value outside these tiers is exactly the
 # one-off number the policy removed.
 FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate'
-NORMAL_TIER_JOBS='lint tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial macos-stock-bash'
+NORMAL_TIER_JOBS='lint macos-stock-bash'
+PORTABLE_TIER_JOBS='tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial'
 HEAVY_TIER_JOBS='tests-herdr'
+
+# Seconds a portable job may spend before its runner step starts: checkout,
+# tool installs, and runner start-up.
+PORTABLE_SETUP_ALLOWANCE_SECS=60
 
 # Print the one timeout every listed job shares; fail on any disagreement.
 tier_timeout() {  # <tier> <job>...
@@ -272,21 +278,21 @@ end
   pass "every ci.yml job carries a finite timeout"
 }
 
-# Every job sits in exactly one tier, and the workflow carries exactly three
+# Every job sits in exactly one tier, and the workflow carries exactly four
 # distinct job-level timeouts: one per tier, no one-off numbers.
 test_every_job_belongs_to_exactly_one_timeout_tier() {
   local expected actual distinct
   # shellcheck disable=SC2086
-  expected=$(printf '%s\n' $FAST_TIER_JOBS $NORMAL_TIER_JOBS $HEAVY_TIER_JOBS | LC_ALL=C sort)
+  expected=$(printf '%s\n' $FAST_TIER_JOBS $NORMAL_TIER_JOBS $PORTABLE_TIER_JOBS $HEAVY_TIER_JOBS | LC_ALL=C sort)
   [ "$(printf '%s\n' "$expected" | LC_ALL=C sort -u)" = "$expected" ] \
     || fail "a job is listed in more than one timeout tier:"$'\n'"$expected"
   actual=$(workflow_jobs | LC_ALL=C sort) || fail "could not list ci.yml jobs"
   [ "$actual" = "$expected" ] \
     || fail "ci.yml jobs and the timeout tiers disagree; every job must join one tier"$'\n'"workflow: $(printf '%s' "$actual" | tr '\n' ' ')"$'\n'"tiers: $(printf '%s' "$expected" | tr '\n' ' ')"
   distinct=$(for job in $expected; do job_timeout "$job"; done | LC_ALL=C sort -u | wc -l | tr -d ' ')
-  [ "$distinct" = 3 ] \
-    || fail "ci.yml must carry exactly three distinct job timeouts (fast, normal, heavy), got $distinct"
-  pass "every ci.yml job belongs to one of the three timeout tiers"
+  [ "$distinct" = 4 ] \
+    || fail "ci.yml must carry exactly four distinct job timeouts (fast, normal, portable test, heavy), got $distinct"
+  pass "every ci.yml job belongs to one of the four timeout tiers"
 }
 
 # Fast tier: seconds-long checks share one short tripwire in the 5-10 minute band.
@@ -299,7 +305,7 @@ test_fast_tier_shares_one_short_tripwire() {
   pass "fast tier jobs share one $fast minute tripwire"
 }
 
-# Normal tier: every test or lint lane shares ONE fixed 30-minute budget,
+# Normal tier: lint and macOS share ONE fixed 30-minute budget,
 # above the fast tier. That budget is a hang tripwire, not a packing estimate.
 test_normal_tier_shares_one_budget() {
   local fast normal
@@ -312,6 +318,56 @@ test_normal_tier_shares_one_budget() {
   [ "$normal" = 30 ] \
     || fail "normal tier must be the single 30-minute shared budget, got $normal"
   pass "normal tier jobs share one $normal minute budget"
+}
+
+# Portable test tier: the portable lanes share one 45-minute cap above the
+# normal tier and below the heavy backstop. The cap must exceed the setup
+# allowance plus the lane's largest packed weight, as the runner's coverage
+# guard models it, plus the per-file bound the workflow applies, so a hung file
+# in the current packing fails by name before the job cap. The window is only
+# as good as the hints: a file that starts after cap minus bound still hits the
+# job cap.
+test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
+  local normal portable heavy coverage
+  # shellcheck disable=SC2086
+  normal=$(tier_timeout normal $NORMAL_TIER_JOBS) || exit 1
+  # shellcheck disable=SC2086
+  portable=$(tier_timeout portable $PORTABLE_TIER_JOBS) || exit 1
+  # shellcheck disable=SC2086
+  heavy=$(tier_timeout heavy $HEAVY_TIER_JOBS) || exit 1
+  [ "$portable" = 45 ] \
+    || fail "portable test tier must be the single 45-minute cap, got $portable"
+  [ "$portable" -gt "$normal" ] && [ "$portable" -lt "$heavy" ] \
+    || fail "portable test tier ($portable) must sit above normal ($normal) and below heavy ($heavy)"
+  coverage=$("$ROOT/bin/fm-test-run.sh" --check-coverage 2>/dev/null | grep '^FM_TEST_COVERAGE ok ') \
+    || fail "could not read the packed lane weights from the coverage guard"
+  ruby -ryaml -rshellwords - "$CI_WORKFLOW" "$coverage" "$PORTABLE_SETUP_ALLOWANCE_SECS" <<'RUBY' \
+    || fail "portable job cap does not cover setup, pack weight, and the per-file bound"
+jobs = YAML.load_file(ARGV[0]).fetch("jobs")
+fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
+setup = Integer(ARGV[2])
+weights = {
+  "tests-portable-parallel-1" => Integer(fields.fetch("parallel_max_ms")),
+  "tests-portable-parallel-2" => Integer(fields.fetch("parallel_max_ms")),
+  "tests-portable-serial" => Integer(fields.fetch("serial_max_ms")),
+}
+weights.each do |job_id, weight_ms|
+  job = jobs.fetch(job_id)
+  step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
+  raise "#{job_id}: missing runner command" unless step
+  words = Shellwords.split(step.fetch("run").gsub("\\\n", ""))
+  index = words.index("--per-script-timeout-secs")
+  raise "#{job_id}: no per-file bound" unless index
+  bound = Integer(words.fetch(index + 1))
+  cap = job.fetch("timeout-minutes") * 60
+  needed = setup + (weight_ms + 999) / 1000 + bound
+  unless cap > needed
+    warn "#{job_id}: cap #{cap}s must exceed setup #{setup}s + pack weight #{weight_ms}ms + per-file bound #{bound}s"
+    exit 1
+  end
+end
+RUBY
+  pass "portable test tier shares one $portable minute cap above setup, pack weight, and the per-file bound"
 }
 
 # Heavy tier: Herdr alone carries a job-level last-resort backstop above the
@@ -500,4 +556,5 @@ test_every_job_has_a_finite_timeout
 test_every_job_belongs_to_exactly_one_timeout_tier
 test_fast_tier_shares_one_short_tripwire
 test_normal_tier_shares_one_budget
+test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound
 test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop

@@ -22,9 +22,15 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the three
+# Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the four
 # tiers and their rationale; tests/fm-ci-workflow.test.sh guards this workflow.
 # Each job comment identifies the tier implemented by its executable value.
+# The portable test tier pairs a 45-minute job cap with the runner's 1500s
+# per-file bound, so a hung file that starts within 20 minutes of job start
+# fails by name with exit 124 before the cap. Setup and the files packed ahead
+# of it must fit that 20-minute window; the shard packing target alone allows
+# 20 minutes of script time, so a file starting after minute 20 can still hit
+# the job cap as an unexplained timeout.
 
 # Fork opt-out: a fork sets the repository variable FM_CI_SKIP_PUSH to 1 to
 # skip the push run, and FM_CI_SKIP_MACOS to 1 to skip the macOS job, without
@@ -102,8 +108,8 @@ jobs:
     name: Behavior portable parallel 1
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -148,8 +154,8 @@ jobs:
     name: Behavior portable parallel 2
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -194,8 +200,8 @@ jobs:
     name: Behavior portable serial ${{ matrix.shard }}
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 45
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false
