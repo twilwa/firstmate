@@ -282,15 +282,18 @@ SH
   assert_contains "$report" 'home-summary publication' "timeout omitted the summary obligation"
   if kill -0 "$summary_pid" 2>/dev/null; then fail "timed-out summary child survived cleanup"; fi
   # wait returns at publication; the summary parent logs its deadline only after
-  # its own timeout fires, so a loaded runner can publish first.
+  # its own timeout fires, so a loaded runner can publish first. The cap is the
+  # stage time left when the summary starts, so a second boundary crossed before
+  # then makes it 4 rather than 5; either way it is capped below the 60s asked.
   waited=0
-  while ! grep -q '5-second deadline' "$home/state/.home-summary-refresh.log" 2>/dev/null \
+  capped_deadline='its [1-5]-second deadline'
+  while ! grep -Eq "$capped_deadline" "$home/state/.home-summary-refresh.log" 2>/dev/null \
     && [ "$waited" -lt 100 ]; do
     sleep 0.1
     waited=$((waited + 1))
   done
-  assert_grep '5-second deadline' "$home/state/.home-summary-refresh.log" \
-    "summary did not retain and report its capped deadline"
+  grep -Eq "$capped_deadline" "$home/state/.home-summary-refresh.log" \
+    || fail "summary did not retain and report its capped deadline"
   pass "fm-startup-network: summary requires lock authority and cannot outlive the stage bound"
 }
 
