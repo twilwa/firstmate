@@ -1,0 +1,67 @@
+== [base] bin=<base>/bin lab=/tmp/fm-lab.19lgle
+
+$ <base>/bin/fm-procevent.sh register-task lavish gtm-board worker-a -- /bin/sleep 6017
+registered: gtm-board (lavish, task=worker-a)
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh register-task lavish other-board worker-b -- /bin/sleep 6017
+registered: other-board (lavish, task=worker-b)
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=2 stopped=0 uncertain=0 failed=0
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+gtm-board                    lavish       task:worker-a/listening 0
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ live listener children: ps -eo pid,args | grep '/bin/sleep 6017$'
+4157880 /bin/sleep 6017
+4157936 /bin/sleep 6017
+
+$ tmux list-windows -t fm-lab -F #W
+idle
+fm-worker-a
+fm-worker-b
+[rc=0]
+
+$ <base>/bin/fm-teardown.sh worker-a --force
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.19lgle
+teardown worker-a complete (window fm-lab:fm-worker-a, worktree /tmp/fm-lab.19lgle/missing-worker-a)
+Backlog: worker-a just finished (this home keeps no markdown backlog at /tmp/fm-lab.19lgle/data/backlog.md). Update /tmp/fm-lab.19lgle/data/backlog.md - move worker-a to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+[rc=0]
+
+$ ls /tmp/fm-lab.19lgle/state
+home-summary.json
+procevent
+terminal-outcomes
+worker-b.meta
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+gtm-board                    lavish       task:worker-a/listening 0
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=0 stopped=0 uncertain=0 failed=0
+[rc=0]
+
+$ <base>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+gtm-board                    lavish       task:worker-a/listening 0
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ live listener children after teardown+reconcile: ps -eo pid,args | grep '/bin/sleep 6017$'
+4157880 /bin/sleep 6017
+4157936 /bin/sleep 6017
+
+$ tmux list-windows -t fm-lab -F #W
+idle
+fm-worker-b
+[rc=0]

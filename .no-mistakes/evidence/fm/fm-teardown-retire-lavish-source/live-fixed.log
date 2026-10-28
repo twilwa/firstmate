@@ -1,0 +1,133 @@
+== [fixed] bin=<wt>/bin lab=/tmp/fm-lab.dUR4Eg
+
+$ <wt>/bin/fm-procevent.sh register-task lavish gtm-board worker-a -- /bin/sleep 6017
+registered: gtm-board (lavish, task=worker-a)
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh register-task lavish other-board worker-b -- /bin/sleep 6017
+registered: other-board (lavish, task=worker-b)
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=2 stopped=0 uncertain=0 failed=0
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+gtm-board                    lavish       task:worker-a/listening 0
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ live listener children: ps -eo pid,args | grep '/bin/sleep 6017$'
+4134969 /bin/sleep 6017
+4135126 /bin/sleep 6017
+
+$ tmux list-windows -t fm-lab -F #W
+idle
+fm-worker-a
+fm-worker-b
+[rc=0]
+
+$ <wt>/bin/fm-teardown.sh worker-a --force
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.dUR4Eg
+teardown worker-a complete (window fm-lab:fm-worker-a, worktree /tmp/fm-lab.dUR4Eg/missing-worker-a)
+Backlog: worker-a just finished (this home keeps no markdown backlog at /tmp/fm-lab.dUR4Eg/data/backlog.md). Update /tmp/fm-lab.dUR4Eg/data/backlog.md - move worker-a to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+[rc=0]
+
+$ ls /tmp/fm-lab.dUR4Eg/state
+home-summary.json
+procevent
+terminal-outcomes
+worker-b.meta
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=0 stopped=0 uncertain=0 failed=0
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+other-board                  lavish       task:worker-b/listening 0
+[rc=0]
+
+$ live listener children after teardown+reconcile: ps -eo pid,args | grep '/bin/sleep 6017$'
+4135126 /bin/sleep 6017
+
+$ tmux list-windows -t fm-lab -F #W
+idle
+fm-worker-b
+[rc=0]
+
+== [fixed] adversarial: pending captured round on worker-b's board
+
+$ <wt>/bin/fm-procevent.sh retire other-board --if-owner worker-b
+retired: other-board
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh register-task lavish other-board worker-b -- /bin/sh -c echo "{\"feedback\":\"please fix\"}"
+registered: other-board (lavish, task=worker-b)
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+other-board                  lavish       task:worker-b/round-open 1
+[rc=0]
+
+$ <wt>/bin/fm-teardown.sh worker-b --force
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.dUR4Eg
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: cannot retire process-event source other-board for task worker-b; retaining task record: error: cannot retire task-owned source other-board while a captured round for task worker-b is unacknowledged; acknowledge it with bin/fm-procevent.sh handled other-board <sequence>
+[rc=1]
+
+$ ls /tmp/fm-lab.dUR4Eg/state
+home-summary.json
+procevent
+procevent-inbox
+terminal-outcomes
+worker-b.inbox
+worker-b.meta
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+other-board                  lavish       task:worker-b/round-open 1
+[rc=0]
+
+== [fixed] retry after the owner acknowledges the round
+
+$ ls /tmp/fm-lab.dUR4Eg/state/procevent-inbox
+other-board.1.adapter
+other-board.1.owner-task
+other-board.1.result
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh handled other-board 1
+handled: other-board 1
+[rc=0]
+
+$ <wt>/bin/fm-teardown.sh worker-b --force
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.dUR4Eg
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown worker-b complete (window fm-lab:fm-worker-b, worktree /tmp/fm-lab.dUR4Eg/missing-worker-b)
+Backlog: worker-b just finished (this home keeps no markdown backlog at /tmp/fm-lab.dUR4Eg/data/backlog.md). Update /tmp/fm-lab.dUR4Eg/data/backlog.md - move worker-b to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+[rc=0]
+
+$ ls /tmp/fm-lab.dUR4Eg/state
+home-summary.json
+procevent
+procevent-inbox
+terminal-outcomes
+[rc=0]
+
+$ <wt>/bin/fm-procevent.sh list
+no sources registered
+[rc=0]

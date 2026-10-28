@@ -1,0 +1,19 @@
+$ bin/fm-procevent.sh register-task lavish gtm-board worker-a -- /bin/true
+registered: gtm-board (lavish, task=worker-a)
+[rc=0]
+$ bin/fm-procevent.sh retire gtm-board --if-owner worker-b
+error: source registration does not match the expected owner: gtm-board
+[rc=1]
+$ bin/fm-procevent.sh retire gtm-board --if-owner bad id!
+error: registration owner must be an extension token or task id
+[rc=1]
+$ bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+gtm-board                    lavish       task:worker-a/dead 0
+[rc=0]
+$ bin/fm-procevent.sh retire gtm-board --if-owner worker-a
+retired: gtm-board
+[rc=0]
+$ bin/fm-procevent.sh list
+no sources registered
+[rc=0]
