@@ -440,6 +440,56 @@ RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
 
+# Execute the workflow's real portable runner commands against fixture suites.
+# Only time is compressed: assert the production 1500s bound, then use 1s so a
+# hung file can prove failure attribution and timing finalization promptly.
+test_portable_ci_commands_bound_hung_files() {
+  ruby -ryaml -rjson -ropen3 -rtmpdir -rfileutils -rshellwords - "$CI_WORKFLOW" "$ROOT" <<'RUBY' || fail "portable CI per-file bound"
+jobs = YAML.load_file(ARGV[0]).fetch("jobs")
+root = ARGV[1]
+runner = File.join(root, "bin/fm-test-run.sh")
+files, status = Open3.capture2(runner, "--list", "--all")
+raise "cannot list fixture inventory" unless status.success?
+Dir.mktmpdir("fm-ci-bound.") do |repo|
+  FileUtils.mkdir_p(["#{repo}/bin", "#{repo}/tests", "#{repo}/artifacts"])
+  %w[fm-test-run.sh fm-timeout-lib.sh].each do |file|
+    FileUtils.cp("#{root}/bin/#{file}", "#{repo}/bin/#{file}")
+  end
+  FileUtils.cp("#{root}/tests/git-config-helpers.sh", "#{repo}/tests/")
+  files.lines.map(&:strip).each { |file| File.write("#{repo}/#{file}", "#!/usr/bin/env bash\nexit 0\n") }
+  %w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
+    job = jobs.fetch(job_id)
+    step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
+    raise "#{job_id}: missing runner command" unless step
+    count = jobs.fetch("tests-portable-serial").fetch("strategy").fetch("matrix").fetch("shard").length
+    env = {"RUNNER_TEMP" => "#{repo}/artifacts", "FM_SERIAL_SHARD" => "1",
+           "FM_SERIAL_LANE" => "portable-serial-1of#{count}"}
+    command = step.fetch("run")
+    words = Shellwords.split(command.gsub("\\\n", ""))
+    bound = words.index("--per-script-timeout-secs")
+    raise "#{job_id}: CI must apply the 1500s per-file bound" unless bound && words[bound + 1] == "1500"
+    lane = job_id == "tests-portable-serial" ? env.fetch("FM_SERIAL_LANE") : job_id.delete_prefix("tests-")
+    selected, result = Open3.capture2("#{repo}/bin/fm-test-run.sh", "--list", "--lane", lane)
+    raise "#{job_id}: empty fixture lane" unless result.success? && !selected.empty?
+    hung = selected.lines.first.strip
+    File.write("#{repo}/#{hung}", "#!/usr/bin/env bash\necho fixture-before-hang\nsleep 5\n")
+    fast_command = command.sub(/(--per-script-timeout-secs\s+)1500\b/) { "#{Regexp.last_match(1)}1" }
+    output, result = Open3.capture2e(env, "bash", "-eu", "-c", fast_command, chdir: repo)
+    raise "#{job_id}: hung file must fail: #{output}" if result.success?
+    raise "#{job_id}: lost diagnostics: #{output}" unless output.include?("fixture-before-hang") && output.include?("#{hung} exceeded the per-script bound")
+    artifacts = Dir["#{repo}/artifacts/fm-test/*.json"]
+    raise "#{job_id}: missing timing artifact" unless artifacts.length == 1
+    records = JSON.parse(File.read(artifacts.first)).fetch("scripts")
+    raise "#{job_id}: missing timeout record" unless records.any? { |r| r.fetch("path") == hung && r.fetch("exit") == 124 }
+    FileUtils.rm_f(artifacts)
+    File.write("#{repo}/#{hung}", "#!/usr/bin/env bash\nexit 0\n")
+  end
+end
+RUBY
+  pass "portable CI commands bound hung files and preserve named diagnostics and timing artifacts"
+}
+
+test_portable_ci_commands_bound_hung_files
 test_ci_matrices_match_executable_partitions
 test_pr_pushes_supersede_within_one_pr
 test_separate_prs_do_not_cancel_each_other
