@@ -1,0 +1,17 @@
+firstmate@vmi3582798:/tmp/fmmise.17EMHW/home/projects/bb$ treehouse --root '/home/firstmate/.treehouse-fm/dd674b0adb8e' get
+A new version of treehouse is available: v3.1.6 → v3.1.7
+Run "treehouse update" to update
+🌳 Setting up worktree...
+🌳 Entered worktree at ~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb. Type 'exit' to return.
+firstmate@vmi3582798:~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb$ cd -- '/home/firstmate/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb'
+firstmate@vmi3582798:~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb$ export GOTMPDIR=/tmp/fm-mise0313f95e/gotmp
+firstmate@vmi3582798:~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb$ export FM_TASK_ID=mise0313f95e
+firstmate@vmi3582798:~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb$ . '/tmp/fm-mise0313f95e+cffad4ad012512b422c0b4e5a29619ccbeed9a08a3c071361f3f26f2dffea317/launch.s1793176405.2068234.4775.sh'
+mise config files in ~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb are not trusted. Trust them?
+   Yes     No     All  
+←/→ toggle • y/n/a/enter submit
+=== re-captured at 2026-10-28T09:33:53+01:00 ===
+mise config files in ~/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb are not trusted. Trust them?
+   Yes     No     All  
+←/→ toggle • y/n/a/enter submit

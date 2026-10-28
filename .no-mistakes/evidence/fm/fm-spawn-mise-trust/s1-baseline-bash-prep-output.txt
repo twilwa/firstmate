@@ -1,0 +1,3 @@
+pwd=/home/firstmate/.treehouse-fm/dd674b0adb8e/.treehouse/bb-181538/1/bb
+MISE_TRUSTED_CONFIG_PATHS=<unset>
+--- mise env (worktree, stdin and stderr on the pane tty):

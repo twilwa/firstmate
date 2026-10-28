@@ -1,0 +1,11 @@
+firstmate@vmi3582798:/tmp/fmmise.nySLpk/home/projects/bb$ treehouse --root '/home/firstmate/.treehouse-fm/33ff665011b7' get
+A new version of treehouse is available: v3.1.6 → v3.1.7
+Run "treehouse update" to update
+🌳 Setting up worktree...
+🌳 Entered worktree at ~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb. Type 'exit' to return.
+firstmate@vmi3582798:~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb$ cd -- '/home/firstmate/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb'
+firstmate@vmi3582798:~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb$ export GOTMPDIR=/tmp/fm-mise21c1b544/gotmp
+firstmate@vmi3582798:~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb$ export FM_TASK_ID=mise21c1b544
+firstmate@vmi3582798:~/.treehouse-fm/33ff665011b7/.treehouse/bb-0d613d/1/bb$ . '/tmp/fm-mise21c1b544+aaa902e09c7e8fc605102096fa9aef8af93ed0d0eca0c11ca1842a4529686a7e/launch.s1793176445.2110305.2139.sh'
+PREP DONE; agent starting

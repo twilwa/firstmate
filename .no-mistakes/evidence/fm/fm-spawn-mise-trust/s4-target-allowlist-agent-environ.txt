@@ -1,0 +1,37 @@
+== pid 2207391 /bin/sh -c [ -n "$MISE_TRUSTED_CONFIG_PATHS" ] && export MISE_TRUSTED_CONFIG_PATHS="$MISE_TRUSTED_CONFIG_PATHS":'/home/f
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=mise8348ca36
+GOTMPDIR=/tmp/fm-mise8348ca36/gotmp
+HOME=/home/firstmate
+LANG=C.UTF-8
+LOGNAME=firstmate
+MISE_STATE_DIR=/tmp/fmmise.ymuju0/mise/state
+PATH=<elided>
+SHELL=/bin/bash
+TERM=tmux-256color
+TERM_PROGRAM=tmux
+TMUX=/tmp/fml.CSY14K/tmux-1001/default,2195289,0
+TMUX_PANE=%1
+USER=firstmate
+== pid 2207538 sleep 3600 
+COMPACT_ADVISER_DISABLE=1
+DISABLE_AUTOUPDATER=1
+FM_TASK_ID=mise8348ca36
+FM_TASK_INBOX=/tmp/fmmise.ymuju0/home/state/mise8348ca36.inbox
+GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=core.hooksPath
+GIT_CONFIG_VALUE_0=/tmp/fmmise.ymuju0/home/state/mise8348ca36.git-hooks
+GOTMPDIR=/tmp/fm-mise8348ca36/gotmp
+HOME=/home/firstmate
+LANG=C.UTF-8
+LOGNAME=firstmate
+MISE_STATE_DIR=/tmp/fmmise.ymuju0/mise/state
+MISE_TRUSTED_CONFIG_PATHS=/home/firstmate/.treehouse-fm/e29e8128b5d3/.treehouse/bb-a51b4d/1/bb
+PATH=<elided>
+PWD=/home/firstmate/.treehouse-fm/e29e8128b5d3/.treehouse/bb-a51b4d/1/bb
+SHELL=/bin/bash
+TERM=tmux-256color
+TERM_PROGRAM=tmux
+TMUX=/tmp/fml.CSY14K/tmux-1001/default,2195289,0
+TMUX_PANE=%1
+USER=firstmate

@@ -1,0 +1,15 @@
+Welcome to fish, the friendly interactive shell
+Type help for instructions on how to use fish
+firstmate@vmi3582798 /t/f/h/p/bb (main)> treehouse --root '/home/firstmate/.treehouse-fm/3e78934e0f08' get
+A new version of treehouse is available: v3.1.6 → v3.1.7
+Run "treehouse update" to update
+🌳 Setting up worktree...
+🌳 Entered worktree at ~/.treehouse-fm/3e78934e0f08/.treehouse/bb-a56a28/1/bb. Type 'exit' to return.
+Welcome to fish, the friendly interactive shell
+Type help for instructions on how to use fish
+firstmate@vmi3582798 ~/.t/3/.t/b/1/bb ((b80ca24f))> cd -- '/home/firstmate/.treehouse-fm/3e78934e0f08/.treehouse/bb-a56a28/1/bb'
+firstmate@vmi3582798 ~/.t/3/.t/b/1/bb ((b80ca24f))> export GOTMPDIR=/tmp/fm-misedd157225/gotmp
+firstmate@vmi3582798 ~/.t/3/.t/b/1/bb ((b80ca24f))> export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798 ~/.t/3/.t/b/1/bb ((b80ca24f))> export FM_TASK_ID=misedd157225
+firstmate@vmi3582798 ~/.t/3/.t/b/1/bb ((b80ca24f))> . '/tmp/fm-misedd157225+a90b196ef55b0f6551217b488e2b7485ace3a96a34dfadecbeea1c1fe6cc5dd6/launch.s1793176488.2143129.9582.sh'
+PREP DONE; agent starting

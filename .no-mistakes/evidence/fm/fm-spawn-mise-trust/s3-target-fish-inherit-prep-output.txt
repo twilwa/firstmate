@@ -1,0 +1,16 @@
+pwd=/home/firstmate/.treehouse-fm/3e78934e0f08/.treehouse/bb-a56a28/1/bb
+MISE_TRUSTED_CONFIG_PATHS=/opt/existing-trust:/home/firstmate/.treehouse-fm/3e78934e0f08/.treehouse/bb-a56a28/1/bb
+--- mise env (worktree, stdin and stderr on the pane tty):
+export CARGO_HOME=/home/firstmate/.cargo
+export FM_MISE_PROBE=root-mise-toml-loaded
+export PATH='/tmp/fmmise-fish-dl/bin:/home/firstmate/.local/bin:/home/firstmate/.local/share/mise/installs/ast-grep/latest:/home/firstmate/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/firstmate/.local/share/mise/installs/node/lts/bin:/home/firstmate/.local/share/mise/installs/npm-cf/latest/node_modules/.bin:/home/firstmate/.local/share/mise/installs/pi/latest/pi:/home/firstmate/.cargo/bin:/home/firstmate/.local/share/mise/installs/sqlite/3.53.4/.mise-bins:/home/firstmate/.local/share/mise/shims:/home/firstmate/go/bin:/home/firstmate/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin'
+export RUSTUP_HOME=/home/firstmate/.rustup
+export RUSTUP_TOOLCHAIN=1.90.0
+mise-env-rc=0
+--- mise env (sibling outside worktree, stdin /dev/null):
+mise ERROR error parsing config file: /tmp/fmmise.AhariS/sibling/mise.toml
+mise ERROR Config files in /tmp/fmmise.AhariS/sibling/mise.toml are not trusted.
+Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+sibling-rc=1
