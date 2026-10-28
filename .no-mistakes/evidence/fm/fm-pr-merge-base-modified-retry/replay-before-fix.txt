@@ -1,0 +1,30 @@
+===== [before-fix] operator runs: fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123 (attempt 1)
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+GraphQL: Base branch was modified. Review and try the merge again.
+error: GitHub merge outcome was not successful: state=OPEN, merged=false, isInMergeQueue=false
+--- exit=1
+===== [before-fix] operator runs: fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123 (attempt 2)
+--- stdout
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/123 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+--- stderr
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+--- exit=0
+(operator does not retry: run succeeded or said not to retry blindly)
+===== [before-fix] fake GitHub event log
+[fake-github] squash 4ab0b60 landed on main, but answering the mutation with an error
+[fake-github] DUPLICATE empty squash 9f69968 landed on main
+===== [before-fix] gh pr merge calls issued: 2
+===== [before-fix] base commits now on main:
+  9f69968 Fix chat bug (#123)
+  4ab0b60 Fix chat bug (#123)
+  1111111 Older work (#120)
+===== [before-fix] wake queue:
+1793174552	1	check	merged-task-x1-https://github.com/example/repo/pull/123	check: merge landed: task-x1 https://github.com/example/repo/pull/123
+===== [before-fix] task meta:
+pr=https://github.com/example/repo/pull/123
+pr_head=6161616161616161616161616161616161616161

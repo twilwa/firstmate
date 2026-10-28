@@ -1,0 +1,20 @@
+===== [after-fix-associated] operator runs: fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123 (attempt 1)
+--- stdout
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/123 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+verified: landing commit 4ab0b60000000000000000000000000000000000; do not retry the merge
+--- stderr
+verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+--- exit=0
+(operator does not retry: run succeeded or said not to retry blindly)
+===== [after-fix-associated] fake GitHub event log
+[fake-github] squash 4ab0b60 landed on main, but answering the mutation with an error
+===== [after-fix-associated] gh pr merge calls issued: 1
+===== [after-fix-associated] base commits now on main:
+  4ab0b60 Fix chat bug (#123)
+  1111111 Older work (#120)
+===== [after-fix-associated] wake queue:
+1793174563	1	check	merged-task-x1-https://github.com/example/repo/pull/123	check: merge landed: task-x1 https://github.com/example/repo/pull/123
+===== [after-fix-associated] task meta:
+pr=https://github.com/example/repo/pull/123
+pr_head=6161616161616161616161616161616161616161

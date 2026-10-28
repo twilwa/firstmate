@@ -1,0 +1,21 @@
+===== [after-fix-stale-association] operator runs: fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123 (attempt 1)
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+GraphQL: Base branch was modified. Review and try the merge again.
+error: GitHub reported that the base branch was modified, and base commit 4ab0b60000000000000000000000000000000000 on main carries the squash title of https://github.com/example/repo/pull/123 but GitHub does not associate it with the pull request, so the landing is unconfirmed and cannot be ruled out; check the PR and that commit before retrying; PR metadata and merge poll remain recorded
+error: GitHub merge outcome reads state=OPEN, merged=false, isInMergeQueue=false, which may be stale after the base-modified error
+--- exit=1
+(operator does not retry: run succeeded or said not to retry blindly)
+===== [after-fix-stale-association] fake GitHub event log
+[fake-github] squash 4ab0b60 landed on main, but answering the mutation with an error
+===== [after-fix-stale-association] gh pr merge calls issued: 1
+===== [after-fix-stale-association] base commits now on main:
+  4ab0b60 Fix chat bug (#123)
+  1111111 Older work (#120)
+===== [after-fix-stale-association] wake queue:
+  (none)
+===== [after-fix-stale-association] task meta:
+pr=https://github.com/example/repo/pull/123
+pr_head=6161616161616161616161616161616161616161
