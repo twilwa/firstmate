@@ -425,11 +425,11 @@
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
 # Mise config trust (every harness and backend):
-#   Before any launch command or task prep runs, export the resolved worktree's
-#   existing mise.toml, .mise.toml, .mise/config.toml and .tool-versions paths in
-#   MISE_TRUSTED_CONFIG_PATHS. This explicit assignment survives allowlist
+#   Before any launch command or task prep runs, add the resolved worktree to
+#   MISE_TRUSTED_CONFIG_PATHS, which mise matches as a directory prefix, so every
+#   config beneath it is trusted. This explicit assignment survives allowlist
 #   filtering; destination trust is retained only when inherited or allowlisted.
-#   On backend=t3code the same paths become a harness config entry instead.
+#   On backend=t3code the same directory becomes a harness config entry instead.
 #   No interactive mise command or persistent trust-store change is performed.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
@@ -7323,7 +7323,8 @@ if [ "$BACKEND" = t3code ]; then
   # (spawn_t3code_env_install). TRACEPARENT is delivered only once its meta
   # record exists, the same delivered-implies-recorded invariant the pane path
   # keeps by unsetting it when the record fails.
-  T3CODE_ENV=("GOTMPDIR=$TASK_TMP/gotmp" COMPACT_ADVISER_DISABLE=1 "FM_TASK_INBOX=$STATE_REAL/$ID.inbox")
+  T3CODE_ENV=("GOTMPDIR=$TASK_TMP/gotmp" COMPACT_ADVISER_DISABLE=1 "FM_TASK_INBOX=$STATE_REAL/$ID.inbox" \
+    "MISE_TRUSTED_CONFIG_PATHS=$WT")
   if [ "$GIT_HOOKS_INSTALLED" = 1 ]; then
     T3CODE_ENV+=(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath "GIT_CONFIG_VALUE_0=$GIT_HOOKS_DIR")
   fi
@@ -7335,10 +7336,6 @@ if [ "$BACKEND" = t3code ]; then
   fi
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
-  fi
-  T3CODE_MISE_PATHS=$(fm_launch_mise_paths "$WT")
-  if [ -n "$T3CODE_MISE_PATHS" ]; then
-    T3CODE_ENV+=("MISE_TRUSTED_CONFIG_PATHS=$T3CODE_MISE_PATHS")
   fi
   if [ "$KIND" = secondmate ]; then
     # The secondmate launch prefix above, value for value, plus the supervisor

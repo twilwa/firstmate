@@ -13,40 +13,56 @@ trap 'rm -rf "$TMP"' EXIT
 # A quote and space in the directory must remain data, never shell syntax.
 WT="$TMP/worker's copy"
 mkdir -p "$WT"
-touch "$WT/mise.toml"
 launch=$(fm_launch_mise_env "$WT" 'printf "%s" "$MISE_TRUSTED_CONFIG_PATHS"')
 actual=$(env -u MISE_TRUSTED_CONFIG_PATHS /bin/sh -c "$launch")
-[[ "$actual" == "$WT/mise.toml" ]] || {
-  printf 'FAIL: mise.toml not trusted in worker environment: %s\n' "$actual" >&2
+[[ "$actual" == "$WT" ]] || {
+  printf 'FAIL: worktree not trusted in worker environment: %s\n' "$actual" >&2
   exit 1
 }
-printf 'PASS: launch trusts the worktree mise config\n'
+printf 'PASS: launch trusts the worktree directory\n'
 
-# Every supported filename is trusted; existing destination trust is preserved.
-for config in .mise.toml .mise/config.toml .tool-versions; do
-  rm -f "$WT/mise.toml" "$WT/.mise.toml" "$WT/.mise/config.toml" "$WT/.tool-versions"
-  mkdir -p "$WT/.mise"
-  touch "$WT/$config"
-  launch=$(fm_launch_mise_env "$WT" 'printf "%s" "$MISE_TRUSTED_CONFIG_PATHS"')
-  actual=$(MISE_TRUSTED_CONFIG_PATHS=/existing /bin/sh -c "$launch")
-  [[ "$actual" == "/existing:$WT/$config" ]] || exit 1
-done
-printf 'PASS: alternate configs retain destination trust\n'
-
-# Include all present configs, not just the highest-precedence one.
-touch "$WT/mise.toml" "$WT/.mise.toml" "$WT/.mise/config.toml"
-launch=$(fm_launch_mise_env "$WT" 'printf "%s" "$MISE_TRUSTED_CONFIG_PATHS"')
-actual=$(env -u MISE_TRUSTED_CONFIG_PATHS /bin/sh -c "$launch")
-[[ "$actual" == "$WT/mise.toml:$WT/.mise.toml:$WT/.mise/config.toml:$WT/.tool-versions" ]] || exit 1
-# The explicit assignment survives env -i without forwarding ambient trust.
-actual=$(/usr/bin/env -i /bin/sh -c "$launch")
-[[ "$actual" == "$WT/mise.toml:$WT/.mise.toml:$WT/.mise/config.toml:$WT/.tool-versions" ]] || exit 1
-printf 'PASS: all present configs survive filtered launch\n'
-
-rm -f "$WT/mise.toml" "$WT/.mise.toml" "$WT/.mise/config.toml" "$WT/.tool-versions"
-launch=$(fm_launch_mise_env "$WT" 'printf "%s" "${MISE_TRUSTED_CONFIG_PATHS-unset}"')
-actual=$(env -u MISE_TRUSTED_CONFIG_PATHS /bin/sh -c "$launch")
-[[ "$actual" == unset ]] || exit 1
 actual=$(MISE_TRUSTED_CONFIG_PATHS=/existing /bin/sh -c "$launch")
-[[ "$actual" == /existing ]] || exit 1
-printf 'PASS: no config leaves trust unchanged\n'
+[[ "$actual" == "/existing:$WT" ]] || exit 1
+printf 'PASS: existing destination trust is retained\n'
+
+# The explicit assignment survives env -i without forwarding ambient trust.
+actual=$(MISE_TRUSTED_CONFIG_PATHS=/existing /usr/bin/env -i /bin/sh -c "$launch")
+[[ "$actual" == "$WT" ]] || exit 1
+printf 'PASS: worktree trust survives filtered launch\n'
+
+# mise itself must accept every config beneath the worktree, whatever its name,
+# and still refuse a sibling directory that shares the worktree's name prefix.
+if ! MISE=$(command -v mise); then
+  printf 'SKIP: mise not on PATH; real trust resolution not exercised\n'
+  exit 0
+fi
+mkdir -p "$WT/.config" "$WT/sub" "$WT-sibling" "$TMP/home"
+printf '[env]\nFM_PROBE = "root"\n' >"$WT/.config/mise.toml"
+printf '[env]\nFM_PROBE_LOCAL = "local"\n' >"$WT/mise.local.toml"
+printf '[env]\nFM_PROBE_SUB = "sub"\n' >"$WT/sub/mise.toml"
+printf '[env]\nFM_PROBE = "sibling"\n' >"$WT-sibling/mise.toml"
+mise_probe() { # <dir>
+  local dir=$1 launch
+  launch=$(fm_launch_mise_env "$WT" "cd '${dir//\'/\'\\\'\'}' && '$MISE' env")
+  /usr/bin/env -i PATH="$PATH" HOME="$TMP/home" MISE_CONFIG_DIR="$TMP/home/config" \
+    MISE_STATE_DIR="$TMP/home/state" MISE_CACHE_DIR="$TMP/home/cache" MISE_DATA_DIR="$TMP/home/data" \
+    /bin/sh -c "$launch" </dev/null 2>&1
+}
+actual=$(mise_probe "$WT/sub") || {
+  printf 'FAIL: mise refused configs beneath the worktree: %s\n' "$actual" >&2
+  exit 1
+}
+for want in FM_PROBE=root FM_PROBE_LOCAL=local FM_PROBE_SUB=sub; do
+  [[ "$actual" == *"export $want"* ]] || {
+    printf 'FAIL: mise did not load %s: %s\n' "$want" "$actual" >&2
+    exit 1
+  }
+done
+printf 'PASS: mise trusts every config beneath the worktree\n'
+
+if actual=$(mise_probe "$WT-sibling"); then
+  printf 'FAIL: mise trusted a sibling directory: %s\n' "$actual" >&2
+  exit 1
+fi
+[[ "$actual" == *"not trusted"* ]] || exit 1
+printf 'PASS: trust stays confined to the worktree\n'
