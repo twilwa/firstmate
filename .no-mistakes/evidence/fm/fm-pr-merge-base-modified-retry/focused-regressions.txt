@@ -1,0 +1,5 @@
+ok - fm-pr-merge recovers the commit from merged PR state after a base-modified error
+ok - fm-pr-merge recovers a base squash when PR state remains stale after a base-modified error
+ok - fm-pr-merge preserves refusal and a later valid retry when neither source proves a landing
+ok - fm-pr-merge does not treat an older same-numbered base squash as this attempt's landing
+ok - fm-pr-merge reports an unruled landing without retry guidance when a recovery read fails

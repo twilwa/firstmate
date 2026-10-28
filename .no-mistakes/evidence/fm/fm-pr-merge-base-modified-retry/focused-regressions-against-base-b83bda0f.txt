@@ -1,0 +1,5 @@
+not ok - base-modified-merged: the confirmed landing must succeed: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━�
+not ok - base-modified-stale: a base landing must succeed: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ok - fm-pr-merge preserves refusal and a later valid retry when neither source proves a landing
+ok - fm-pr-merge does not treat an older same-numbered base squash as this attempt's landing
+not ok - base-modified-unreadable-landing: unruled landing not reported

@@ -1,0 +1,70 @@
+=== Scenario 1: bbchat#123 replay - GitHub lands the squash, errors 'Base branch was modified', every PR view stays stale (OPEN/merged=false)
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123   # first attempt
+[stdout]
+    armed: state/task-x1.check.sh
+    verified: https://github.com/example/repo/pull/123 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+    verified: landing commit 27df296410d73781c933c14afd519bc2c2c8d90a; do not retry the merge
+[stderr, supervision banner elided]
+    verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+[exit 0]
+--- base branch main on the forge after first attempt:
+    27df296 2026-10-28T07:28:56+01:00 Fix duplicate squash (#123)
+    0fa34b3 2026-06-23T12:00:00+00:00 Upstream thing (#123)
+    23eb166 2026-10-28T07:28:50+01:00 Initial
+--- gh pr merge calls issued: 1
+--- wake-queue: 1793168936	1	check	merged-task-x1-https://github.com/example/repo/pull/123	check: merge landed: task-x1 https://github.com/example/repo/pull/123
+--- meta: pr=https://github.com/example/repo/pull/123 pr_head=6161616161616161616161616161616161616161 
+--- merge poll present: yes
+
+=== Scenario 2: genuine base-modified refusal, nothing lands, an older upstream '(#123)' commit is already on main
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123   # first attempt
+[stdout]
+    armed: state/task-x1.check.sh
+[stderr, supervision banner elided]
+    verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+    GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)
+    error: GitHub merge outcome was not successful: state=OPEN, merged=false, isInMergeQueue=false
+[exit 1]
+--- base branch main on the forge after first attempt:
+    0723dfa 2026-06-23T12:00:00+00:00 Upstream thing (#123)
+    4960450 2026-10-28T07:28:57+01:00 Initial
+--- gh pr merge calls issued: 1
+--- wake-queue: <absent>
+--- meta: pr=https://github.com/example/repo/pull/123 pr_head=6161616161616161616161616161616161616161 
+--- merge poll present: yes
+>>> the operator follows the retry guidance; GitHub now accepts the merge
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123   # retry
+[stdout]
+    armed: state/task-x1.check.sh
+    verified: https://github.com/example/repo/pull/123 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+[stderr, supervision banner elided]
+    WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+    verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+[exit 0]
+--- base branch main on the forge after retry:
+    b85ddc3 2026-10-28T07:29:07+01:00 Fix duplicate squash (#123)
+    0723dfa 2026-06-23T12:00:00+00:00 Upstream thing (#123)
+    4960450 2026-10-28T07:28:57+01:00 Initial
+--- gh pr merge calls issued: 2
+--- wake-queue: 1793168947	1	check	merged-task-x1-https://github.com/example/repo/pull/123	check: merge landed: task-x1 https://github.com/example/repo/pull/123
+--- meta: pr=https://github.com/example/repo/pull/123 pr_head=6161616161616161616161616161616161616161 
+--- merge poll present: yes
+
+=== Scenario 3: squash landed, PR view stale, and the base-commits read is rate limited
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/123   # first attempt
+[stdout]
+    armed: state/task-x1.check.sh
+[stderr, supervision banner elided]
+    verified: https://github.com/example/repo/pull/123 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 6161616161616161616161616161616161616161
+    GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)
+    error: GitHub reported that the base branch was modified, and the landing re-read for https://github.com/example/repo/pull/123 could not be completed, so a landing cannot be ruled out; check base branch main for a squash commit titled with (#123) before retrying; PR metadata and merge poll remain recorded
+    error: GitHub merge outcome reads state=OPEN, merged=false, isInMergeQueue=false, which may be stale after the base-modified error
+[exit 1]
+--- base branch main on the forge after first attempt:
+    8c92418 2026-10-28T07:29:13+01:00 Fix duplicate squash (#123)
+    3ea9b44 2026-06-23T12:00:00+00:00 Upstream thing (#123)
+    d251519 2026-10-28T07:29:08+01:00 Initial
+--- gh pr merge calls issued: 1
+--- wake-queue: <absent>
+--- meta: pr=https://github.com/example/repo/pull/123 pr_head=6161616161616161616161616161616161616161 
+--- merge poll present: yes
