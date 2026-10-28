@@ -1,0 +1,16 @@
+== head: total owned entries / unique paths / tests on disk
+304
+304
+304
+== head: paths owned by >1 lane:
+== head: tests on disk with no owner:
+== parallel set base vs head diff:
+identical
+== serial set base vs head diff:
+identical
+== herdr set base vs head diff:
+identical
+== proven-isolated set base vs head diff:
+identical
+== concurrent-safe families base vs head diff:
+identical

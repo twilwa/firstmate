@@ -1,0 +1,13 @@
+== adversarial 1: add an unowned test file
+FM_TEST_COVERAGE ok total=305 parallel=26 parallel_max_ms=1041353 parallel_imbalance_ms=120 parallel_unhinted=0 serial=263 serial_shards=11 serial_unhinted=1 serial_max_ms=1121199 serial_budget_ms=1200000 herdr=16
+exit=0
+== adversarial 2: inflate one serial hint past the 1200000 ms budget
+fm-test-run: coverage guard: largest portable serial shard packs 1300000ms above the 1200000ms target
+fm-test-run: refresh CI hints and rebalance or add shards; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+== adversarial 3: skew parallel lanes by inflating one parallel hint
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1574636 parallel_imbalance_ms=533403 parallel_unhinted=0 serial=262 serial_shards=11 serial_unhinted=0 serial_max_ms=1117115 serial_budget_ms=1200000 herdr=16
+exit=0
+== restored
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1041353 parallel_imbalance_ms=120 parallel_unhinted=0 serial=262 serial_shards=11 serial_unhinted=0 serial_max_ms=1117115 serial_budget_ms=1200000 herdr=16
+exit=0

@@ -1,0 +1,14 @@
+lane | base-partition members | base-partition ms (head hints) | head-partition members | head-partition ms (head hints)
+portable-parallel-1 | 13 | 774974 | 13 | 1041233
+portable-parallel-2 | 13 | 1307612 | 13 | 1041353
+portable-serial-1of11 | 19 | 1259283 | 16 | 1117098
+portable-serial-2of11 | 21 | 1158490 | 21 | 1117096
+portable-serial-3of11 | 22 | 1076765 | 23 | 1117095
+portable-serial-4of11 | 24 | 1116962 | 24 | 1117095
+portable-serial-5of11 | 25 | 1146461 | 25 | 1117095
+portable-serial-6of11 | 25 | 1181376 | 25 | 1117094
+portable-serial-7of11 | 25 | 1134626 | 25 | 1117111
+portable-serial-8of11 | 26 | 1011279 | 26 | 1117115
+portable-serial-9of11 | 25 | 1024893 | 26 | 1117095
+portable-serial-10of11 | 25 | 1205855 | 25 | 1117109
+portable-serial-11of11 | 25 | 972110 | 26 | 1117097

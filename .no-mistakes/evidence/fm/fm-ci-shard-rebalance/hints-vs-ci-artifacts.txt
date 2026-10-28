@@ -1,0 +1,5 @@
+hint entries: 288; measured paths: 288
+== hints differing from measured successful duration (path hint measured):
+tests/fm-pi-windows-shell-invocation.test.sh 5121 153
+== hinted paths with no measured sample:
+== measured portable paths without hint:

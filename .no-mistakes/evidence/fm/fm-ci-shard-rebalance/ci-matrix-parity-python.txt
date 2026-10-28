@@ -1,0 +1,18 @@
+== .github/workflows/ci.yml changed by this commit? no
+serial matrix shards: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] job-total: 11
+tests-portable-parallel-1 present: True
+tests-portable-parallel-2 present: True
+portable-serial-1of11 -> 16 scripts
+portable-serial-2of11 -> 21 scripts
+portable-serial-3of11 -> 23 scripts
+portable-serial-4of11 -> 24 scripts
+portable-serial-5of11 -> 25 scripts
+portable-serial-6of11 -> 25 scripts
+portable-serial-7of11 -> 25 scripts
+portable-serial-8of11 -> 26 scripts
+portable-serial-9of11 -> 26 scripts
+portable-serial-10of11 -> 25 scripts
+portable-serial-11of11 -> 26 scripts
+== a CI matrix of 12 would be refused by the runner:
+fm-test-run: lane 'portable-serial-1of12' asks for 12 portable serial shards but this runner is configured for 11 (see --list-lanes)
+exit=2
