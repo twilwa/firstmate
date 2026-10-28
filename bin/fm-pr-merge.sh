@@ -70,7 +70,9 @@
 # gh-axi view could not prove the outcome either.
 # After the specific GraphQL "Base branch was modified" refusal, re-read the
 # PR's merged state and mergeCommit and, if those do not prove a landing, scan
-# the base's latest 100 commits for GitHub's squash-title suffix " (#<number>)".
+# the base's latest 100 commits committed since shortly before the merge
+# attempt for GitHub's squash-title suffix " (#<number>)", so an older commit
+# with the same number, such as one synced from an upstream, cannot qualify.
 # A proved landing is reported with its commit and follows normal successful-
 # merge bookkeeping; no second merge is issued. When either re-read fails or
 # the base is unknown, the refusal says a landing cannot be ruled out and gives
@@ -1290,6 +1292,7 @@ github_read_outcome() {
 # ordinary outcome view still lags behind. Recover the concrete landing before
 # reporting a refusal that would invite a duplicate merge.
 FM_PR_GITHUB_RECOVERED_COMMIT=
+FM_PR_GITHUB_MERGE_SINCE=
 github_recover_base_modified_landing() {
   local json commit=''
   # shellcheck disable=SC2016 # GraphQL variables are literal query syntax.
@@ -1303,9 +1306,10 @@ github_recover_base_modified_landing() {
       then .mergeCommit.oid
       else error("unreadable landing") end' 2>/dev/null) || return 2
   if [ -z "$commit" ]; then
-    [ -n "$FM_PR_GITHUB_BASE" ] || return 2
+    [ -n "$FM_PR_GITHUB_BASE" ] && [ -n "$FM_PR_GITHUB_MERGE_SINCE" ] || return 2
     json=$(gh api --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
-      -f "sha=$FM_PR_GITHUB_BASE" -f per_page=100 2>/dev/null) || return 2
+      -f "sha=$FM_PR_GITHUB_BASE" -f "since=$FM_PR_GITHUB_MERGE_SINCE" \
+      -f per_page=100 2>/dev/null) || return 2
     commit=$(printf '%s' "$json" | jq -er --arg number "$PR_NUMBER" '
       if type != "array" then error("unreadable commits") else
         [ .[] | select((.commit.message | split("\n")[0]) | endswith(" (#" + $number + ")"))
@@ -1759,6 +1763,9 @@ case "$PROVIDER" in
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
     merge_status=0
+    merge_since=$(($(date -u +%s) - 120))
+    FM_PR_GITHUB_MERGE_SINCE=$(date -u -r "$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+      || date -u -d "@$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || FM_PR_GITHUB_MERGE_SINCE=
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
       "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?

@@ -277,7 +277,12 @@ case "${1:-} ${2:-}" in
     # the merge-queue filter the queue reader below applies.
     case " $* " in
       *" repos/"*"/commits "*)
-        cat "${FM_TEST_GH_OUTCOME%/*}/github-commits.json"
+        since=
+        for arg in "$@"; do
+          case "$arg" in since=*) since=${arg#since=} ;; esac
+        done
+        jq --arg since "$since" '[ .[] | select(.commit.committer.date >= $since) ]' \
+          "${FM_TEST_GH_OUTCOME%/*}/github-commits.json"
         exit $?
         ;;
       *" repos/"*"/commits/"*"/check-runs"*)
@@ -1233,8 +1238,10 @@ test_github_base_modified_recovers_stale_pr_from_base() {
   case_dir=$(make_github_base_modified_case github-base-modified-stale)
   printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
     > "$case_dir/github-landing.json"
-  printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"Fix duplicate squash (#123)\n\nSquashed body"}}]' \
-    > "$case_dir/github-commits.json"
+  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+    {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated (#1234)", committer: {date: $now}}},
+    {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "Fix duplicate squash (#123)\n\nSquashed body", committer: {date: $now}}}
+  ]' > "$case_dir/github-commits.json"
 
   rc=0
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
@@ -1259,8 +1266,10 @@ test_github_base_modified_without_landing_keeps_retry() {
   printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
     > "$case_dir/github-landing.json"
   # Neither another PR's suffix nor a mention in a body proves this landing.
-  printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}},{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"Other work (#456)\n\nRelated (#123)"}}]' \
-    > "$case_dir/github-commits.json"
+  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+    {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated (#1234)", committer: {date: $now}}},
+    {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "Other work (#456)\n\nRelated (#123)", committer: {date: $now}}}
+  ]' > "$case_dir/github-commits.json"
 
   rc=0
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
@@ -1288,6 +1297,42 @@ test_github_base_modified_without_landing_keeps_retry() {
   pass "fm-pr-merge preserves refusal and a later valid retry when neither source proves a landing"
 }
 
+test_github_base_modified_ignores_older_foreign_squash() {
+  local case_dir rc
+  case_dir=$(make_github_base_modified_case github-base-modified-foreign)
+  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
+    > "$case_dir/github-landing.json"
+  # An upstream squash synced onto the base before this attempt shares the number.
+  printf '%s\n' '[{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"Upstream work (#123)","committer":{"date":"2026-06-23T00:00:00Z"}}}]' \
+    > "$case_dir/github-commits.json"
+
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "base-modified-foreign: an older foreign squash must not prove a landing"
+  assert_grep 'state=OPEN, merged=false, isInMergeQueue=false' "$case_dir/stderr" \
+    "base-modified-foreign: original refusal missing"
+  assert_no_grep 'verified:' "$case_dir/stdout" \
+    "base-modified-foreign: an older foreign squash was accepted as proof"
+  assert_absent "$case_dir/state/.wake-queue" \
+    "base-modified-foreign: unproved merge outcome published"
+  assert_present "$case_dir/state/task-x1.check.sh" \
+    "base-modified-foreign: merge poll lost"
+
+  printf '0\n' > "$case_dir/github-merge-rc"
+  : > "$case_dir/github-merge-output"
+  write_github_outcome "$case_dir" MERGED true false main
+  rc=0
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+    > "$case_dir/retry.stdout" 2> "$case_dir/retry.stderr" || rc=$?
+  expect_code 0 "$rc" "base-modified-foreign: genuine retry must still succeed"
+  assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" \
+    "base-modified-foreign: retry lost normal merge bookkeeping"
+  [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 2 ] \
+    || fail "base-modified-foreign: the retry did not merge exactly once"
+  pass "fm-pr-merge does not treat an older same-numbered base squash as this attempt's landing"
+}
+
 test_github_base_modified_unreadable_recovery_suppresses_retry() {
   local case_dir rc unreadable
   for unreadable in landing commits; do
@@ -1296,8 +1341,9 @@ test_github_base_modified_unreadable_recovery_suppresses_retry() {
       printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
         > "$case_dir/github-landing.json"
     else
-      printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"message":"Unrelated (#1234)"}}]' \
-        > "$case_dir/github-commits.json"
+      jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+        {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated (#1234)", committer: {date: $now}}}
+      ]' > "$case_dir/github-commits.json"
     fi
 
     rc=0
@@ -5097,6 +5143,7 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
 test_github_base_modified_recovers_merged_state
 test_github_base_modified_recovers_stale_pr_from_base
 test_github_base_modified_without_landing_keeps_retry
+test_github_base_modified_ignores_older_foreign_squash
 test_github_base_modified_unreadable_recovery_suppresses_retry
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
