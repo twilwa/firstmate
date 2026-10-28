@@ -264,13 +264,7 @@ case "${1:-} ${2:-}" in
   "api graphql")
     case "$*" in
       *mergeCommit*)
-        dir=${FM_TEST_GH_OUTCOME%/*}
-        if [ -e "$dir/github-landing-read" ] && [ -e "$dir/github-landing-after.json" ]; then
-          cat "$dir/github-landing-after.json"
-        else
-          : > "$dir/github-landing-read"
-          cat "$dir/github-landing.json"
-        fi
+        cat "${FM_TEST_GH_OUTCOME%/*}/github-landing.json"
         exit $?
         ;;
     esac
@@ -285,10 +279,6 @@ case "${1:-} ${2:-}" in
     # The required-check reads: the branch itself, and its rules read without
     # the merge-queue filter the queue reader below applies.
     case " $* " in
-      *" --include "*)
-        cat "${FM_TEST_GH_OUTCOME%/*}/github-date"
-        exit $?
-        ;;
       *" repos/"*"/commits/"*"/pulls"*)
         for arg in "$@"; do
           case "$arg" in repos/*/commits/*/pulls) sha=${arg%/pulls}; sha=${sha##*/} ;; esac
@@ -1233,7 +1223,6 @@ make_github_base_modified_case() {
     > "$case_dir/github-merge-output"
   printf '1\n' > "$case_dir/github-merge-rc"
   write_github_outcome "$case_dir" OPEN false false main
-  printf 'HTTP/2 200\r\ndate: Wed, 28 Oct 2026 07:00:00 GMT\r\n\r\n' > "$case_dir/github-date"
   printf '%s\n' "$case_dir"
 }
 
@@ -1362,45 +1351,37 @@ test_github_base_modified_ignores_older_foreign_squash() {
   pass "fm-pr-merge does not treat an older same-numbered base squash as this attempt's landing"
 }
 
-test_github_base_modified_uses_server_clock_for_all_merge_methods() {
+test_github_base_modified_associates_all_merge_methods() {
   local case_dir method rc
   for method in merge rebase; do
-    case_dir=$(make_github_base_modified_case "github-base-modified-server-$method")
-    printf 'HTTP/2 200\r\nDate: Wed, 01 Jan 2020 00:00:00 GMT\r\n\r\n' > "$case_dir/github-date"
+    case_dir=$(make_github_base_modified_case "github-base-modified-association-$method")
     printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' > "$case_dir/github-landing.json"
-    printf '%s\n' '[{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"message":"A landing without a squash suffix","committer":{"date":"2020-01-01T00:00:01Z"}}}]' > "$case_dir/github-commits.json"
+    jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+      {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "A landing without a squash suffix", committer: {date: $now}}}
+    ]' > "$case_dir/github-commits.json"
     printf '[{"number":123}]\n' > "$case_dir/github-associated-cccccccccccccccccccccccccccccccccccccccc.json"
     rc=0
     run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 -- "--$method" \
       > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-    expect_code 0 "$rc" "base-modified-server-$method: GitHub time and association must prove the landing: $(cat "$case_dir/stderr")"
-    assert_grep 'cccccccccccccccccccccccccccccccccccccccc' "$case_dir/stdout" "base-modified-server-$method: lost commit"
-    assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" "base-modified-server-$method: normal bookkeeping missing"
+    expect_code 0 "$rc" "base-modified-association-$method: the PR association must prove the landing: $(cat "$case_dir/stderr")"
+    assert_grep 'cccccccccccccccccccccccccccccccccccccccc' "$case_dir/stdout" "base-modified-association-$method: lost commit"
+    assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" "base-modified-association-$method: normal bookkeeping missing"
+    [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 1 ] \
+      || fail "base-modified-association-$method: duplicate merge attempted"
   done
-  pass "fm-pr-merge uses server time and PR associations for merge and rebase landings without squash titles"
-}
-
-test_github_base_modified_rereads_after_stale_commits() {
-  local case_dir rc
-  case_dir=$(make_github_base_modified_case github-base-modified-lagging)
-  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' > "$case_dir/github-landing.json"
-  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":true,"mergeCommit":{"oid":"cccccccccccccccccccccccccccccccccccccccc"}}}}}' > "$case_dir/github-landing-after.json"
-  printf '[]\n' > "$case_dir/github-commits.json"
-  rc=0
-  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
-    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-  expect_code 0 "$rc" "base-modified-lagging: a delayed merged state must override a stale empty commits response"
-  assert_grep 'cccccccccccccccccccccccccccccccccccccccc' "$case_dir/stdout" "base-modified-lagging: lost commit"
-  assert_grep 'check: merge landed:' "$case_dir/state/.wake-queue" "base-modified-lagging: normal bookkeeping missing"
-  pass "fm-pr-merge rechecks PR landing after a stale commits response"
+  pass "fm-pr-merge uses PR associations for merge and rebase landings without squash titles"
 }
 
 test_github_base_modified_scans_all_commit_pages() {
   local case_dir rc
   case_dir=$(make_github_base_modified_case github-base-modified-pages)
   printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' > "$case_dir/github-landing.json"
-  printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"committer":{"date":"2026-10-28T07:00:01Z"}}}]' > "$case_dir/github-commits.json"
-  printf '%s\n' '[{"sha":"cccccccccccccccccccccccccccccccccccccccc","commit":{"committer":{"date":"2026-10-28T07:00:01Z"}}}]' > "$case_dir/github-commits-page2.json"
+  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+    {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated work", committer: {date: $now}}}
+  ]' > "$case_dir/github-commits.json"
+  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+    {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "A landing without a squash suffix", committer: {date: $now}}}
+  ]' > "$case_dir/github-commits-page2.json"
   printf '[{"number":123}]\n' > "$case_dir/github-associated-cccccccccccccccccccccccccccccccccccccccc.json"
   rc=0
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
@@ -1410,36 +1391,53 @@ test_github_base_modified_scans_all_commit_pages() {
   pass "fm-pr-merge scans later base commit pages for the PR association"
 }
 
-test_github_base_modified_rejects_recent_foreign_squash() {
-  local case_dir rc
-  case_dir=$(make_github_base_modified_case github-base-modified-recent-foreign)
-  printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' > "$case_dir/github-landing.json"
-  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
-    {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "Upstream work (#123)", committer: {date: $now}}}
-  ]' > "$case_dir/github-commits.json"
-  printf '[{"number":456}]\n' > "$case_dir/github-associated-cccccccccccccccccccccccccccccccccccccccc.json"
-  rc=0
-  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
-    > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-  expect_code 1 "$rc" "base-modified-recent-foreign: another PR's associated commit cannot prove a landing"
-  assert_no_grep 'verified:' "$case_dir/stdout" "base-modified-recent-foreign: false success"
-  assert_absent "$case_dir/state/.wake-queue" "base-modified-recent-foreign: false merge published"
-  pass "fm-pr-merge rejects same-number squashes associated with a different repository PR"
+test_github_base_modified_reports_unconfirmed_title_candidate() {
+  local case_dir rc association
+  for association in foreign empty unreadable; do
+    case_dir=$(make_github_base_modified_case "github-base-modified-unconfirmed-$association")
+    printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' > "$case_dir/github-landing.json"
+    jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+      {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated (#1234)", committer: {date: $now}}},
+      {sha: "cccccccccccccccccccccccccccccccccccccccc", commit: {message: "Fix duplicate squash (#123)", committer: {date: $now}}}
+    ]' > "$case_dir/github-commits.json"
+    case "$association" in
+      foreign) printf '[{"number":456}]\n' > "$case_dir/github-associated-cccccccccccccccccccccccccccccccccccccccc.json" ;;
+      unreadable) printf 'unavailable\n' > "$case_dir/github-associated-cccccccccccccccccccccccccccccccccccccccc.json" ;;
+    esac
+    rc=0
+    run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/123 \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+    expect_code 1 "$rc" "base-modified-unconfirmed-$association: an unconfirmed title candidate must refuse"
+    assert_grep 'base commit cccccccccccccccccccccccccccccccccccccccc on main carries the squash title of https://github.com/example/repo/pull/123' \
+      "$case_dir/stderr" "base-modified-unconfirmed-$association: candidate commit not reported"
+    assert_grep 'the landing is unconfirmed and cannot be ruled out' "$case_dir/stderr" \
+      "base-modified-unconfirmed-$association: unconfirmed landing not reported"
+    assert_no_grep 'GitHub merge outcome was not successful' "$case_dir/stderr" \
+      "base-modified-unconfirmed-$association: ordinary refusal reported as if nothing landed"
+    assert_no_grep 'retry with:' "$case_dir/stderr" \
+      "base-modified-unconfirmed-$association: retry guidance offered despite a candidate landing"
+    assert_no_grep 'verified:' "$case_dir/stdout" "base-modified-unconfirmed-$association: false success"
+    assert_absent "$case_dir/state/.wake-queue" "base-modified-unconfirmed-$association: false merge published"
+    assert_present "$case_dir/state/task-x1.check.sh" \
+      "base-modified-unconfirmed-$association: merge poll lost"
+    [ "$(grep -c '^pr merge ' "$case_dir/gh.log")" -eq 1 ] \
+      || fail "base-modified-unconfirmed-$association: duplicate merge attempted"
+  done
+  pass "fm-pr-merge reports an unconfirmed squash-title candidate without retry guidance"
 }
 
 test_github_base_modified_unreadable_recovery_suppresses_retry() {
   local case_dir rc unreadable
-  for unreadable in landing commits association date; do
+  for unreadable in landing commits association; do
     case_dir=$(make_github_base_modified_case "github-base-modified-unreadable-$unreadable")
     if [ "$unreadable" != landing ]; then
       printf '%s\n' '{"data":{"repository":{"pullRequest":{"merged":false,"mergeCommit":null}}}}' \
         > "$case_dir/github-landing.json"
       if [ "$unreadable" = association ]; then
-        printf '%s\n' '[{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","commit":{"committer":{"date":"2026-10-28T07:00:01Z"}}}]' > "$case_dir/github-commits.json"
+        jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
+          {sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", commit: {message: "Unrelated work", committer: {date: $now}}}
+        ]' > "$case_dir/github-commits.json"
         printf 'unavailable\n' > "$case_dir/github-associated-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json"
-      elif [ "$unreadable" = date ]; then
-        printf '[]\n' > "$case_dir/github-commits.json"
-        : > "$case_dir/github-date"
       fi
     else
       jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[
@@ -5245,10 +5243,9 @@ test_github_base_modified_recovers_merged_state
 test_github_base_modified_recovers_stale_pr_from_base
 test_github_base_modified_without_landing_keeps_retry
 test_github_base_modified_ignores_older_foreign_squash
-test_github_base_modified_rejects_recent_foreign_squash
-test_github_base_modified_rereads_after_stale_commits
+test_github_base_modified_reports_unconfirmed_title_candidate
 test_github_base_modified_scans_all_commit_pages
-test_github_base_modified_uses_server_clock_for_all_merge_methods
+test_github_base_modified_associates_all_merge_methods
 test_github_base_modified_unreadable_recovery_suppresses_retry
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once

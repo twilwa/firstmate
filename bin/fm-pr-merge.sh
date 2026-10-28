@@ -70,17 +70,17 @@
 # gh-axi view could not prove the outcome either.
 # After the specific GraphQL "Base branch was modified" refusal, re-read the
 # PR's merged state and mergeCommit and, if those do not prove a landing, scan
-# every page of base commits since GitHub's pre-attempt Date header minus two
-# minutes. Each candidate must have this PR in GitHub's commit-to-PR association;
-# titles alone never prove identity, including for --merge and --rebase.
-# With no confirmed candidate, pause briefly and re-read the PR once more.
-# A proved landing is reported with its commit and follows normal successful-
-# merge bookkeeping; no second merge is issued. Unreadable evidence, base, or
-# server time reports an uncertain landing without retry guidance. Only a
-# completed scan and final unmerged PR read keep ordinary refusal and retry
-# guidance. Residual limitation: if both commits and PR reads remain stale past
-# that bounded second read, a landing can still be missed; retry is not proof
-# that the original attempt made no change.
+# every page of base commits since five minutes before the merge attempt. A
+# candidate lands only when GitHub's commit-to-PR association lists this PR,
+# which also covers --merge and --rebase landings without a squash title. A
+# commit whose title ends in this PR's squash suffix " (#<number>)" but whose
+# association is empty, unreadable or names another PR is reported as an
+# unconfirmed landing. A proved landing is reported with its commit and follows
+# normal successful-merge bookkeeping; no second merge is issued. An unconfirmed
+# candidate, or an unreadable re-read, base or attempt time, reports that a
+# landing cannot be ruled out, without retry guidance. Only a completed scan with
+# no association and no title match keeps the ordinary refusal and retry
+# guidance.
 # If the pull request remains open and the base branch has an effective
 # merge_queue rule, an attended refusal names the queue's configured merge
 # method and exact --attended-override -- --auto --<method> retry flags. While
@@ -1295,22 +1295,8 @@ github_read_outcome() {
 # ordinary outcome view still lags behind. Recover the concrete landing before
 # reporting a refusal that would invite a duplicate merge.
 FM_PR_GITHUB_RECOVERED_COMMIT=
+FM_PR_GITHUB_UNCONFIRMED_COMMIT=
 FM_PR_GITHUB_MERGE_SINCE=
-# Use GitHub's clock, not the runner's, for the two-minute lookback margin.
-github_capture_merge_since() {
-  local headers server_date epoch
-  FM_PR_GITHUB_MERGE_SINCE=
-  headers=$(gh api --include "repos/$PR_OWNER/$PR_REPO" --jq empty 2>/dev/null) || return 1
-  server_date=$(printf '%s\n' "$headers" | awk '
-    tolower($1) == "date:" { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); value=$0 }
-    END { print value }')
-  [ -n "$server_date" ] || return 1
-  epoch=$(LC_ALL=C date -j -u -f '%a, %d %b %Y %H:%M:%S %Z' "$server_date" +%s 2>/dev/null \
-    || LC_ALL=C date -u -d "$server_date" +%s 2>/dev/null) || return 1
-  epoch=$((epoch - 120))
-  FM_PR_GITHUB_MERGE_SINCE=$(date -u -r "$epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-    || date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
-}
 
 github_read_landing_commit() {
   local json
@@ -1326,43 +1312,49 @@ github_read_landing_commit() {
       else error("unreadable landing") end' 2>/dev/null) || return 2
 }
 
-# An association, not a title suffix, proves identity for every merge method.
+# An association proves identity for every merge method. A squash-title suffix
+# without that association cannot prove the landing, but it cannot be ruled out.
 github_find_associated_base_commit() {
-  local json shas sha associated matched
+  local json commits sha titled associated matched unreadable=false
   [ -n "$FM_PR_GITHUB_BASE" ] && [ -n "$FM_PR_GITHUB_MERGE_SINCE" ] || return 2
   json=$(gh api --paginate --method GET "repos/$PR_OWNER/$PR_REPO/commits" \
     -f "sha=$FM_PR_GITHUB_BASE" -f "since=$FM_PR_GITHUB_MERGE_SINCE" \
     -f per_page=100 2>/dev/null) || return 2
-  shas=$(printf '%s' "$json" | jq -sr '
+  commits=$(printf '%s' "$json" | jq -sr --arg number "$PR_NUMBER" '
     if length > 0 and all(.[]; type == "array") then
-      [ .[][] | .sha | if type == "string" and test("^[0-9a-fA-F]{40}$") then .
-        else error("unreadable commit") end ] | unique | .[]
+      [ .[][]
+        | if (.sha | type == "string" and test("^[0-9a-fA-F]{40}$"))
+            and (.commit.message | type == "string")
+          then .sha + " " + ((.commit.message | split("\n")[0]
+            | endswith(" (#" + $number + ")")) | tostring)
+          else error("unreadable commit") end ] | unique | .[]
     else error("unreadable commits") end' 2>/dev/null) || return 2
-  while IFS= read -r sha; do
+  while read -r sha titled; do
     [ -n "$sha" ] || continue
-    associated=$(gh api --paginate "repos/$PR_OWNER/$PR_REPO/commits/$sha/pulls" 2>/dev/null) || return 2
-    matched=$(printf '%s' "$associated" | jq -sr --argjson number "$PR_NUMBER" '
-      if length > 0 and all(.[]; type == "array") then any(.[][]; .number == $number)
-      else error("unreadable associations") end' 2>/dev/null) || return 2
+    matched=unreadable
+    if associated=$(gh api --paginate "repos/$PR_OWNER/$PR_REPO/commits/$sha/pulls" 2>/dev/null); then
+      matched=$(printf '%s' "$associated" | jq -sr --argjson number "$PR_NUMBER" '
+        if length > 0 and all(.[]; type == "array") then any(.[][]; .number == $number)
+        else error("unreadable associations") end' 2>/dev/null) || matched=unreadable
+    fi
     if [ "$matched" = true ]; then
       FM_PR_GITHUB_RECOVERED_COMMIT=$sha
-      break
+      return 0
+    elif [ "$titled" = true ]; then
+      [ -n "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ] || FM_PR_GITHUB_UNCONFIRMED_COMMIT=$sha
+    elif [ "$matched" != false ]; then
+      unreadable=true
     fi
   done <<COMMITS
-$shas
+$commits
 COMMITS
+  [ -z "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ] && [ "$unreadable" = false ] || return 2
 }
 
 github_recover_base_modified_landing() {
   github_read_landing_commit || return 2
   if [ -z "$FM_PR_GITHUB_RECOVERED_COMMIT" ]; then
     github_find_associated_base_commit || return 2
-    if [ -z "$FM_PR_GITHUB_RECOVERED_COMMIT" ]; then
-      # A complete HTTP response can still be stale. Give the PR view one more
-      # chance to catch up before returning to the ordinary refusal path.
-      sleep 1
-      github_read_landing_commit || return 2
-    fi
   fi
   [ -n "$FM_PR_GITHUB_RECOVERED_COMMIT" ] || return 1
   FM_PR_GITHUB_STATE=MERGED
@@ -1810,7 +1802,9 @@ case "$PROVIDER" in
     [ "$away_status" -eq 0 ] || exit "$away_status"
     refuse_github_queue_while_away || exit 2
     merge_status=0
-    github_capture_merge_since || FM_PR_GITHUB_MERGE_SINCE=
+    merge_since=$(($(date -u +%s) - 300))
+    FM_PR_GITHUB_MERGE_SINCE=$(date -u -r "$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+      || date -u -d "@$merge_since" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || FM_PR_GITHUB_MERGE_SINCE=
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
       "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?
@@ -1842,7 +1836,10 @@ case "$PROVIDER" in
       fm_lock_release "$MERGE_CONTROL_LOCK" || true
       MERGE_CONTROL_LOCK=
       [ -z "$merge_output" ] || printf '%s\n' "$merge_output" >&2
-      if [ "$github_landing_unruled" = true ]; then
+      if [ -n "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" ]; then
+        printf 'error: GitHub reported that the base branch was modified, and base commit %s on %s carries the squash title of %s but GitHub does not associate it with the pull request, so the landing is unconfirmed and cannot be ruled out; check the PR and that commit before retrying; PR metadata and merge poll remain recorded\n' \
+          "$FM_PR_GITHUB_UNCONFIRMED_COMMIT" "$FM_PR_GITHUB_BASE" "$URL" >&2
+      elif [ "$github_landing_unruled" = true ]; then
         printf 'error: GitHub reported that the base branch was modified, and the landing re-read for %s could not be completed, so a landing cannot be ruled out; check the PR and its association with base branch %s before retrying; PR metadata and merge poll remain recorded\n' \
           "$URL" "${FM_PR_GITHUB_BASE:-<unknown>}" >&2
       fi
