@@ -26,9 +26,10 @@ concurrency:
 # tiers and their rationale; tests/fm-ci-workflow.test.sh guards this workflow.
 # Each job comment identifies the tier implemented by its executable value.
 # The portable test tier pairs a 50-minute job cap with the runner's 1500s
-# per-file bound. The cap must exceed a 60s setup allowance plus the runner's
-# 1200s packing target plus that bound (2760s < 3000s), so a hung file in a
-# lane packed within its target fails by name with exit 124 before the cap.
+# per-file bound. The cap must exceed a 60s setup allowance plus the lane's
+# packing ceiling (1300s parallel, 1200s serial) plus that bound (at most
+# 60 + 1300 + 1500 = 2860s < 3000s), so a hung file in a lane packed within
+# its ceiling fails by name with exit 124 before the cap.
 # A file that starts after minute 25, because setup or earlier files overrun
 # their allowance and hints, can still hit the job cap.
 
