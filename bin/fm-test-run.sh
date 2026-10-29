@@ -30,11 +30,13 @@
 #   fm-test-run.sh --aggregate-json <out.json> <lane.json> [more lane.json...]
 #
 # Options:
-#   --json <path>   write a deterministic timing artifact after the run. Each
-#                   script record carries its family, expected gate-skip class,
-#                   exit, duration, whether it gate-skipped, and the reason it
-#                   gave (empty when it ran), so a lane can say which harness or
-#                   tool this host could not exercise.
+#   --json <path>   write a deterministic timing artifact, atomically
+#                   checkpointed after each completed script and finalized
+#                   after the run. Each script record carries its family,
+#                   expected gate-skip class, exit, duration, whether it
+#                   gate-skipped, and the reason it gave (empty when it ran),
+#                   so a lane can say which harness or tool this host could
+#                   not exercise.
 #   --list          print selected script paths (one per line) and exit 0
 #   --list-scheduled
 #                   print selected paths longest-hint-first and exit 0.
