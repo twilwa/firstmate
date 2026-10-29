@@ -1,0 +1,28 @@
+initial jobs (no needs:) = 20
+  lint                         'Lint 1'                                      timeout=30
+  lint                         'Lint 2'                                      timeout=30
+  lint                         'Lint 3'                                      timeout=30
+  lint                         'Lint 4'                                      timeout=30
+  tests-portable-pool          'Behavior portable pool'                      timeout=50
+  tests-portable-serial        'Behavior portable serial 1'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 2'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 3'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 4'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 5'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 6'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 7'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 8'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 9'                  timeout=30
+  tests-portable-serial        'Behavior portable serial 10'                 timeout=30
+  tests-portable-serial        'Behavior portable serial 11'                 timeout=30
+  tests-portable-serial        'Behavior portable serial 12'                 timeout=30
+  tests-portable-serial        'Behavior portable serial 13'                 timeout=30
+  tests-herdr                  'Behavior tests (Herdr)'                      timeout=75
+  macos-stock-bash             'Stock macOS Bash snapshot compatibility'     timeout=30
+dependent jobs: [('tests-timing-aggregate', 'Behavior timing aggregate', ['tests-portable-pool', 'tests-portable-serial', 'tests-herdr'])]
+pool steps: ['actions/checkout@v6', 'Prove complete regression partition', 'Install pinned ShellCheck', 'Install pinned actionlint', 'Require tmux for e2e tests', 'Install tasks-axi', 'Install the Pi package for the Pi extension tests', 'Run portable pool', 'Upload pool timing artifact']
+coverage step index 1 < pool run index 7: True
+pool run: set -eu | mkdir -p "$RUNNER_TEMP/fm-test" | bin/fm-test-run.sh --lane portable-pool --jobs 4 \ |   --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \ |   --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-pool.json"
+lint matrix: {'partition': [1, 2, 3, 4]} fail-fast: False
+lint p1-only step: Compatibility pointers must stay intact
+lint p1-only step: Personal fleet paths must not be tracked

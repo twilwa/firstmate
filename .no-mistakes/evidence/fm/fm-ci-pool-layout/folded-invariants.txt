@@ -1,0 +1,22 @@
+== real checkout (HEAD) ==
+pointers:
+exit=0
+fleet:
+exit=0
+
+== fixture: CLAUDE.md is a symlink ==
+::error::CLAUDE.md must be a real @AGENTS.md pointer file, not a symlink
+exit=1
+
+== fixture: CLAUDE.md content drifted ==
+::error::CLAUDE.md must be the canonical @AGENTS.md pointer
+exit=1
+
+== fixture: .claude/skills points elsewhere ==
+::error::.claude/skills must be a symlink to ../.agents/skills
+exit=1
+
+== fixture: data/leak.md tracked ==
+::error::Personal fleet paths are tracked in git:
+data/leak.md
+exit=1

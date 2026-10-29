@@ -1,0 +1,52 @@
+$ bin/fm-test-run.sh --lane portable-parallel-1 --list
+fm-test-run: unknown lane 'portable-parallel-1' (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-1of11 --list
+fm-test-run: lane 'portable-serial-1of11' asks for 11 portable serial shards but this runner is configured for 13 (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-14of13 --list
+fm-test-run: lane 'portable-serial-14of13' shard index is outside 1..13 (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-0of13 --list
+fm-test-run: lane 'portable-serial-0of13' shard index is outside 1..13 (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial --jobs 4
+fm-test-run: --jobs 4 refused: portable serial lanes stay serial; use --jobs 1
+exit=2
+
+--- lint partitions ---
+$ bin/fm-lint.sh --partition 1of4 --list-files | wc -l
+140
+$ bin/fm-lint.sh --partition 2of4 --list-files | wc -l
+140
+$ bin/fm-lint.sh --partition 3of4 --list-files | wc -l
+140
+$ bin/fm-lint.sh --partition 4of4 --list-files | wc -l
+140
+partition roots=560 unique=560 canonical=560
+4 partitions cover canonical inventory exactly once
+$ bin/fm-lint.sh --partition 1of3 --list-files
+fm-lint.sh: --partition asks for 3 canonical partitions but this script owns 4, got 1of3.
+exit=2
+$ bin/fm-lint.sh --partition 3of3 --list-files
+fm-lint.sh: --partition asks for 3 canonical partitions but this script owns 4, got 3of3.
+exit=2
+$ bin/fm-lint.sh --partition 0of4 --list-files
+fm-lint.sh: --partition must be <k>of4, got 0of4.
+exit=2
+$ bin/fm-lint.sh --partition 5of4 --list-files
+fm-lint.sh: --partition must be <k>of4, got 5of4.
+exit=2
+$ bin/fm-lint.sh --partition 1of5 --list-files
+fm-lint.sh: --partition asks for 5 canonical partitions but this script owns 4, got 1of5.
+exit=2
+$ bin/fm-lint.sh --partition 1of4 --fast --list-files
+fm-lint.sh: --partition requires full canonical lint; omit --fast and explicit paths.
+exit=2
+$ bin/fm-lint.sh --partition 1of4 bin/fm-lint.sh --list-files
+fm-lint.sh: --partition requires full canonical lint; omit --fast and explicit paths.
+exit=2

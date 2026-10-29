@@ -1,0 +1,72 @@
+$ bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 pool=26 pool_hint_ms=2489010 pool_modeled_ms=671795 pool_workers=4 pool_unhinted=0 pool_wall_ms=971795 pool_budget_ms=2400000 pool_timeout_min=50 serial=262 serial_shards=13 serial_unhinted=0 serial_max_ms=974095 serial_budget_ms=1200000 herdr=16
+exit=0
+
+$ bin/fm-test-run.sh --list --lane portable-pool | wc -l
+26
+
+$ diff <(bin/fm-test-run.sh --list --lane portable-pool | sort) <(bin/fm-test-isolation-proof.sh --list | sort)
+identical
+
+$ bin/fm-test-run.sh --list-scheduled --lane portable-pool
+tests/fm-captain-hold-lifecycle.test.sh
+tests/fm-pr-merge.test.sh
+tests/fm-lint.test.sh
+tests/fm-test-run.test.sh
+tests/fm-backend-t3code.test.sh
+tests/fm-crew-state.test.sh
+tests/fm-x-mode.test.sh
+tests/fm-backend-herdr.test.sh
+tests/fm-arm-pretool-check.test.sh
+tests/fm-t3-mcp.test.sh
+tests/fm-composer-lib.test.sh
+tests/fm-pi-primary-types.test.sh
+tests/fm-brief.test.sh
+tests/fm-herdr-lab.test.sh
+tests/fm-cd-pretool-check.test.sh
+tests/fm-send-strict.test.sh
+tests/fm-send-popup-settle.test.sh
+tests/fm-grok-harness.test.sh
+tests/fm-review-diff.test.sh
+tests/fm-spawn-batch.test.sh
+tests/fm-send-settle.test.sh
+tests/fm-tmux-submit-busy.test.sh
+tests/fm-composer-ghost.test.sh
+tests/fm-supervision-instructions.test.sh
+tests/fm-ensure-agents-md.test.sh
+tests/fm-transition-lib.test.sh
+
+$ union of 13 serial shards vs portable-serial lane
+shard lines=262 unique=262 serial=262
+13 shards partition portable-serial exactly
+
+$ pool + serial + herdr == tests/*.test.sh
+union=288 uniq=288 inventory=304
+2a3,4
+> tests/fm-afk-inject-herdr-e2e.test.sh
+> tests/fm-afk-launch.test.sh
+9a12
+> tests/fm-backend-autodetect-smoke.test.sh
+11a15,24
+> tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh
+> tests/fm-backend-herdr-eventwait-smoke.test.sh
+> tests/fm-backend-herdr-focus-flash-e2e.test.sh
+> tests/fm-backend-herdr-launcher-workspace-e2e.test.sh
+> tests/fm-backend-herdr-presentation-e2e.test.sh
+> tests/fm-backend-herdr-prune-safety-e2e.test.sh
+> tests/fm-backend-herdr-respawn-idem-e2e.test.sh
+> tests/fm-backend-herdr-smoke.test.sh
+> tests/fm-backend-herdr-stale-active-tab-e2e.test.sh
+> tests/fm-backend-herdr-workspace-per-home-e2e.test.sh
+67a81
+> tests/fm-control-herdr-smoke.test.sh
+103a118
+> tests/fm-herdr-attached-viewer-live-e2e.test.sh
+106a122
+> tests/fm-herdr-session-cleanup-e2e.test.sh
+$ pool + serial + real-herdr-gated == tests/*.test.sh
+union=304 uniq=304 inventory=304
+union equals inventory: no coverage reduction
+
+--- base commit e0cf954a coverage line for comparison ---
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1259287 parallel_imbalance_ms=29564 parallel_unhinted=0 serial=262 serial_shards=11 serial_unhinted=0 serial_max_ms=1151204 serial_budget_ms=1200000 herdr=16

@@ -1,0 +1,153 @@
+FM_TEST_BEGIN 2026-10-29T04:43:42Z tests/fm-captain-hold-lifecycle.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-10-29T04:43:42Z tests/fm-pr-merge.test.sh family=pr-forge expected_gate_skip=none
+FM_TEST_BEGIN 2026-10-29T04:43:42Z tests/fm-lint.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-10-29T04:43:42Z tests/fm-test-run.test.sh family=pure-contract-unit expected_gate_skip=none
+not ok - github-zero-exit-queue-required: refusal did not name the concrete observed state
+FM_TEST_END 2026-10-29T04:43:53Z tests/fm-pr-merge.test.sh exit=1 duration_ms=10269 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T04:43:53Z tests/fm-backend-t3code.test.sh family=backend-dispatch expected_gate_skip=none
+fm-afk-launch: away-posture record archived at /tmp/fm-test-run.k2H87W/w5/tmp/fm-backend-t3code-tests.lKmptY/restart-unknown-completed/home/state/afk-contracts/1793249033.afk-contract
+fm-afk-launch: away mode stopped; no daemon terminal was running, .afk cleared, and the posture record archived
+fm-afk-launch: away-posture record archived at /tmp/fm-test-run.k2H87W/w5/tmp/fm-backend-t3code-tests.lKmptY/restart-unknown-failed/home/state/afk-contracts/1793249041.afk-contract
+fm-afk-launch: away mode stopped; no daemon terminal was running, .afk cleared, and the posture record archived
+ok - native restart re-arms discarded T3 stale warnings exactly once and preserves delivered suppression
+ok - away housekeeping preserves unknown stale rechecks and reports possible wedges until work resumes
+ok - away daemon on T3: a stall reported while unknown is not reported again once T3 reads idle
+ok - T3 stale watcher: harness=codex status=failed turn=fresh -> dead
+ok - t3code: a failed thread read reports unknown busy state, submits no away-mode injection, and keeps stale rechecks uncertain
+ok - T3 stale lookup honors paused and captain-held declarations
+ok - T3 stale watcher: harness=codex status=running turn=fresh -> absorb
+ok - T3 stale watcher: harness=claude status=running turn=fresh -> absorb
+ok - T3 stale watcher: harness=codex status=waiting turn=fresh -> absorb
+ok - T3 stale watcher: harness=codex status=starting turn=fresh -> surface
+ok - T3 stale watcher: harness=codex status=completed turn=fresh -> surface
+ok - T3 stale watcher: harness=codex status=failed turn=fresh -> dead
+ok - T3 stale watcher: harness=codex status=running turn=hung -> surface
+ok - fm_backend_t3code_runtime_check: a missing credential names the sign-in
+ok - fm_backend_t3code_runtime_check: a 401 names the fresh sign-in
+warning: T3 telemetry at http://127.0.0.1:35493 is on; run the server that hosts Firstmate workers with T3CODE_TELEMETRY_ENABLED=false (docs/t3code-backend.md)
+ok - fm_backend_t3code_runtime_check: the tools/list gate and environment pin refuse control and teardown without a mutation
+ok - fm_backend_t3code_project_ensure: matches by realpath, otherwise creates with the fm- title
+ok - fm_backend_t3code_model_selection: T3's catalog decides driver, model, and effort; overrides keep other options; default handling, instances file
+ok - fm_backend_t3code_thread_create/turn_start: verified t3_thread_launch and t3_thread_send payloads
+ok - fm_backend_t3code_thread_create: a lost reply is uncertain and never retried; a mis-bound thread is archived and refused
+ok - fm_backend_t3code_thread_for_home: zero, one, ambiguous, and unreachable
+ok - T3 requires explicit selection and does not query the server during runtime detection
+ok - fm_backend_t3code_capture: renders the activity tail and the thread's status line
+ok - fm_backend_t3code_send_key: Escape and C-c interrupt, Enter no-ops, others refuse
+ok - fm_backend_t3code_send_text_submit: empty on accept, send-failed on rejection
+ok - t3code send: a reply lost after commit is unconfirmed through the adapter and fm-send, and the resend lands once
+ok - t3code send: a held request id stays unconfirmed when the next attempt fails locally, and the retry lands once
+ok - t3code send: a lost reply to a secondmate names its armed correlation instead of advising a resend
+ok - t3code status table: every V2 thread status, a pending request, archived, archived-but-draining, missing, unreachable, and unreadable rows
+ok - t3code push wait: a pending question wakes the supervisor once with how to answer it, approvals are named apart, and answering clears it
+ok - fm-t3-answer.sh: lists a T3 worker's pending questions and answers one by request id
+ok - secondmate liveness backend=t3code: a failed run is resumed on its own thread, never archived and replaced
+ok - secondmate liveness backend=t3code: a missing thread re-proves its archive before replacement, and an unproved close spawns nothing
+ok - away daemon on T3: an unconfirmed digest is frozen and retried verbatim; a later event goes in the next digest, each event once
+ok - away daemon on T3: a delivered frozen digest leaves the items behind it with the first one's undelivered age
+ok - away daemon on T3: a supervisor thread waiting on a pending request defers digests until it is answered
+ok - t3code helper: runs through a symlinked Firstmate root, and a kill that cannot read the thread fails closed
+ok - secondmate liveness backend=t3code: an archived thread whose run still drains is left in place, not replaced
+ok - fm_backend_t3code_kill: interrupt then archive with a proven close, idempotent on archived and missing, loud on failure
+ok - fm-backend dispatcher: routes every t3code primitive, validates and resolves t3_thread_id records, and joins the push wait
+ok - T3 harness admission refuses every non-T3 adapter and launch-time typing refuses without a thread read
+ok - fm_busy_classify: t3code native busy, idle, and unknown are trusted without a record
+ok - fm-control-lib: t3code key set, state-verified, no-exit, and no-replacement membership
+ok - fm-control.sh backend=t3code: exit refuses before any call (V2 has no session stop); interrupt ends the turn natively
+ok - fm-control.sh relaunch backend=t3code: refused before anything is stopped, by the control plane and by the launch owner
+ok - fm-spawn.sh --backend t3code: leases the slot, launches the thread on it, records metadata, sends the launch brief
+ok - t3code Claude PR-tool clause: dropped only at or past the verified T3 build, kept for older or unreadable servers
+ok - codex-cli 0.164.0: project config retained; shell FM_TASK_ID=t3codextrk25f28d0fae
+ok - fm-spawn.sh backend=t3code: compatible tracked Codex config launches, stays out of commits, and survives cleanup
+ok - tracked Codex overlay: edited files survive refusal, interrupted restoration recovers, quoted and dotted policy keys refuse
+ok - fm-spawn.sh --backend t3code codex: refuses to overwrite a project's tracked .codex/config.toml before any mutation
+ok - fm-spawn.sh --backend t3code claude: refuses to overwrite a project's tracked CLAUDE.local.md before any mutation
+ok - Claude channel refuses a symlink in the leased worktree without following it
+ok - untracked Codex config is preserved unless Firstmate's marker owns it
+ok - fm-t3code-codex-env.sh cleanup: without an installed overlay it needs no Python and never refuses
+ok - fm-spawn.sh --backend t3code codex: an untracked Codex config in the main checkout does not refuse a worker
+ok - fm-spawn.sh --backend t3code codex: writes .codex/config.toml with GOTMPDIR, FM_TASK_ID, and TRACEPARENT
+ok - fm-spawn.sh --backend t3code codex: warns once, and still launches, unless the Codex configuration trusts the launch directory's main checkout
+ok - fm-spawn.sh --backend t3code --secondmate: project on the home, root-strategy thread, charter message, launch prefix as settings env
+ok - fm-spawn.sh --backend t3code --secondmate codex: launch prefix as .codex/config.toml shell_environment_policy
+ok - fm-spawn.sh --backend t3code: refuses before mutation when the credential is rejected
+ok - fm-teardown.sh backend=t3code: interrupts and archives the thread with a proven close, then returns the slot
+ok - fm-teardown.sh backend=t3code secondmate: interrupts and archives, then ends the home's lingering provider process before the home is removed; an unprovable scan keeps the home
+ok - fm-teardown.sh backend=t3code secondmate: interrupts and archives, then ends the home's lingering provider process before the home is removed; an unprovable scan keeps the home
+ok - fm-teardown.sh backend=t3code pooled secondmate: the slot returns only after the provider ended, without the T3 environment the spawn wrote
+ok - fm-teardown.sh backend=t3code: an unreachable or gate-refused server keeps the slot a live thread still points at
+ok - fm-spawn.sh --backend t3code claude: refuses config/claude-permission-mode=auto it cannot honor before any mutation
+ok - fm-spawn.sh --backend t3code codex: refuses config/codex-approval-mode=approve-for-me it cannot honor before any mutation
+ok - fm-spawn.sh --backend t3code codex: refuses config/codex-permission-mode=restricted it cannot honor before any mutation
+ok - fm-spawn.sh --backend t3code codex: config/codex-approval-mode=bypass still launches
+ok - fm-spawn.sh --backend t3code claude: refuses config/launch-env-allowlist=HOME it cannot honor before any mutation
+ok - fm-spawn.sh --backend t3code: refuses a raw launch command before any mutation
+ok - fm-spawn.sh --backend t3code: an abort archives the thread, then returns the lease
+ok - fm-spawn.sh --backend t3code: an abort that cannot archive the thread keeps the lease
+ok - fm-spawn.sh --backend t3code: a launch whose response was lost keeps the lease
+ok - fm-spawn.sh --backend t3code: inherited Git config values never reach the env file, which carries only Firstmate's hook entry
+ok - fm-spawn.sh --backend t3code --secondmate: a symlinked .claude/settings.local.json is refused, never written through
+not ok - a launch whose gate failed must abort spawn
+warning: T3 telemetry at http://127.0.0.1:35493 is on; run the server that hosts Firstmate workers with T3CODE_TELEMETRY_ENABLED=false (docs/t3code-backend.md)
+mise ERROR No version is set for shim: node
+Set a global default version with one of the following:
+mise use -g node@24.22.2
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+spawned t3gatez5f28d0fae harness=claude kind=scout window=fm-t3gatez5f28d0fae worktree=/tmp/fm-test-run.k2H87W/w5/tmp/fm-backend-t3code-tests.lKmptY/spawn-launch-gate-down/spawn-wt: expected exit 1, got 0
+FM_TEST_END 2026-10-29T04:51:15Z tests/fm-backend-t3code.test.sh exit=1 duration_ms=442410 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T04:51:15Z tests/fm-crew-state.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-lint.sh --help reports the complete executable interface
+ok - fm-lint.sh --list-files reports the complete shell inventory
+ok - four canonical lint partitions preserve complete source-aware coverage and reject weakened modes
+ok - fm-lint.sh --fast disables ShellCheck extended analysis
+ok - fm-lint resolves external ShellCheck and Perl binaries past exported functions
+ok - fm-lint.sh keeps full ShellCheck analysis by default in CI
+ok - fm-lint.sh rejects explicit --fast mode in CI
+ok - fm-lint.sh --fast catches an ordinary shell lint defect
+ok - fm-lint.sh pins an explicit ShellCheck version (0.11.0)
+ok - ShellCheck installer retries a transient download failure
+ok - ShellCheck installer selects the official archive, URL, and checksum per OS/arch
+ok - ShellCheck installer rejects a wrong checksum
+ok - ShellCheck installer falls back to shasum -a 256 when sha256sum is absent
+ok - ShellCheck installer prefers sha256sum when both hashers are present
+ok - ShellCheck installer rejects an unsupported OS or architecture
+ok - missing ShellCheck fails closed
+ok - fm-lint.sh refuses to lint under a non-pinned ShellCheck version
+ok - fm-lint.sh catches a real lint defect the old no-op gate passed
+ok - fm-lint.sh rejects direct Beads CLI invocations in firstmate core
+ok - fm-lint.sh enforces backend purity for explicit core paths
+ok - fm-lint.sh ignores ambient ShellCheck options
+ok - fm-lint.sh passes a clean fixture
+ok - jobs=1 and jobs=2 preserve deterministic diagnostics, failures, cleanup bounds, and quiet telemetry
+ok - jobs=1 and jobs=2 stop complete worker trees with and without telemetry
+ok - a root pinned at the wall deadline fails by name, reaps its tree, and leaves the sentinel alive
+ok - a root refused by its enforced memory limit fails by name with a memory reason
+ok - memory failures retry without source following, exclude cross-file codes, and preserve a real fallback finding
+ok - a memory fallback runs only within the time left in its root's original deadline
+ok - explicit memory evidence outranks findings and signal reasons (modes: 0 1)
+ok - OOM words in a source excerpt or a root path never classify a root as memory
+ok - FM_LINT_REQUIRE_BOUNDS refuses missing enforcement and proceeds when enforceable
+ok - the pinned ShellCheck both respects and survives under the memory envelope
+ok - the roots sidecar and telemetry record the run's final exit status
+ok - the retained sidecar records each root's lifecycle with a mode, reason, and duration
+ok - seeded dispatcher, adapter, production-owner, and test-local diagnostics preserve parity
+ok - fm-lint.sh changed mode lints only the changed canonical file
+ok - fm-lint.sh forces a full lint in CI even when the local diff would be empty
+ok - fm-lint.sh forces a full lint when HEAD is on main
+ok - fm-lint.sh explicit paths bypass changed-file mode selection
+ok - fm-lint.sh exits 0 with a note when the local branch has no changed lint targets
+ok - fm-lint.sh --list-files reports the would-be changed set in changed mode
+ok - fm-lint.sh changed mode drops source following and excludes cross-file codes
+ok - fm-lint.sh changed mode invokes ShellCheck once per root
+ok - fm-lint.sh CI keeps source following without the local exclusion list
+ok - fm-lint.sh on main keeps source following without the local exclusion list
+ok - fm-lint.sh without a merge-base keeps source following without the local exclusion list
+ok - fm-lint.sh explicit paths keep source following
+ok - fm-lint.sh --fast on a local branch keeps source following
+ok - fm-lint.sh changed mode excludes cross-file codes that explicit paths still report
+ok - local exclusion list covers every no-external-sources ShellCheck code
+FM_TEST_END 2026-10-29T04:54:01Z tests/fm-lint.test.sh exit=0 duration_ms=619043 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T04:54:01Z tests/fm-x-mode.test.sh family=pr-forge expected_gate_skip=none
+rm: cannot remove '/tmp/fm-test-run.k2H87W/w1/tmp': Directory not empty
+# stopped by test agent after result submission; incomplete run

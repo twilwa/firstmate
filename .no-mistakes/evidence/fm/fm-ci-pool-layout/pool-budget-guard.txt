@@ -1,0 +1,25 @@
+# Disposable copy of HEAD at a temp dir; only the named constant is changed per case.
+
+$ (PORTABLE_POOL_TIMEOUT_MINUTES=50) bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 pool=26 pool_hint_ms=2489010 pool_modeled_ms=671795 pool_workers=4 pool_unhinted=0 pool_wall_ms=971795 pool_budget_ms=2400000 pool_timeout_min=50 serial=262 serial_shards=13 serial_unhinted=0 serial_max_ms=974095 serial_budget_ms=1200000 herdr=16
+exit=0
+
+$ (PORTABLE_POOL_TIMEOUT_MINUTES=20) bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable pool models 971795ms (671795ms 4-worker makespan + 300000ms setup) above 960000ms (80% of the 20-minute pool job timeout)
+fm-test-run: refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+
+$ (PORTABLE_POOL_WORKERS=1) bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable pool models 2789010ms (2489010ms 1-worker makespan + 300000ms setup) above 2400000ms (80% of the 50-minute pool job timeout)
+fm-test-run: refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+
+$ (PORTABLE_POOL_MAX_TIMEOUT_PERCENT=30) bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable pool models 971795ms (671795ms 4-worker makespan + 300000ms setup) above 900000ms (30% of the 50-minute pool job timeout)
+fm-test-run: refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+
+# Pool lane cannot silently absorb stateful work: --jobs on a selection with an unproven script
+$ bin/fm-test-run.sh --jobs 4 tests/fm-lint.test.sh tests/fm-afk-launch.test.sh
+fm-test-run: --jobs 4 refused: tests/fm-afk-launch.test.sh is not in the proven-isolated set (see bin/fm-test-isolation-proof.sh --list) and its family has no recorded concurrent proof. Unproven stateful scripts stay serial.
+exit=2
