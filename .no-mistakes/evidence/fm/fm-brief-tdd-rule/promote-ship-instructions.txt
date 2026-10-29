@@ -1,0 +1,20 @@
+$ FM_HOME=$H bin/fm-promote.sh demo-scout --mode direct-PR --yolo off
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+promoted demo-scout to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-tdd-home.RUXXxK/data/demo-scout/ship-instructions.md
+next: FM_HOME=/tmp/fm-tdd-home.RUXXxK bin/fm-send.sh fm-demo-scout "$(cat /tmp/fm-tdd-home.RUXXxK/data/demo-scout/ship-instructions.md)"
+exit=0
+
+--- ship-instructions.md excerpt around testing rule ---
+35-1. Never push to the default branch (push only your `fm/demo-scout` branch). Never merge a PR.
+36-
+37:# Current ship testing rule
+38-Follow the `tdd` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
+39-
+40-# Definition of done

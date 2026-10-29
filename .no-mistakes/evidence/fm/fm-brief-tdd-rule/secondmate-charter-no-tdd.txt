@@ -1,0 +1,5 @@
+$ FM_HOME=$H bin/fm-brief.sh demo-sm --secondmate --no-projects
+scaffolded: /tmp/fm-tdd-home.RUXXxK/data/demo-sm/brief.md (secondmate charter; replace {TASK})
+exit=0
+charter: /tmp/fm-tdd-home.RUXXxK/data/demo-sm/brief.md
+occurrences of TDD rule in charter: 0

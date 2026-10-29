@@ -1,0 +1,3 @@
+$ bash tests/fm-brief-tdd.test.sh   # scripts at base fac3ebbd, new test copied in
+not ok - no-mistakes must carry testing requirement exactly once: Follow the `tdd` skill and the no-mistakes test-quality rule
+exit=1

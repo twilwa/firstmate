@@ -1,0 +1,4 @@
+$ FM_HOME=$H bin/fm-brief.sh demo-scout sample --scout
+scaffolded: /tmp/fm-tdd-home.RUXXxK/data/demo-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+grep -c 'tdd. skill' scout brief: 0
