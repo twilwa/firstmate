@@ -1,0 +1,38 @@
+== TARGET 76729ad0 runner
+$ setsid bin/fm-test-run.sh --jobs 1 --per-script-timeout-secs 4 --json /tmp/fm-kill-fixture.GDJCCj/artifacts/fm-test/fm-test-timing-portable-serial-1.json tests/a-hung.test.sh tests/b-long.test.sh &  # then SIGKILL the process group at t=6.5s (second file mid-run)
+--- runner output before kill:
+FM_TEST_BEGIN 2026-10-29T05:07:13Z tests/a-hung.test.sh family=unclassified expected_gate_skip=none
+fixture-before-hang
+not ok - tests/a-hung.test.sh exceeded the per-script bound of 4s and was terminated
+FM_TEST_END 2026-10-29T05:07:17Z tests/a-hung.test.sh exit=124 duration_ms=4047 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:07:17Z tests/b-long.test.sh family=unclassified expected_gate_skip=none
+still-running-when-job-cap-fires
+--- artifact after kill:
+{
+ "summary": {
+  "duration_ms": 4134,
+  "failed": 1,
+  "skipped_gate": 0,
+  "total": 1
+ },
+ "scripts": [
+  {
+   "path": "tests/a-hung.test.sh",
+   "exit": 124,
+   "duration_ms": 4047
+  }
+ ]
+}
+fm-test-timing-portable-serial-1.json
+
+== BASE e0cf954a runner (comparison)
+$ setsid bin/fm-test-run.sh --jobs 1 --per-script-timeout-secs 4 --json /tmp/fm-kill-fixture.klcrWY/artifacts/fm-test/fm-test-timing-portable-serial-1.json tests/a-hung.test.sh tests/b-long.test.sh &  # then SIGKILL the process group at t=6.5s (second file mid-run)
+--- runner output before kill:
+FM_TEST_BEGIN 2026-10-29T05:07:19Z tests/a-hung.test.sh family=unclassified expected_gate_skip=none
+fixture-before-hang
+not ok - tests/a-hung.test.sh exceeded the per-script bound of 4s and was terminated
+FM_TEST_END 2026-10-29T05:07:23Z tests/a-hung.test.sh exit=124 duration_ms=4053 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:07:23Z tests/b-long.test.sh family=unclassified expected_gate_skip=none
+still-running-when-job-cap-fires
+--- artifact after kill:
+NO TIMING ARTIFACT (lost with the killed lane)

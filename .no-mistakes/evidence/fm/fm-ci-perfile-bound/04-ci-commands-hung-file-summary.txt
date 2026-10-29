@@ -1,0 +1,25 @@
+coverage: FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1259287 parallel_imbalance_ms=29564 parallel_unhinted=0 parallel_budget_ms=1300000 serial=262 serial_shards=11 serial_unhinted=0 serial_max_ms=1151204 serial_budget_ms=1200000 herdr=16
+distinct job-level timeout-minutes: [5, 30, 50, 75]
+
+== tests-portable-parallel-1: timeout-minutes=50 cap=3000s bound=1500s setup+ceiling+bound=60+1300+1500=2860s -> OK
+  hung file tests/fm-pr-merge.test.sh: exit=1 elapsed=3.9s  (hang would sleep 30s)
+    not ok - tests/fm-pr-merge.test.sh exceeded the per-script bound of 2s and was terminated
+    FM_TEST_END 2026-10-29T05:06:20Z tests/fm-pr-merge.test.sh exit=124 duration_ms=2055 gate_skip=false
+  diagnostic 'fixture-before-hang' kept: True
+  artifact fm-test-timing-portable-parallel-1.json: total=9 failed=1 record=124
+
+== tests-portable-parallel-2: timeout-minutes=50 cap=3000s bound=1500s setup+ceiling+bound=60+1300+1500=2860s -> OK
+  hung file tests/fm-captain-hold-lifecycle.test.sh: exit=1 elapsed=5.5s  (hang would sleep 30s)
+    not ok - tests/fm-captain-hold-lifecycle.test.sh exceeded the per-script bound of 2s and was terminated
+    FM_TEST_END 2026-10-29T05:06:24Z tests/fm-captain-hold-lifecycle.test.sh exit=124 duration_ms=2049 gate_skip=false
+  diagnostic 'fixture-before-hang' kept: True
+  artifact fm-test-timing-portable-parallel-2.json: total=17 failed=1 record=124
+
+== tests-portable-serial: timeout-minutes=50 cap=3000s bound=1500s setup+ceiling+bound=60+1200+1500=2760s -> OK
+  hung file tests/fm-watch-triage.test.sh: exit=1 elapsed=8.7s  (hang would sleep 30s)
+    not ok - tests/fm-watch-triage.test.sh exceeded the per-script bound of 2s and was terminated
+    FM_TEST_END 2026-10-29T05:06:35Z tests/fm-watch-triage.test.sh exit=124 duration_ms=2055 gate_skip=false
+  diagnostic 'fixture-before-hang' kept: True
+  artifact fm-test-timing-portable-serial-1.json: total=20 failed=1 record=124
+
+RESULT: PASS

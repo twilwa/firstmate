@@ -1,0 +1,6 @@
+$ focused tests/fm-test-run.test.sh: serial/parallel packing boundary, JSON checkpoint, per-script hang bound
+ok - serial packing accepts the exact budget and refuses one millisecond above it
+ok - parallel packing accepts the exact budget and refuses excess or unhinted members
+ok - timing JSON preserves each timeout before later files finish
+ok - --per-script-timeout-secs turns a hung script into a bounded failure
+exit=0

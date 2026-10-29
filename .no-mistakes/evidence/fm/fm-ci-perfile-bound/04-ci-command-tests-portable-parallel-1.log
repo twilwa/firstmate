@@ -1,0 +1,46 @@
+$ (cwd=fixture repo) bash -eu -c <ci.yml run step with 1500->2>
+set -eu
+mkdir -p "$RUNNER_TEMP/fm-test"
+bin/fm-test-run.sh --lane portable-parallel-1 \
+  --per-script-timeout-secs 2 \
+  --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
+  --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-1.json"
+
+---
+FM_TEST_BEGIN 2026-10-29T05:06:18Z tests/fm-pr-merge.test.sh family=pr-forge expected_gate_skip=none
+fixture-before-hang
+not ok - tests/fm-pr-merge.test.sh exceeded the per-script bound of 2s and was terminated
+FM_TEST_END 2026-10-29T05:06:20Z tests/fm-pr-merge.test.sh exit=124 duration_ms=2055 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:20Z tests/fm-lint.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:20Z tests/fm-lint.test.sh exit=0 duration_ms=50 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-backend-t3code.test.sh family=backend-dispatch expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:21Z tests/fm-backend-t3code.test.sh exit=0 duration_ms=53 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-crew-state.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:21Z tests/fm-crew-state.test.sh exit=0 duration_ms=52 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-arm-pretool-check.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:21Z tests/fm-arm-pretool-check.test.sh exit=0 duration_ms=57 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-pi-primary-types.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:21Z tests/fm-pi-primary-types.test.sh exit=0 duration_ms=58 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-cd-pretool-check.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:21Z tests/fm-cd-pretool-check.test.sh exit=0 duration_ms=53 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:21Z tests/fm-supervision-instructions.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:22Z tests/fm-supervision-instructions.test.sh exit=0 duration_ms=55 gate_skip=false
+FM_TEST_BEGIN 2026-10-29T05:06:22Z tests/fm-transition-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_END 2026-10-29T05:06:22Z tests/fm-transition-lib.test.sh exit=0 duration_ms=53 gate_skip=false
+FM_TEST_SUMMARY total=9 failed=1 skipped_gate=0 duration_ms=3684
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=1 duration_ms=53 failed=0
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=2055 failed=1
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=7 duration_ms=378 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-pr-merge.test.sh duration_ms=2055
+FM_TEST_SLOWEST rank=2 script=tests/fm-pi-primary-types.test.sh duration_ms=58
+FM_TEST_SLOWEST rank=3 script=tests/fm-arm-pretool-check.test.sh duration_ms=57
+FM_TEST_SLOWEST rank=4 script=tests/fm-supervision-instructions.test.sh duration_ms=55
+FM_TEST_SLOWEST rank=5 script=tests/fm-backend-t3code.test.sh duration_ms=53
+FM_TEST_SLOWEST rank=6 script=tests/fm-cd-pretool-check.test.sh duration_ms=53
+FM_TEST_SLOWEST rank=7 script=tests/fm-transition-lib.test.sh duration_ms=53
+FM_TEST_SLOWEST rank=8 script=tests/fm-crew-state.test.sh duration_ms=52
+FM_TEST_SLOWEST rank=9 script=tests/fm-lint.test.sh duration_ms=50
+FM_TEST_LISTENERS found=0
+fm-test-run: wrote timing artifact: /tmp/fm-ci-fixture.glme2myq/artifacts/fm-test/fm-test-timing-portable-parallel-1.json
+
+exit=1 elapsed=3.9s
