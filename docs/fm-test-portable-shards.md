@@ -40,6 +40,7 @@ The CI cap follows the timeout policy in [Timeouts](#timeouts) below.
 
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_parallel_lanes_stay_duration_balanced`, requires every parallel member to have a hint and the lane sums to differ by no more than five percent of the larger sum.
 Its scheduling regressions also check stored parallel lane order and preserve serial-weight scheduling for other selections.
+`--check-coverage` refuses a lane hint sum above `PORTABLE_PARALLEL_MAX_WEIGHT_MS`, and `test_portable_parallel_packing_budget_boundary` verifies acceptance exactly at that ceiling and refusal one millisecond above it.
 These checks do not detect a script outgrowing an existing hint or establish measured job headroom.
 Refresh `portable_parallel_weight_hints` with each script's slowest successful `duration_ms` from several green CI runs' `fm-test-timing-portable-parallel-*` artifacts whenever the parallel set gains scripts or a member grows materially.
 Check a new split against those runs' per-script durations as well as the hints, and choose the one whose worst lane gap across every measured run is smallest.
@@ -110,7 +111,7 @@ Measure native-Windows-only scripts through the focused Git Bash runner and reta
 `bin/fm-test-run.sh --check-coverage` verifies that both parallel lanes partition the proven-isolated set.
 It also verifies that the parallel lanes, portable serial lane, and real-Herdr family are disjoint and cover every `tests/*.test.sh` script.
 It separately verifies that the portable serial CI shards are non-empty, disjoint, and together equal the portable serial lane.
-Its hint-coverage and modeled-budget checks are described in [Portable serial CI shards](#portable-serial-ci-shards); neither replaces inspection of actual CI timing artifacts.
+Its hint-coverage and modeled-budget checks are described in [Parallel lanes](#parallel-lanes) and [Portable serial CI shards](#portable-serial-ci-shards); none replaces inspection of actual CI timing artifacts.
 
 ## Timing artifacts
 
