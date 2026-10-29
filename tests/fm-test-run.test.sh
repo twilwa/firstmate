@@ -1031,7 +1031,7 @@ test_list_scheduled_proven_isolated_uses_pool_weights() {
     || fail "--list-scheduled --proven-isolated failed"
   # The proven set shares the pool lane's hint table, so its schedule must lead
   # with that table's heaviest member rather than falling back to serial hints.
-  [ "$first" = "tests/fm-captain-hold-lifecycle.test.sh" ] \
+  [ "$first" = "tests/fm-pr-merge.test.sh" ] \
     || fail "proven-isolated scheduling must order by pool hints, got $first"
   pass "proven-isolated scheduling orders by pool hints"
 }
