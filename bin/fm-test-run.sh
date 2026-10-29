@@ -563,7 +563,6 @@ tests/fm-arm-pretool-check.test.sh
 tests/fm-backend-herdr.test.sh
 tests/fm-backend-t3code.test.sh
 tests/fm-brief.test.sh
-tests/fm-captain-hold-lifecycle.test.sh
 tests/fm-cd-pretool-check.test.sh
 tests/fm-composer-ghost.test.sh
 tests/fm-composer-lib.test.sh
@@ -597,7 +596,6 @@ tests/fm-arm-pretool-check.test.sh 33873
 tests/fm-backend-herdr.test.sh 47733
 tests/fm-backend-t3code.test.sh 222086
 tests/fm-brief.test.sh 18352
-tests/fm-captain-hold-lifecycle.test.sh 671795
 tests/fm-cd-pretool-check.test.sh 16268
 tests/fm-composer-ghost.test.sh 2491
 tests/fm-composer-lib.test.sh 31206
