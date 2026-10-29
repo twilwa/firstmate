@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Single owner of a ship task's mode-specific "Definition of done" block and of
-# the named-head reachability gate that accepts a ship `done:` claim.
+# Single owner of a ship task's mode-specific "Definition of done" block, of its
+# test-first testing rule (fm_ship_tdd_rule), and of the named-head reachability
+# gate that accepts a ship `done:` claim.
 # Sourced by bin/fm-brief.sh, which renders it into a generated ship brief, and by
 # bin/fm-promote.sh, which renders it into the ship instructions a promoted scout
 # receives. Both paths must hand the worker the same contract: a promoted
@@ -343,6 +344,10 @@ fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id> [branch] [<
       return 1
       ;;
   esac
+}
+
+fm_ship_tdd_rule() {
+  printf '%s\n' "Follow the \`tdd\` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests."
 }
 
 # Return 0 when a Task subsection still consists only of its scaffold
