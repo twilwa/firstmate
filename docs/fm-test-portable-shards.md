@@ -9,9 +9,11 @@ Balance hints come from serial runs of the real lanes on `ubuntu-latest`.
 The concurrent isolation proof in [fm-test-isolation-proof.md](fm-test-isolation-proof.md) establishes concurrency safety, not serial CI duration.
 Local timings are not interchangeable with CI timings: platform and machine load can affect each script differently and change their relative weights.
 
-Both hint tables were refreshed on 2026-10-28 from green fork main run [40673507764](https://github.com/twilwa/firstmate/actions/runs/40673507764): each hint is that run's successful `duration_ms` for the script in its `fm-test-timing-portable-*` lane artifact, with the exceptions below.
-That run's serial-8 first attempt failed, so its successful rerun supplies that lane's records; a newer attempt's artifact replaces a stale first-attempt upload.
-Run [40703025845](https://github.com/twilwa/firstmate/actions/runs/40703025845), the first run to contain `tests/fm-launch-mise-env.test.sh`, supplies that file's 47 ms: every portable lane succeeded there even though the run failed on a cancelled macOS job.
+Both hint tables were refreshed on 2026-10-29 from the four newest hosted fork main runs: [40664798225](https://github.com/twilwa/firstmate/actions/runs/40664798225), [40673507764](https://github.com/twilwa/firstmate/actions/runs/40673507764), [40703025845](https://github.com/twilwa/firstmate/actions/runs/40703025845), and [40796972623](https://github.com/twilwa/firstmate/actions/runs/40796972623).
+Each hint is the script's slowest successful `duration_ms` across those runs' `fm-test-timing-portable-*` lane artifacts, with the exceptions below.
+Per-script run-to-run variance is large on hosted runners: `tests/fm-captain-hold-lifecycle.test.sh` measured between 454829 ms and 671795 ms across those four runs, so a single run's sample is not a packing weight.
+Run 40703025845 failed only on a cancelled macOS job; every portable lane in it succeeded.
+`tests/fm-supervision-host.test.sh` takes only run 40796972623's 517234 ms, because #52 rewrote its handoff waits and the earlier runs measured the old script at about 1046 s.
 The refresh covered all 26 parallel and 262 serial members; an existing live-capability skip is a portable-runner measurement, not a timing claim for the unavailable live integration.
 A failed script's duration is excluded even when its lane uploaded an artifact, and a cancelled job's wall time is only a lower bound, so its unfinished or never-started scripts have no completed sample.
 Collect successful per-script measurements for every member before calculating a split.
@@ -29,7 +31,7 @@ The coverage-guard test owns modeled real-hint headroom under that budget.
 
 ## Parallel lanes
 
-The two parallel lanes use longest-processing-time assignment over those hints.
+The two parallel lanes are a duration-balanced split over those hints.
 [`tests/fm-pi-primary-types.test.sh`](../tests/fm-pi-primary-types.test.sh) owns its typecheck dependencies independently of the lane's installed Pi runtime.
 [`bin/fm-test-run.sh`](../bin/fm-test-run.sh) holds the duration values in `portable_parallel_weight_hints` and the ordered memberships and lane-specific prerequisite constraints beside `list_portable_parallel_1` and `list_portable_parallel_2`.
 Read the derived packing estimates with that runner's `--check-coverage`; its header and `--help` own the output fields and the selection-specific `--list-scheduled` weight rules.
@@ -39,7 +41,8 @@ The CI cap follows the three-tier timeout policy in [Timeouts](#timeouts) below.
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_parallel_lanes_stay_duration_balanced`, requires every parallel member to have a hint and the lane sums to differ by no more than five percent of the larger sum.
 Its scheduling regressions also check stored parallel lane order and preserve serial-weight scheduling for other selections.
 These checks do not detect a script outgrowing an existing hint or establish measured job headroom.
-Refresh `portable_parallel_weight_hints` with each script's newest successful `duration_ms` from green CI runs' `fm-test-timing-portable-parallel-*` artifacts whenever the parallel set gains scripts or a member grows materially.
+Refresh `portable_parallel_weight_hints` with each script's slowest successful `duration_ms` from several green CI runs' `fm-test-timing-portable-parallel-*` artifacts whenever the parallel set gains scripts or a member grows materially.
+Check a new split against those runs' per-script durations as well as the hints, and prefer one whose lanes stay within ten percent on every measured run: the 2026-10-29 lists keep `tests/fm-captain-hold-lifecycle.test.sh` and `tests/fm-pr-merge.test.sh` together because their variance offsets, which a pure longest-processing-time split of the hints does not.
 
 ## Portable serial remainder
 
@@ -69,24 +72,22 @@ Refresh the hints whenever a serial member grows materially or the lane gains sc
 `bin/fm-test-run.sh` owns the per-shard packing, so its `--check-coverage` output is the current account of lane size and coverage rather than a copied inventory.
 Its header and `--help` own the modeled-budget check and output fields; read the current estimates from `--check-coverage` instead of retaining copied lane sums here.
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_serial_packing_budget_boundary`, verifies acceptance exactly at the budget and refusal one millisecond above it through the executable runner.
-The longest script, `tests/fm-supervision-host.test.sh`, is the indivisible floor for this layout.
-The estimates use per-file durations from the newest measured runs, not measured rebalanced jobs or an end-to-end latency guarantee.
+The longest script, `tests/fm-watch-triage.test.sh`, is the indivisible floor for this layout.
+The estimates use per-file maxima from different runs, not measured rebalanced jobs or an end-to-end latency guarantee.
 Each observed completed portable job adds at most 30 seconds beyond its summed scripts in the 2026-09-30 runs.
 Even so, a few runs' samples do not establish a P95 or guarantee future headroom.
 Job timeouts remain hang tripwires under the policy in [Timeouts](#timeouts) below; they are not the desired healthy duration.
 `tests/fm-ci-workflow.test.sh` compares the parsed CI matrix to the executable runner lanes, and the runner rejects parallel `--jobs` on a serial lane even when that shard has only one member.
 
-Refresh the CI-derived hints by downloading the per-shard timing artifacts of the newest complete green CI run and replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with that run's successful `duration_ms` per `path`, supplementing only the files it did not measure from newer successful lanes.
-Listing runs oldest to newest keeps each path's newest successful sample:
+Refresh the CI-derived hints by downloading the per-shard timing artifacts from several green CI runs and replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with the slowest measured `duration_ms` per `path`, using only runs newer than any change that rewrote a script:
 
 ```sh
-for run in <run-id> <run-id> <run-id>; do
+for run in <run-id> <run-id> <run-id> <run-id>; do
   gh-axi run download "$run" -R twilwa/firstmate --dir "/tmp/fm-serial/$run"
 done
-for run in $(ls -1 /tmp/fm-serial | sort -n); do
-  find "/tmp/fm-serial/$run" -name 'fm-test-timing-*.json' ! -name '*aggregate*' \
-    -exec jq -r '.scripts[] | select(.exit == 0) | [.path, .duration_ms] | @tsv' {} \;
-done | awk -F'\t' '{ m[$1] = $2 } END { for (p in m) print p, m[p] }' \
+find /tmp/fm-serial -name 'fm-test-timing-*.json' ! -name '*aggregate*' \
+  -exec jq -r '.scripts[] | select(.exit == 0) | [.path, .duration_ms] | @tsv' {} \; \
+  | awk -F'\t' '$2 > m[$1] { m[$1] = $2 } END { for (p in m) print p, m[p] }' \
   | LC_ALL=C sort
 bin/fm-test-run.sh --check-coverage
 ```
