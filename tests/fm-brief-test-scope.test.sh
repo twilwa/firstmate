@@ -136,6 +136,15 @@ test_firstmate_focused_step_runs_selection() {
   assert_grep 'If the Test step times out, report needs-decision; never choose fix.' "$brief" 'firstmate focused brief lost timeout rule'
   pass 'firstmate focused Test runs rather than skipping'
 
+  id='brief-scope-firstmate-none'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests none --project "$ROOT" --upstream-consent "$target" >/dev/null 2>&1 \
+    || fail 'firstmate none brief failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'When the no-mistakes Test step asks for approval, approve it with no local test selection; never skip it.' "$brief" 'firstmate none brief did not require Test approval'
+  assert_grep 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' "$brief" 'firstmate none brief lost its no-local-runs permission'
+  assert_no_grep 'answer with skip because fork CI runs the suite' "$brief" 'firstmate none brief still skips Test'
+  pass 'firstmate none Test approves with no local selection'
+
   mkdir -p "$TMP_ROOT/unrelated-project"
   git -C "$TMP_ROOT/unrelated-project" init -q
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" brief-scope-unrelated-focused sample --mode no-mistakes --tests focused --project "$TMP_ROOT/unrelated-project" >/dev/null 2>&1 \
