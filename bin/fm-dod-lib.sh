@@ -184,8 +184,9 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # names its candidate's CI run as the proof. The no-mistakes Test-step skip
 # answer is limited to none and focused because safe-suite and full ask for the
 # suite to run. The optional project directory selects Test approval at every
-# scope, with no local selection at none, when fm_role_self_repo recognizes
-# Firstmate lineage (or cannot determine it); the Test attestation is required there. The
+# scope, with no local selection at none, when fm_role_self_repo recognizes it
+# as Firstmate lineage of the code root (default: this library's checkout) or
+# cannot determine it; the Test attestation is required there. The
 # timeout-means-needs-decision rule holds at every scope. The Firstmate figures
 # are bin/fm-test-run.sh --estimate-ms over the selections the section names.
 fm_test_scope_valid() {  # <scope>
