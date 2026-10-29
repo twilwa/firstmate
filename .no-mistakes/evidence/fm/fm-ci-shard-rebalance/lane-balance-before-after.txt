@@ -1,0 +1,46 @@
+## BASE aa314113: lanes with base hints
+portable-parallel-1      scripts=13  estimate_ms=813697
+portable-parallel-2      scripts=13  estimate_ms=814249
+portable-serial-1of11    scripts=19  estimate_ms=1121246
+portable-serial-2of11    scripts=21  estimate_ms=1121265
+portable-serial-3of11    scripts=22  estimate_ms=1121272
+portable-serial-4of11    scripts=24  estimate_ms=1121254
+portable-serial-5of11    scripts=25  estimate_ms=1121270
+portable-serial-6of11    scripts=25  estimate_ms=1121259
+portable-serial-7of11    scripts=25  estimate_ms=1121269
+portable-serial-8of11    scripts=26  estimate_ms=1121264
+portable-serial-9of11    scripts=25  estimate_ms=1121267
+portable-serial-10of11   scripts=25  estimate_ms=1121262
+portable-serial-11of11   scripts=25  estimate_ms=1121241
+real-herdr-gated         scripts=16  estimate_ms=720000
+
+## BASE partition re-weighted with the refreshed (target) hints
+portable-parallel-1      estimate_ms_with_new_hints=774974
+portable-parallel-2      estimate_ms_with_new_hints=1307612
+portable-serial-1of11    estimate_ms_with_new_hints=1259283
+portable-serial-2of11    estimate_ms_with_new_hints=1158490
+portable-serial-3of11    estimate_ms_with_new_hints=1076765
+portable-serial-4of11    estimate_ms_with_new_hints=1116962
+portable-serial-5of11    estimate_ms_with_new_hints=1146461
+portable-serial-6of11    estimate_ms_with_new_hints=1181376
+portable-serial-7of11    estimate_ms_with_new_hints=1134626
+portable-serial-8of11    estimate_ms_with_new_hints=1011279
+portable-serial-9of11    estimate_ms_with_new_hints=1024893
+portable-serial-10of11   estimate_ms_with_new_hints=1205855
+portable-serial-11of11   estimate_ms_with_new_hints=972110
+
+## TARGET a6735df7: lanes with refreshed hints
+portable-parallel-1      scripts=13  estimate_ms=1041233
+portable-parallel-2      scripts=13  estimate_ms=1041353
+portable-serial-1of11    scripts=16  estimate_ms=1117098
+portable-serial-2of11    scripts=21  estimate_ms=1117096
+portable-serial-3of11    scripts=23  estimate_ms=1117095
+portable-serial-4of11    scripts=24  estimate_ms=1117095
+portable-serial-5of11    scripts=25  estimate_ms=1117095
+portable-serial-6of11    scripts=25  estimate_ms=1117094
+portable-serial-7of11    scripts=25  estimate_ms=1117111
+portable-serial-8of11    scripts=26  estimate_ms=1117115
+portable-serial-9of11    scripts=26  estimate_ms=1117095
+portable-serial-10of11   scripts=25  estimate_ms=1117109
+portable-serial-11of11   scripts=26  estimate_ms=1117097
+real-herdr-gated         scripts=16  estimate_ms=720000

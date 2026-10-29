@@ -1,0 +1,35 @@
+Hosted-runner job wall times (gh run view --json jobs), portable lanes
+## run 40796972623 (main #52: base partition)
+Behavior portable parallel 1	success	1160s
+Behavior portable parallel 2	success	1122s
+Behavior portable serial 1	success	783s
+Behavior portable serial 2	success	1230s
+Behavior portable serial 3	success	1283s
+Behavior portable serial 4	success	1212s
+Behavior portable serial 5	success	1046s
+Behavior portable serial 6	success	1195s
+Behavior portable serial 7	success	1154s
+Behavior portable serial 8	success	1156s
+Behavior portable serial 9	success	952s
+Behavior portable serial 10	success	1151s
+Behavior portable serial 11	success	1180s
+## run 40768416410 (PR #50: this change, attempt 2)
+Behavior portable parallel 1	success	929s
+Behavior portable parallel 2	success	1403s
+Behavior portable serial 1	failure	932s
+Behavior portable serial 2	success	1230s
+Behavior portable serial 3	success	1115s
+Behavior portable serial 4	success	1277s
+Behavior portable serial 5	success	1227s
+Behavior portable serial 6	success	1212s
+Behavior portable serial 7	success	1353s
+Behavior portable serial 8	success	1224s
+Behavior portable serial 9	success	1065s
+Behavior portable serial 10	success	1059s
+Behavior portable serial 11	success	1164s
+
+fm-captain-hold-lifecycle.test.sh measured duration_ms per run (hint now 454829, from 40673507764):
+  40673507764 454829
+  40703025845 625261
+  40796972623 671795
+  40768416410 732985

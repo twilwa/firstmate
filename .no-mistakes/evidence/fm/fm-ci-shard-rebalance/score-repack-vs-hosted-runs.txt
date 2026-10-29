@@ -1,0 +1,25 @@
+## run 40664798225: main (hint source)  (successful scripts measured: 285)
+  parallel base max=   1312s min=   1117s spread=  15% of max  lanes_s=[1117, 1312]
+  parallel head max=   1224s min=   1205s spread=   2% of max  lanes_s=[1224, 1205]
+  serial   base max=   1342s min=    881s spread=  34% of max  lanes_s=[1342, 1032, 1069, 1025, 1082, 991, 1220, 1091, 1022, 1242, 881]  unmeasured=['tests/fm-launch-mise-env.test.sh', 'tests/fm-teardown-procevent.test.sh', 'tests/fm-procevent-retire-task.test.sh']
+  serial   head max=   1694s min=    966s spread=  43% of max  lanes_s=[977, 1007, 1033, 1694, 966, 1125, 1045, 1079, 1032, 1054, 984]  unmeasured=['tests/fm-teardown-procevent.test.sh', 'tests/fm-procevent-retire-task.test.sh', 'tests/fm-launch-mise-env.test.sh']
+## run 40673507764: main #48 (hint source)  (successful scripts measured: 287)
+  parallel base max=   1308s min=    775s spread=  41% of max  lanes_s=[775, 1308]
+  parallel head max=   1075s min=   1007s spread=   6% of max  lanes_s=[1075, 1007]
+  serial   base max=   1259s min=    972s spread=  23% of max  lanes_s=[1259, 1158, 1077, 1117, 1146, 1181, 1130, 1011, 1025, 1206, 972]  unmeasured=['tests/fm-launch-mise-env.test.sh']
+  serial   head max=   1621s min=   1001s spread=  38% of max  lanes_s=[1091, 1001, 1099, 1621, 1113, 1058, 1078, 1040, 1090, 1058, 1034]  unmeasured=['tests/fm-launch-mise-env.test.sh']
+## run 40703025845: main #49 (hint source)  (successful scripts measured: 288)
+  parallel base max=   1064s min=    961s spread=  10% of max  lanes_s=[1064, 961]
+  parallel head max=   1046s min=    979s spread=   6% of max  lanes_s=[979, 1046]
+  serial   base max=   1303s min=   1040s spread=  20% of max  lanes_s=[1303, 1181, 1182, 1171, 1136, 1071, 1040, 1156, 1046, 1201, 1089]
+  serial   head max=   1704s min=   1045s spread=  39% of max  lanes_s=[1103, 1077, 1104, 1704, 1072, 1045, 1081, 1114, 1090, 1121, 1064]
+## run 40796972623: main #52 (hint source, current base)  (successful scripts measured: 288)
+  parallel base max=   1140s min=   1109s spread=   3% of max  lanes_s=[1140, 1109]
+  parallel head max=   1138s min=   1111s spread=   2% of max  lanes_s=[1111, 1138]
+  serial   base max=   1261s min=    754s spread=  40% of max  lanes_s=[754, 1205, 1261, 1188, 1027, 1171, 1127, 1135, 931, 1121, 1154]
+  serial   head max=   1141s min=   1044s spread=   8% of max  lanes_s=[1141, 1124, 1121, 1123, 1100, 1077, 1044, 1081, 1095, 1061, 1107]
+## run 40768416410: PR #50 own run (prior a6735df7 partition)  (successful scripts measured: 287)
+  parallel base max=   1181s min=   1110s spread=   6% of max  lanes_s=[1181, 1110]
+  parallel head max=   1173s min=   1118s spread=   5% of max  lanes_s=[1118, 1173]
+  serial   base max=   1242s min=    221s spread=  82% of max  lanes_s=[221, 1177, 1120, 1210, 1207, 1132, 1242, 1019, 990, 1242, 1081]  unmeasured=['tests/fm-supervision-host.test.sh']
+  serial   head max=   1155s min=    596s spread=  48% of max  lanes_s=[1151, 1015, 1128, 596, 1126, 1115, 1121, 1040, 1155, 1076, 1117]  unmeasured=['tests/fm-supervision-host.test.sh']

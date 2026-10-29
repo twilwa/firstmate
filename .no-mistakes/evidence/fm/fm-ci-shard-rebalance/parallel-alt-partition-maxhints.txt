@@ -1,0 +1,2 @@
+max-of-3-main-runs LPT parallel lane sums: [1223754, 1223561]
+same partition scored on PR run 40768416410: [1212170, 1078898]

@@ -1,0 +1,6 @@
+== base aa314113: tests/fm-session-lock-ancestry.test.sh standalone
+ok - session-lock: a Windows-tagged lock stays inert off Windows
+ok - session-lock: a task lease follows a live tagged lock holder and goes stale when it exits
+ok - session-lock: a harness in the local process table resolves untagged when ps has no -o option
+not ok - the fixture hook never finished
+exit=1

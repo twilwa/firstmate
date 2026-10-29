@@ -1,0 +1,4 @@
+== HEAD 1d384db9 with tests/fm-watch-triage.test.sh hint inflated to 1300000 ms
+fm-test-run: coverage guard: largest portable serial shard packs 1300000ms above the 1200000ms target
+fm-test-run: refresh CI hints and rebalance or add shards; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1

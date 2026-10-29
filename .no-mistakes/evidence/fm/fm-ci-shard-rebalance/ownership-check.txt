@@ -1,0 +1,9 @@
+## Ownership: every tests/*.test.sh in exactly one CI lane (parallel-1/2, serial-1..11of11, real-herdr-gated)
+lane memberships: 304
+distinct scripts owned: 304
+--all scripts: 304
+tests/*.test.sh on disk: 304
+duplicated owners:
+unowned (on disk but in no lane):
+--lane portable-serial == union of 11 shards: yes
+parallel set == proven-isolated-admitted set unchanged vs base: same-membership

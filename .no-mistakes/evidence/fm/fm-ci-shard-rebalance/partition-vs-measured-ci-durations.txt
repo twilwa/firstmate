@@ -1,0 +1,20 @@
+## run 40673507764: main #48 (hint source, pre-#49)  (measured successful scripts: 287)
+  parallel base   lanes_ms=[774974, 1307612] max=1307612 min=774974 spread=532638 (41% of max) unmeasured=0
+  parallel target lanes_ms=[1041233, 1041353] max=1041353 min=1041233 spread=120 (0% of max) unmeasured=0
+  serial   base   lanes_ms=[1205855, 972110, 1259283, 1158443, 1076765, 1116962, 1146461, 1181376, 1129658, 1011279, 1024893] max=1259283 min=972110 spread=287173 (23% of max) unmeasured=1
+  serial   target lanes_ms=[1117109, 1117097, 1117098, 1117096, 1117095, 1117095, 1117095, 1117094, 1112143, 1117115, 1117048] max=1117115 min=1112143 spread=4972 (0% of max) unmeasured=1
+## run 40703025845: main #49 (mise pre-trust)  (measured successful scripts: 288)
+  parallel base   lanes_ms=[1063676, 961358] max=1063676 min=961358 spread=102318 (10% of max) unmeasured=0
+  parallel target lanes_ms=[916889, 1108145] max=1108145 min=916889 spread=191256 (17% of max) unmeasured=0
+  serial   base   lanes_ms=[1200886, 1088820, 1302613, 1181044, 1182410, 1171195, 1135843, 1070514, 1040402, 1155806, 1045994] max=1302613 min=1040402 spread=262211 (20% of max) unmeasured=0
+  serial   target lanes_ms=[1168964, 1101871, 1176528, 1133472, 1209768, 1147381, 1073423, 1127651, 1122465, 1099791, 1214213] max=1214213 min=1073423 spread=140790 (12% of max) unmeasured=0
+## run 40796972623: main #52 (current base)  (measured successful scripts: 288)
+  parallel base   lanes_ms=[1139692, 1109041] max=1139692 min=1109041 spread=30651 (3% of max) unmeasured=0
+  parallel target lanes_ms=[1020041, 1228692] max=1228692 min=1020041 spread=208651 (17% of max) unmeasured=0
+  serial   base   lanes_ms=[1120941, 1154102, 753631, 1205017, 1260628, 1188374, 1027356, 1170600, 1127011, 1135040, 931015] max=1260628 min=753631 spread=506997 (40% of max) unmeasured=0
+  serial   target lanes_ms=[1073626, 1122761, 598213, 1151459, 1273580, 1174954, 1130602, 1075234, 1177058, 1071554, 1224674] max=1273580 min=598213 spread=675367 (53% of max) unmeasured=0
+## run 40768416410: PR run of this exact partition  (measured successful scripts: 287)
+  parallel base   lanes_ms=[1180824, 1110244] max=1180824 min=1110244 spread=70580 (6% of max) unmeasured=0
+  parallel target lanes_ms=[901558, 1389510] max=1389510 min=901558 spread=487952 (35% of max) unmeasured=0
+  serial   base   lanes_ms=[1241630, 1080793, 221294, 1176767, 1120013, 1209793, 1207376, 1132037, 1242027, 1019020, 989701] max=1242027 min=221294 spread=1020733 (82% of max) unmeasured=1
+  serial   target lanes_ms=[1007617, 1134993, 91499, 1192433, 1072958, 1251870, 1173146, 1186808, 1293749, 1194572, 1040806] max=1293749 min=91499 spread=1202250 (93% of max) unmeasured=1

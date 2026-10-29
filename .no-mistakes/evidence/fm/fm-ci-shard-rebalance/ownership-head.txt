@@ -1,0 +1,6 @@
+304
+304
+0
+parallel set unchanged (26)
+serial set unchanged (262)
+herdr set unchanged (16)
