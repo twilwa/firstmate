@@ -10,10 +10,6 @@
 # prints the block on stdout with no trailing blank line. The caller validates the
 # mode; an unknown mode is refused rather than silently rendered as the pipeline
 # contract.
-# fm_test_scope_section <scope> <flow> [project-dir] renders the test policy.
-# No-mistakes tasks in Firstmate lineage approve Test at every scope for its
-# required attestation; other projects retain the fork-CI skip answer. Scope
-# permissions and the timeout-means-needs-decision rule are unchanged.
 # The optional third argument is the task's full ship-branch name (a project's
 # registered prefix may replace the legacy `fm/` one); it defaults to `fm/<task-id>`
 # and is the immutable task branch rendered in every delivery contract.
