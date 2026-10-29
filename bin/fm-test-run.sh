@@ -145,12 +145,12 @@
 # owned by bin/fm-test-isolation-proof.sh; portable parallel shards are a
 # duration-balanced partition of that exact set, packed from the measured hints
 # in portable_parallel_weight_hints (see docs/fm-test-portable-shards.md).
-# --check-coverage reports parallel_max_ms (the larger modeled lane weight),
-# parallel_imbalance_ms (the absolute difference between the weights),
+# --check-coverage reports parallel_max_ms (the larger lane hint sum),
+# parallel_imbalance_ms (the absolute difference between the sums),
 # parallel_unhinted (the number of members missing a parallel hint), and
-# parallel_budget_ms (the parallel packing ceiling), refusing a lane weight
-# above that ceiling. Each unhinted member consumes the full 1500s per-file
-# bound. These weights are estimates, not measured job wall times.
+# parallel_budget_ms (the parallel packing ceiling), refusing a lane hint sum
+# above that ceiling and naming each member missing a parallel hint.
+# These sums are estimates, not measured job wall times.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -603,13 +603,13 @@ tests/fm-x-mode.test.sh 50779
 EOF
 }
 
-# Sum measured hints, charging each unhinted script the full per-file bound;
-# report "<summed_ms> <unhinted_count>" for the scripts read on stdin.
+# Sum the hints above for the scripts read on stdin, and report how many of
+# them had no hint at all, as "<summed_ms> <unhinted_count>".
 portable_parallel_lane_weight() {
-  awk -v unhinted_ms="$((CHANGED_DEFAULT_TIMEOUT_SECS * 1000))" '
+  awk '
     NR == FNR { if (NF) { hint[$1] = $2 } ; next }
     NF {
-      if ($1 in hint) { total += hint[$1] } else { total += unhinted_ms; unhinted++ }
+      if ($1 in hint) { total += hint[$1] } else { unhinted++ }
     }
     END { printf "%d %d\n", total + 0, unhinted + 0 }
   ' <(portable_parallel_weight_hints) -
@@ -1311,6 +1311,15 @@ run_coverage_guard() {
   # header for the distinction between packed weights and measured job time.
   read -r p1_ms p1_unhinted <<<"$(list_portable_parallel_1 | portable_parallel_lane_weight)"
   read -r p2_ms p2_unhinted <<<"$(list_portable_parallel_2 | portable_parallel_lane_weight)"
+  if [ "$((p1_unhinted + p2_unhinted))" -gt 0 ]; then
+    log "coverage guard: portable parallel members have no measured duration hint:"
+    { list_portable_parallel_1; list_portable_parallel_2; } |
+      awk 'NR == FNR { if (NF) { hint[$1] = 1 }; next } NF && !($1 in hint)' \
+        <(portable_parallel_weight_hints) - >&2
+    log "refresh the hints from a green run's timing artifacts: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
   parallel_max_ms=$p1_ms
   [ "$p2_ms" -le "$parallel_max_ms" ] || parallel_max_ms=$p2_ms
   if [ "$parallel_max_ms" -gt "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" ]; then

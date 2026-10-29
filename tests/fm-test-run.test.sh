@@ -1320,10 +1320,11 @@ runner.write_text(text[:match.start(2)] + table + text[match.end(2):])
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
     if [ "$weight" = unhinted ]; then
-      expect_code 1 "$rc" "an unhinted parallel script must consume its full 1500s bound"
-      assert_contains "$out" "largest portable parallel lane packs 1500000ms above the 1200000ms target" \
-        "unhinted parallel script was not charged at its per-file bound"
-      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "unhinted over-budget packing reported success"
+      expect_code 1 "$rc" "an unhinted parallel script must be refused"
+      assert_contains "$out" "portable parallel members have no measured duration hint" \
+        "unhinted parallel refusal did not explain the missing hint"
+      assert_contains "$out" "$heavy" "unhinted parallel refusal did not name the member"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "unhinted parallel packing reported success"
     elif [ "$weight" -eq 1200000 ]; then
       expect_code 0 "$rc" "parallel packing exactly at the budget must be accepted"
       assert_contains "$out" "FM_TEST_COVERAGE ok" "parallel boundary coverage did not pass"
@@ -1336,7 +1337,7 @@ PY
       assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget parallel packing reported success"
     fi
   done
-  pass "parallel packing accepts the exact budget and refuses excess or unhinted work"
+  pass "parallel packing accepts the exact budget and refuses excess or unhinted members"
 }
 
 test_portable_serial_shard_lane_refusals() {
