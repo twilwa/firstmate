@@ -102,8 +102,9 @@ find /tmp/fm-serial -name 'fm-test-timing-*.json' ! -name '*aggregate*' \
   -exec jq -r '.scripts[] | select(.exit == 0) | [.path, .duration_ms] | @tsv' {} \; \
   | awk -F'\t' '$2 > m[$1] { m[$1] = $2 } END { for (p in m) print p, m[p] }' \
   | LC_ALL=C sort > /tmp/fm-serial/all-hints.txt
-# The artifact glob also matches parallel and Herdr lanes; keep only members of
-# the serial lane before replacing the table.
+# The artifact glob also matches the pool and Herdr lanes; keep only members of
+# the serial lane, and carry over the table's existing pool-member rows, which
+# no current lane measures serially, before replacing the table.
 join -j 1 \
   <(bin/fm-test-run.sh --list --lane portable-serial | LC_ALL=C sort) \
   /tmp/fm-serial/all-hints.txt
