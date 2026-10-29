@@ -1,0 +1,23 @@
+canonical full set (CI context): 560 roots
+== bin/*.sh bin/backends/*.sh tests/*.sh
+partition 1of4: 140 roots
+partition 2of4: 140 roots
+partition 3of4: 140 roots
+partition 4of4: 140 roots
+union lines 560, unique 560
+4 partitions are complete and disjoint over the canonical set
+$ bin/fm-lint.sh --partition 1of3 --list-files
+fm-lint.sh: --partition asks for 3 canonical partitions but this script owns 4, got 1of3.
+exit=2
+$ bin/fm-lint.sh --partition 0of4 --list-files
+fm-lint.sh: --partition must be <k>of4, got 0of4.
+exit=2
+$ bin/fm-lint.sh --partition 5of4 --list-files
+fm-lint.sh: --partition must be <k>of4, got 5of4.
+exit=2
+$ bin/fm-lint.sh --partition 2of5 --list-files
+fm-lint.sh: --partition asks for 5 canonical partitions but this script owns 4, got 2of5.
+exit=2
+$ bin/fm-lint.sh --partition 1of4 --fast
+fm-lint.sh: --partition requires full canonical lint; omit --fast and explicit paths.
+exit=2

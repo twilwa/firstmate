@@ -1,0 +1,22 @@
+$ bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 pool=25 pool_hint_ms=2374092 pool_modeled_ms=599407 pool_workers=4 pool_unhinted=0 pool_budget_ms=1400000 pool_timeout_min=50 serial=263 serial_shards=13 serial_unhinted=0 serial_max_ms=1025770 serial_budget_ms=1200000 herdr=16
+exit=0
+
+$ bin/fm-test-run.sh --list-lanes
+portable-pool
+portable-serial
+portable-serial-1of13
+portable-serial-2of13
+portable-serial-3of13
+portable-serial-4of13
+portable-serial-5of13
+portable-serial-6of13
+portable-serial-7of13
+portable-serial-8of13
+portable-serial-9of13
+portable-serial-10of13
+portable-serial-11of13
+portable-serial-12of13
+portable-serial-13of13
+real-herdr-gated
+exit=0

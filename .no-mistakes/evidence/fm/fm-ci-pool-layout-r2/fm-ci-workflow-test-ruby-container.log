@@ -1,0 +1,16 @@
+ruby 3.3.13 (2026-10-23 revision af48f08f21) [x86_64-linux]
+GNU bash, version 5.2.37(1)-release (x86_64-pc-linux-gnu)
+ok - portable CI commands bound hung files and preserve named diagnostics and timing artifacts
+ok - CI matrices cover every executable serial lane and canonical lint root exactly once
+ok - a newer push to one PR supersedes that PR's in-flight CI
+ok - distinct PRs get distinct concurrency groups
+ok - every main push keeps its own group and is never cancelled
+ok - the fork skip variables change nothing unless set, and each skips only its own run or job
+ok - the timing aggregate still runs after a failed lane unless the push run is skipped
+ok - every ci.yml job carries a finite timeout
+ok - every ci.yml job belongs to one of the four timeout tiers
+ok - fast tier jobs share one 5 minute tripwire
+ok - normal tier jobs share one 30 minute budget
+ok - portable test tier shares one 50 minute cap above setup, packing target, and the per-file bound
+ok - Herdr keeps a 20 minute step tripwire under a 75 minute job backstop
+exit=0

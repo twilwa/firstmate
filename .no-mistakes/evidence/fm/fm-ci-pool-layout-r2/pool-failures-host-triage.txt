@@ -1,0 +1,24 @@
+Local four-worker portable pool run (bin/fm-test-run.sh --lane portable-pool --jobs 4 --per-script-timeout-secs 1500 ...):
+FM_TEST_SUMMARY total=25 failed=3 duration_ms=997724   (see portable-pool-run.log)
+
+All three failures were reproduced standalone on this host AND on an untouched base 15db9c85 git-archive copy:
+1. tests/fm-pr-merge.test.sh -> "fm-captain-hold: compatible tasks-axi is required": ~/.local/bin/node is a mise shim
+   that fails once a test overrides HOME. With a real node bin dir first on PATH the failing case passes. Base: same failure.
+2. tests/fm-backend-t3code.test.sh -> "mise ERROR No version is set for shim: node" (same host cause).
+3. tests/fm-test-run.test.sh -> its nested real family run of tests/fm-session-lock-ancestry.test.sh fails
+   "the fixture hook never finished": the fixture waits for an orphan's ppid to become 1, but this host reparents
+   orphans to a systemd subreaper. Standalone on HEAD: fail; with real node: fail; base 15db9c85: fail.
+Neither fm-session-lock-ancestry.test.sh nor bin/fm-session-lock* is changed by this diff.
+
+fm-test-run.test.sh assertions for the new layout that passed in this run:
+ok - fm-teardown.sh backend=t3code pooled secondmate: the slot returns only after the provider ended, without the T3 environment the spawn wrote
+ok - fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool
+ok - proven-isolated scheduling orders by pool hints
+ok - family, all, changed, and script selections ignore pool hints
+ok - --estimate-ms sums pool hints only for the pool and proven selections
+ok - portable pool union, disjointness, and coverage guard hold
+ok - portable pool is fully hinted and models inside its job budget
+ok - pool budget accepts the exact makespan and window, and refuses one millisecond past either
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+ok - portable serial shard lanes refuse mismatched, out-of-range, and countless names
+ok - --jobs refuses non-proven / stateful selections and pool workers above the proof

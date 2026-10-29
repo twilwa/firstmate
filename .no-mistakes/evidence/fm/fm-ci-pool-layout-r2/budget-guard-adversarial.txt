@@ -1,0 +1,14 @@
+$ [mutated copy PORTABLE_POOL_WORKERS=3] bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 pool=25 pool_hint_ms=2374092 pool_modeled_ms=792134 pool_workers=3 pool_unhinted=0 pool_budget_ms=1400000 pool_timeout_min=50 serial=263 serial_shards=13 serial_unhinted=0 serial_max_ms=1025770 serial_budget_ms=1200000 herdr=16
+exit=0
+$ [mutated copy PORTABLE_POOL_WORKERS=2] bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 pool=25 pool_hint_ms=2374092 pool_modeled_ms=1187170 pool_workers=2 pool_unhinted=0 pool_budget_ms=1400000 pool_timeout_min=50 serial=263 serial_shards=13 serial_unhinted=0 serial_max_ms=1025770 serial_budget_ms=1200000 herdr=16
+exit=0
+$ [mutated copy PORTABLE_SERIAL_SHARDS=10] bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: largest portable serial shard packs 1333491ms above the 1200000ms target
+fm-test-run: refresh CI hints and rebalance or add shards; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1
+$ [mutated copy PORTABLE_POOL_WORKERS=1] bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable pool models a 2374092ms 1-worker makespan above the 1400000ms ceiling
+fm-test-run: refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md
+exit=1

@@ -1,0 +1,12 @@
+--lane portable-pool     estimate_ms=2374092
+--proven-isolated        estimate_ms=2374092
+--all                    estimate_ms=15872032
+--lane portable-serial   estimate_ms=13334817
+check-coverage pool_hint_ms (contended sum) = pool_hint_ms=2374092
+
+$ bin/fm-test-run.sh --list-scheduled --lane portable-pool | head -5
+tests/fm-pr-merge.test.sh
+tests/fm-test-run.test.sh
+tests/fm-lint.test.sh
+tests/fm-backend-t3code.test.sh
+tests/fm-crew-state.test.sh

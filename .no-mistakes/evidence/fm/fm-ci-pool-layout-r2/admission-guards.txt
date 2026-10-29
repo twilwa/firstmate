@@ -1,0 +1,42 @@
+$ bin/fm-test-run.sh --lane portable-pool --jobs 5 --list
+tests/fm-arm-pretool-check.test.sh
+tests/fm-backend-herdr.test.sh
+tests/fm-backend-t3code.test.sh
+tests/fm-brief.test.sh
+tests/fm-cd-pretool-check.test.sh
+tests/fm-composer-ghost.test.sh
+exit=0
+
+$ bin/fm-test-run.sh --lane portable-pool --jobs 8
+fm-test-run: --jobs 8 refused: the portable pool is proven only up to 4 concurrent workers
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-pool --jobs 5
+fm-test-run: --jobs 5 refused: the portable pool is proven only up to 4 concurrent workers
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-1of13 --jobs 2
+fm-test-run: --jobs 2 refused: portable serial lanes stay serial; use --jobs 1
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-1of11 --list
+fm-test-run: lane 'portable-serial-1of11' asks for 11 portable serial shards but this runner is configured for 13 (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-serial-14of13 --list
+fm-test-run: lane 'portable-serial-14of13' shard index is outside 1..13 (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-parallel-1 --list
+fm-test-run: unknown lane 'portable-parallel-1' (see --list-lanes)
+exit=2
+
+$ bin/fm-test-run.sh --lane portable-pool --jobs 4 --list
+tests/fm-arm-pretool-check.test.sh
+tests/fm-backend-herdr.test.sh
+tests/fm-backend-t3code.test.sh
+tests/fm-brief.test.sh
+tests/fm-cd-pretool-check.test.sh
+tests/fm-composer-ghost.test.sh
+exit=0
+

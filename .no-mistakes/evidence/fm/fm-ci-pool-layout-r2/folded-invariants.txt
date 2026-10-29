@@ -1,0 +1,11 @@
+$ [Lint 1 step] Compatibility pointers must stay intact
+exit=0
+$ [Lint 1 step] Personal fleet paths must not be tracked
+exit=0
+$ [adversarial] CLAUDE.md is a symlink
+::error::CLAUDE.md must be a real @AGENTS.md pointer file, not a symlink
+exit=1
+$ [adversarial] data/backlog.md tracked
+::error::Personal fleet paths are tracked in git:
+data/backlog.md
+exit=1

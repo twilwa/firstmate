@@ -1,0 +1,21 @@
+pool count: 25; proven-isolated count: 25
+pool == proven-isolated set: identical
+captain-hold in pool: 0
+shard  1:  14 files, est 1025747 ms
+shard  2:  17 files, est 1025770 ms
+shard  3:  20 files, est 1025753 ms
+shard  4:  21 files, est 1025755 ms
+shard  5:  21 files, est 1025753 ms
+shard  6:  20 files, est 1025755 ms
+shard  7:  21 files, est 1025760 ms
+shard  8:  21 files, est 1025755 ms
+shard  9:  21 files, est 1025760 ms
+shard 10:  22 files, est 1025758 ms
+shard 11:  21 files, est 1025735 ms
+shard 12:  22 files, est 1025757 ms
+shard 13:  22 files, est 1025759 ms
+shard union lines: 263, unique: 263, serial lane: 263
+13 shards partition portable-serial exactly (no dup, no missing)
+captain-hold in serial: 1
+inventory: 304; pool+serial+herdr: 304 unique 304
+pool + serial + herdr == tests/*.test.sh exactly
