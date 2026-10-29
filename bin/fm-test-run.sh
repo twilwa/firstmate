@@ -145,13 +145,12 @@
 # owned by bin/fm-test-isolation-proof.sh; portable parallel shards are a
 # duration-balanced partition of that exact set, packed from the measured hints
 # in portable_parallel_weight_hints (see docs/fm-test-portable-shards.md).
-# --check-coverage reports parallel_max_ms (the larger lane hint sum),
-# parallel_imbalance_ms (the absolute difference between the sums),
+# --check-coverage reports parallel_max_ms (the larger modeled lane weight),
+# parallel_imbalance_ms (the absolute difference between the weights),
 # parallel_unhinted (the number of members missing a parallel hint), and
-# parallel_budget_ms (the parallel packing ceiling), refusing a lane hint sum
-# above that ceiling.
-# These sums exclude unhinted members and are estimates, not measured job wall
-# times. Missing parallel hints are reported without failing this guard.
+# parallel_budget_ms (the parallel packing ceiling), refusing a lane weight
+# above that ceiling. Each unhinted member consumes the full 1500s per-file
+# bound. These weights are estimates, not measured job wall times.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -604,13 +603,13 @@ tests/fm-x-mode.test.sh 50779
 EOF
 }
 
-# Sum the hints above for the scripts read on stdin, and report how many of
-# them had no hint at all, as "<summed_ms> <unhinted_count>".
+# Sum measured hints, charging each unhinted script the full per-file bound;
+# report "<summed_ms> <unhinted_count>" for the scripts read on stdin.
 portable_parallel_lane_weight() {
-  awk '
+  awk -v unhinted_ms="$((CHANGED_DEFAULT_TIMEOUT_SECS * 1000))" '
     NR == FNR { if (NF) { hint[$1] = $2 } ; next }
     NF {
-      if ($1 in hint) { total += hint[$1] } else { unhinted++ }
+      if ($1 in hint) { total += hint[$1] } else { total += unhinted_ms; unhinted++ }
     }
     END { printf "%d %d\n", total + 0, unhinted + 0 }
   ' <(portable_parallel_weight_hints) -
@@ -2086,7 +2085,8 @@ write_json_artifact() {
   fi
 
   python3 - "$out" "$started" "$finished" "$run_id" "$total" "$failed" "$skipped" "$duration" "$selection" "$records_file" "$families_file" <<'PY'
-import json, sys
+import json, os, sys, tempfile
+from pathlib import Path
 
 out, started, finished, run_id, total, failed, skipped, duration, selection, records_file, families_file = sys.argv[1:]
 
@@ -2135,9 +2135,21 @@ doc = {
     "scripts": scripts,
     "families": families,
 }
-with open(out, "w", encoding="utf-8") as fh:
-    json.dump(doc, fh, indent=2, sort_keys=True)
-    fh.write("\n")
+destination = Path(out)
+destination.parent.mkdir(parents=True, exist_ok=True)
+# Publish a whole snapshot atomically, preserving the previous one if the job
+# is interrupted during serialization of a later file's results.
+with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent,
+                                 prefix=destination.name + ".", delete=False) as fh:
+    temporary = fh.name
+    try:
+        json.dump(doc, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+        fh.close()
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 PY
 }
 
@@ -2666,7 +2678,7 @@ family_bump() {
 
 record_script_result() {
   local script=$1 rc=$2 duration=$3 out=$4 end_iso=$5
-  local base family expected gate_skip gate_reason fail_delta
+  local base family expected gate_skip gate_reason fail_delta elapsed
   base=$(basename "$script")
   family=$(family_for_basename "$base")
   expected=$(expected_gate_skip_for_family "$family")
@@ -2701,6 +2713,17 @@ record_script_result() {
     "$script" "$family" "$expected" "$rc" "$duration" "$gate_skip" "$gate_reason" >>"$RECORDS"
   family_bump "$family" "$duration" "$fail_delta"
   TOTAL=$((TOTAL + 1))
+  if [ -n "$JSON_PATH" ]; then
+    elapsed=$(( $(now_ms) - RUN_STARTED_MS ))
+    [ "$elapsed" -ge 0 ] || elapsed=0
+    if ! write_json_artifact "$JSON_PATH" \
+      "$RUN_STARTED_ISO" "$end_iso" "$RUN_ID" \
+      "$TOTAL" "$FAILED" "$SKIPPED_GATE" "$elapsed" \
+      "$SELECTION_DESC" "$RECORDS" "$FAMILIES_TSV"; then
+      log "timing artifact checkpoint failed: $JSON_PATH"
+      AGG_RC=1
+    fi
+  fi
 }
 
 # Run <script>, capturing output to <out>. <stream> 1 also echoes it live.
