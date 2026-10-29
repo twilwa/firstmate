@@ -24,3 +24,26 @@ for mode in no-mistakes direct-PR local-only; do
   done
   pass "$mode ship brief carries the shared testing discipline once"
 done
+
+mkdir -p "$TMP_ROOT/home/state"
+for mode in no-mistakes direct-PR local-only; do
+  id="tdd-promote-$mode"
+  FM_HOME="$TMP_ROOT/home" "$ROOT/bin/fm-brief.sh" "$id" sample --scout >/dev/null
+  sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' \
+    "$TMP_ROOT/home/data/$id/brief.md"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$TMP_ROOT/home/state/$id.meta"
+  FM_HOME="$TMP_ROOT/home" "$ROOT/bin/fm-promote.sh" "$id" --mode "$mode" --yolo off >/dev/null 2>&1 \
+    || fail "promotion to $mode failed"
+  instructions="$TMP_ROOT/home/data/$id/ship-instructions.md"
+  # shellcheck disable=SC2016 # Skill-name backticks are literal instruction output.
+  for requirement in \
+    'Follow the `tdd` skill and the no-mistakes test-quality rule' \
+    'red -> green -> refactor in vertical slices' \
+    'high-signal tests at public seams' \
+    'regression test red before the fix' \
+    'no tautological, implementation-coupled, or bulk-ahead tests'; do
+    count=$(rg -F -o "$requirement" "$instructions" | awk 'END { print NR }')
+    [ "$count" = 1 ] || fail "promoted $mode must carry testing requirement exactly once: $requirement"
+  done
+  pass "promoted $mode ship instructions carry the shared testing discipline once"
+done

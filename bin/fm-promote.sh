@@ -330,6 +330,8 @@ EOF
     printf '\nThe no-mistakes ask-user escalation below supersedes the scout rule 6 escalation shape.\n'
     printf '%s\n' "$PROMOTION_ASK_USER_BLOCK"
   fi
+  printf '\n# Current ship testing rule\n'
+  fm_ship_tdd_rule
   printf '\n'
   fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT"
 }

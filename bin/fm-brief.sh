@@ -915,6 +915,7 @@ case "$MODE" in
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT") || exit 1
+TDD_RULE=$(fm_ship_tdd_rule)
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -964,7 +965,7 @@ $ASK_USER_BLOCK
 $SHARED_INFRA_RULE
 $SHARED_NO_CD_RULE
 
-9. Follow the \`tdd\` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
+9. $TDD_RULE
 
 $SHARED_HOST_SAFETY
 
