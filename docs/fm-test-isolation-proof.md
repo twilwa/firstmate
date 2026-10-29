@@ -6,36 +6,36 @@ This record owns concurrent isolation evidence for the portable parallel candida
 
 ## Verification
 
-- Date: 2026-10-28
-- Command: `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on `ubuntu-latest` (Bash 5.2, tmux 3.4), `workflow_dispatch` run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628)
-- Result: `FM_ISOLATION_SUMMARY total=26 failed=0 concurrency=4 duration_ms=1250469`
+- Date: 2026-10-29
+- Command: `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on `ubuntu-latest` (Bash 5.2, tmux 3.4), `workflow_dispatch` run [40843566303](https://github.com/twilwa/firstmate/actions/runs/40843566303), job 123345531370
+- Result: `FM_ISOLATION_SUMMARY total=25 failed=0 concurrency=4 duration_ms=599458`
 
 | Field | Value |
 |---|---|
-| `run_id` | `fm-isolation-1793218042892-2415` |
-| `started_at` | `2026-10-28T20:07:22Z` |
-| `finished_at` | `2026-10-28T20:28:13Z` |
+| `run_id` | `fm-isolation-1793263113640-2220` |
+| `started_at` | `2026-10-29T08:38:33Z` |
+| `finished_at` | `2026-10-29T08:48:33Z` |
 | concurrency | 4 |
-| candidates | 26 |
+| candidates | 25 |
 | failed | 0 |
-| wall duration | 1250469 ms |
-| peak whole-runner RSS | 5714428 KiB |
-| CPU busy | 99% peak, 90% mean over the run |
-| peak load1 | 9.04 on a 4-vCPU runner |
+| wall duration | 599458 ms |
+| peak whole-runner RSS | 5208164 KiB |
+| CPU busy | 99% peak, 94% mean over the run |
+| peak load1 | 8.99 on a 4-vCPU runner |
 
 Resource telemetry was sampled every five seconds across the whole runner during the proof (`resources.tsv` in the run's `fm-isolation-proof-jobs4` artifact).
-Peak RSS stayed near 5.6 GiB of the runner's 16 GiB, so four workers leave comfortable memory headroom; the CPU was the saturated resource, which is the intended trade.
-The wall exceeds a serial-hint replay because the heaviest members inflate under real contention: `tests/fm-captain-hold-lifecycle.test.sh` alone ran 1216727 ms against its 671795 ms serial hint, and the pool's production schedule starts the heaviest files first.
-The pool hints in `bin/fm-test-run.sh` are therefore this run's contended durations, not serial samples ([fm-test-portable-shards.md](fm-test-portable-shards.md#pool-budget-guard)).
+Peak RSS stayed near 5.0 GiB of the runner's 16 GiB, so four workers leave comfortable memory headroom; the CPU was the saturated resource, which is the intended trade.
+The heaviest members inflate under real contention, and the pool's production schedule starts them first, so the pool hints in `bin/fm-test-run.sh` are this run's contended durations, not serial samples ([fm-test-portable-shards.md](fm-test-portable-shards.md#pool-budget-guard)).
+The slowest member, `tests/fm-pr-merge.test.sh`, ran 599407 ms, so every pooled file keeps well over the roughly 1.6x headroom the unchanged 1500-second per-file bound was sized for: the worst is about 2.5x.
 The JSON artifact's `fm_test_run_jobs_enabled` reads `false` because that flag describes family-pool admission; the portable pool's admission is the CI lane's own proven worker bound in `bin/fm-test-run.sh`.
 
-The same run's two-worker control (`--jobs 2`) also completed clean at 26 candidates, 0 failures, 1562807 ms, peak RSS 5380560 KiB, mean CPU 64%: the makespan is bounded by the heaviest member under contention, so four workers is the right production bound.
-The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 concurrency=4 duration_ms=113278`) preceded the two T3 suites and is superseded by the record above.
+The same run's two-worker control (`--jobs 2`) also completed clean at 25 candidates, 0 failures, 1149894 ms, peak RSS 3947092 KiB, mean CPU 67%: the makespan is bounded by the heaviest member under contention, so four workers is the right production bound.
+
+The 2026-10-28 run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628) (`fm-isolation-1793218042892-2415`, `total=26 failed=0 concurrency=4 duration_ms=1250469`) proved the earlier 26-candidate set and is superseded by the record above.
+In it `tests/fm-captain-hold-lifecycle.test.sh` passed but ran 1216727 ms, 81 percent of the 1500-second per-file bound, so it left the candidate set for a serial shard and `--list-exclusions` records why.
+The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 concurrency=4 duration_ms=113278`) preceded the two T3 suites.
 
 ## Candidate set
-
-`tests/fm-captain-hold-lifecycle.test.sh` passed the run above but left the candidate set afterwards: its 1216727 ms under four-worker contention used 81 percent of the 1500-second per-file bound, so it runs on a serial shard and `--list-exclusions` records why.
-The remaining 25 candidates are below.
 
 - `tests/fm-arm-pretool-check.test.sh`
 - `tests/fm-backend-herdr.test.sh`
@@ -67,32 +67,31 @@ The remaining 25 candidates are below.
 
 | duration_ms | exit | worker | script |
 |---|---:|---:|---|
-| 1216727 | 0 | 5 | `tests/fm-captain-hold-lifecycle.test.sh` |
-| 867078 | 0 | 15 | `tests/fm-pr-merge.test.sh` |
-| 658004 | 0 | 13 | `tests/fm-lint.test.sh` |
-| 584075 | 0 | 23 | `tests/fm-test-run.test.sh` |
-| 398789 | 0 | 3 | `tests/fm-backend-t3code.test.sh` |
-| 190542 | 0 | 9 | `tests/fm-crew-state.test.sh` |
-| 89927 | 0 | 2 | `tests/fm-backend-herdr.test.sh` |
-| 82941 | 0 | 26 | `tests/fm-x-mode.test.sh` |
-| 69549 | 0 | 22 | `tests/fm-t3-mcp.test.sh` |
-| 63376 | 0 | 1 | `tests/fm-arm-pretool-check.test.sh` |
-| 54380 | 0 | 8 | `tests/fm-composer-lib.test.sh` |
-| 53557 | 0 | 14 | `tests/fm-pi-primary-types.test.sh` |
-| 33548 | 0 | 4 | `tests/fm-brief.test.sh` |
-| 32421 | 0 | 6 | `tests/fm-cd-pretool-check.test.sh` |
-| 27408 | 0 | 12 | `tests/fm-herdr-lab.test.sh` |
-| 23906 | 0 | 19 | `tests/fm-send-strict.test.sh` |
-| 17332 | 0 | 17 | `tests/fm-send-popup-settle.test.sh` |
-| 16395 | 0 | 16 | `tests/fm-review-diff.test.sh` |
-| 11578 | 0 | 11 | `tests/fm-grok-harness.test.sh` |
-| 7290 | 0 | 20 | `tests/fm-spawn-batch.test.sh` |
-| 5339 | 0 | 7 | `tests/fm-composer-ghost.test.sh` |
-| 5289 | 0 | 18 | `tests/fm-send-settle.test.sh` |
-| 4510 | 0 | 24 | `tests/fm-tmux-submit-busy.test.sh` |
-| 2057 | 0 | 10 | `tests/fm-ensure-agents-md.test.sh` |
-| 1866 | 0 | 21 | `tests/fm-supervision-instructions.test.sh` |
-| 586 | 0 | 25 | `tests/fm-transition-lib.test.sh` |
+| 599407 | 0 | 1 | `tests/fm-pr-merge.test.sh` |
+| 537700 | 0 | 3 | `tests/fm-test-run.test.sh` |
+| 419965 | 0 | 2 | `tests/fm-lint.test.sh` |
+| 321172 | 0 | 4 | `tests/fm-backend-t3code.test.sh` |
+| 144732 | 0 | 5 | `tests/fm-crew-state.test.sh` |
+| 53255 | 0 | 6 | `tests/fm-x-mode.test.sh` |
+| 48223 | 0 | 7 | `tests/fm-backend-herdr.test.sh` |
+| 38342 | 0 | 9 | `tests/fm-t3-mcp.test.sh` |
+| 36611 | 0 | 8 | `tests/fm-arm-pretool-check.test.sh` |
+| 36296 | 0 | 10 | `tests/fm-composer-lib.test.sh` |
+| 31250 | 0 | 11 | `tests/fm-pi-primary-types.test.sh` |
+| 21816 | 0 | 13 | `tests/fm-herdr-lab.test.sh` |
+| 21049 | 0 | 12 | `tests/fm-brief.test.sh` |
+| 17188 | 0 | 14 | `tests/fm-cd-pretool-check.test.sh` |
+| 10583 | 0 | 15 | `tests/fm-send-strict.test.sh` |
+| 8760 | 0 | 17 | `tests/fm-grok-harness.test.sh` |
+| 7143 | 0 | 16 | `tests/fm-send-popup-settle.test.sh` |
+| 5999 | 0 | 18 | `tests/fm-review-diff.test.sh` |
+| 4051 | 0 | 19 | `tests/fm-spawn-batch.test.sh` |
+| 3104 | 0 | 21 | `tests/fm-tmux-submit-busy.test.sh` |
+| 2669 | 0 | 22 | `tests/fm-composer-ghost.test.sh` |
+| 2586 | 0 | 20 | `tests/fm-send-settle.test.sh` |
+| 1041 | 0 | 23 | `tests/fm-supervision-instructions.test.sh` |
+| 876 | 0 | 24 | `tests/fm-ensure-agents-md.test.sh` |
+| 274 | 0 | 25 | `tests/fm-transition-lib.test.sh` |
 
 ## 2026-10-23: T3 Code suites added
 
@@ -105,7 +104,7 @@ The backend suite spawns real tasks, and `fm-spawn.sh` creates each task's `/tmp
 - The two failures are existing members that fail identically on this host without the T3 change: `tests/fm-test-run.test.sh` fails its coverage-guard cases under Bash 3.2 on the base commit too, and `tests/fm-pr-merge.test.sh` fails `forgejo-merges: a well-formed pull request URL should merge` when run alone on the base commit.
 - Separately, two concurrent copies of the backend suite plus the helper suite passed twice, and each suite passed beside `tests/fm-busy-state.test.sh`.
 
-The clean 26-candidate Linux artifact this note called for now exists: the 2026-10-28 hosted run recorded above under [Verification](#verification), archived in `docs/fm-test-isolation-proof.json`.
+The clean 26-candidate Linux artifact this note called for came from the 2026-10-28 hosted run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628); `docs/fm-test-isolation-proof.json` now archives the 25-candidate run under [Verification](#verification) that superseded it.
 
 ## Family concurrency proofs
 

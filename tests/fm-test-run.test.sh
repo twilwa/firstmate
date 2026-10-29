@@ -1027,11 +1027,11 @@ test_tern_family_selection() {
 
 test_list_scheduled_proven_isolated_uses_pool_weights() {
   local first
-  first=$("$RUNNER" --list-scheduled --proven-isolated | head -n 1) \
+  first=$("$RUNNER" --list-scheduled --proven-isolated | head -n 2 | paste -sd ' ' -) \
     || fail "--list-scheduled --proven-isolated failed"
   # The proven set shares the pool lane's hint table, so its schedule must lead
-  # with that table's heaviest member rather than falling back to serial hints.
-  [ "$first" = "tests/fm-pr-merge.test.sh" ] \
+  # with that table's heaviest members; serial hints would put fm-lint second.
+  [ "$first" = "tests/fm-pr-merge.test.sh tests/fm-test-run.test.sh" ] \
     || fail "proven-isolated scheduling must order by pool hints, got $first"
   pass "proven-isolated scheduling orders by pool hints"
 }
@@ -1045,6 +1045,7 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     tests/fm-captain-hold-lifecycle.test.sh
     tests/fm-kimi-harness.test.sh
     tests/fm-brief.test.sh
+    tests/fm-test-run.test.sh
   )
   tmp=$(fm_test_tmproot fm-test-run-non-lane-schedule)
   repo="$tmp/repo"
@@ -1060,12 +1061,15 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
   for script in "${scripts[@]}"; do
     printf '\n' >>"$repo/$script"
   done
+  # fm-lint outweighs fm-test-run serially, but not in the contended pool
+  # table, so this order holds only when pool hints are ignored.
   printf '%s\n' \
     tests/fm-captain-hold-lifecycle.test.sh \
+    tests/fm-lint.test.sh \
+    tests/fm-test-run.test.sh \
     tests/fm-kimi-harness.test.sh \
     tests/fm-muse-harness.test.sh \
     tests/fm-brief.test.sh \
-    tests/fm-lint.test.sh \
     tests/fm-operational-input.test.sh >"$tmp/expected"
   for selection in family all changed scripts; do
     case "$selection" in
@@ -1077,9 +1081,27 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     "$repo/bin/fm-test-run.sh" --list-scheduled "$@" >"$tmp/actual" \
       || fail "--list-scheduled $selection failed"
     cmp -s "$tmp/expected" "$tmp/actual" \
-      || fail "$selection scheduling must use serial hints and path-ordered default ties"
+      || fail "$selection scheduling must use serial hints"
   done
   pass "family, all, changed, and script selections ignore pool hints"
+}
+
+# --estimate-ms weighs a selection as --list-scheduled does: the pool lane and
+# the proven set sum contended pool hints, while every other selection, such as
+# the brief's --all estimate, sums serial durations.
+test_estimate_ms_follows_the_scheduling_weight_rule() {
+  local pool_hint lane proven serial
+  pool_hint=$("$RUNNER" --check-coverage | sed -n 's/.*pool_hint_ms=\([0-9]*\).*/\1/p')
+  [ -n "$pool_hint" ] || fail "coverage guard must report pool_hint_ms"
+  lane=$("$RUNNER" --estimate-ms --lane portable-pool)
+  proven=$("$RUNNER" --estimate-ms --proven-isolated)
+  [ "$lane" = "$pool_hint" ] && [ "$proven" = "$pool_hint" ] \
+    || fail "pool and proven-isolated estimates must sum pool hints ($pool_hint), got $lane and $proven"
+  # shellcheck disable=SC2046
+  serial=$("$RUNNER" --estimate-ms $("$RUNNER" --list --lane portable-pool))
+  [ "$serial" -lt "$pool_hint" ] \
+    || fail "a script selection of the pool members must sum serial hints, got $serial against contended $pool_hint"
+  pass "--estimate-ms sums pool hints only for the pool and proven selections"
 }
 
 test_portable_shard_union_and_coverage_guard() {
@@ -2269,6 +2291,7 @@ test_exclude_script
 test_tern_family_selection
 test_list_scheduled_proven_isolated_uses_pool_weights
 test_list_scheduled_non_lane_selections_use_serial_weights
+test_estimate_ms_follows_the_scheduling_weight_rule
 test_portable_shard_union_and_coverage_guard
 test_portable_pool_stays_fully_hinted_and_bounded
 test_portable_pool_wall_budget_boundary

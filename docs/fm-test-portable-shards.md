@@ -15,7 +15,7 @@ Per-script run-to-run variance is large on hosted runners: `tests/fm-captain-hol
 That script now runs on a serial shard with the 671795 ms hint (see [Portable pool lane](#portable-pool-lane)).
 Run 40703025845 failed only on a cancelled macOS job; every portable lane in it succeeded.
 `tests/fm-supervision-host.test.sh` takes only run 40796972623's 517234 ms, because #52 rewrote its handoff waits and the earlier runs measured the old script at about 1046 s.
-The refresh covered all 263 serial members; an existing live-capability skip is a portable-runner measurement, not a timing claim for the unavailable live integration.
+The refresh covered all 263 serial members and the 25 pool members, whose serial samples come from the serial lanes those runs used before the pool existed; `--estimate-ms` and the scheduling of selections other than the pool read them. An existing live-capability skip is a portable-runner measurement, not a timing claim for the unavailable live integration.
 A failed script's duration is excluded even when its lane uploaded an artifact, and a cancelled job's wall time is only a lower bound, so its unfinished or never-started scripts have no completed sample.
 Collect successful per-script measurements for every member before calculating a split.
 Observed values are packing weights, not an upper bound on future durations.
@@ -35,7 +35,7 @@ The coverage-guard test owns modeled real-hint headroom under that budget.
 The `portable-pool` lane is the complete proven-isolated set on one CI job,
 run by the production runner under `--jobs 4` bounded concurrency.
 The runner refuses `--lane portable-pool` with `--jobs` above `PORTABLE_POOL_WORKERS`, so the CI command cannot run the pool above the proven worker count.
-`tests/fm-captain-hold-lifecycle.test.sh` passed the hosted four-worker proof but ran 1216727 ms there, 81 percent of the 1500-second per-file bound, so it left the proven set and runs on a serial shard; every remaining pool member keeps at least about 1.7x headroom under that bound at four workers.
+`tests/fm-captain-hold-lifecycle.test.sh` passed the 26-file hosted four-worker proof but ran 1216727 ms there, 81 percent of the 1500-second per-file bound, so it left the proven set and runs on a serial shard. The 25-file hosted rerun measured the slowest remaining member, `tests/fm-pr-merge.test.sh`, at 599407 ms, so every pool member keeps about 2.5x headroom or more under that bound at four workers.
 [`tests/fm-pi-primary-types.test.sh`](../tests/fm-pi-primary-types.test.sh) owns its typecheck dependencies independently of the lane's installed Pi runtime.
 [`bin/fm-test-run.sh`](../bin/fm-test-run.sh) holds the duration values in `portable_pool_weight_hints`, which schedule the pool's workers longest-first, and the worker bound in `PORTABLE_POOL_WORKERS`.
 Read the derived packing estimates with that runner's `--check-coverage`; its header and `--help` own the output fields and the selection-specific `--list-scheduled` weight rules.
@@ -45,8 +45,7 @@ The CI cap is the dedicated portable tier in [Timeouts](#timeouts) below.
 ### Pool budget guard
 
 `portable_pool_weight_hints` holds durations measured under four-worker contention, so the guard's makespan models the pool job's wall time rather than a serial floor.
-The current values are the per-script `duration_ms` of the hosted four-worker proof run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628) ([fm-test-isolation-proof.md](fm-test-isolation-proof.md)).
-That run also contended with `tests/fm-captain-hold-lifecycle.test.sh`, so the values overstate a pool without it.
+The current values are the per-script `duration_ms` of the 25-file hosted four-worker proof run [40843566303](https://github.com/twilwa/firstmate/actions/runs/40843566303) ([fm-test-isolation-proof.md](fm-test-isolation-proof.md)).
 `--check-coverage` models the pool as the four-worker makespan of those hints, packed longest-first, and refuses a makespan above `PORTABLE_POOL_MAX_WEIGHT_MS` (`pool_budget_ms`, 1400000 ms).
 It also refuses the ceiling itself unless the 60-second setup allowance plus the ceiling plus the 1500-second per-file bound stays below the pool job timeout (`pool_timeout_min`), so any pool it accepts leaves a hung file room to fail by name.
 Today that is 60 + 1400 + 1500 = 2960 seconds against 3000.
