@@ -101,7 +101,7 @@ exclusion_reason() {
       printf '%s\n' 'isolation-proof harness contract itself; must not re-enter concurrent matrix'
       ;;
     fm-captain-hold-lifecycle.test.sh)
-      printf '%s\n' 'isolated, but ran 1216727 ms of the 1500 s per-file bound under four-worker contention; keep on a serial shard'
+      printf '%s\n' 'isolated, but used about 81 percent of the 1500 s per-file bound under four-worker contention; keep on a serial shard'
       ;;
     fm-backend-tmux-smoke.test.sh)
       printf '%s\n' 'real tmux on a private socket; keep exclusive of default-server contention class'

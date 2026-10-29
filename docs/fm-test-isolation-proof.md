@@ -31,11 +31,11 @@ The JSON artifact's `fm_test_run_jobs_enabled` reads `false` because that flag d
 
 The same run's two-worker control (`--jobs 2`) also completed clean at 25 candidates, 0 failures, 1149894 ms, peak RSS 3947092 KiB, mean CPU 67%: the makespan is bounded by the heaviest member under contention, so four workers is the right production bound.
 
-The 2026-10-28 run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628) (`fm-isolation-1793218042892-2415`, `total=26 failed=0 concurrency=4 duration_ms=1250469`) proved the earlier 26-candidate set and is superseded by the record above.
-In it `tests/fm-captain-hold-lifecycle.test.sh` passed but ran 1216727 ms, 81 percent of the 1500-second per-file bound, so it left the candidate set for a serial shard and `--list-exclusions` records why.
-The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 concurrency=4 duration_ms=113278`) preceded the two T3 suites.
+The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 concurrency=4 duration_ms=113278`) preceded the two T3 suites and is superseded by the record above.
 
 ## Candidate set
+
+`tests/fm-captain-hold-lifecycle.test.sh` is isolated but stays on a serial shard: under four-worker contention it used about 81 percent of the 1500-second per-file bound, and `--list-exclusions` records why.
 
 - `tests/fm-arm-pretool-check.test.sh`
 - `tests/fm-backend-herdr.test.sh`
@@ -104,7 +104,7 @@ The backend suite spawns real tasks, and `fm-spawn.sh` creates each task's `/tmp
 - The two failures are existing members that fail identically on this host without the T3 change: `tests/fm-test-run.test.sh` fails its coverage-guard cases under Bash 3.2 on the base commit too, and `tests/fm-pr-merge.test.sh` fails `forgejo-merges: a well-formed pull request URL should merge` when run alone on the base commit.
 - Separately, two concurrent copies of the backend suite plus the helper suite passed twice, and each suite passed beside `tests/fm-busy-state.test.sh`.
 
-The clean 26-candidate Linux artifact this note called for came from the 2026-10-28 hosted run [40760335628](https://github.com/twilwa/firstmate/actions/runs/40760335628); `docs/fm-test-isolation-proof.json` now archives the 25-candidate run under [Verification](#verification) that superseded it.
+The clean Linux artifact this note called for now exists: the hosted run recorded above under [Verification](#verification), archived in `docs/fm-test-isolation-proof.json`.
 
 ## Family concurrency proofs
 

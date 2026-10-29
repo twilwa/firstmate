@@ -35,7 +35,7 @@ The coverage-guard test owns modeled real-hint headroom under that budget.
 The `portable-pool` lane is the complete proven-isolated set on one CI job,
 run by the production runner under `--jobs 4` bounded concurrency.
 The runner refuses `--lane portable-pool` with `--jobs` above `PORTABLE_POOL_WORKERS`, so the CI command cannot run the pool above the proven worker count.
-`tests/fm-captain-hold-lifecycle.test.sh` passed the 26-file hosted four-worker proof but ran 1216727 ms there, 81 percent of the 1500-second per-file bound, so it left the proven set and runs on a serial shard. The 25-file hosted rerun measured the slowest remaining member, `tests/fm-pr-merge.test.sh`, at 599407 ms, so every pool member keeps about 2.5x headroom or more under that bound at four workers.
+`tests/fm-captain-hold-lifecycle.test.sh` is isolated but runs on a serial shard, because under four-worker contention it used about 81 percent of the 1500-second per-file bound. The hosted 25-file proof measured the slowest pool member, `tests/fm-pr-merge.test.sh`, at 599407 ms, so every pool member keeps about 2.5x headroom or more under that bound at four workers.
 [`tests/fm-pi-primary-types.test.sh`](../tests/fm-pi-primary-types.test.sh) owns its typecheck dependencies independently of the lane's installed Pi runtime.
 [`bin/fm-test-run.sh`](../bin/fm-test-run.sh) holds the duration values in `portable_pool_weight_hints`, which schedule the pool's workers longest-first, and the worker bound in `PORTABLE_POOL_WORKERS`.
 Read the derived packing estimates with that runner's `--check-coverage`; its header and `--help` own the output fields and the selection-specific `--list-scheduled` weight rules.
