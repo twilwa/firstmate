@@ -44,9 +44,10 @@
 #                   hints, falling back to serial weights if missing.
 #                   Every other selection uses serial weights alone.
 #                   Equal weights are ordered by path under LC_ALL=C.
-#   --estimate-ms   print the selection's summed serial duration hints in
-#                   milliseconds and exit 0: each script's pool hint, else
-#                   its serial hint, else PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
+#   --estimate-ms   print the selection's summed duration hints in
+#                   milliseconds and exit 0: each script's pool hint (a
+#                   contended four-worker measurement), else its serial hint,
+#                   else PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
 #   --base <ref>    with --changed, compare against this ref (default: origin/main)
 #   --exclude-family <name>
 #                   drop scripts whose primary family matches <name> after selection
@@ -71,7 +72,9 @@
 #                   set (bin/fm-test-isolation-proof.sh --list), or in a family
 #                   carrying a recorded concurrent proof
 #                   (list_concurrent_safe_families below). Overall cap is 8;
-#                   family proofs may impose a lower cap. Individually proven
+#                   family proofs may impose a lower cap, and --lane
+#                   portable-pool is capped at PORTABLE_POOL_WORKERS, its
+#                   proven worker bound. Individually proven
 #                   scripts share one phase; scripts admitted only by a family
 #                   proof run in a separate phase for each family. Concurrent
 #                   phases use serial weights, longest-hint-first. Unproven stateful
@@ -150,11 +153,12 @@
 # --check-coverage reports pool_hint_ms (the summed pool hint cost),
 # pool_modeled_ms (the four-worker list-scheduling estimate over those hints),
 # and pool_unhinted (the number of members missing a pool hint).
-# The modeled figure is an estimate, not a measured job wall time.
-# Missing pool hints are reported without failing this guard.
-# It also reports pool_wall_ms (that makespan plus a fixed setup allowance),
-# pool_budget_ms (80% of the pool job timeout), and pool_timeout_min (the pool
-# job's CI timeout), refusing a pool whose modeled wall exceeds that budget.
+# The modeled figure is an estimate over contended measurements, not a
+# measured job wall time. Missing pool hints are reported without failing this
+# guard. It also reports pool_budget_ms (the pool packing ceiling) and
+# pool_timeout_min (the pool job's CI timeout), refusing a makespan above that
+# ceiling and a ceiling that leaves the setup allowance and the per-file bound
+# no room inside the timeout.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -217,10 +221,12 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # script is tests/fm-watch-triage.test.sh at about 934s under CI load (the
 # hint table below records that loaded figure). 1500s keeps every measured script
-# under the bound with roughly 1.6x headroom over the slowest loaded measurement.
+# under the bound with roughly 1.6x headroom over the slowest loaded measurement,
+# and the pool's slowest four-worker contended hint (tests/fm-pr-merge.test.sh,
+# about 867s) keeps about 1.7x.
 # The portable CI jobs apply the same bound under a job cap sized to cover setup,
 # the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS for serial shards,
-# the pool budget guard for the pool lane), and this bound
+# PORTABLE_POOL_MAX_WEIGHT_MS for the pool lane), and this bound
 # (docs/fm-test-portable-shards.md "Timeouts"), so a wedged script fails here,
 # with its output, before the job cap cancels the lane. It is a guard, not a
 # speed control: a HUNG script becomes a bounded failure instead of an
@@ -243,12 +249,14 @@ PORTABLE_POOL_WORKERS=4
 PORTABLE_POOL_TIMEOUT_MINUTES=50
 
 # Fixed allowance for the pool job's checkout, tool installs, and coverage
-# guard ahead of the suite, added to the modeled makespan.
-PORTABLE_POOL_SETUP_ALLOWANCE_MS=300000
+# guard ahead of the suite: the 60s setup allowance of the portable tier rule.
+PORTABLE_POOL_SETUP_ALLOWANCE_MS=60000
 
-# Share of the pool job timeout the modeled wall may use. --check-coverage
-# refuses above it; refresh pool hints or move work out instead.
-PORTABLE_POOL_MAX_TIMEOUT_PERCENT=80
+# Packing ceiling for the pool's modeled makespan. --check-coverage refuses a
+# makespan above it, and refuses the ceiling itself unless setup + ceiling +
+# the per-file bound stays below the pool job timeout, so a hung file in any
+# accepted pool fails by name before the job cap cancels the lane.
+PORTABLE_POOL_MAX_WEIGHT_MS=1400000
 
 # Conservative balance hint for a portable-serial script with no measurement.
 # Rounded above the current CI mean, including the capability-skipped scripts.
@@ -563,7 +571,6 @@ tests/fm-arm-pretool-check.test.sh
 tests/fm-backend-herdr.test.sh
 tests/fm-backend-t3code.test.sh
 tests/fm-brief.test.sh
-tests/fm-captain-hold-lifecycle.test.sh
 tests/fm-cd-pretool-check.test.sh
 tests/fm-composer-ghost.test.sh
 tests/fm-composer-lib.test.sh
@@ -589,36 +596,37 @@ EOF
 }
 
 # Per-script CI duration hints, one "<path> <ms>" per line, scheduling the
-# portable pool's workers longest-first. Measurement provenance and the
+# portable pool's workers longest-first. Each value is a duration measured
+# under four-worker contention, so the coverage guard's makespan models the
+# pool job's wall rather than a serial floor. Measurement provenance and the
 # refresh procedure are owned by docs/fm-test-portable-shards.md.
 portable_pool_weight_hints() {
   cat <<'EOF'
-tests/fm-arm-pretool-check.test.sh 33873
-tests/fm-backend-herdr.test.sh 47733
-tests/fm-backend-t3code.test.sh 222086
-tests/fm-brief.test.sh 18352
-tests/fm-captain-hold-lifecycle.test.sh 671795
-tests/fm-cd-pretool-check.test.sh 16268
-tests/fm-composer-ghost.test.sh 2491
-tests/fm-composer-lib.test.sh 31206
-tests/fm-crew-state.test.sh 100309
-tests/fm-ensure-agents-md.test.sh 1149
-tests/fm-grok-harness.test.sh 8272
-tests/fm-herdr-lab.test.sh 17909
-tests/fm-lint.test.sh 366717
-tests/fm-pi-primary-types.test.sh 27506
-tests/fm-pr-merge.test.sh 461524
-tests/fm-review-diff.test.sh 6314
-tests/fm-send-popup-settle.test.sh 8318
-tests/fm-send-settle.test.sh 3150
-tests/fm-send-strict.test.sh 11631
-tests/fm-spawn-batch.test.sh 4694
-tests/fm-supervision-instructions.test.sh 1169
-tests/fm-t3-mcp.test.sh 31771
-tests/fm-test-run.test.sh 340925
-tests/fm-tmux-submit-busy.test.sh 2798
-tests/fm-transition-lib.test.sh 271
-tests/fm-x-mode.test.sh 50779
+tests/fm-arm-pretool-check.test.sh 63376
+tests/fm-backend-herdr.test.sh 89927
+tests/fm-backend-t3code.test.sh 398789
+tests/fm-brief.test.sh 33548
+tests/fm-cd-pretool-check.test.sh 32421
+tests/fm-composer-ghost.test.sh 5339
+tests/fm-composer-lib.test.sh 54380
+tests/fm-crew-state.test.sh 190542
+tests/fm-ensure-agents-md.test.sh 2057
+tests/fm-grok-harness.test.sh 11578
+tests/fm-herdr-lab.test.sh 27408
+tests/fm-lint.test.sh 658004
+tests/fm-pi-primary-types.test.sh 53557
+tests/fm-pr-merge.test.sh 867078
+tests/fm-review-diff.test.sh 16395
+tests/fm-send-popup-settle.test.sh 17332
+tests/fm-send-settle.test.sh 5289
+tests/fm-send-strict.test.sh 23906
+tests/fm-spawn-batch.test.sh 7290
+tests/fm-supervision-instructions.test.sh 1866
+tests/fm-t3-mcp.test.sh 69549
+tests/fm-test-run.test.sh 584075
+tests/fm-tmux-submit-busy.test.sh 4510
+tests/fm-transition-lib.test.sh 586
+tests/fm-x-mode.test.sh 82941
 EOF
 }
 
@@ -801,6 +809,7 @@ tests/fm-calm-claude-mod.test.sh 2992
 tests/fm-calm-pi-extension.test.sh 62626
 tests/fm-calm-pi-queue-retention-live-e2e.test.sh 1423
 tests/fm-capacity.test.sh 7095
+tests/fm-captain-hold-lifecycle.test.sh 671795
 tests/fm-check-unregister.test.sh 646
 tests/fm-ci-workflow.test.sh 9472
 tests/fm-classify-corr-token.test.sh 26951
@@ -1173,7 +1182,7 @@ select_lane() {
 
 run_coverage_guard() {
   local tmp missing extra a b shard unhinted serial_total serial_ms serial_max_ms=0
-  local pool_hint_ms pool_unhinted pool_modeled_ms pool_wall_ms pool_budget_ms
+  local pool_hint_ms pool_unhinted pool_modeled_ms pool_window_ms
   local -a saved_scripts=()
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
@@ -1313,24 +1322,28 @@ run_coverage_guard() {
   # header for the distinction between packed weights and measured job time.
   read -r pool_hint_ms pool_unhinted <<<"$(portable_pool_lane_weight <"$tmp/pool")"
   pool_modeled_ms=$(portable_pool_modeled_ms <"$tmp/pool")
-  pool_wall_ms=$((pool_modeled_ms + PORTABLE_POOL_SETUP_ALLOWANCE_MS))
-  pool_budget_ms=$((PORTABLE_POOL_TIMEOUT_MINUTES * 60000 * PORTABLE_POOL_MAX_TIMEOUT_PERCENT / 100))
-  if [ "$pool_wall_ms" -gt "$pool_budget_ms" ]; then
-    log "coverage guard: portable pool models ${pool_wall_ms}ms (${pool_modeled_ms}ms ${PORTABLE_POOL_WORKERS}-worker makespan + ${PORTABLE_POOL_SETUP_ALLOWANCE_MS}ms setup) above ${pool_budget_ms}ms (${PORTABLE_POOL_MAX_TIMEOUT_PERCENT}% of the ${PORTABLE_POOL_TIMEOUT_MINUTES}-minute pool job timeout)"
+  pool_window_ms=$((PORTABLE_POOL_SETUP_ALLOWANCE_MS + PORTABLE_POOL_MAX_WEIGHT_MS + CHANGED_DEFAULT_TIMEOUT_SECS * 1000))
+  if [ "$pool_window_ms" -ge "$((PORTABLE_POOL_TIMEOUT_MINUTES * 60000))" ]; then
+    log "coverage guard: portable pool needs ${pool_window_ms}ms (${PORTABLE_POOL_SETUP_ALLOWANCE_MS}ms setup + ${PORTABLE_POOL_MAX_WEIGHT_MS}ms ceiling + ${CHANGED_DEFAULT_TIMEOUT_SECS}s per-file bound), not below its ${PORTABLE_POOL_TIMEOUT_MINUTES}-minute job timeout"
+    log "lower the pool ceiling; do not raise the job timeout: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
+  if [ "$pool_modeled_ms" -gt "$PORTABLE_POOL_MAX_WEIGHT_MS" ]; then
+    log "coverage guard: portable pool models a ${pool_modeled_ms}ms ${PORTABLE_POOL_WORKERS}-worker makespan above the ${PORTABLE_POOL_MAX_WEIGHT_MS}ms ceiling"
     log "refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md"
     rm -rf "$tmp"
     return 1
   fi
 
-  printf 'FM_TEST_COVERAGE ok total=%s pool=%s pool_hint_ms=%s pool_modeled_ms=%s pool_workers=%s pool_unhinted=%s pool_wall_ms=%s pool_budget_ms=%s pool_timeout_min=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s pool=%s pool_hint_ms=%s pool_modeled_ms=%s pool_workers=%s pool_unhinted=%s pool_budget_ms=%s pool_timeout_min=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
     "$(wc -l <"$tmp/pool" | tr -d ' ')" \
     "$pool_hint_ms" \
     "$pool_modeled_ms" \
     "$PORTABLE_POOL_WORKERS" \
     "$pool_unhinted" \
-    "$pool_wall_ms" \
-    "$pool_budget_ms" \
+    "$PORTABLE_POOL_MAX_WEIGHT_MS" \
     "$PORTABLE_POOL_TIMEOUT_MINUTES" \
     "$(wc -l <"$tmp/serial" | tr -d ' ')" \
     "$PORTABLE_SERIAL_SHARDS" \
@@ -2558,6 +2571,10 @@ if [ "$JOBS" -gt 1 ] && [ "$AUTO_CONCURRENCY" -eq 0 ]; then
   if [ "$MODE" = lane ]; then
     case "$LANE" in
       portable-serial|portable-serial-*) die "--jobs $JOBS refused: portable serial lanes stay serial; use --jobs 1" ;;
+      portable-pool)
+        [ "$JOBS" -le "$PORTABLE_POOL_WORKERS" ] \
+          || die "--jobs $JOBS refused: the portable pool is proven only up to $PORTABLE_POOL_WORKERS concurrent workers"
+        ;;
     esac
   fi
   for s in "${SCRIPTS[@]}"; do

@@ -322,12 +322,12 @@ test_normal_tier_shares_one_budget() {
 }
 
 # Portable test tier: the portable lanes share one 50-minute cap above the
-# normal tier and below the heavy backstop. For each serial shard the cap must
+# normal tier and below the heavy backstop. For each portable job the cap must
 # exceed the setup allowance plus the lane's packing ceiling (serial_budget_ms
-# from the coverage guard, never today's packed maximum) plus the per-file
-# bound the workflow applies, so any packing the guard accepts leaves a hung
-# file room to fail by name before the job cap. The pool lane's ceiling is its
-# own budget guard, and ci.yml's pool timeout must equal the runner's.
+# for a serial shard, pool_budget_ms for the pool, from the coverage guard and
+# never today's packed maximum) plus the per-file bound the workflow applies,
+# so any packing the guard accepts leaves a hung file room to fail by name
+# before the job cap. ci.yml's pool timeout must also equal the runner's.
 test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   local normal portable heavy coverage
   # shellcheck disable=SC2086
@@ -352,6 +352,7 @@ jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
 setup = Integer(ARGV[2])
 budgets = {
+  "tests-portable-pool" => Integer(fields.fetch("pool_budget_ms")),
   "tests-portable-serial" => Integer(fields.fetch("serial_budget_ms")),
 }
 budgets.each do |job_id, budget_ms|
@@ -369,11 +370,6 @@ budgets.each do |job_id, budget_ms|
     exit 1
   end
 end
-pool = jobs.fetch("tests-portable-pool")
-step = pool.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane portable-pool") }
-raise "tests-portable-pool: missing runner command" unless step
-words = Shellwords.split(step.fetch("run").gsub("\\\n", ""))
-raise "tests-portable-pool: no per-file bound" unless words.index("--per-script-timeout-secs")
 RUBY
   pass "portable test tier shares one $portable minute cap above setup, packing target, and the per-file bound"
 }
@@ -474,7 +470,7 @@ TABLE
 }
 
 test_ci_matrices_match_executable_partitions() {
-  ruby -ryaml -ropen3 - "$CI_WORKFLOW" "$ROOT" <<'RUBY' || fail "CI partition contract"
+  ruby -ryaml -ropen3 -rshellwords -rtmpdir -rfileutils - "$CI_WORKFLOW" "$ROOT" <<'RUBY' || fail "CI partition contract"
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 root = ARGV[1]
 serial = jobs.fetch("tests-portable-serial").fetch("strategy")
@@ -502,14 +498,49 @@ canonical, result = Open3.capture2({"CI" => "true"}, File.join(root, "bin/fm-lin
 raise "lint matrix loses or duplicates canonical roots" unless result.success? && roots.sort == canonical.lines.map(&:strip).sort
 
 # The two folded standalone guards must still execute inside existing jobs:
-# the coverage proof at the start of the pool job and the repo invariants once
-# on lint partition 1.
+# the coverage proof ahead of the pool suite, and the repo invariants once, on
+# lint partition 1, where their real step bodies must reject each violation.
 pool_steps = jobs.fetch("tests-portable-pool").fetch("steps")
-coverage = pool_steps.index { |s| s.fetch("run", "").include?("--check-coverage") }
+words = pool_steps.map { |s| Shellwords.split(s.fetch("run", "").gsub("\\\n", "")) }
+coverage = words.index(["bin/fm-test-run.sh", "--check-coverage"])
 raise "coverage guard must fold into the pool job" unless coverage
-lint_steps = jobs.fetch("lint").fetch("steps")
-folded = lint_steps.select { |s| s["if"].to_s.include?("matrix.partition == 1") }
-raise "repo invariants must fold into lint partition 1" if folded.length < 2
+suite = words.index { |w| w.each_cons(3).include?(["bin/fm-test-run.sh", "--lane", "portable-pool"]) }
+raise "coverage guard must run before the pool suite" unless suite && coverage < suite
+folded = jobs.fetch("lint").fetch("steps").select do |s|
+  s["if"].to_s.strip.match?(/\A\$\{\{\s*matrix\.partition\s*==\s*1\s*\}\}\z/)
+end
+raise "repo invariants must run on an existing lint partition" if folded.empty? || !parts.include?(1)
+git_env = {"GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_NOSYSTEM" => "1"}
+run_folded = lambda do |dir|
+  folded.all? do |s|
+    _out, st = Open3.capture2e(git_env, "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", s.fetch("run"), chdir: dir)
+    st.success?
+  end
+end
+fixture = lambda do |dir|
+  _out, st = Open3.capture2e(git_env, "git", "init", "-q", dir)
+  raise "cannot create invariant fixture" unless st.success?
+  FileUtils.cp(File.join(root, "CLAUDE.md"), File.join(dir, "CLAUDE.md"))
+  FileUtils.mkdir_p(File.join(dir, ".agents/skills"))
+  FileUtils.mkdir_p(File.join(dir, ".claude"))
+  File.symlink("../.agents/skills", File.join(dir, ".claude/skills"))
+end
+Dir.mktmpdir("fm-ci-invariants.") do |dir|
+  fixture.call(dir)
+  raise "folded repo invariants reject a clean checkout" unless run_folded.call(dir)
+  FileUtils.mkdir_p(File.join(dir, "data"))
+  File.write(File.join(dir, "data/fleet.md"), "personal\n")
+  _out, st = Open3.capture2e(git_env, "git", "add", "data/fleet.md", chdir: dir)
+  raise "cannot track fixture data" unless st.success?
+  raise "folded repo invariants accept a tracked data/ file" if run_folded.call(dir)
+end
+Dir.mktmpdir("fm-ci-invariants.") do |dir|
+  fixture.call(dir)
+  File.write(File.join(dir, "AGENTS.md"), "agents\n")
+  FileUtils.rm_f(File.join(dir, "CLAUDE.md"))
+  File.symlink("AGENTS.md", File.join(dir, "CLAUDE.md"))
+  raise "folded repo invariants accept a symlinked CLAUDE.md" if run_folded.call(dir)
+end
 RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
@@ -531,7 +562,7 @@ Dir.mktmpdir("fm-ci-bound.") do |repo|
   end
   FileUtils.cp("#{root}/tests/git-config-helpers.sh", "#{repo}/tests/")
   files.lines.map(&:strip).each { |file| File.write("#{repo}/#{file}", "#!/usr/bin/env bash\nexit 0\n") }
-  %w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
+  %w[tests-portable-pool tests-portable-serial].each do |job_id|
     job = jobs.fetch(job_id)
     step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
     raise "#{job_id}: missing runner command" unless step

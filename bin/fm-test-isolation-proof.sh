@@ -100,6 +100,9 @@ exclusion_reason() {
     fm-test-isolation-proof.test.sh)
       printf '%s\n' 'isolation-proof harness contract itself; must not re-enter concurrent matrix'
       ;;
+    fm-captain-hold-lifecycle.test.sh)
+      printf '%s\n' 'isolated, but ran 1216727 ms of the 1500 s per-file bound under four-worker contention; keep on a serial shard'
+      ;;
     fm-backend-tmux-smoke.test.sh)
       printf '%s\n' 'real tmux on a private socket; keep exclusive of default-server contention class'
       ;;
@@ -168,7 +171,6 @@ tests/fm-arm-pretool-check.test.sh
 tests/fm-backend-herdr.test.sh
 tests/fm-backend-t3code.test.sh
 tests/fm-brief.test.sh
-tests/fm-captain-hold-lifecycle.test.sh
 tests/fm-cd-pretool-check.test.sh
 tests/fm-composer-ghost.test.sh
 tests/fm-composer-lib.test.sh
@@ -203,6 +205,7 @@ list_exclusions_for_report() {
     fi
   done <<'EOF'
 fm-test-isolation-proof.test.sh
+fm-captain-hold-lifecycle.test.sh
 fm-backend-tmux-smoke.test.sh
 fm-backend.test.sh
 fm-spawn-dispatch-profile.test.sh

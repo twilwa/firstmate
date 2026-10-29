@@ -25,7 +25,8 @@ This record owns concurrent isolation evidence for the portable parallel candida
 
 Resource telemetry was sampled every five seconds across the whole runner during the proof (`resources.tsv` in the run's `fm-isolation-proof-jobs4` artifact).
 Peak RSS stayed near 5.6 GiB of the runner's 16 GiB, so four workers leave comfortable memory headroom; the CPU was the saturated resource, which is the intended trade.
-The wall exceeds the hint replay because the heaviest members inflate under real contention - `tests/fm-captain-hold-lifecycle.test.sh` alone ran 1216727 ms against its ~343658 ms serial hint - and the pool's production schedule starts the heaviest files first, so treat the modeled makespan in `--check-coverage` as a floor, not a forecast.
+The wall exceeds a serial-hint replay because the heaviest members inflate under real contention: `tests/fm-captain-hold-lifecycle.test.sh` alone ran 1216727 ms against its 671795 ms serial hint, and the pool's production schedule starts the heaviest files first.
+The pool hints in `bin/fm-test-run.sh` are therefore this run's contended durations, not serial samples ([fm-test-portable-shards.md](fm-test-portable-shards.md#pool-budget-guard)).
 The JSON artifact's `fm_test_run_jobs_enabled` reads `false` because that flag describes family-pool admission; the portable pool's admission is the CI lane's own proven worker bound in `bin/fm-test-run.sh`.
 
 The same run's two-worker control (`--jobs 2`) also completed clean at 26 candidates, 0 failures, 1562807 ms, peak RSS 5380560 KiB, mean CPU 64%: the makespan is bounded by the heaviest member under contention, so four workers is the right production bound.
@@ -33,11 +34,13 @@ The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 
 
 ## Candidate set
 
+`tests/fm-captain-hold-lifecycle.test.sh` passed the run above but left the candidate set afterwards: its 1216727 ms under four-worker contention used 81 percent of the 1500-second per-file bound, so it runs on a serial shard and `--list-exclusions` records why.
+The remaining 25 candidates are below.
+
 - `tests/fm-arm-pretool-check.test.sh`
 - `tests/fm-backend-herdr.test.sh`
 - `tests/fm-backend-t3code.test.sh`
 - `tests/fm-brief.test.sh`
-- `tests/fm-captain-hold-lifecycle.test.sh`
 - `tests/fm-cd-pretool-check.test.sh`
 - `tests/fm-composer-ghost.test.sh`
 - `tests/fm-composer-lib.test.sh`

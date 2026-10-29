@@ -27,9 +27,11 @@ concurrency:
 # Each job comment identifies the tier implemented by its executable value.
 # The portable test tier pairs a 50-minute job cap with the runner's 1500s
 # per-file bound. The cap must exceed a 60s setup allowance plus the lane's
-# packing ceiling (1300s parallel, 1200s serial) plus that bound (at most
-# 60 + 1300 + 1500 = 2860s < 3000s), so a hung file in a lane packed within
-# its ceiling fails by name with exit 124 before the cap.
+# packing ceiling plus that bound: 60 + 1200 + 1500 = 2760s < 3000s for a
+# serial shard, and 60 + 1400 + 1500 = 2960s < 3000s for the pool, whose
+# ceiling bounds its four-worker makespan over contended measurements. So a
+# hung file in a lane packed within its ceiling fails by name with exit 124
+# before the cap.
 # A file that starts after minute 25, because setup or earlier files overrun
 # their allowance and hints, can still hit the job cap.
 
@@ -119,15 +121,17 @@ jobs:
   # proof (docs/fm-test-isolation-proof.md). Composition owner: bin/fm-test-run.sh
   # (docs/fm-test-portable-shards.md); the runner refuses --jobs on a lane that
   # contains an unproven script, so this lane cannot silently absorb stateful
-  # work. The former standalone "Test coverage guard" folded in first: it is
-  # seconds of deterministic partition proof, still runs ahead of the suite,
-  # and no longer pays for its own runner.
+  # work, and refuses --jobs above that proven worker bound. The former
+  # standalone "Test coverage guard" folded in first: it is seconds of
+  # deterministic partition proof, still runs ahead of the suite, and no longer
+  # pays for its own runner.
   tests-portable-pool:
     name: Behavior portable pool
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Portable test tier (see the timeout policy above): bin/fm-test-run.sh owns
-    # the same value and refuses a modeled pool wall above 80% of it.
+    # the same value and refuses a pool ceiling that leaves setup and the
+    # per-file bound no room inside it.
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
