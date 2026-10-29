@@ -74,7 +74,7 @@ Its header and `--help` own the modeled-budget check and output fields; read the
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_serial_packing_budget_boundary`, verifies acceptance exactly at the budget and refusal one millisecond above it through the executable runner.
 The longest script, `tests/fm-watch-triage.test.sh`, is the indivisible floor for this layout.
 The estimates use per-file maxima from different runs, not measured rebalanced jobs or an end-to-end latency guarantee.
-Each observed completed portable job adds at most 30 seconds beyond its summed scripts in the 2026-09-30 runs.
+Each observed completed portable job adds at most 30 seconds beyond its summed scripts in the 2026-09-30 runs [36583881812](https://github.com/kunchenguid/firstmate/actions/runs/36583881812), [36658498535](https://github.com/kunchenguid/firstmate/actions/runs/36658498535), [36663947738](https://github.com/kunchenguid/firstmate/actions/runs/36663947738), [36664663190](https://github.com/kunchenguid/firstmate/actions/runs/36664663190), and [36669175457](https://github.com/kunchenguid/firstmate/actions/runs/36669175457).
 Even so, a few runs' samples do not establish a P95 or guarantee future headroom.
 Job timeouts remain hang tripwires under the policy in [Timeouts](#timeouts) below; they are not the desired healthy duration.
 `tests/fm-ci-workflow.test.sh` compares the parsed CI matrix to the executable runner lanes, and the runner rejects parallel `--jobs` on a serial lane even when that shard has only one member.
@@ -88,7 +88,12 @@ done
 find /tmp/fm-serial -name 'fm-test-timing-*.json' ! -name '*aggregate*' \
   -exec jq -r '.scripts[] | select(.exit == 0) | [.path, .duration_ms] | @tsv' {} \; \
   | awk -F'\t' '$2 > m[$1] { m[$1] = $2 } END { for (p in m) print p, m[p] }' \
-  | LC_ALL=C sort
+  | LC_ALL=C sort > /tmp/fm-serial/all-hints.txt
+# The artifact glob also matches parallel and Herdr lanes; keep only members of
+# the serial lane before replacing the table.
+join -j 1 \
+  <(bin/fm-test-run.sh --list --lane portable-serial | LC_ALL=C sort) \
+  /tmp/fm-serial/all-hints.txt
 bin/fm-test-run.sh --check-coverage
 ```
 
