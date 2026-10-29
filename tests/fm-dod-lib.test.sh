@@ -12,6 +12,37 @@ set -u
 TMP_ROOT=$(fm_test_tmproot fm-dod-lib)
 fm_git_identity fmtest fmtest@example.invalid
 
+test_scope_approval_respects_project_and_scope() {
+  local out
+  out=$(fm_test_scope_section focused no-mistakes "$ROOT")
+  assert_contains "$out" 'approve it and run the focused selection' 'Firstmate focused scope requires Test attestation'
+  out=$(fm_test_scope_section focused no-mistakes "$TMP_ROOT")
+  assert_contains "$out" 'answer with skip because fork CI runs the suite.' 'unrelated projects still rely on fork CI'
+  out=$(fm_test_scope_section none no-mistakes "$ROOT")
+  assert_contains "$out" 'approve it with no local test selection; never skip it.' 'Firstmate none scope requires Test attestation'
+  out=$(fm_test_scope_section none no-mistakes "$TMP_ROOT")
+  assert_contains "$out" 'answer with skip because fork CI runs the suite.' 'unrelated none scope still relies on fork CI'
+  out=$(fm_test_scope_section focused direct-PR "$ROOT")
+  case "$out" in
+    *'When the no-mistakes Test step'*) fail 'direct-PR scope received pipeline approval guidance' ;;
+  esac
+  pass 'Test approval respects Firstmate lineage, scope, and delivery flow'
+}
+
+test_scope_approval_respects_project_and_scope
+
+test_scope_approves_unknown_lineage() {
+  local project="$TMP_ROOT/unknown-project" root="$TMP_ROOT/rootless-code" out
+  git init -q "$project"
+  git -C "$project" commit -q --allow-empty -m 'unrelated history'
+  git init -q "$root"
+  out=$(fm_test_scope_section focused no-mistakes "$project" "$root")
+  assert_contains "$out" 'approve it and run the focused selection' 'unknown lineage must not skip Test'
+  pass 'unknown lineage conservatively approves Test'
+}
+
+test_scope_approves_unknown_lineage
+
 accept_done() {  # <kind> <mode> <worktree> <project> <line> [<state> <id> <meta>]
   fm_dod_accept_ship_done "$@"
 }

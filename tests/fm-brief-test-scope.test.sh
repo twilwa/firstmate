@@ -123,6 +123,50 @@ test_public_scaffold_renders_default_and_explicit_scopes() {
   pass 'fm-brief.sh generates default and selected scopes through its public interface'
 }
 
+test_firstmate_focused_step_runs_selection() {
+  local id=brief-scope-firstmate-focused brief target project="$TMP_ROOT/firstmate-fixture"
+  # Keep publication identity in the fixture, independent of the source remotes.
+  git clone -q --shared --no-checkout "$ROOT" "$project"
+  target=github.com/example/firstmate-fixture
+  git -C "$project" remote set-url origin "https://$target"
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests focused --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
+    || fail 'firstmate focused brief failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'When the no-mistakes Test step asks for approval, approve it and run the focused selection named by this test scope; never skip it.' "$brief" 'firstmate focused brief did not require Test approval'
+  assert_no_grep 'answer with skip because fork CI runs the suite' "$brief" 'firstmate focused brief still skips Test'
+  assert_grep 'If the Test step times out, report needs-decision; never choose fix.' "$brief" 'firstmate focused brief lost timeout rule'
+  pass 'firstmate focused Test runs rather than skipping'
+
+  id='brief-scope-firstmate-none'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests none --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
+    || fail 'firstmate none brief failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'When the no-mistakes Test step asks for approval, approve it with no local test selection; never skip it.' "$brief" 'firstmate none brief did not require Test approval'
+  assert_grep 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' "$brief" 'firstmate none brief lost its no-local-runs permission'
+  assert_no_grep 'answer with skip because fork CI runs the suite' "$brief" 'firstmate none brief still skips Test'
+  pass 'firstmate none Test approves with no local selection'
+
+  mkdir -p "$TMP_ROOT/unrelated-project"
+  git -C "$TMP_ROOT/unrelated-project" init -q
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" brief-scope-unrelated-focused sample --mode no-mistakes --tests focused --project "$TMP_ROOT/unrelated-project" >/dev/null 2>&1 \
+    || fail 'unrelated focused brief failed'
+  brief="$HOME_ROOT/data/brief-scope-unrelated-focused/brief.md"
+  assert_grep 'When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.' "$brief" 'unrelated project lost original Test skip instruction'
+  pass 'unrelated focused Test keeps fork CI skip guidance'
+}
+
+test_scope_uses_active_code_root() {
+  local project="$TMP_ROOT/override-code-root" brief
+  git init -q "$project"
+  git -C "$project" -c user.name=Test -c user.email=test@example.invalid commit -q --allow-empty -m 'distinct code root'
+  git -C "$project" remote add origin https://github.com/example/firstmate-fixture
+  FM_ROOT_OVERRIDE="$project" FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" brief-scope-override firstmate --mode no-mistakes --tests focused --project "$project" --upstream-consent github.com/example/firstmate-fixture >/dev/null 2>&1 \
+    || fail 'override code-root brief failed'
+  brief="$HOME_ROOT/data/brief-scope-override/brief.md"
+  assert_grep 'approve it and run the focused selection' "$brief" 'scope did not use active code-root lineage'
+  pass 'scope uses active FM_ROOT lineage'
+}
+
 test_manifest_excludes_classified_and_live_gated_tests() {
   local manifest safe_list family_paths live_gated path runtime
   manifest="$ROOT/tests/safe-suite-exclusions.txt"
@@ -199,6 +243,8 @@ test_promotion_renders_selected_scope() {
 
 test_help_documents_default_and_scope_choices
 test_public_scaffold_renders_default_and_explicit_scopes
+test_firstmate_focused_step_runs_selection
+test_scope_uses_active_code_root
 test_promotion_renders_selected_scope
 test_manifest_excludes_classified_and_live_gated_tests
 
