@@ -1,0 +1,91 @@
+Per-lane summed measured script seconds (successful duration_ms from fm-test-timing-portable-* artifacts), scored for each split
+Runs: main 40664798225 40673507764 40703025845 40796972623(post-#52); PR 40768416410 (pre-repack); PR 40805050743 (ran THIS split, commit 0b6aec1f; only docs differ from d205314f)
+Note: serial shard 4 holds fm-supervision-host; runs before 40796972623 measured the pre-#52 ~1046 s script, so serial spread on those runs is not representative.
+
+### TARGET split (d205314f)
+40664798225 parallel=[ 1224 1205] spread=1%  serial=[ 977 1007 1033 1693 965 1124 1045 1079 1032 1054 983] min=965 max=1693 spread=43%
+40673507764 parallel=[ 1075 1007] spread=6%  serial=[ 1091 1001 1099 1621 1113 1057 1078 1039 1089 1058 1033] min=1001 max=1621 spread=38%
+40703025845 parallel=[ 979 1045] spread=6%  serial=[ 1102 1077 1104 1703 1071 1044 1081 1114 1089 1120 1064] min=1044 max=1703 spread=38%
+40796972623 parallel=[ 1111 1137] spread=2%  serial=[ 1140 1124 1120 1122 1100 1077 1044 1080 1095 1060 1107] min=1044 max=1140 spread=8%
+40768416410 parallel=[ 1117 1173] spread=4%  serial=[ 1150 1015 1127 1408 1125 1115 1121 1040 1155 1075 1117] min=1015 max=1408 spread=27%
+40805050743 parallel=[ 914 1261] spread=27%  serial=[ 1113 1154 1105 1190 1170 992 1046 1185 969 1130 1006] min=969 max=1190 spread=18%
+
+### BASE split (aa314113)
+40664798225 parallel=[ 1117 1311] spread=14%  serial=[ 1342 1031 1068 1024 1081 991 1220 1090 1022 1241 880] min=880 max=1342 spread=34%
+40673507764 parallel=[ 774 1307] spread=40%  serial=[ 1259 1158 1076 1116 1146 1181 1129 1011 1024 1205 972] min=972 max=1259 spread=22%
+40703025845 parallel=[ 1063 961] spread=9%  serial=[ 1302 1181 1182 1171 1135 1070 1040 1155 1045 1200 1088] min=1040 max=1302 spread=20%
+40796972623 parallel=[ 1139 1109] spread=2%  serial=[ 753 1205 1260 1188 1027 1170 1127 1135 931 1120 1154] min=753 max=1260 spread=40%
+40768416410 parallel=[ 1180 1110] spread=5%  serial=[ 1034 1176 1120 1209 1207 1132 1242 1019 989 1241 1080] min=989 max=1242 spread=20%
+40805050743 parallel=[ 1067 1108] spread=3%  serial=[ 753 1155 1247 1105 1141 1126 1096 1085 1138 1161 1054] min=753 max=1247 spread=39%
+
+### Hosted job wall seconds, run 40805050743 (this split)
+Behavior portable parallel 1	932
+Behavior portable parallel 2	1274
+Behavior portable serial 1	1142
+Behavior portable serial 2	1183
+Behavior portable serial 3	1134
+Behavior portable serial 4	1215
+Behavior portable serial 5	1202
+Behavior portable serial 6	1013
+Behavior portable serial 7	1071
+Behavior portable serial 8	1207
+Behavior portable serial 9	997
+Behavior portable serial 10	1157
+Behavior portable serial 11	1025
+
+### Hosted job wall seconds, main run 40796972623 (base split, post-#52)
+Behavior portable parallel 1	1160
+Behavior portable parallel 2	1122
+Behavior portable serial 1	783
+Behavior portable serial 2	1230
+Behavior portable serial 3	1283
+Behavior portable serial 4	1212
+Behavior portable serial 5	1046
+Behavior portable serial 6	1195
+Behavior portable serial 7	1154
+Behavior portable serial 8	1156
+Behavior portable serial 9	952
+Behavior portable serial 10	1151
+Behavior portable serial 11	1180
+
+### Parallel lane 1 / lane 2 per-script, run 40805050743 (measured vs hint ms)
+-- lane 1
+tests/fm-lint.test.sh	250029	hint=366717
+tests/fm-test-run.test.sh	245863	hint=340925
+tests/fm-backend-t3code.test.sh	174695	hint=222086
+tests/fm-crew-state.test.sh	81151	hint=100309
+tests/fm-x-mode.test.sh	36335	hint=50779
+tests/fm-arm-pretool-check.test.sh	25120	hint=33873
+tests/fm-t3-mcp.test.sh	22180	hint=31771
+tests/fm-pi-primary-types.test.sh	16982	hint=27506
+tests/fm-brief.test.sh	12327	hint=18352
+tests/fm-herdr-lab.test.sh	16486	hint=17909
+tests/fm-cd-pretool-check.test.sh	12802	hint=16268
+tests/fm-grok-harness.test.sh	7343	hint=8272
+tests/fm-review-diff.test.sh	5165	hint=6314
+tests/fm-send-settle.test.sh	2000	hint=3150
+tests/fm-tmux-submit-busy.test.sh	2466	hint=2798
+tests/fm-composer-ghost.test.sh	2085	hint=2491
+tests/fm-ensure-agents-md.test.sh	780	hint=1149
+tests/fm-transition-lib.test.sh	221	hint=271
+-- lane 2
+tests/fm-captain-hold-lifecycle.test.sh	700580	hint=671795
+tests/fm-pr-merge.test.sh	466070	hint=461524
+tests/fm-backend-herdr.test.sh	44018	hint=47733
+tests/fm-composer-lib.test.sh	26707	hint=31206
+tests/fm-send-strict.test.sh	11384	hint=11631
+tests/fm-send-popup-settle.test.sh	7468	hint=8318
+tests/fm-spawn-batch.test.sh	4107	hint=4694
+tests/fm-supervision-instructions.test.sh	1047	hint=1169
+
+### Best 2-lane parallel split found against all 6 runs (heuristic search, pi-primary-types pinned to lane 1)
+small-script total per run (s): [29, 23, 25, 27, 27, 25]
+target split worst lane spread across 6 hosted runs: 27.5%
+best found worst spread: 10.5%
+lane1: ['tests/fm-backend-herdr.test.sh', 'tests/fm-brief.test.sh', 'tests/fm-captain-hold-lifecycle.test.sh', 'tests/fm-cd-pretool-check.test.sh', 'tests/fm-composer-ghost.test.sh', 'tests/fm-composer-lib.test.sh', 'tests/fm-grok-harness.test.sh', 'tests/fm-herdr-lab.test.sh', 'tests/fm-pi-primary-types.test.sh', 'tests/fm-review-diff.test.sh', 'tests/fm-send-settle.test.sh', 'tests/fm-send-strict.test.sh', 'tests/fm-spawn-batch.test.sh', 'tests/fm-supervision-instructions.test.sh', 'tests/fm-test-run.test.sh', 'tests/fm-tmux-submit-busy.test.sh', 'tests/fm-x-mode.test.sh']
+40664798225 best: 1249 1179 target: 1224 1205
+40673507764 best: 983 1098 target: 1075 1007
+40703025845 best: 1063 961 target: 979 1045
+40796972623 best: 1175 1073 target: 1111 1137
+40768416410 best: 1202 1088 target: 1117 1173
+40805050743 best: 1147 1027 target: 914 1261

@@ -1,0 +1,10 @@
+$ (fm-pr-merge listed in both parallel lanes) bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable parallel shards share scripts:
+tests/fm-pr-merge.test.sh
+exit=1
+
+$ (fm-pr-merge removed from parallel lane 1, so no lane owns it) bin/fm-test-run.sh --check-coverage
+fm-test-run: coverage guard: portable shards must equal the proven-isolated set
+fm-test-run: missing from shards:
+tests/fm-pr-merge.test.sh
+exit=1

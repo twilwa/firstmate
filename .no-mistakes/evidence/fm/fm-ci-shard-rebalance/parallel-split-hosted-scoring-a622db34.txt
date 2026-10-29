@@ -1,0 +1,42 @@
+Commit a622db34 parallel split scored against six hosted runs (summed successful per-script duration_ms from fm-test-timing-portable-parallel-* artifacts)
+Runs: main 40664798225 40673507764 40703025845 40796972623; PR 40768416410 40805050743
+
+$ bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=1259287 parallel_imbalance_ms=29564 parallel_unhinted=0 serial=262 serial_shards=11 serial_unhinted=0 serial_max_ms=1151204 serial_budget_ms=1200000 herdr=16
+
+$ score.sh (lanes from bin/fm-test-run.sh --list --lane ...)
+40664798225 parallel=[ 1183 1246] spread=5%
+40673507764 parallel=[ 1098 984] spread=10%
+40703025845 parallel=[ 967 1057] spread=8%
+40796972623 parallel=[ 1078 1170] spread=7%
+40768416410 parallel=[ 1088 1202] spread=9%
+40805050743 parallel=[ 1028 1147] spread=10%
+
+Previous split d205314f on the same runs (round 1 evidence): worst gap 27% (run 40805050743: 914 s / 1261 s)
+
+$ exhaustive search over all 2^25 splits, fm-pi-primary-types pinned to lane 1 (Pi-package lane)
+splits searched: 33554432
+target split worst gap: 10.389757%
+best split worst gap: 10.386650%
+best equals target: no
+best lane1:
+  tests/fm-pi-primary-types.test.sh
+  tests/fm-backend-herdr.test.sh
+  tests/fm-brief.test.sh
+  tests/fm-captain-hold-lifecycle.test.sh
+  tests/fm-composer-lib.test.sh
+  tests/fm-ensure-agents-md.test.sh
+  tests/fm-herdr-lab.test.sh
+  tests/fm-send-popup-settle.test.sh
+  tests/fm-send-settle.test.sh
+  tests/fm-send-strict.test.sh
+  tests/fm-spawn-batch.test.sh
+  tests/fm-t3-mcp.test.sh
+  tests/fm-test-run.test.sh
+  tests/fm-x-mode.test.sh
+run0 target lanes: 1183 s / 1246 s gap 5.1%
+run1 target lanes: 1098 s / 984 s gap 10.4%
+run2 target lanes: 967 s / 1057 s gap 8.5%
+run3 target lanes: 1078 s / 1170 s gap 7.8%
+run4 target lanes: 1088 s / 1202 s gap 9.4%
+run5 target lanes: 1028 s / 1147 s gap 10.4%

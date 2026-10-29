@@ -1,0 +1,12 @@
+ok - exact suite coverage: --all lists every tests/*.test.sh once
+ok - portable shard union, disjointness, and coverage guard hold
+ok - portable parallel lanes are fully hinted and packed within 5% of each other
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+ok - coverage guard bounds the unmeasured share and serial packing within twenty minutes
+ok - serial packing accepts the exact budget and refuses one millisecond above it
+ok - portable serial shard lanes refuse mismatched, out-of-range, and countless names
+ok - the automatic --changed bound gives the slow watcher suite at least 1500s
+
+real	5m11.289s
+user	2m23.729s
+sys	6m24.952s

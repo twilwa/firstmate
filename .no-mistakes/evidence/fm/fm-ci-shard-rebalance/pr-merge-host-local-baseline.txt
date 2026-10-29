@@ -1,0 +1,11 @@
+tests/fm-pr-merge.test.sh on this host, base aa314113 (git archive copy, unchanged test and runner):
+not ok - github-zero-exit-queue-required: refusal did not name the concrete observed state
+FM_TEST_END 2026-10-29T03:41:00Z tests/fm-pr-merge.test.sh exit=1 duration_ms=11135 gate_skip=false
+
+Hosted runs, tests/fm-pr-merge.test.sh exit/duration_ms (every run, in whichever lane held it):
+40664798225	0	440871
+40673507764	0	461524
+40703025845	0	351787
+40796972623	0	385314
+40768416410	0	352632
+40805050743	0	466070

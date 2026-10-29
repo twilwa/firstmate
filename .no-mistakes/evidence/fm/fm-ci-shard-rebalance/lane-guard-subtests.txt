@@ -1,0 +1,11 @@
+### unmodified a622db34 tree (git archive copy): lane guard subtests from tests/fm-test-run.test.sh
+(bin/ identical to HEAD)
+ok - portable shard union, disjointness, and coverage guard hold
+ok - portable parallel lanes are fully hinted and packed within 5% of each other
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+exit=0
+
+### adversarial: fm-pr-merge moved back beside fm-captain-hold-lifecycle in lane 2
+ok - portable shard union, disjointness, and coverage guard hold
+not ok - parallel lanes differ by 952612ms against a 1720811ms worst lane, more than 5%
+exit=1
