@@ -1,0 +1,88 @@
+tests-portable-parallel-1: timeout-minutes=50 step='Run portable parallel shard 1'
+  run: set -eu
+       mkdir -p "$RUNNER_TEMP/fm-test"
+       bin/fm-test-run.sh --lane portable-parallel-1 \
+         --per-script-timeout-secs 1500 \
+         --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
+         --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-1.json"
+       
+tests-portable-parallel-2: timeout-minutes=50 step='Run portable parallel shard 2'
+  run: set -eu
+       mkdir -p "$RUNNER_TEMP/fm-test"
+       bin/fm-test-run.sh --lane portable-parallel-2 \
+         --per-script-timeout-secs 1500 \
+         --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-2.json"
+       
+tests-portable-serial: timeout-minutes=50 step='Run portable serial shard ${{ matrix.shard }}'
+  run: set -eu
+       mkdir -p "$RUNNER_TEMP/fm-test"
+       bin/fm-test-run.sh --lane "$FM_SERIAL_LANE" \
+         --per-script-timeout-secs 1500 \
+         --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
+         --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-serial-${FM_SERIAL_SHARD}.json"
+       
+
+=== Scenario 1: hung file in portable-parallel-2 fails by name with exit 124 (bound scaled 1500s -> 4s) ===
+step exit=1 elapsed=12s hung=tests/fm-x-mode.test.sh
+not ok - tests/fm-x-mode.test.sh exceeded the per-script bound of 4s and was terminated
+FM_TEST_END 2026-10-29T03:09:33Z tests/fm-x-mode.test.sh exit=124 duration_ms=4163 gate_skip=false
+FM_TEST_SUMMARY total=13 failed=1 skipped_gate=0 duration_ms=11206
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=3 duration_ms=559 failed=0
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=2 duration_ms=4277 failed=1
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=8 duration_ms=1531 failed=0
+json summary: {'duration_ms': 11206, 'failed': 1, 'skipped_gate': 0, 'total': 13}
+json hung record: {'path': 'tests/fm-x-mode.test.sh', 'exit': 124, 'duration_ms': 4163}
+SCENARIO1 PASS
+
+=== Scenario 2: hung file in a portable serial shard (matrix shard 3 of 11, --fail-on-gate-skip kept) fails by name (bound scaled to 4s) ===
+step exit=1 elapsed=20s hung=tests/fm-cursor-primary.test.sh
+not ok - tests/fm-cursor-primary.test.sh exceeded the per-script bound of 4s and was terminated
+FM_TEST_END 2026-10-29T03:10:02Z tests/fm-cursor-primary.test.sh exit=124 duration_ms=4107 gate_skip=false
+FM_TEST_SUMMARY total=22 failed=1 skipped_gate=0 duration_ms=19311
+FM_TEST_SUMMARY_FAMILY family=afk count=1 duration_ms=113 failed=0
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=2 duration_ms=194 failed=0
+FM_TEST_SUMMARY_FAMILY family=cmux count=1 duration_ms=94 failed=0
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=4 duration_ms=517 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=205 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=77 failed=0
+FM_TEST_SUMMARY_FAMILY family=standalone count=2 duration_ms=230 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=4 duration_ms=689 failed=0
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=4 duration_ms=4433 failed=1
+FM_TEST_SUMMARY_FAMILY family=zellij count=1 duration_ms=230 failed=0
+json summary: {'duration_ms': 19311, 'failed': 1, 'skipped_gate': 0, 'total': 22} non-zero: [('tests/fm-cursor-primary.test.sh', 124)]
+SCENARIO2 PASS
+
+=== Scenario 3: unmodified 1500s step command does not kill a slow-but-healthy file (portable-parallel-1) ===
+step exit=0
+FM_TEST_SUMMARY total=13 failed=0 skipped_gate=0 duration_ms=14316
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=2 duration_ms=301 failed=0
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=164 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=10 duration_ms=9372 failed=0
+json slow record: {'path': 'tests/fm-captain-hold-lifecycle.test.sh', 'exit': 0, 'duration_ms': 8148} summary: {'duration_ms': 14316, 'failed': 0, 'skipped_gate': 0, 'total': 13}
+SCENARIO3 PASS
+
+=== Scenario 4: job cap kills a lane mid-hang under the real 1500s bound; completed-file timing evidence survives ===
+/home/firstmate/.no-mistakes/evidence/01M62R0MT5HPV5KCTPW43WQ7C8/drive-ci-steps.sh: line 108: 2609731 Killed                  RUNNER_TEMP="$RT" FM_SERIAL_LANE=portable-serial-5of11 FM_SERIAL_SHARD=5 setsid bash -c "echo \$\$ >'$FIX/sid'; $(cat "$FIX/tests-portable-serial.step.sh")" > "$FIX/s4.out" 2>&1
+lane members=25; killed after 15s while tests/fm-grok-continuity-live-e2e.test.sh hung
+json after kill: total = 24 of 25 ; hung file recorded: False
+SCENARIO4 PASS
+fm-test-timing-portable-serial-5.json
+
+=== Scenario 5: coverage guard refuses an unhinted parallel member by name and an over-ceiling lane ===
+unhinted tests/fm-crew-state.test.sh: exit=1
+fm-test-run: coverage guard: portable parallel members have no measured duration hint:
+tests/fm-crew-state.test.sh
+fm-test-run: refresh the hints from a green run's timing artifacts: docs/fm-test-portable-shards.md
+SCENARIO5a PASS
+inflated tests/fm-crew-state.test.sh hint to 1300000ms: exit=1
+fm-test-run: coverage guard: largest portable parallel lane packs 2031639ms above the 1200000ms target
+fm-test-run: refresh CI hints and rebalance; do not raise the job timeout: docs/fm-test-portable-shards.md
+SCENARIO5b PASS
+
+=== Scenario 6: unchanged coverage guard on the change accepts and the parsed workflow caps satisfy the rule ===
+FM_TEST_COVERAGE ok total=304 parallel=26 parallel_max_ms=814249 parallel_imbalance_ms=552 parallel_unhinted=0 parallel_budget_ms=1200000 serial=262 serial_shards=11 serial_unhinted=5 serial_max_ms=1121272 serial_budget_ms=1200000 herdr=16
+tests-portable-parallel-1: cap=3000s bound=1500s ceiling=1200s setup=60s need<3000: 2760 -> ok
+tests-portable-parallel-2: cap=3000s bound=1500s ceiling=1200s setup=60s need<3000: 2760 -> ok
+tests-portable-serial: cap=3000s bound=1500s ceiling=1200s setup=60s need<3000: 2760 -> ok
+other job caps: {'lint': 30, 'test-coverage': 5, 'tests-herdr': 75, 'tests-timing-aggregate': 5, 'macos-stock-bash': 30, 'invariants': 5}
+SCENARIO6 PASS
