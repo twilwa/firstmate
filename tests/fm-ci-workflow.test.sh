@@ -6,8 +6,8 @@
 # fan-out, and four jobs carried no timeout at all. These tests hold both
 # safeguards: PR runs supersede within one PR while main pushes are never
 # cancelled, and every CI job carries a finite hang tripwire drawn from the
-# three-tier timeout policy that docs/fm-test-portable-shards.md "Timeouts"
-# owns (fast, normal, heavy), so no job drifts back to a one-off number.
+# four-tier timeout policy that docs/fm-test-portable-shards.md "Timeouts"
+# owns (fast, normal, portable, heavy), so no job drifts back to a one-off number.
 #
 # They also hold the fork opt-out: the repository variables FM_CI_SKIP_PUSH and
 # FM_CI_SKIP_MACOS let a fork skip the push run and the macOS job through a
@@ -200,7 +200,8 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # must join a tier, and a job-level value outside these tiers is exactly the
 # one-off number the policy removed.
 FAST_TIER_JOBS='tests-timing-aggregate'
-NORMAL_TIER_JOBS='lint tests-portable-pool tests-portable-serial macos-stock-bash'
+NORMAL_TIER_JOBS='lint tests-portable-serial macos-stock-bash'
+PORTABLE_TIER_JOBS='tests-portable-pool'
 HEAVY_TIER_JOBS='tests-herdr'
 
 # Print the one timeout every listed job shares; fail on any disagreement.
@@ -272,21 +273,21 @@ end
   pass "every ci.yml job carries a finite timeout"
 }
 
-# Every job sits in exactly one tier, and the workflow carries exactly three
+# Every job sits in exactly one tier, and the workflow carries exactly four
 # distinct job-level timeouts: one per tier, no one-off numbers.
 test_every_job_belongs_to_exactly_one_timeout_tier() {
   local expected actual distinct
   # shellcheck disable=SC2086
-  expected=$(printf '%s\n' $FAST_TIER_JOBS $NORMAL_TIER_JOBS $HEAVY_TIER_JOBS | LC_ALL=C sort)
+  expected=$(printf '%s\n' $FAST_TIER_JOBS $NORMAL_TIER_JOBS $PORTABLE_TIER_JOBS $HEAVY_TIER_JOBS | LC_ALL=C sort)
   [ "$(printf '%s\n' "$expected" | LC_ALL=C sort -u)" = "$expected" ] \
     || fail "a job is listed in more than one timeout tier:"$'\n'"$expected"
   actual=$(workflow_jobs | LC_ALL=C sort) || fail "could not list ci.yml jobs"
   [ "$actual" = "$expected" ] \
     || fail "ci.yml jobs and the timeout tiers disagree; every job must join one tier"$'\n'"workflow: $(printf '%s' "$actual" | tr '\n' ' ')"$'\n'"tiers: $(printf '%s' "$expected" | tr '\n' ' ')"
   distinct=$(for job in $expected; do job_timeout "$job"; done | LC_ALL=C sort -u | wc -l | tr -d ' ')
-  [ "$distinct" = 3 ] \
-    || fail "ci.yml must carry exactly three distinct job timeouts (fast, normal, heavy), got $distinct"
-  pass "every ci.yml job belongs to one of the three timeout tiers"
+  [ "$distinct" = 4 ] \
+    || fail "ci.yml must carry exactly four distinct job timeouts (fast, normal, portable, heavy), got $distinct"
+  pass "every ci.yml job belongs to one of the four timeout tiers"
 }
 
 # Fast tier: seconds-long checks share one short tripwire in the 5-10 minute band.
@@ -312,6 +313,27 @@ test_normal_tier_shares_one_budget() {
   [ "$normal" = 30 ] \
     || fail "normal tier must be the single 30-minute shared budget, got $normal"
   pass "normal tier jobs share one $normal minute budget"
+}
+
+# Portable tier: the pooled job runs the proven set under four contending
+# workers, so it carries its own cap between the normal and heavy tiers. The
+# runner owns the same value for its pool budget guard, so the two must agree.
+test_portable_tier_matches_the_runner_pool_budget() {
+  local normal heavy portable out runner_min
+  # shellcheck disable=SC2086
+  normal=$(tier_timeout normal $NORMAL_TIER_JOBS) || exit 1
+  # shellcheck disable=SC2086
+  heavy=$(tier_timeout heavy $HEAVY_TIER_JOBS) || exit 1
+  # shellcheck disable=SC2086
+  portable=$(tier_timeout portable $PORTABLE_TIER_JOBS) || exit 1
+  [ "$portable" -gt "$normal" ] && [ "$portable" -lt "$heavy" ] \
+    || fail "portable tier ($portable) must sit between the normal ($normal) and heavy ($heavy) tiers"
+  out=$("$ROOT/bin/fm-test-run.sh" --check-coverage) || fail "coverage guard failed: $out"
+  runner_min=$(printf '%s\n' "$out" | sed -n 's/.*pool_timeout_min=\([0-9][0-9]*\).*/\1/p')
+  [ -n "$runner_min" ] || fail "coverage guard must report pool_timeout_min: $out"
+  [ "$portable" = "$runner_min" ] \
+    || fail "ci.yml pool timeout ($portable) disagrees with the runner's pool budget timeout ($runner_min)"
+  pass "portable tier carries the runner's $portable minute pool budget timeout"
 }
 
 # Heavy tier: Herdr alone carries a job-level last-resort backstop above the
@@ -460,4 +482,5 @@ test_every_job_has_a_finite_timeout
 test_every_job_belongs_to_exactly_one_timeout_tier
 test_fast_tier_shares_one_short_tripwire
 test_normal_tier_shares_one_budget
+test_portable_tier_matches_the_runner_pool_budget
 test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop

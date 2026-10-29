@@ -39,9 +39,19 @@ run by the production runner under `--jobs 4` bounded concurrency.
 [`bin/fm-test-run.sh`](../bin/fm-test-run.sh) holds the duration values in `portable_pool_weight_hints`, which schedule the pool's workers longest-first, and the worker bound in `PORTABLE_POOL_WORKERS`.
 Read the derived packing estimates with that runner's `--check-coverage`; its header and `--help` own the output fields and the selection-specific `--list-scheduled` weight rules.
 The lane membership itself is derived from the proven set, so the coverage guard compares the lane against `bin/fm-test-isolation-proof.sh --list` rather than a second literal list.
-The CI cap follows the three-tier timeout policy in [Timeouts](#timeouts) below.
+The CI cap is the dedicated portable tier in [Timeouts](#timeouts) below.
 
-[`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_pool_stays_fully_hinted_and_bounded`, requires every pool member to have a hint and the four-worker modeled makespan to stay inside the normal tier's scale.
+### Pool budget guard
+
+`--check-coverage` models the pool job's wall time as the four-worker makespan of the pooled files, packed longest-first from `portable_pool_weight_hints`, plus a fixed 300000 ms (5 minute) allowance for checkout, tool installs, and the coverage guard itself.
+It refuses the partition when that modeled wall exceeds 80 percent of the pool job timeout (2400000 ms of the 50-minute portable tier), and its refusal names the makespan, the allowance, the budget, and the timeout.
+It reports the figures as `pool_wall_ms`, `pool_budget_ms`, and `pool_timeout_min` on success.
+`PORTABLE_POOL_TIMEOUT_MINUTES` in `bin/fm-test-run.sh` and the pool job's `timeout-minutes` in `.github/workflows/ci.yml` must agree; `tests/fm-ci-workflow.test.sh` holds them together.
+The hints are serial samples, so the modeled makespan is a floor rather than a forecast: the hosted four-worker proof measured about 1250 s of pool wall time against a model of about 672 s ([fm-test-isolation-proof.md](fm-test-isolation-proof.md)).
+The guard therefore catches growth in the hint table, not contention itself; the gap between the current model and the budget, and the 20 percent left above the budget, are what absorb that inflation.
+When the guard trips, refresh the pool hints or move work out of the pool rather than raising the timeout.
+
+[`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_pool_stays_fully_hinted_and_bounded`, requires every pool member to have a hint and the modeled wall to stay inside the budget, and `test_portable_pool_wall_budget_boundary` verifies acceptance exactly at the budget and refusal one millisecond above it.
 Its scheduling regressions also check pool-hint scheduling for the pool and proven-isolated selections and preserve serial-weight scheduling for other selections.
 These checks do not detect a script outgrowing an existing hint or establish measured job headroom.
 Refresh `portable_pool_weight_hints` with the slowest completed `duration_ms` per script from several green CI runs' `fm-test-timing-portable-pool` artifact whenever the pool gains scripts or a member grows materially.
@@ -108,7 +118,7 @@ Measure native-Windows-only scripts through the focused Git Bash runner and reta
 `bin/fm-test-run.sh --check-coverage` verifies that the portable-pool lane equals the proven-isolated set.
 It also verifies that the pool, portable serial lane, and real-Herdr family are disjoint and cover every `tests/*.test.sh` script.
 It separately verifies that the portable serial CI shards are non-empty, disjoint, and together equal the portable serial lane.
-Its hint-coverage and modeled-budget checks are described in [Portable serial CI shards](#portable-serial-ci-shards); neither replaces inspection of actual CI timing artifacts.
+Its serial hint-coverage and modeled-budget checks are described in [Portable serial CI shards](#portable-serial-ci-shards), and its pool wall check in [Pool budget guard](#pool-budget-guard); none of them replaces inspection of actual CI timing artifacts.
 
 ## Timing artifacts
 
@@ -139,16 +149,17 @@ The workflow retains per-PR supersession without cancelling main pushes or chang
 
 ## Timeouts
 
-CI job timeouts follow one three-tier policy, so the workflow reads as a policy rather than as a collection of per-job numbers.
+CI job timeouts follow one four-tier policy, so the workflow reads as a policy rather than as a collection of per-job numbers.
 Every tier is a hang tripwire with headroom above the healthy duration, never a packing estimate or a runtime target.
 A lane that reaches its tier bound needs investigation and a distribution or runtime fix, not a larger timeout to fit the same work.
 
 | Tier | Jobs | Bound | Rationale |
 |---|---|---|---|
 | Fast | timing aggregate | 5 minutes | Seconds-long local work, so the tripwire only catches a hung runner. |
-| Normal | lint partitions, portable pool, portable serial shards, macOS stock Bash | 30 minutes, one value shared by every job in the tier | One shared hang tripwire keeps every ordinary test and lint lane on the same policy instead of allowing per-lane packing estimates or one-off caps to set the bound. |
+| Normal | lint partitions, portable serial shards, macOS stock Bash | 30 minutes, one value shared by every job in the tier | One shared hang tripwire keeps every ordinary test and lint lane on the same policy instead of allowing per-lane packing estimates or one-off caps to set the bound. |
+| Portable | portable pool | 50 minutes | The pool runs the whole proven set under four contending workers, and the hosted proof measured about 21 minutes of pool wall time, so the normal tier left too little headroom. The [pool budget guard](#pool-budget-guard) refuses a modeled wall above 80 percent of this bound. |
 | Heavy | Herdr | family-run step 20 minutes under a 75-minute job-level last-resort backstop | Healthy runs finish in about 7-10 minutes, so the step tripwire fails a wedged suite while the `always()` cleanup and timing upload still run, and the job cap only catches a hang outside that step. |
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) holds the executable values and names each job's tier beside its `timeout-minutes`.
-[`tests/fm-ci-workflow.test.sh`](../tests/fm-ci-workflow.test.sh) holds the policy against the parsed workflow: every job belongs to exactly one tier, the workflow carries exactly three distinct job-level values, the fast tier stays within 5-10 minutes, the normal jobs share one 30-minute budget, and the Herdr family-run step is the 20-minute tripwire below its job backstop with an `always()` teardown after it.
+[`tests/fm-ci-workflow.test.sh`](../tests/fm-ci-workflow.test.sh) holds the policy against the parsed workflow: every job belongs to exactly one tier, the workflow carries exactly four distinct job-level values, the fast tier stays within 5-10 minutes, the normal jobs share one 30-minute budget, the portable tier sits between the normal and heavy tiers and equals the runner's `pool_timeout_min`, and the Herdr family-run step is the 20-minute tripwire below its job backstop with an `always()` teardown after it.
 A passing coverage guard does not establish a healthy job duration; refresh the healthy figures above from the lanes' uploaded timing artifacts.

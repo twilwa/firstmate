@@ -1113,9 +1113,9 @@ test_portable_shard_union_and_coverage_guard() {
 # The pool lane schedules from measured hints, so an unhinted member is handed
 # to workers on a guess and the modeled makespan is the only sanity check the
 # guard can report. Assert every member is hinted and the four-worker model
-# stays positive and inside the normal CI tier.
+# plus setup stays inside the guard's share of the pool job timeout.
 test_portable_pool_stays_fully_hinted_and_bounded() {
-  local out hint modeled unhinted
+  local out hint modeled unhinted wall budget timeout
   out=$("$RUNNER" --check-coverage)
   unhinted=$(printf '%s\n' "$out" | sed -n 's/.*pool_unhinted=\([0-9]*\).*/\1/p')
   hint=$(printf '%s\n' "$out" | sed -n 's/.*pool_hint_ms=\([0-9]*\).*/\1/p')
@@ -1126,9 +1126,66 @@ test_portable_pool_stays_fully_hinted_and_bounded() {
     || fail "$unhinted proven-isolated scripts have no measured pool hint, so the schedule is packed on a guess"
   [ "$hint" -gt 0 ] || fail "pool_hint_ms must be a positive summed cost, got $hint"
   [ "$modeled" -gt 0 ] || fail "pool_modeled_ms must be a positive makespan, got $modeled"
-  [ "$modeled" -le 1200000 ] \
-    || fail "pool models ${modeled}ms, above the twenty-minute serial budget scale"
-  pass "portable pool is fully hinted and models inside the worker bound"
+  wall=$(printf '%s\n' "$out" | sed -n 's/.*pool_wall_ms=\([0-9]*\).*/\1/p')
+  budget=$(printf '%s\n' "$out" | sed -n 's/.*pool_budget_ms=\([0-9]*\).*/\1/p')
+  timeout=$(printf '%s\n' "$out" | sed -n 's/.*pool_timeout_min=\([0-9]*\).*/\1/p')
+  [ -n "$wall" ] && [ -n "$budget" ] && [ -n "$timeout" ] \
+    || fail "coverage guard must report pool_wall_ms, pool_budget_ms, pool_timeout_min: $out"
+  [ "$wall" -gt "$modeled" ] || fail "pool wall ${wall}ms must add setup to the ${modeled}ms makespan"
+  [ "$budget" -eq "$((timeout * 60000 * 80 / 100))" ] \
+    || fail "pool budget ${budget}ms must be 80% of the ${timeout}-minute pool job timeout"
+  [ "$wall" -le "$budget" ] || fail "pool models ${wall}ms above its ${budget}ms budget"
+  pass "portable pool is fully hinted and models inside its job budget"
+}
+
+# The pool guard must refuse exactly when the modeled wall (makespan plus setup)
+# passes its budget. Load one pool member so its worker alone sets the
+# makespan, at the boundary and one millisecond over, without running suites.
+test_portable_pool_wall_budget_boundary() {
+  local tmp repo script out rc budget setup heavy weight
+  out=$("$RUNNER" --check-coverage)
+  budget=$(printf '%s\n' "$out" | sed -n 's/.*pool_budget_ms=\([0-9]*\).*/\1/p')
+  setup=$(( $(printf '%s\n' "$out" | sed -n 's/.*pool_wall_ms=\([0-9]*\).*/\1/p') \
+    - $(printf '%s\n' "$out" | sed -n 's/.*pool_modeled_ms=\([0-9]*\).*/\1/p') ))
+  [ -n "$budget" ] && [ "$setup" -gt 0 ] || fail "coverage guard must report the pool budget and setup: $out"
+  heavy=$("$RUNNER" --list --lane portable-pool | head -n 1)
+  [ -n "$heavy" ] || fail "portable pool lane must be non-empty"
+  tmp=$(fm_test_tmproot fm-test-run-pool-boundary)
+  repo="$tmp/repo"
+  mkdir -p "$repo/bin" "$repo/tests"
+  while IFS= read -r script; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
+  done < <("$RUNNER" --list --all)
+
+  for weight in "$((budget - setup))" "$((budget - setup + 1))"; do
+    cp "$RUNNER" "$repo/bin/fm-test-run.sh"
+    python3 - "$repo/bin/fm-test-run.sh" "$heavy" "$weight" <<'PY' \
+      || fail "could not seed the fixture's pool hints"
+from pathlib import Path
+import re, sys
+runner, heavy, weight = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = runner.read_text()
+match = re.search(r"portable_pool_weight_hints\(\) \{\n  cat <<'EOF'\n(.*?)\nEOF\n", text, flags=re.S)
+if not match:
+    sys.exit("pool hint table not found")
+lines = [
+    f"{line.split()[0]} {weight if line.split()[0] == heavy else '1'}"
+    for line in match.group(1).splitlines() if line.strip()
+]
+runner.write_text(text[:match.start(1)] + "\n".join(lines) + text[match.end(1):])
+PY
+    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
+    if [ "$weight" -eq "$((budget - setup))" ]; then
+      expect_code 0 "$rc" "a pool wall exactly at the budget must be accepted"
+      assert_contains "$out" "pool_wall_ms=$budget " "fixture did not model the pool exactly at the budget"
+    else
+      expect_code 1 "$rc" "a pool wall one millisecond above the budget must be refused"
+      assert_contains "$out" "portable pool models $((budget + 1))ms (${weight}ms 4-worker makespan + ${setup}ms setup) above ${budget}ms" \
+        "over-budget pool refusal did not carry its figures"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget pool reported success"
+    fi
+  done
+  pass "pool budget accepts the exact modeled wall and refuses one millisecond above it"
 }
 
 test_portable_serial_shards_partition_the_serial_lane() {
@@ -2134,6 +2191,7 @@ test_list_scheduled_proven_isolated_uses_pool_weights
 test_list_scheduled_non_lane_selections_use_serial_weights
 test_portable_shard_union_and_coverage_guard
 test_portable_pool_stays_fully_hinted_and_bounded
+test_portable_pool_wall_budget_boundary
 test_portable_serial_shards_partition_the_serial_lane
 test_portable_serial_hint_coverage_is_reported_and_bounded
 test_portable_serial_packing_budget_boundary
