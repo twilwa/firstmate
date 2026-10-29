@@ -22,9 +22,16 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the three
+# Timeout policy: docs/fm-test-portable-shards.md "Timeouts" owns the four
 # tiers and their rationale; tests/fm-ci-workflow.test.sh guards this workflow.
 # Each job comment identifies the tier implemented by its executable value.
+# The portable test tier pairs a 50-minute job cap with the runner's 1500s
+# per-file bound. The cap must exceed a 60s setup allowance plus the lane's
+# packing ceiling (1300s parallel, 1200s serial) plus that bound (at most
+# 60 + 1300 + 1500 = 2860s < 3000s), so a hung file in a lane packed within
+# its ceiling fails by name with exit 124 before the cap.
+# A file that starts after minute 25, because setup or earlier files overrun
+# their allowance and hints, can still hit the job cap.
 
 # Fork opt-out: a fork sets the repository variable FM_CI_SKIP_PUSH to 1 to
 # skip the push run, and FM_CI_SKIP_MACOS to 1 to skip the macOS job, without
@@ -102,8 +109,8 @@ jobs:
     name: Behavior portable parallel 1
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
         with:
@@ -133,6 +140,7 @@ jobs:
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
           bin/fm-test-run.sh --lane portable-parallel-1 \
+            --per-script-timeout-secs 1500 \
             --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
             --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-1.json"
       - name: Upload shard 1 timing artifact
@@ -147,8 +155,8 @@ jobs:
     name: Behavior portable parallel 2
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
         with:
@@ -173,6 +181,7 @@ jobs:
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
           bin/fm-test-run.sh --lane portable-parallel-2 \
+            --per-script-timeout-secs 1500 \
             --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-parallel-2.json"
       - name: Upload shard 2 timing artifact
         if: always()
@@ -192,8 +201,8 @@ jobs:
     name: Behavior portable serial ${{ matrix.shard }}
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    # Portable test tier (see the timeout policy above).
+    timeout-minutes: 50
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false
@@ -245,6 +254,7 @@ jobs:
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
           bin/fm-test-run.sh --lane "$FM_SERIAL_LANE" \
+            --per-script-timeout-secs 1500 \
             --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' \
             --json "$RUNNER_TEMP/fm-test/fm-test-timing-portable-serial-${FM_SERIAL_SHARD}.json"
       - name: Upload portable serial shard ${{ matrix.shard }} timing artifact

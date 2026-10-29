@@ -30,11 +30,13 @@
 #   fm-test-run.sh --aggregate-json <out.json> <lane.json> [more lane.json...]
 #
 # Options:
-#   --json <path>   write a deterministic timing artifact after the run. Each
-#                   script record carries its family, expected gate-skip class,
-#                   exit, duration, whether it gate-skipped, and the reason it
-#                   gave (empty when it ran), so a lane can say which harness or
-#                   tool this host could not exercise.
+#   --json <path>   write a deterministic timing artifact, atomically
+#                   checkpointed after each completed script and finalized
+#                   after the run. Each script record carries its family,
+#                   expected gate-skip class, exit, duration, whether it
+#                   gate-skipped, and the reason it gave (empty when it ran),
+#                   so a lane can say which harness or tool this host could
+#                   not exercise.
 #   --list          print selected script paths (one per line) and exit 0
 #   --list-scheduled
 #                   print selected paths longest-hint-first and exit 0.
@@ -146,10 +148,11 @@
 # duration-balanced partition of that exact set, packed from the measured hints
 # in portable_parallel_weight_hints (see docs/fm-test-portable-shards.md).
 # --check-coverage reports parallel_max_ms (the larger lane hint sum),
-# parallel_imbalance_ms (the absolute difference between the sums), and
-# parallel_unhinted (the number of members missing a parallel hint).
-# These sums exclude unhinted members and are estimates, not measured job wall
-# times. Missing parallel hints are reported without failing this guard.
+# parallel_imbalance_ms (the absolute difference between the sums),
+# parallel_unhinted (the number of members missing a parallel hint), and
+# parallel_budget_ms (the parallel packing ceiling), refusing a lane hint sum
+# above that ceiling and naming each member missing a parallel hint.
+# These sums are estimates, not measured job wall times.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -212,10 +215,12 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # script is tests/fm-watch-triage.test.sh at about 934s under CI load (the
 # hint table below records that loaded figure). 1500s keeps every measured script
-# under the bound with roughly 1.6x headroom over the slowest loaded measurement,
-# and it stays under the 30-minute normal CI tier so a wedged script fails here,
-# with its output, before the job cap
-# cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
+# under the bound with roughly 1.6x headroom over the slowest loaded measurement.
+# The portable CI jobs apply the same bound under a job cap sized to cover setup,
+# the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS or
+# PORTABLE_PARALLEL_MAX_WEIGHT_MS), and this bound (docs/fm-test-portable-shards.md
+# "Timeouts"), so a wedged script fails here, with its output, before the job
+# cap cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
 # bounded failure instead of an unbounded suite, which is the shape that
 # silently outruns a caller's invocation budget.
 CHANGED_DEFAULT_TIMEOUT_SECS=1500
@@ -228,10 +233,14 @@ PORTABLE_SERIAL_SHARDS=11
 # Rounded above the current CI mean, including the capability-skipped scripts.
 PORTABLE_SERIAL_DEFAULT_WEIGHT_MS=45000
 
-# Packing target, not an execution timeout: leave at least ten minutes of the
-# normal CI tier for setup and runtime variance. --check-coverage refuses a
+# Packing target, not an execution timeout: leave room in the portable CI job
+# cap for setup and runtime variance. --check-coverage refuses a
 # modeled serial shard above this target; refresh hints or rebalance instead.
 PORTABLE_SERIAL_MAX_WEIGHT_MS=1200000
+
+# Packing ceiling for each portable parallel lane's hint sum, on the same terms
+# as the serial target above. --check-coverage refuses a lane above it.
+PORTABLE_PARALLEL_MAX_WEIGHT_MS=1300000
 
 # Largest share of the serial lane allowed to run on the default weight above.
 # Hints are what keep the shards balanced, so once too much of the lane is
@@ -1304,17 +1313,33 @@ run_coverage_guard() {
   # header for the distinction between packed weights and measured job time.
   read -r p1_ms p1_unhinted <<<"$(list_portable_parallel_1 | portable_parallel_lane_weight)"
   read -r p2_ms p2_unhinted <<<"$(list_portable_parallel_2 | portable_parallel_lane_weight)"
+  if [ "$((p1_unhinted + p2_unhinted))" -gt 0 ]; then
+    log "coverage guard: portable parallel members have no measured duration hint:"
+    { list_portable_parallel_1; list_portable_parallel_2; } |
+      awk 'NR == FNR { if (NF) { hint[$1] = 1 }; next } NF && !($1 in hint)' \
+        <(portable_parallel_weight_hints) - >&2
+    log "refresh the hints from a green run's timing artifacts: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
   parallel_max_ms=$p1_ms
   [ "$p2_ms" -le "$parallel_max_ms" ] || parallel_max_ms=$p2_ms
+  if [ "$parallel_max_ms" -gt "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" ]; then
+    log "coverage guard: largest portable parallel lane packs ${parallel_max_ms}ms above the ${PORTABLE_PARALLEL_MAX_WEIGHT_MS}ms target"
+    log "refresh CI hints and rebalance; do not raise the job timeout: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
   parallel_imbalance_ms=$((p1_ms - p2_ms))
   [ "$parallel_imbalance_ms" -ge 0 ] || parallel_imbalance_ms=$((-parallel_imbalance_ms))
 
-  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s parallel_budget_ms=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
     "$(wc -l <"$tmp/shards_union" | tr -d ' ')" \
     "$parallel_max_ms" \
     "$parallel_imbalance_ms" \
     "$((p1_unhinted + p2_unhinted))" \
+    "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" \
     "$(wc -l <"$tmp/serial" | tr -d ' ')" \
     "$PORTABLE_SERIAL_SHARDS" \
     "$unhinted" \
@@ -2071,7 +2096,8 @@ write_json_artifact() {
   fi
 
   python3 - "$out" "$started" "$finished" "$run_id" "$total" "$failed" "$skipped" "$duration" "$selection" "$records_file" "$families_file" <<'PY'
-import json, sys
+import json, os, sys, tempfile
+from pathlib import Path
 
 out, started, finished, run_id, total, failed, skipped, duration, selection, records_file, families_file = sys.argv[1:]
 
@@ -2120,9 +2146,21 @@ doc = {
     "scripts": scripts,
     "families": families,
 }
-with open(out, "w", encoding="utf-8") as fh:
-    json.dump(doc, fh, indent=2, sort_keys=True)
-    fh.write("\n")
+destination = Path(out)
+destination.parent.mkdir(parents=True, exist_ok=True)
+# Publish a whole snapshot atomically, preserving the previous one if the job
+# is interrupted during serialization of a later file's results.
+with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent,
+                                 prefix=destination.name + ".", delete=False) as fh:
+    temporary = fh.name
+    try:
+        json.dump(doc, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+        fh.close()
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 PY
 }
 
@@ -2651,7 +2689,7 @@ family_bump() {
 
 record_script_result() {
   local script=$1 rc=$2 duration=$3 out=$4 end_iso=$5
-  local base family expected gate_skip gate_reason fail_delta
+  local base family expected gate_skip gate_reason fail_delta elapsed
   base=$(basename "$script")
   family=$(family_for_basename "$base")
   expected=$(expected_gate_skip_for_family "$family")
@@ -2686,6 +2724,17 @@ record_script_result() {
     "$script" "$family" "$expected" "$rc" "$duration" "$gate_skip" "$gate_reason" >>"$RECORDS"
   family_bump "$family" "$duration" "$fail_delta"
   TOTAL=$((TOTAL + 1))
+  if [ -n "$JSON_PATH" ]; then
+    elapsed=$(( $(now_ms) - RUN_STARTED_MS ))
+    [ "$elapsed" -ge 0 ] || elapsed=0
+    if ! write_json_artifact "$JSON_PATH" \
+      "$RUN_STARTED_ISO" "$end_iso" "$RUN_ID" \
+      "$TOTAL" "$FAILED" "$SKIPPED_GATE" "$elapsed" \
+      "$SELECTION_DESC" "$RECORDS" "$FAMILIES_TSV"; then
+      log "timing artifact checkpoint failed: $JSON_PATH"
+      AGG_RC=1
+    fi
+  fi
 }
 
 # Run <script>, capturing output to <out>. <stream> 1 also echoes it live.

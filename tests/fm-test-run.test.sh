@@ -1265,6 +1265,14 @@ new, n = re.subn(
 )
 if n != 1:
     sys.exit("serial hint table not found")
+# Isolate the serial boundary from unrelated parallel measurements on main.
+new, n = re.subn(
+    r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n).*?(\nEOF\n)",
+    lambda match: match.group(1) + "\n".join(f"{s} 1" for s in scripts) + match.group(2),
+    new, count=1, flags=re.S,
+)
+if n != 1:
+    sys.exit("parallel hint table not found")
 runner.write_text(new)
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
@@ -1281,6 +1289,63 @@ PY
     fi
   done
   pass "serial packing accepts the exact budget and refuses one millisecond above it"
+}
+
+test_portable_parallel_packing_budget_boundary() {
+  local tmp repo script heavy weight out rc
+  tmp=$(fm_test_tmproot fm-test-run-parallel-boundary)
+  repo="$tmp/repo"
+  mkdir -p "$repo/bin" "$repo/tests"
+  while IFS= read -r script; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
+  done < <("$RUNNER" --list --all)
+  # The second lane carries the boundary so the guard must compare both lanes.
+  heavy=$("$RUNNER" --list --lane portable-parallel-2 | head -n 1)
+  [ -n "$heavy" ] || fail "portable parallel lane 2 is empty"
+
+  for weight in unhinted 1300000 1300001; do
+    cp "$RUNNER" "$repo/bin/fm-test-run.sh"
+    python3 - "$repo/bin/fm-test-run.sh" "$weight" "$heavy" <<'PY' \
+      || fail "could not seed the fixture's parallel timing input"
+from pathlib import Path
+import re, sys
+runner, weight, heavy = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = runner.read_text()
+pattern = r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n)(.*?)(\nEOF\n)"
+match = re.search(pattern, text, flags=re.S)
+if not match:
+    sys.exit("parallel hint table not found")
+scripts = [line.split()[0] for line in match.group(2).splitlines() if line.strip()]
+if heavy not in scripts:
+    sys.exit(f"parallel hint table lost {heavy}")
+# Every other member weighs nothing, so the heavy script's lane packs exactly
+# the fixture weight.
+table = "\n".join(
+    f"{s} {weight if s == heavy else '0'}" for s in scripts
+    if not (weight == "unhinted" and s == heavy)
+)
+runner.write_text(text[:match.start(2)] + table + text[match.end(2):])
+PY
+    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
+    if [ "$weight" = unhinted ]; then
+      expect_code 1 "$rc" "an unhinted parallel script must be refused"
+      assert_contains "$out" "portable parallel members have no measured duration hint" \
+        "unhinted parallel refusal did not explain the missing hint"
+      assert_contains "$out" "$heavy" "unhinted parallel refusal did not name the member"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "unhinted parallel packing reported success"
+    elif [ "$weight" -eq 1300000 ]; then
+      expect_code 0 "$rc" "parallel packing exactly at the budget must be accepted"
+      assert_contains "$out" "FM_TEST_COVERAGE ok" "parallel boundary coverage did not pass"
+      assert_contains "$out" "parallel_max_ms=1300000" "fixture did not pack a parallel lane exactly at the budget"
+      assert_contains "$out" "parallel_budget_ms=1300000" "fixture changed the parallel packing budget"
+    else
+      expect_code 1 "$rc" "parallel packing one millisecond above the budget must be refused"
+      assert_contains "$out" "largest portable parallel lane packs 1300001ms above the 1300000ms target" \
+        "over-budget parallel refusal did not explain the modeled excess"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget parallel packing reported success"
+    fi
+  done
+  pass "parallel packing accepts the exact budget and refuses excess or unhinted members"
 }
 
 test_portable_serial_shard_lane_refusals() {
@@ -1537,6 +1602,52 @@ test_concurrent_runs_are_ordered_longest_first() {
 # --max-wall-ms is checked after the run, so it cannot end a run that never
 # finishes. A hung script has to become a bounded failure, because an unbounded
 # suite is exactly what silently outruns its caller's invocation budget.
+test_json_preserves_timeouts_before_later_files_finish() {
+  local tmp repo json rc
+  tmp=$(fm_test_tmproot fm-test-run-progress)
+  repo="$tmp/repo"
+  json="$tmp/timing.json"
+  mkdir -p "$repo/bin" "$repo/tests"
+  cp "$RUNNER" "$ROOT/bin/fm-timeout-lib.sh" "$repo/bin/"
+  cp "$ROOT/tests/git-config-helpers.sh" "$repo/tests/"
+  cat >"$repo/tests/first.test.sh" <<'SH'
+#!/usr/bin/env bash
+sleep 5
+SH
+  cat >"$repo/tests/second.test.sh" <<'SH'
+#!/usr/bin/env bash
+python3 - "$TIMING_JSON" <<'PY' || exit 1
+import json, sys
+with open(sys.argv[1]) as source:
+    doc = json.load(source)
+assert doc["summary"]["total"] == 1, doc
+assert doc["scripts"][0]["path"] == "tests/first.test.sh", doc
+assert doc["scripts"][0]["exit"] == 124, doc
+PY
+sleep 5
+SH
+  cat >"$repo/tests/last.test.sh" <<'SH'
+#!/usr/bin/env bash
+python3 - "$TIMING_JSON" <<'PY'
+import json, sys
+with open(sys.argv[1]) as source:
+    doc = json.load(source)
+assert doc["summary"]["total"] == 2, doc
+assert doc["summary"]["failed"] == 2, doc
+assert [s["exit"] for s in doc["scripts"]] == [124, 124], doc
+print("ok - both timeout records survived before the lane finished")
+PY
+SH
+  TIMING_JSON="$json" "$repo/bin/fm-test-run.sh" --jobs 1 \
+    --per-script-timeout-secs 1 --json "$json" \
+    tests/first.test.sh tests/second.test.sh tests/last.test.sh \
+    >"$tmp/out" 2>&1 && rc=0 || rc=$?
+  expect_code 1 "$rc" "timed-out files must fail the run"
+  assert_contains "$(cat "$tmp/out")" "ok - both timeout records survived before the lane finished" \
+    "a later file could not read prior timeout records from the timing artifact"
+  pass "timing JSON preserves each timeout before later files finish"
+}
+
 test_per_script_timeout_bounds_a_hang() {
   local tmp repo runner hang rc began ended grandchild_pid grandchild waited
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-hang.XXXXXX")
@@ -2118,6 +2229,7 @@ SH
   pass "outer runner catches a nested run's ignored listener failure"
 }
 
+test_json_preserves_timeouts_before_later_files_finish
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
@@ -2149,6 +2261,7 @@ test_portable_parallel_lanes_stay_duration_balanced
 test_portable_serial_shards_partition_the_serial_lane
 test_portable_serial_hint_coverage_is_reported_and_bounded
 test_portable_serial_packing_budget_boundary
+test_portable_parallel_packing_budget_boundary
 test_portable_serial_shard_lane_refusals
 test_jobs_requires_proven_isolated
 test_jobs_admits_a_concurrent_safe_family
