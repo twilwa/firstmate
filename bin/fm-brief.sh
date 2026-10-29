@@ -659,7 +659,7 @@ fi
 
 REPO=${POS[1]}
 
-TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "${MODE:-$KIND}")
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "${MODE:-$KIND}" "$PROJECT_DIR")
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")

@@ -10,6 +10,10 @@
 # prints the block on stdout with no trailing blank line. The caller validates the
 # mode; an unknown mode is refused rather than silently rendered as the pipeline
 # contract.
+# fm_test_scope_section <scope> <flow> [project-dir] renders the test policy.
+# Focused no-mistakes tasks in Firstmate lineage approve Test for its required
+# attestation; other projects retain the fork-CI skip answer. Scope permissions
+# and the timeout-means-needs-decision rule are unchanged.
 # The optional third argument is the task's full ship-branch name (a project's
 # registered prefix may replace the legacy `fm/` one); it defaults to `fm/<task-id>`
 # and is the immutable task branch rendered in every delivery contract.
@@ -183,9 +187,11 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # direct-PR reach CI, so none promises CI only there, and a landing crew's none
 # names its candidate's CI run as the proof. The no-mistakes Test-step skip
 # answer is limited to none and focused because safe-suite and full ask for the
-# suite to run, while the timeout-means-needs-decision rule holds at every
-# scope. The Firstmate figures are bin/fm-test-run.sh --estimate-ms over the
-# selections the section names.
+# suite to run. For focused scope, the optional project directory selects Test
+# approval instead of skip when fm_role_self_repo recognizes Firstmate lineage;
+# the Test attestation is required there. The timeout-means-needs-decision rule
+# holds at every scope. The Firstmate figures are bin/fm-test-run.sh --estimate-ms
+# over the selections the section names.
 fm_test_scope_valid() {  # <scope>
   case "$1" in
     none|focused|safe-suite|full) return 0 ;;
@@ -194,10 +200,17 @@ fm_test_scope_valid() {  # <scope>
   return 1
 }
 
-fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-PR|local-only|scout|landing>
-  local scope=$1 flow=$2 lib_dir estimate_ms no_figure
-  local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
+fm_test_scope_section() {  # <scope> <flow> [project-dir]
+  local scope=$1 flow=$2 project=${3:-} lib_dir estimate_ms no_figure
+  local test_step_instruction='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  if [ "$scope" = focused ] && [ "$flow" = no-mistakes ] && [ -n "$project" ]; then
+    # shellcheck source=bin/fm-role-lib.sh
+    . "$lib_dir/fm-role-lib.sh"
+    if fm_role_self_repo "$project" "$lib_dir/.."; then
+      test_step_instruction='When the no-mistakes Test step asks for approval, approve it and run the focused selection named by this test scope; never skip it.'
+    fi
+  fi
   no_figure='any other repo has no measured figure, so record your own estimate in your first status line before running anything.'
   printf '## Test scope\nScope: %s.\n' "$scope"
   case "$scope" in
@@ -211,7 +224,7 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
           printf '%s\n' 'Permits: no local test runs, and no CI will run tests for this task.' ;;
       esac
       if [ "$flow" = no-mistakes ]; then
-        printf '%s\n' "$test_step_skip"
+        printf '%s\n' "$test_step_instruction"
       fi
       printf '%s\n' 'Expected duration: 0 minutes.'
       ;;
@@ -220,7 +233,7 @@ fm_test_scope_section() {  # <none|focused|safe-suite|full> <no-mistakes|direct-
         'Permits: only the tests covering the behavior you touch; never the full local suite.' \
         'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
       if [ "$flow" = no-mistakes ]; then
-        printf '%s\n' "$test_step_skip"
+        printf '%s\n' "$test_step_instruction"
       fi
       ;;
     safe-suite)
