@@ -1,0 +1,10 @@
+Second complete serial whole-file run, HEAD 6648536d69ae94af54a2cc29ff25d35186a1bb77 (unchanged, worktree clean)
+Scope: systemd-run --user --scope --unit=fm-shost-run2-1793231711 -p RuntimeMaxSec=2700 (no memory/task/CPU caps, per steering 005)
+Command: bash bin/fm-test-run.sh --jobs 1 --per-script-timeout-secs 1800 --fail-on-gate-skip 'Pi extension typecheck prerequisite not found' tests/fm-supervision-host.test.sh
+Result: exit=0 wall=1587.532061627s; runner duration_ms=1587149 (file), 1587311 (summary); skipped_gate=0; FM_TEST_LISTENERS found=0
+Pass lines: 73 ok, 0 not ok; ok-line list identical to first green run (run-head-6648536d, 1657.673447320s constrained)
+Resurface (park_after_stop, test_undelivered_dialog_is_fed_again_on_the_next_turn): output.log:72 ok
+Budget handoff first drain: output.log:57 ok, failed restoration: output.log:58 ok
+Retirement: sampler.log 5s samples (tasks, watcher/host procs per ok count) through scope_gone; no fm-watch/fm-supervision-host process of this worktree remains after run
+Static: base 23d381e9 vs head pass/expect_code/assert_* (440 lines) and 72-case order: pass-assert-statements.diff and case-order.diff empty; extractions byte-identical to first run's
+Host load during run: ~25 at start falling to ~15; 12 CPUs

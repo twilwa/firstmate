@@ -1,0 +1,5 @@
+245c245,246
+< fail "the watcher's downtime resurface did not reach main: $(cat "
+---
+> fail "the watcher did not deliver this park's downtime resurface: $(resurface_diagnostics "
+> fail "the delivered downtime resurface did not reach main: $(resurface_diagnostics "

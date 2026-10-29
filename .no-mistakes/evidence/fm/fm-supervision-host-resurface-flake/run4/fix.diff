@@ -1,0 +1,13 @@
+diff --git a/tests/fm-supervision-host.test.sh b/tests/fm-supervision-host.test.sh
+index c867249d..8603fcf2 100755
+--- a/tests/fm-supervision-host.test.sh
++++ b/tests/fm-supervision-host.test.sh
+@@ -1872,7 +1872,7 @@ test_primary_without_a_verified_mirror_runs_away_only() {
+   assert_re '^POSTURE: AWAY\.' "$home/engine-call.1" "the away wake must carry the away tail"
+   [ ! -s "$home/host.rc" ] || fail "a handled away wake on grok reached main: $(cat "$home/host.out")"
+   kill -TERM "$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")"
+-  wait_until 200 host_exited "$home" || fail "away grok: the host did not stop on TERM"
++  wait_for_host_event 60 host_exited "$home" || fail "away grok: the host did not stop on TERM"
+   pass "host: a primary with no verified dialog mirror keeps every attended close on main, and its away posture still runs"
+ }
+ 

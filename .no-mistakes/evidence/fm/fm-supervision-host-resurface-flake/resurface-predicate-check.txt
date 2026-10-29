@@ -1,0 +1,8 @@
+no delivery log yet                                        previous=0 -> rejected
+only a previous park's resurface row                       previous=1 -> rejected
+new row is an unrelated wake                               previous=1 -> rejected
+new row only prefix-matches the resurface reason           previous=1 -> rejected
+new row is this park's resurface                           previous=1 -> accepted
+--- wait_for_host_event bound (elapsed time, not poll count)
+never-true predicate: rc=1 after 3s (bound 3s)
+event at ~2s: rc=0 after 2s (returns on event, not at 10s bound)

@@ -1,0 +1,11 @@
+Test step (round 5) consolidated proof for HEAD 6648536d69ae94af54a2cc29ff25d35186a1bb77 vs base 23d381e9bb06df83c2f2b531338d73c6a087154c
+
+Current-head whole-file serial runs (bin/fm-test-run.sh --jobs 1 --per-script-timeout-secs 1800 ... tests/fm-supervision-host.test.sh):
+  1. constrained scope (TasksMax=512 MemoryMax=2G MemorySwapMax=0 RuntimeMaxSec=2700): exit 0, wall 1657.673447320s  -> run-head-6648536d/
+  2. unconstrained scope (RuntimeMaxSec=2700 only, per steering 005): exit 0, wall 1587.532061627s -> run-head-6648536d-run2/
+Both: 73 ok / 0 not ok, identical ok-line list, skipped_gate=0, FM_TEST_LISTENERS found=0, under unchanged 1800s per-file deadline.
+Resurface (park_after_stop in test_undelivered_dialog_is_fed_again_on_the_next_turn): "host: dialog a turn never completed with its report ... reaches the next turn" ok in both.
+Budget handoff first drain: "host+hook: an earlier supervisor drain cannot suppress a queued main-only budget handoff" ok in both.
+Retirement: sampler.log in each dir samples scope tasks and watcher/host process count per completed case through scope_gone.
+Assertion/case-order equality vs base: pass-assert-statements.diff and case-order.diff are empty (0 bytes) in both dirs.
+Older submitted-candidate timings (fa861343, not this head): 1345.9s strict unconstrained; 1345.8s, 1447.2s, 1530.8s constrained.

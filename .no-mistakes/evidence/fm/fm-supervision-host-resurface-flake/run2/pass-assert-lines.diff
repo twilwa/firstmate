@@ -1,0 +1,247 @@
+225c225
+<   wait_until 250 host_exited "$home" || fail "captain: the captain outcome did not wake main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "captain: the captain outcome did not wake main: $(cat "$home/state/.supervision-host.log")"
+242c242
+<   wait_until 250 handled_at_least "$home" 1 || fail "go-away: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "go-away: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+251c251
+<   wait_until 250 host_exited "$home" || fail "quiet: the captain outcome did not wake the present captain's main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "quiet: the captain outcome did not wake the present captain's main: $(cat "$home/state/.supervision-host.log")"
+261c261
+<   wait_until 250 host_exited "$home" || fail "quiet main-only: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "quiet main-only: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+267c267
+<   wait_until 250 host_exited "$home" || fail "main-only: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "main-only: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+276c276
+<   wait_until 250 host_exited "$home" || fail "off while parked: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "off while parked: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+284c284
+<   wait_until 250 host_exited "$home" || fail "successor: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "successor: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+295c295
+<   wait_until 250 host_exited "$home" || fail "unidentified: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "unidentified: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+304c304
+<   wait_until 250 host_exited "$home" || fail "turns-main-only: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "turns-main-only: the close did not reach main: $(cat "$home/state/.supervision-host.log")"
+321c321
+<   wait_until 250 test -e "$home/offer-ready" || fail "live handback: first offer did not reach its boundary"
+---
+>   wait_for_host_event 60 test -e "$home/offer-ready" || fail "live handback: first offer did not reach its boundary"
+325c325
+<   wait_until 250 hook_exited "$home" || fail "live handback: hook did not close: $(cat "$home/state/.supervision-host.log" "$home/hook.err" "$home/offer-count" 2>/dev/null)"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "live handback: hook did not close: $(cat "$home/state/.supervision-host.log" "$home/hook.err" "$home/offer-count" 2>/dev/null)"
+341c341
+<   wait_until 250 hook_exited "$home" || fail "hook main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "hook main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+348,351c348,351
+<     wait_until 250 test -s "$home/stub-ready" || fail "budget handoff: the engine never reached its pre-drain boundary"
+<     wait_until 250 test -s "$home/engine-drain.1" || fail "budget handoff: the engine never drained its first wake"
+<   wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "budget handoff: the successor did not close on the real budget wake"
+<   wait_until 250 hook_exited "$home" || fail "budget handoff: the hook never returned"
+---
+>     wait_for_host_event 60 test -s "$home/stub-ready" || fail "budget handoff: the engine never reached its pre-drain boundary"
+>     wait_for_host_event 60 test -s "$home/engine-drain.1" || fail "budget handoff: the engine never drained its first wake"
+>   wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "budget handoff: the successor did not close on the real budget wake"
+>   wait_for_host_event 60 hook_exited "$home" || fail "budget handoff: the hook never returned"
+367c367
+<   wait_until 250 test -e "$home/before-drain.ready" || fail "inherited handling: the first turn never started"
+---
+>   wait_for_host_event 60 test -e "$home/before-drain.ready" || fail "inherited handling: the first turn never started"
+369c369
+<   wait_until 250 test -e "$home/before-return.ready" || fail "inherited handling: the engine did not finish handling"
+---
+>   wait_for_host_event 60 test -e "$home/before-return.ready" || fail "inherited handling: the engine did not finish handling"
+371c371
+<   wait_until 250 hook_exited "$home" || fail "inherited handling: the Stop hook did not finish"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "inherited handling: the Stop hook did not finish"
+389c389
+<   wait_until 250 handled_at_least "$home" 1 || fail "returned driver: the paused signal was not handled"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "returned driver: the paused signal was not handled"
+416c416
+<   wait_until 250 test -s "$home/stub-ready" || fail "restore failure: the engine did not reach its hold"
+---
+>   wait_for_host_event 60 test -s "$home/stub-ready" || fail "restore failure: the engine did not reach its hold"
+421c421
+<   wait_until 250 hook_exited "$home" || fail "restore failure: the Stop hook did not finish"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "restore failure: the Stop hook did not finish"
+442c442
+<   wait_until 250 hook_exited "$home" || fail "hook quiet: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "hook quiet: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+458c458
+<   wait_until 250 hook_exited "$home" || fail "off: the Stop hook never closed"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "off: the Stop hook never closed"
+467c467
+<   wait_until 250 hook_exited "$home" || fail "hook turns-main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "hook turns-main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+474c474
+<   wait_until 250 hook_exited "$home" || fail "at-turn teardown: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "at-turn teardown: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+480c480
+<   wait_until 250 hook_exited "$home" || fail "hook write failure: the Stop hook did not finish"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "hook write failure: the Stop hook did not finish"
+489c489
+<   wait_until 250 hook_exited "$home" || fail "successor close: the first close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "successor close: the first close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+491c491
+<   wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "fixture: the successor did not close on the later decision"
+---
+>   wait_for_host_event 60 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "fixture: the successor did not close on the later decision"
+495c495
+<   wait_until 250 hook_exited "$home" || fail "successor close: the next turn end never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "successor close: the next turn end never closed: $(cat "$home/state/.supervision-host.log")"
+501c501
+<   wait_until 250 hook_exited "$home" || fail "group teardown: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "group teardown: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+508c508
+<   wait_until 250 hook_exited "$home" || fail "takeover: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "takeover: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+522c522
+<   wait_until 250 hook_exited "$home" || fail "takeover: the owned cycle did not deliver the next close: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "takeover: the owned cycle did not deliver the next close: $(cat "$home/state/.supervision-host.log")"
+535c535
+<   wait_until 250 hook_exited "$home" || fail "unrecorded successor: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "unrecorded successor: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+546c546
+<   wait_until 250 host_exited "$home" || fail "away-then-attended: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "away-then-attended: the decision close did not reach main: $(cat "$home/state/.supervision-host.log")"
+571c571
+<   wait_until 250 handled_at_least "$home" 1 || fail "mirror: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "mirror: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+576c576
+<   wait_until 250 handled_at_least "$home" 2 || fail "mirror: the second wake was not handled"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 2 || fail "mirror: the second wake was not handled"
+581c581
+<   wait_until 250 handled_at_least "$home" 1 || fail "private: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "private: the wake was not handled: $(cat "$home/state/.supervision-host.log")"
+589c589,590
+<   wait_until 150 host_exited "$1" || fail "the watcher's downtime resurface did not reach main: $(cat "$1/host.out")"
+---
+>     || fail "the watcher did not deliver this park's downtime resurface: $(resurface_diagnostics "$1")"
+>     || fail "the delivered downtime resurface did not reach main: $(resurface_diagnostics "$1")"
+591c592
+<   wait_until 250 handled_at_least "$home" 1 || fail "mirror boundary: the first wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "mirror boundary: the first wake was not handled: $(cat "$home/state/.supervision-host.log")"
+597c598
+<   wait_until 250 handled_at_least "$home" 2 || fail "mirror boundary: the next wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 2 || fail "mirror boundary: the next wake was not handled: $(cat "$home/state/.supervision-host.log")"
+602c603
+<   wait_until 250 test -e "$home/engine-call.3" || fail "mirror boundary: the stopped turn never started"
+---
+>   wait_for_host_event 60 test -e "$home/engine-call.3" || fail "mirror boundary: the stopped turn never started"
+605c606
+<   wait_until 250 handled_at_least "$home" 3 || fail "mirror boundary: the wake after the stop was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 3 || fail "mirror boundary: the wake after the stop was not handled: $(cat "$home/state/.supervision-host.log")"
+610c611
+<   wait_until 250 host_exited "$home" || fail "mirror boundary: the unreported turn did not hand its wake back"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "mirror boundary: the unreported turn did not hand its wake back"
+612c613
+<   wait_until 250 handled_at_least "$home" 4 || fail "mirror boundary: the wake after the unreported turn was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 4 || fail "mirror boundary: the wake after the unreported turn was not handled: $(cat "$home/state/.supervision-host.log")"
+615c616
+<   wait_until 250 handled_at_least "$home" 1 || fail "bad mirror: the first wake was not handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "bad mirror: the first wake was not handled: $(cat "$home/state/.supervision-host.log")"
+617c618
+<   wait_until 250 host_exited "$home" || fail "bad mirror: a missing mirror did not hand the wake to main"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "bad mirror: a missing mirror did not hand the wake to main"
+624c625
+<   wait_until 250 host_exited "$home" || fail "bad mirror: an unreadable mirror did not hand the wake to main"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "bad mirror: an unreadable mirror did not hand the wake to main"
+630c631
+<   wait_until 250 host_exited "$home" || fail "bad mirror: a feed lost before the prompt did not hand the wake to main"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "bad mirror: a feed lost before the prompt did not hand the wake to main"
+634c635
+<   wait_until 250 host_exited "$home" || fail "bad mirror: a malformed mirror entry did not hand the wake to main"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "bad mirror: a malformed mirror entry did not hand the wake to main"
+641c642
+<   wait_until 250 handled_at_least "$home" 1 || fail "away: the wake was not handled: $(cat "$home/host.out"; cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 1 || fail "away: the wake was not handled: $(cat "$home/host.out"; cat "$home/state/.supervision-host.log")"
+661c662
+<   wait_until 250 handled_at_least "$home" 2 || fail "away: the second wake was not handled"
+---
+>   wait_for_host_event 60 handled_at_least "$home" 2 || fail "away: the second wake was not handled"
+672c673
+<   wait_until 250 host_exited "$home" || fail "noreport: the host did not hand the wake to main"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "noreport: the host did not hand the wake to main"
+682c683
+<   wait_until 250 host_exited "$home" || fail "return: the host did not hand the late outcome to main: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "return: the host did not hand the late outcome to main: $(cat "$home/state/.supervision-host.log")"
+693c694
+<       wait_until 250 handled_at_least "$home" 1 || fail "$mode: the wake was not handled: host=$(cat "$home/host.out" 2>/dev/null) log=$(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null) report=$(cat "$home/engine-report.log" 2>/dev/null)"
+---
+>       wait_for_host_event 60 handled_at_least "$home" 1 || fail "$mode: the wake was not handled: host=$(cat "$home/host.out" 2>/dev/null) log=$(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null) report=$(cat "$home/engine-report.log" 2>/dev/null)"
+697c698
+<       wait_until 250 host_exited "$home" || fail "$mode: the failed turn did not hand the wake to main: $(cat "$home/host.out" 2>/dev/null) $(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null)"
+---
+>       wait_for_host_event 60 host_exited "$home" || fail "$mode: the failed turn did not hand the wake to main: $(cat "$home/host.out" 2>/dev/null) $(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null)"
+723c724
+<   wait_until 250 host_exited "$home" || fail "return-first: the next host did not resurface the queued outcome"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "return-first: the next host did not resurface the queued outcome"
+729c730
+<   wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
+---
+>   wait_for_host_event 60 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
+733c734
+<   wait_until 250 host_exited "$home" || fail "killed: the next host did not resurface the queued outcome"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "killed: the next host did not resurface the queued outcome"
+739c740
+<   wait_until 250 host_exited "$home" || fail "noack: the host counted an unacknowledged wake handled: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 host_exited "$home" || fail "noack: the host counted an unacknowledged wake handled: $(cat "$home/state/.supervision-host.log")"
+755c756
+<   wait_until 250 hook_exited "$home" || fail "$mode: no hand-back"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "$mode: no hand-back"
+778c779
+<   wait_until 250 hook_exited "$home" || fail "ack turns-main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "ack turns-main-only: the Stop hook never closed: $(cat "$home/state/.supervision-host.log")"
+786c787
+<   wait_until 250 hook_exited "$home" || fail "doorbell: no hand-back"
+---
+>   wait_for_host_event 60 hook_exited "$home" || fail "doorbell: no hand-back"

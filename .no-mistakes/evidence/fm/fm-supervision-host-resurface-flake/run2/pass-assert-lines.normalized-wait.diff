@@ -1,0 +1,5 @@
+589c589,590
+<   WAIT host_exited "$1" || fail "the watcher's downtime resurface did not reach main: $(cat "$1/host.out")"
+---
+>     || fail "the watcher did not deliver this park's downtime resurface: $(resurface_diagnostics "$1")"
+>     || fail "the delivered downtime resurface did not reach main: $(resurface_diagnostics "$1")"

@@ -1,0 +1,13 @@
+Scope command line contains environment variable, which is not expanded by default for now, but will be expanded by default in the future. Use --expand-environment=yes/no to explicitly control it as needed.
+Running as unit: fm-nm-test-suphost-707893.scope; invocation ID: c8a6e8590df24c37879127a9611592d3
+FM_TEST_BEGIN 2026-10-28T21:14:18Z tests/fm-supervision-host.test.sh family=afk expected_gate_skip=none
+ok - supervision engine lookup ignores a shadowing shell function
+#!/usr/bin/env bash
+# The absolute target and guard prevent this shim from re-entering itself.
+ok - host+hook: a live successor does not replace delivery of an uncommitted main wake (writable notice)
+#!/usr/bin/env bash
+# The absolute target and guard prevent this shim from re-entering itself.
+ok - host+hook: a live successor does not replace delivery of an uncommitted main wake (unwritable notice)
+ok - host+hook: a main-only close after a handled turn restores inherited handling and rewakes main
+ok - host+hook: a refused inherited handling restore delivers a failure instead of silent success
+STOPPED_BY_TEST_AGENT before completion (structured output required)
