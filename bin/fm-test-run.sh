@@ -152,6 +152,9 @@
 # and pool_unhinted (the number of members missing a pool hint).
 # The modeled figure is an estimate, not a measured job wall time.
 # Missing pool hints are reported without failing this guard.
+# It also reports pool_wall_ms (that makespan plus a fixed setup allowance),
+# pool_budget_ms (80% of the pool job timeout), and pool_timeout_min (the pool
+# job's CI timeout), refusing a pool whose modeled wall exceeds that budget.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -233,6 +236,19 @@ PORTABLE_SERIAL_SHARDS=13
 # isolation proof recorded in docs/fm-test-isolation-proof.md. Raise it only
 # with a fresh proof at the new count.
 PORTABLE_POOL_WORKERS=4
+
+# CI job timeout of the portable-pool lane: the dedicated portable tier in
+# docs/fm-test-portable-shards.md "Timeouts". .github/workflows/ci.yml carries
+# the same value, and tests/fm-ci-workflow.test.sh holds the two together.
+PORTABLE_POOL_TIMEOUT_MINUTES=50
+
+# Fixed allowance for the pool job's checkout, tool installs, and coverage
+# guard ahead of the suite, added to the modeled makespan.
+PORTABLE_POOL_SETUP_ALLOWANCE_MS=300000
+
+# Share of the pool job timeout the modeled wall may use. --check-coverage
+# refuses above it; refresh pool hints or move work out instead.
+PORTABLE_POOL_MAX_TIMEOUT_PERCENT=80
 
 # Conservative balance hint for a portable-serial script with no measurement.
 # Rounded above the current CI mean, including the capability-skipped scripts.
@@ -1157,7 +1173,7 @@ select_lane() {
 
 run_coverage_guard() {
   local tmp missing extra a b shard unhinted serial_total serial_ms serial_max_ms=0
-  local pool_hint_ms pool_unhinted pool_modeled_ms
+  local pool_hint_ms pool_unhinted pool_modeled_ms pool_wall_ms pool_budget_ms
   local -a saved_scripts=()
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
@@ -1297,14 +1313,25 @@ run_coverage_guard() {
   # header for the distinction between packed weights and measured job time.
   read -r pool_hint_ms pool_unhinted <<<"$(portable_pool_lane_weight <"$tmp/pool")"
   pool_modeled_ms=$(portable_pool_modeled_ms <"$tmp/pool")
+  pool_wall_ms=$((pool_modeled_ms + PORTABLE_POOL_SETUP_ALLOWANCE_MS))
+  pool_budget_ms=$((PORTABLE_POOL_TIMEOUT_MINUTES * 60000 * PORTABLE_POOL_MAX_TIMEOUT_PERCENT / 100))
+  if [ "$pool_wall_ms" -gt "$pool_budget_ms" ]; then
+    log "coverage guard: portable pool models ${pool_wall_ms}ms (${pool_modeled_ms}ms ${PORTABLE_POOL_WORKERS}-worker makespan + ${PORTABLE_POOL_SETUP_ALLOWANCE_MS}ms setup) above ${pool_budget_ms}ms (${PORTABLE_POOL_MAX_TIMEOUT_PERCENT}% of the ${PORTABLE_POOL_TIMEOUT_MINUTES}-minute pool job timeout)"
+    log "refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md"
+    rm -rf "$tmp"
+    return 1
+  fi
 
-  printf 'FM_TEST_COVERAGE ok total=%s pool=%s pool_hint_ms=%s pool_modeled_ms=%s pool_workers=%s pool_unhinted=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s pool=%s pool_hint_ms=%s pool_modeled_ms=%s pool_workers=%s pool_unhinted=%s pool_wall_ms=%s pool_budget_ms=%s pool_timeout_min=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
     "$(wc -l <"$tmp/pool" | tr -d ' ')" \
     "$pool_hint_ms" \
     "$pool_modeled_ms" \
     "$PORTABLE_POOL_WORKERS" \
     "$pool_unhinted" \
+    "$pool_wall_ms" \
+    "$pool_budget_ms" \
+    "$PORTABLE_POOL_TIMEOUT_MINUTES" \
     "$(wc -l <"$tmp/serial" | tr -d ' ')" \
     "$PORTABLE_SERIAL_SHARDS" \
     "$unhinted" \

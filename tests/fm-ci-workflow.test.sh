@@ -203,6 +203,7 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 FAST_TIER_JOBS='tests-timing-aggregate'
 NORMAL_TIER_JOBS='lint macos-stock-bash'
 PORTABLE_TIER_JOBS='tests-portable-pool tests-portable-serial'
+
 HEAVY_TIER_JOBS='tests-herdr'
 
 # Seconds a portable job may spend before its runner step starts: checkout,
@@ -321,11 +322,12 @@ test_normal_tier_shares_one_budget() {
 }
 
 # Portable test tier: the portable lanes share one 50-minute cap above the
-# normal tier and below the heavy backstop. The cap must exceed the setup
-# allowance plus the lane's packing ceiling (parallel_budget_ms or
-# serial_budget_ms from the coverage guard, never today's packed maximum) plus
-# the per-file bound the workflow applies, so any packing the guard accepts
-# leaves a hung file room to fail by name before the job cap.
+# normal tier and below the heavy backstop. For each serial shard the cap must
+# exceed the setup allowance plus the lane's packing ceiling (serial_budget_ms
+# from the coverage guard, never today's packed maximum) plus the per-file
+# bound the workflow applies, so any packing the guard accepts leaves a hung
+# file room to fail by name before the job cap. The pool lane's ceiling is its
+# own budget guard, and ci.yml's pool timeout must equal the runner's.
 test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   local normal portable heavy coverage
   # shellcheck disable=SC2086
@@ -340,14 +342,16 @@ test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
     || fail "portable test tier ($portable) must sit above normal ($normal) and below heavy ($heavy)"
   coverage=$("$ROOT/bin/fm-test-run.sh" --check-coverage 2>/dev/null | grep '^FM_TEST_COVERAGE ok ') \
     || fail "could not read the packing target from the coverage guard"
+  runner_min=$(printf '%s\n' "$coverage" | sed -n 's/.*pool_timeout_min=\([0-9][0-9]*\).*/\1/p')
+  [ -n "$runner_min" ] || fail "coverage guard must report pool_timeout_min: $coverage"
+  [ "$portable" = "$runner_min" ] \
+    || fail "ci.yml pool timeout ($portable) disagrees with the runner's pool budget timeout ($runner_min)"
   ruby -ryaml -rshellwords - "$CI_WORKFLOW" "$coverage" "$PORTABLE_SETUP_ALLOWANCE_SECS" <<'RUBY' \
     || fail "portable job cap does not cover setup, packing target, and the per-file bound"
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
 setup = Integer(ARGV[2])
 budgets = {
-  "tests-portable-parallel-1" => Integer(fields.fetch("parallel_budget_ms")),
-  "tests-portable-parallel-2" => Integer(fields.fetch("parallel_budget_ms")),
   "tests-portable-serial" => Integer(fields.fetch("serial_budget_ms")),
 }
 budgets.each do |job_id, budget_ms|
@@ -365,6 +369,11 @@ budgets.each do |job_id, budget_ms|
     exit 1
   end
 end
+pool = jobs.fetch("tests-portable-pool")
+step = pool.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane portable-pool") }
+raise "tests-portable-pool: missing runner command" unless step
+words = Shellwords.split(step.fetch("run").gsub("\\\n", ""))
+raise "tests-portable-pool: no per-file bound" unless words.index("--per-script-timeout-secs")
 RUBY
   pass "portable test tier shares one $portable minute cap above setup, packing target, and the per-file bound"
 }

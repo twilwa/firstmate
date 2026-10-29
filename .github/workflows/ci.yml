@@ -126,7 +126,8 @@ jobs:
     name: Behavior portable pool
     runs-on: ubuntu-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
-    # Portable test tier (see the timeout policy above).
+    # Portable test tier (see the timeout policy above): bin/fm-test-run.sh owns
+    # the same value and refuses a modeled pool wall above 80% of it.
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
