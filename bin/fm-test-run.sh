@@ -8,7 +8,7 @@
 #   fm-test-run.sh --all
 #   fm-test-run.sh --family <name>
 #   fm-test-run.sh --changed [--base <git-ref>]
-#   fm-test-run.sh --lane portable-parallel-1|portable-parallel-2|portable-serial
+#   fm-test-run.sh --lane portable-pool|portable-serial
 #   fm-test-run.sh --lane portable-serial-<k>of<n>   (one CI serial shard)
 #   fm-test-run.sh --proven-isolated
 #   fm-test-run.sh tests/<name>.test.sh [more scripts...]
@@ -16,9 +16,9 @@
 # Inspection (no execution):
 #   fm-test-run.sh --list --all
 #   fm-test-run.sh --list --family <name>
-#   fm-test-run.sh --list --lane portable-parallel-1
+#   fm-test-run.sh --list --lane portable-pool
 #   fm-test-run.sh --list-scheduled --family <name>
-#   fm-test-run.sh --list-scheduled --lane portable-parallel-1
+#   fm-test-run.sh --list-scheduled --lane portable-pool
 #   fm-test-run.sh --estimate-ms --all [--exclude-family <name>...] [--exclude-script <path>...]
 #   fm-test-run.sh --list-families
 #   fm-test-run.sh --list-concurrent-safe-families
@@ -40,13 +40,17 @@
 #   --list          print selected script paths (one per line) and exit 0
 #   --list-scheduled
 #                   print selected paths longest-hint-first and exit 0.
-#                   Only --lane portable-parallel-1 or portable-parallel-2 uses
-#                   parallel hints, falling back to serial weights if missing.
+#                   Only --lane portable-pool and --proven-isolated use pool
+#                   hints, falling back to serial weights if missing.
 #                   Every other selection uses serial weights alone.
 #                   Equal weights are ordered by path under LC_ALL=C.
-#   --estimate-ms   print the selection's summed serial duration hints in
-#                   milliseconds and exit 0: each script's parallel hint, else
-#                   its serial hint, else PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
+#   --estimate-ms   print the selection's summed duration hints in
+#                   milliseconds and exit 0, under the same weight rule as
+#                   --list-scheduled: --lane portable-pool and
+#                   --proven-isolated sum each script's pool hint (a
+#                   contended four-worker measurement), else its serial hint;
+#                   every other selection sums serial hints alone. A script
+#                   with neither weighs PORTABLE_SERIAL_DEFAULT_WEIGHT_MS.
 #   --base <ref>    with --changed, compare against this ref (default: origin/main)
 #   --exclude-family <name>
 #                   drop scripts whose primary family matches <name> after selection
@@ -71,7 +75,9 @@
 #                   set (bin/fm-test-isolation-proof.sh --list), or in a family
 #                   carrying a recorded concurrent proof
 #                   (list_concurrent_safe_families below). Overall cap is 8;
-#                   family proofs may impose a lower cap. Individually proven
+#                   family proofs may impose a lower cap, and --lane
+#                   portable-pool is capped at PORTABLE_POOL_WORKERS, its
+#                   proven worker bound. Individually proven
 #                   scripts share one phase; scripts admitted only by a family
 #                   proof run in a separate phase for each family. Concurrent
 #                   phases use serial weights, longest-hint-first. Unproven stateful
@@ -144,15 +150,18 @@
 #
 # Family labels, the changed-file map, and production portable-shard composition
 # live in this script only (one owner). The proven-isolated candidate set remains
-# owned by bin/fm-test-isolation-proof.sh; portable parallel shards are a
-# duration-balanced partition of that exact set, packed from the measured hints
-# in portable_parallel_weight_hints (see docs/fm-test-portable-shards.md).
-# --check-coverage reports parallel_max_ms (the larger lane hint sum),
-# parallel_imbalance_ms (the absolute difference between the sums),
-# parallel_unhinted (the number of members missing a parallel hint), and
-# parallel_budget_ms (the parallel packing ceiling), refusing a lane hint sum
-# above that ceiling and naming each member missing a parallel hint.
-# These sums are estimates, not measured job wall times.
+# owned by bin/fm-test-isolation-proof.sh; the portable-pool CI lane runs that
+# exact set under bounded worker concurrency, scheduled from the measured hints
+# in portable_pool_weight_hints (see docs/fm-test-portable-shards.md).
+# --check-coverage reports pool_hint_ms (the summed pool hint cost),
+# pool_modeled_ms (the four-worker list-scheduling estimate over those hints),
+# and pool_unhinted (the number of members missing a pool hint).
+# The modeled figure is an estimate over contended measurements, not a
+# measured job wall time. Missing pool hints are reported without failing this
+# guard. It also reports pool_budget_ms (the pool packing ceiling) and
+# pool_timeout_min (the pool job's CI timeout), refusing a makespan above that
+# ceiling and a ceiling that leaves the setup allowance and the per-file bound
+# no room inside the timeout.
 #
 # portable-serial stays strictly serial. Its CI shards (portable-serial-<k>of<n>)
 # split it across separate runners, so two of its stateful scripts still never
@@ -215,19 +224,42 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # script is tests/fm-watch-triage.test.sh at about 934s under CI load (the
 # hint table below records that loaded figure). 1500s keeps every measured script
-# under the bound with roughly 1.6x headroom over the slowest loaded measurement.
+# under the bound with roughly 1.6x headroom over the slowest loaded measurement,
+# and the pool's slowest four-worker contended hint (tests/fm-pr-merge.test.sh,
+# about 599s) keeps about 2.5x.
 # The portable CI jobs apply the same bound under a job cap sized to cover setup,
-# the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS or
-# PORTABLE_PARALLEL_MAX_WEIGHT_MS), and this bound (docs/fm-test-portable-shards.md
-# "Timeouts"), so a wedged script fails here, with its output, before the job
-# cap cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
-# bounded failure instead of an unbounded suite, which is the shape that
+# the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS for serial shards,
+# PORTABLE_POOL_MAX_WEIGHT_MS for the pool lane), and this bound
+# (docs/fm-test-portable-shards.md "Timeouts"), so a wedged script fails here,
+# with its output, before the job cap cancels the lane. It is a guard, not a
+# speed control: a HUNG script becomes a bounded failure instead of an
+# unbounded suite, which is the shape that
 # silently outruns a caller's invocation budget.
 CHANGED_DEFAULT_TIMEOUT_SECS=1500
 
 # How many separate-runner shards the portable serial remainder splits into.
 # One owner: CI lane names carry this count and are refused when they disagree.
-PORTABLE_SERIAL_SHARDS=11
+PORTABLE_SERIAL_SHARDS=13
+
+# Worker bound of the portable-pool CI lane, matching the hosted-Linux
+# isolation proof recorded in docs/fm-test-isolation-proof.md. Raise it only
+# with a fresh proof at the new count.
+PORTABLE_POOL_WORKERS=4
+
+# CI job timeout of the portable-pool lane: the dedicated portable tier in
+# docs/fm-test-portable-shards.md "Timeouts". .github/workflows/ci.yml carries
+# the same value, and tests/fm-ci-workflow.test.sh holds the two together.
+PORTABLE_POOL_TIMEOUT_MINUTES=50
+
+# Fixed allowance for the pool job's checkout, tool installs, and coverage
+# guard ahead of the suite: the 60s setup allowance of the portable tier rule.
+PORTABLE_POOL_SETUP_ALLOWANCE_MS=60000
+
+# Packing ceiling for the pool's modeled makespan. --check-coverage refuses a
+# makespan above it, and refuses the ceiling itself unless setup + ceiling +
+# the per-file bound stays below the pool job timeout, so a hung file in any
+# accepted pool fails by name before the job cap cancels the lane.
+PORTABLE_POOL_MAX_WEIGHT_MS=1400000
 
 # Conservative balance hint for a portable-serial script with no measurement.
 # Rounded above the current CI mean, including the capability-skipped scripts.
@@ -237,10 +269,6 @@ PORTABLE_SERIAL_DEFAULT_WEIGHT_MS=45000
 # cap for setup and runtime variance. --check-coverage refuses a
 # modeled serial shard above this target; refresh hints or rebalance instead.
 PORTABLE_SERIAL_MAX_WEIGHT_MS=1200000
-
-# Packing ceiling for each portable parallel lane's hint sum, on the same terms
-# as the serial target above. --check-coverage refuses a lane above it.
-PORTABLE_PARALLEL_MAX_WEIGHT_MS=1300000
 
 # Largest share of the serial lane allowed to run on the default weight above.
 # Hints are what keep the shards balanced, so once too much of the lane is
@@ -526,8 +554,7 @@ EOF
 
 list_known_lanes() {
   local i
-  printf '%s\n' portable-parallel-1
-  printf '%s\n' portable-parallel-2
+  printf '%s\n' portable-pool
   printf '%s\n' portable-serial
   i=1
   while [ "$i" -le "$PORTABLE_SERIAL_SHARDS" ]; do
@@ -538,15 +565,15 @@ list_known_lanes() {
 }
 
 # Exact proven-isolated candidate set (same paths as
-# bin/fm-test-isolation-proof.sh --list). Do not expand without a new concurrent
-# isolation proof archive.
+# bin/fm-test-isolation-proof.sh --list): also the complete membership of the
+# portable-pool CI lane. Do not expand without a new concurrent isolation
+# proof archive.
 list_proven_isolated() {
   cat <<'EOF'
 tests/fm-arm-pretool-check.test.sh
 tests/fm-backend-herdr.test.sh
 tests/fm-backend-t3code.test.sh
 tests/fm-brief.test.sh
-tests/fm-captain-hold-lifecycle.test.sh
 tests/fm-cd-pretool-check.test.sh
 tests/fm-composer-ghost.test.sh
 tests/fm-composer-lib.test.sh
@@ -571,98 +598,93 @@ tests/fm-x-mode.test.sh
 EOF
 }
 
-# Per-script serial CI duration hints, one "<path> <ms>" per line, used to
-# pack only the two portable parallel lanes. Measurement provenance and the
+# Per-script CI duration hints, one "<path> <ms>" per line, scheduling the
+# portable pool's workers longest-first. Each value is a duration measured
+# under four-worker contention, so the coverage guard's makespan models the
+# pool job's wall rather than a serial floor. Measurement provenance and the
 # refresh procedure are owned by docs/fm-test-portable-shards.md.
-portable_parallel_weight_hints() {
+portable_pool_weight_hints() {
   cat <<'EOF'
-tests/fm-arm-pretool-check.test.sh 33873
-tests/fm-backend-herdr.test.sh 47733
-tests/fm-backend-t3code.test.sh 222086
-tests/fm-brief.test.sh 18352
-tests/fm-captain-hold-lifecycle.test.sh 671795
-tests/fm-cd-pretool-check.test.sh 16268
-tests/fm-composer-ghost.test.sh 2491
-tests/fm-composer-lib.test.sh 31206
-tests/fm-crew-state.test.sh 100309
-tests/fm-ensure-agents-md.test.sh 1149
-tests/fm-grok-harness.test.sh 8272
-tests/fm-herdr-lab.test.sh 17909
-tests/fm-lint.test.sh 366717
-tests/fm-pi-primary-types.test.sh 27506
-tests/fm-pr-merge.test.sh 461524
-tests/fm-review-diff.test.sh 6314
-tests/fm-send-popup-settle.test.sh 8318
-tests/fm-send-settle.test.sh 3150
-tests/fm-send-strict.test.sh 11631
-tests/fm-spawn-batch.test.sh 4694
-tests/fm-supervision-instructions.test.sh 1169
-tests/fm-t3-mcp.test.sh 31771
-tests/fm-test-run.test.sh 340925
-tests/fm-tmux-submit-busy.test.sh 2798
-tests/fm-transition-lib.test.sh 271
-tests/fm-x-mode.test.sh 50779
+tests/fm-arm-pretool-check.test.sh 36611
+tests/fm-backend-herdr.test.sh 48223
+tests/fm-backend-t3code.test.sh 321172
+tests/fm-brief.test.sh 21049
+tests/fm-cd-pretool-check.test.sh 17188
+tests/fm-composer-ghost.test.sh 2669
+tests/fm-composer-lib.test.sh 36296
+tests/fm-crew-state.test.sh 144732
+tests/fm-ensure-agents-md.test.sh 876
+tests/fm-grok-harness.test.sh 8760
+tests/fm-herdr-lab.test.sh 21816
+tests/fm-lint.test.sh 419965
+tests/fm-pi-primary-types.test.sh 31250
+tests/fm-pr-merge.test.sh 599407
+tests/fm-review-diff.test.sh 5999
+tests/fm-send-popup-settle.test.sh 7143
+tests/fm-send-settle.test.sh 2586
+tests/fm-send-strict.test.sh 10583
+tests/fm-spawn-batch.test.sh 4051
+tests/fm-supervision-instructions.test.sh 1041
+tests/fm-t3-mcp.test.sh 38342
+tests/fm-test-run.test.sh 537700
+tests/fm-tmux-submit-busy.test.sh 3104
+tests/fm-transition-lib.test.sh 274
+tests/fm-x-mode.test.sh 53255
 EOF
 }
 
 # Sum the hints above for the scripts read on stdin, and report how many of
 # them had no hint at all, as "<summed_ms> <unhinted_count>".
-portable_parallel_lane_weight() {
+portable_pool_lane_weight() {
   awk '
     NR == FNR { if (NF) { hint[$1] = $2 } ; next }
     NF {
       if ($1 in hint) { total += hint[$1] } else { unhinted++ }
     }
     END { printf "%d %d\n", total + 0, unhinted + 0 }
-  ' <(portable_parallel_weight_hints) -
+  ' <(portable_pool_weight_hints) -
 }
 
-# Portable parallel shard 1: duration balance of the proven-isolated set over
-# the hints above and the measured runs they come from. Stored order agrees
-# with this lane's --list-scheduled output.
-# tests/fm-pi-primary-types.test.sh runs the production-consumer typecheck here;
-# its own header owns temporary dependency provisioning.
-list_portable_parallel_1() {
-  cat <<'EOF'
-tests/fm-pr-merge.test.sh
-tests/fm-lint.test.sh
-tests/fm-backend-t3code.test.sh
-tests/fm-crew-state.test.sh
-tests/fm-arm-pretool-check.test.sh
-tests/fm-pi-primary-types.test.sh
-tests/fm-cd-pretool-check.test.sh
-tests/fm-supervision-instructions.test.sh
-tests/fm-transition-lib.test.sh
-EOF
-}
-
-# Portable parallel shard 2: the complementary half of the proven set.
-list_portable_parallel_2() {
-  cat <<'EOF'
-tests/fm-captain-hold-lifecycle.test.sh
-tests/fm-test-run.test.sh
-tests/fm-x-mode.test.sh
-tests/fm-backend-herdr.test.sh
-tests/fm-t3-mcp.test.sh
-tests/fm-composer-lib.test.sh
-tests/fm-brief.test.sh
-tests/fm-herdr-lab.test.sh
-tests/fm-send-strict.test.sh
-tests/fm-send-popup-settle.test.sh
-tests/fm-grok-harness.test.sh
-tests/fm-review-diff.test.sh
-tests/fm-spawn-batch.test.sh
-tests/fm-send-settle.test.sh
-tests/fm-tmux-submit-busy.test.sh
-tests/fm-composer-ghost.test.sh
-tests/fm-ensure-agents-md.test.sh
-EOF
+# Modeled makespan of the pool scripts read on stdin under the production
+# worker bound: the list-scheduling estimate assigns each script, heaviest
+# hint first, to the currently lightest of PORTABLE_POOL_WORKERS bins, exactly
+# as the concurrent scheduler hands work to the first free worker. Pool hints
+# win, then serial hints, then the unmeasured default. This is a packing model
+# over hints, not a measured job wall time.
+portable_pool_modeled_ms() {
+  local tab
+  tab=$(printf '\t')
+  awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
+    FILENAME == ARGV[1] { if (NF) { pool[$1] = $2 }; next }
+    FILENAME == ARGV[2] { if (NF) { serial[$1] = $2 }; next }
+    NF {
+      w = ($1 in pool) ? pool[$1] : (($1 in serial) ? serial[$1] : fallback)
+      printf "%s\t%s\n", w, $1
+    }
+  ' <(portable_pool_weight_hints) <(portable_serial_weight_hints) - \
+    | LC_ALL=C sort -t"$tab" -k1,1nr -k2,2 \
+    | awk -v workers="$PORTABLE_POOL_WORKERS" '
+      {
+        best = 1
+        for (c = 2; c <= workers; c++) {
+          if (load[c] < load[best]) best = c
+        }
+        load[best] += $1
+      }
+      END {
+        max = 0
+        for (c = 1; c <= workers; c++) {
+          if (load[c] > max) max = load[c]
+        }
+        printf "%d\n", max
+      }
+    '
 }
 
 # Families whose scripts are proven safe to run concurrently WITH EACH OTHER
 # under the bounded local scheduler. Deliberately separate from the
-# proven-isolated set, which must stay exactly equal to the portable CI shard
-# union (see the coverage guard); these families keep their serial CI lane and
+# proven-isolated set, which must stay exactly equal to the portable-pool CI
+# lane (see the coverage guard); these families keep their serial CI lane and
 # only gain concurrency for a local run.
 #
 # Membership is empirical, never assumed:
@@ -737,10 +759,12 @@ list_portable_serial() {
   done < <(all_repo_tests)
 }
 
-# Measured portable-serial script durations in milliseconds, from the CI timing
+# Measured serial script durations in milliseconds, from the CI timing
 # artifacts recorded in docs/fm-test-portable-shards.md. Each value is the
 # script's slowest successful duration across the referenced CI runs, with the
-# version-specific and native-Windows exceptions documented there.
+# version-specific and native-Windows exceptions documented there. Pool members
+# keep their serial samples here too, for --estimate-ms and the scheduling of
+# selections other than the pool.
 # These are balance hints only: the shard
 # partition stays complete and disjoint whatever they say, so a stale hint costs
 # balance rather than coverage. That doc owns the refresh procedure.
@@ -753,9 +777,11 @@ tests/fm-afk-return.test.sh 44081
 tests/fm-agy-harness.test.sh 55059
 tests/fm-agy-signals-live-e2e.test.sh 119
 tests/fm-approval-failover.test.sh 11013
+tests/fm-arm-pretool-check.test.sh 33873
 tests/fm-ask-user-authority.test.sh 354
 tests/fm-backend-cmux-smoke.test.sh 36
 tests/fm-backend-cmux.test.sh 4130
+tests/fm-backend-herdr.test.sh 47733
 tests/fm-backend-orca.test.sh 31883
 tests/fm-backend-paseo-smoke.test.sh 37
 tests/fm-backend-paseo.test.sh 7569
@@ -765,6 +791,7 @@ tests/fm-backend-rex-smoke.test.sh 45
 tests/fm-backend-rex.test.sh 19529
 tests/fm-backend-t3code-live-e2e.test.sh 86
 tests/fm-backend-t3code-pr-tools-live-e2e.test.sh 115
+tests/fm-backend-t3code.test.sh 222086
 tests/fm-backend-tern-smoke.test.sh 23
 tests/fm-backend-tern.test.sh 20040
 tests/fm-backend-tmux-smoke.test.sh 841
@@ -782,6 +809,7 @@ tests/fm-bootstrap-network-parallel.test.sh 77251
 tests/fm-bootstrap.test.sh 98116
 tests/fm-branch-supervision.test.sh 28726
 tests/fm-brief-test-scope.test.sh 11488
+tests/fm-brief.test.sh 18352
 tests/fm-busy-adapter-wiring.test.sh 84410
 tests/fm-busy-state.test.sh 3664
 tests/fm-calm-claude-mod-live-e2e.test.sh 86
@@ -790,6 +818,8 @@ tests/fm-calm-claude-mod.test.sh 2992
 tests/fm-calm-pi-extension.test.sh 62626
 tests/fm-calm-pi-queue-retention-live-e2e.test.sh 1423
 tests/fm-capacity.test.sh 7095
+tests/fm-captain-hold-lifecycle.test.sh 671795
+tests/fm-cd-pretool-check.test.sh 16268
 tests/fm-check-unregister.test.sh 646
 tests/fm-ci-workflow.test.sh 9472
 tests/fm-classify-corr-token.test.sh 26951
@@ -803,12 +833,15 @@ tests/fm-codex-hook-layer-live-e2e.test.sh 47
 tests/fm-commandcode-harness.test.sh 12334
 tests/fm-commandcode-signals-live-e2e.test.sh 79
 tests/fm-composer-codex-idle-live-e2e.test.sh 55
+tests/fm-composer-ghost.test.sh 2491
+tests/fm-composer-lib.test.sh 31206
 tests/fm-composer-matrix-live-e2e.test.sh 107
 tests/fm-contributions.test.sh 204357
 tests/fm-control-relaunch.test.sh 190252
 tests/fm-control.test.sh 86849
 tests/fm-cortex-harness.test.sh 9489
 tests/fm-cortex-signals-live-e2e.test.sh 58
+tests/fm-crew-state.test.sh 100309
 tests/fm-cursor-harness.test.sh 30095
 tests/fm-cursor-primary-live-e2e.test.sh 83
 tests/fm-cursor-primary.test.sh 81377
@@ -818,6 +851,7 @@ tests/fm-devin-signals-live-e2e.test.sh 59
 tests/fm-dispatch-resolve.test.sh 22965
 tests/fm-documentation-audiences.test.sh 1797
 tests/fm-dod-lib.test.sh 3804
+tests/fm-ensure-agents-md.test.sh 1149
 tests/fm-extension-binding.test.sh 12715
 tests/fm-fleet-ledger.test.sh 21163
 tests/fm-fleet-snapshot-contribution-input.test.sh 223
@@ -832,6 +866,7 @@ tests/fm-git-strip-ai-trailers.test.sh 4305
 tests/fm-gitignore-config.test.sh 66
 tests/fm-gotmp.test.sh 1771
 tests/fm-grok-continuity-live-e2e.test.sh 48
+tests/fm-grok-harness.test.sh 8272
 tests/fm-grok-stop-live-e2e.test.sh 113
 tests/fm-guard-stale-banner.test.sh 19197
 tests/fm-harness-adapter-instructions-live-e2e.test.sh 57
@@ -839,6 +874,7 @@ tests/fm-harness-adapter-references.test.sh 130
 tests/fm-harness-liveness-drift-live-e2e.test.sh 1020
 tests/fm-harness-precedence.test.sh 4236
 tests/fm-herdr-groups.test.sh 4063
+tests/fm-herdr-lab.test.sh 17909
 tests/fm-herdr-pi-stale-registration-live-e2e.test.sh 116
 tests/fm-herdr-session-cleanup.test.sh 15209
 tests/fm-herdr-submit-confirm-live-e2e.test.sh 88
@@ -855,6 +891,7 @@ tests/fm-kimi-trust-prompt-live-e2e.test.sh 91
 tests/fm-launch-mise-env.test.sh 48
 tests/fm-launch-prompt-signals-live-e2e.test.sh 178
 tests/fm-lint-workflows.test.sh 1895
+tests/fm-lint.test.sh 366717
 tests/fm-live-gate.test.sh 10163
 tests/fm-live-lab-up-mate.test.sh 17923
 tests/fm-live-lab.test.sh 77122
@@ -881,6 +918,7 @@ tests/fm-pi-branch-live-e2e.test.sh 89
 tests/fm-pi-branch-responsiveness-live-e2e.test.sh 13415
 tests/fm-pi-codex-native.test.sh 70
 tests/fm-pi-primary-live-e2e.test.sh 56
+tests/fm-pi-primary-types.test.sh 27506
 tests/fm-pi-seeded-home-trust-live-e2e.test.sh 2262
 tests/fm-pi-watch-extension.test.sh 73221
 tests/fm-pi-windows-shell-invocation.test.sh 5121
@@ -889,6 +927,7 @@ tests/fm-polytoken-harness.test.sh 25142
 tests/fm-polytoken-signals-live-e2e.test.sh 92
 tests/fm-pr-check-security.test.sh 287375
 tests/fm-pr-health.test.sh 37185
+tests/fm-pr-merge.test.sh 461524
 tests/fm-pr-review.test.sh 15548
 tests/fm-pr-reviewers.test.sh 280
 tests/fm-pr-state-live-e2e.test.sh 77
@@ -923,6 +962,7 @@ tests/fm-remote-secondmate-relaunch.test.sh 957
 tests/fm-remote-secondmate-trace-context.test.sh 156837
 tests/fm-remote-transport-lanes.test.sh 74508
 tests/fm-review-check.test.sh 1543
+tests/fm-review-diff.test.sh 6314
 tests/fm-rovo-harness.test.sh 18242
 tests/fm-rovo-signals-live-e2e.test.sh 59
 tests/fm-secondmate-busy-contract-live-e2e.test.sh 6335
@@ -938,16 +978,20 @@ tests/fm-self-repo-role.test.sh 7259
 tests/fm-send-agy-confirm.test.sh 5057
 tests/fm-send-inbox-doorbell-live-e2e.test.sh 80
 tests/fm-send-inbox.test.sh 48092
+tests/fm-send-popup-settle.test.sh 8318
 tests/fm-send-remote-delivery.test.sh 32689
 tests/fm-send-resolve-key.test.sh 55973
 tests/fm-send-secondmate-marker-herdr-e2e.test.sh 66
 tests/fm-send-secondmate-marker.test.sh 8444
+tests/fm-send-settle.test.sh 3150
+tests/fm-send-strict.test.sh 11631
 tests/fm-session-lock-ancestry.test.sh 33162
 tests/fm-session-start.test.sh 222044
 tests/fm-sessionstart-hook-live-e2e.test.sh 56
 tests/fm-sessionstart-instruction-refresh-live-e2e.test.sh 83
 tests/fm-sessionstart-nudge.test.sh 77722
 tests/fm-shared-captain-inheritance.test.sh 9624
+tests/fm-spawn-batch.test.sh 4694
 tests/fm-spawn-compact-adviser-disable-remote.test.sh 76591
 tests/fm-spawn-compact-adviser-disable.test.sh 29114
 tests/fm-spawn-dispatch-profile.test.sh 454074
@@ -966,6 +1010,8 @@ tests/fm-supervision-host-attended-live-e2e.test.sh 63
 tests/fm-supervision-host-late.test.sh 208023
 tests/fm-supervision-host-live-e2e.test.sh 90
 tests/fm-supervision-host.test.sh 517234
+tests/fm-supervision-instructions.test.sh 1169
+tests/fm-t3-mcp.test.sh 31771
 tests/fm-tangle-guard.test.sh 8601
 tests/fm-task-budget.test.sh 10577
 tests/fm-task-delivery.test.sh 44903
@@ -977,11 +1023,14 @@ tests/fm-teardown.test.sh 358251
 tests/fm-test-fixture-cleanup.test.sh 2180
 tests/fm-test-fixtures.test.sh 9468
 tests/fm-test-isolation-proof.test.sh 3566
+tests/fm-test-run.test.sh 340925
 tests/fm-timeout-lib.test.sh 12436
 tests/fm-tmux-agent-liveness.test.sh 6639
+tests/fm-tmux-submit-busy.test.sh 2798
 tests/fm-tool-update-check.test.sh 19751
 tests/fm-trace-context-lib.test.sh 359
 tests/fm-trace-context-spawn.test.sh 63117
+tests/fm-transition-lib.test.sh 271
 tests/fm-treehouse-clone-custody.test.sh 92
 tests/fm-turnend-foreign-owner-arm-fix.test.sh 5949
 tests/fm-turnend-guard.test.sh 38197
@@ -1008,6 +1057,7 @@ tests/fm-watch-wedge-cap.test.sh 417835
 tests/fm-watcher-lock.test.sh 65236
 tests/fm-worker-account-live-e2e.test.sh 3745
 tests/fm-worker-account.test.sh 71985
+tests/fm-x-mode.test.sh 50779
 EOF
 }
 
@@ -1032,9 +1082,9 @@ portable_serial_lane_weight() {
   ' <(portable_serial_weight_hints) -
 }
 
-portable_parallel_weight_for() {
+portable_pool_weight_for() {
   local want=$1 ms
-  ms=$(portable_parallel_weight_hints | awk -v want="$want" '$1 == want { print $2; exit }')
+  ms=$(portable_pool_weight_hints | awk -v want="$want" '$1 == want { print $2; exit }')
   if [ -n "$ms" ]; then
     printf '%s\n' "$ms"
     return 0
@@ -1125,19 +1175,11 @@ select_proven_isolated() {
 select_lane() {
   local want=$1 s shard idx found=0
   case "$want" in
-    portable-parallel-1)
-      while IFS= read -r s; do
-        [ -n "$s" ] || continue
-        add_script "$s"
-        found=1
-      done < <(list_portable_parallel_1)
-      ;;
-    portable-parallel-2)
-      while IFS= read -r s; do
-        [ -n "$s" ] || continue
-        add_script "$s"
-        found=1
-      done < <(list_portable_parallel_2)
+    portable-pool)
+      # The pooled CI lane is exactly the individually proven set; the
+      # production worker bound is PORTABLE_POOL_WORKERS, passed as --jobs.
+      select_proven_isolated
+      found=1
       ;;
     portable-serial)
       while IFS= read -r s; do
@@ -1170,36 +1212,33 @@ select_lane() {
 
 run_coverage_guard() {
   local tmp missing extra a b shard unhinted serial_total serial_ms serial_max_ms=0
-  local p1_ms p1_unhinted p2_ms p2_unhinted parallel_max_ms parallel_imbalance_ms
+  local pool_hint_ms pool_unhinted pool_modeled_ms pool_window_ms
   local -a saved_scripts=()
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
   all_repo_tests | LC_ALL=C sort -u >"$tmp/all"
   list_proven_isolated | LC_ALL=C sort -u >"$tmp/proven"
-  list_portable_parallel_1 | LC_ALL=C sort -u >"$tmp/s1"
-  list_portable_parallel_2 | LC_ALL=C sort -u >"$tmp/s2"
 
-  cat "$tmp/s1" "$tmp/s2" | LC_ALL=C sort | uniq -d >"$tmp/shard_dups"
-  if [ -s "$tmp/shard_dups" ]; then
-    log "coverage guard: portable parallel shards share scripts:"
-    cat "$tmp/shard_dups" >&2
-    rm -rf "$tmp"
-    return 1
-  fi
-  cat "$tmp/s1" "$tmp/s2" | LC_ALL=C sort -u >"$tmp/shards_union"
-  missing=$(comm -23 "$tmp/proven" "$tmp/shards_union" || true)
-  extra=$(comm -13 "$tmp/proven" "$tmp/shards_union" || true)
+  # Lane listings below happen without disturbing a caller's selection.
+  saved_scripts=("${SCRIPTS[@]+"${SCRIPTS[@]}"}")
+
+  # The portable-pool lane is the proven-isolated set verbatim; its stored
+  # membership IS the check, so the guard compares the lane selection against
+  # the proof owner rather than a second literal list.
+  SCRIPTS=()
+  select_lane portable-pool
+  printf '%s\n' "${SCRIPTS[@]+"${SCRIPTS[@]}"}" | LC_ALL=C sort -u >"$tmp/pool"
+  missing=$(comm -23 "$tmp/proven" "$tmp/pool" || true)
+  extra=$(comm -13 "$tmp/proven" "$tmp/pool" || true)
   if [ -n "$missing" ] || [ -n "$extra" ]; then
-    log "coverage guard: portable shards must equal the proven-isolated set"
-    [ -z "$missing" ] || { log "missing from shards:"; printf '%s\n' "$missing" >&2; }
+    log "coverage guard: the portable pool must equal the proven-isolated set"
+    [ -z "$missing" ] || { log "missing from pool:"; printf '%s\n' "$missing" >&2; }
     [ -z "$extra" ] || { log "extra beyond proven:"; printf '%s\n' "$extra" >&2; }
     rm -rf "$tmp"
     return 1
   fi
 
-  # Serial (whole lane and each CI shard) + Herdr lane listings without
-  # disturbing a caller's selection.
-  saved_scripts=("${SCRIPTS[@]+"${SCRIPTS[@]}"}")
+  # Serial (whole lane and each CI shard) + Herdr lane listings.
   SCRIPTS=()
   select_lane portable-serial
   printf '%s\n' "${SCRIPTS[@]+"${SCRIPTS[@]}"}" | LC_ALL=C sort -u >"$tmp/serial"
@@ -1244,7 +1283,7 @@ run_coverage_guard() {
     return 1
   fi
 
-  for pair in "shards_union:serial" "shards_union:herdr" "serial:herdr"; do
+  for pair in "pool:serial" "pool:herdr" "serial:herdr"; do
     a=${pair%%:*}
     b=${pair#*:}
     comm -12 "$tmp/$a" "$tmp/$b" >"$tmp/overlap"
@@ -1256,7 +1295,7 @@ run_coverage_guard() {
     fi
   done
 
-  cat "$tmp/shards_union" "$tmp/serial" "$tmp/herdr" | LC_ALL=C sort >"$tmp/union_raw"
+  cat "$tmp/pool" "$tmp/serial" "$tmp/herdr" | LC_ALL=C sort >"$tmp/union_raw"
   uniq -d "$tmp/union_raw" >"$tmp/union_dups"
   if [ -s "$tmp/union_dups" ]; then
     log "coverage guard: duplicate scripts across lanes:"
@@ -1268,7 +1307,7 @@ run_coverage_guard() {
   missing=$(comm -23 "$tmp/all" "$tmp/union" || true)
   extra=$(comm -13 "$tmp/all" "$tmp/union" || true)
   if [ -n "$missing" ] || [ -n "$extra" ]; then
-    log "coverage guard: union of portable shards + portable serial + Herdr must equal tests/*.test.sh"
+    log "coverage guard: union of portable pool + portable serial + Herdr must equal tests/*.test.sh"
     [ -z "$missing" ] || { log "missing from union:"; printf '%s\n' "$missing" >&2; }
     [ -z "$extra" ] || { log "extra beyond inventory:"; printf '%s\n' "$extra" >&2; }
     rm -rf "$tmp"
@@ -1311,35 +1350,31 @@ run_coverage_guard() {
 
   # Keep these estimates derived from the membership and hint owners; see the
   # header for the distinction between packed weights and measured job time.
-  read -r p1_ms p1_unhinted <<<"$(list_portable_parallel_1 | portable_parallel_lane_weight)"
-  read -r p2_ms p2_unhinted <<<"$(list_portable_parallel_2 | portable_parallel_lane_weight)"
-  if [ "$((p1_unhinted + p2_unhinted))" -gt 0 ]; then
-    log "coverage guard: portable parallel members have no measured duration hint:"
-    { list_portable_parallel_1; list_portable_parallel_2; } |
-      awk 'NR == FNR { if (NF) { hint[$1] = 1 }; next } NF && !($1 in hint)' \
-        <(portable_parallel_weight_hints) - >&2
-    log "refresh the hints from a green run's timing artifacts: docs/fm-test-portable-shards.md"
+  read -r pool_hint_ms pool_unhinted <<<"$(portable_pool_lane_weight <"$tmp/pool")"
+  pool_modeled_ms=$(portable_pool_modeled_ms <"$tmp/pool")
+  pool_window_ms=$((PORTABLE_POOL_SETUP_ALLOWANCE_MS + PORTABLE_POOL_MAX_WEIGHT_MS + CHANGED_DEFAULT_TIMEOUT_SECS * 1000))
+  if [ "$pool_window_ms" -ge "$((PORTABLE_POOL_TIMEOUT_MINUTES * 60000))" ]; then
+    log "coverage guard: portable pool needs ${pool_window_ms}ms (${PORTABLE_POOL_SETUP_ALLOWANCE_MS}ms setup + ${PORTABLE_POOL_MAX_WEIGHT_MS}ms ceiling + ${CHANGED_DEFAULT_TIMEOUT_SECS}s per-file bound), not below its ${PORTABLE_POOL_TIMEOUT_MINUTES}-minute job timeout"
+    log "lower the pool ceiling; do not raise the job timeout: docs/fm-test-portable-shards.md"
     rm -rf "$tmp"
     return 1
   fi
-  parallel_max_ms=$p1_ms
-  [ "$p2_ms" -le "$parallel_max_ms" ] || parallel_max_ms=$p2_ms
-  if [ "$parallel_max_ms" -gt "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" ]; then
-    log "coverage guard: largest portable parallel lane packs ${parallel_max_ms}ms above the ${PORTABLE_PARALLEL_MAX_WEIGHT_MS}ms target"
-    log "refresh CI hints and rebalance; do not raise the job timeout: docs/fm-test-portable-shards.md"
+  if [ "$pool_modeled_ms" -gt "$PORTABLE_POOL_MAX_WEIGHT_MS" ]; then
+    log "coverage guard: portable pool models a ${pool_modeled_ms}ms ${PORTABLE_POOL_WORKERS}-worker makespan above the ${PORTABLE_POOL_MAX_WEIGHT_MS}ms ceiling"
+    log "refresh pool hints and move work out of the pool; do not raise the job timeout: docs/fm-test-portable-shards.md"
     rm -rf "$tmp"
     return 1
   fi
-  parallel_imbalance_ms=$((p1_ms - p2_ms))
-  [ "$parallel_imbalance_ms" -ge 0 ] || parallel_imbalance_ms=$((-parallel_imbalance_ms))
 
-  printf 'FM_TEST_COVERAGE ok total=%s parallel=%s parallel_max_ms=%s parallel_imbalance_ms=%s parallel_unhinted=%s parallel_budget_ms=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
+  printf 'FM_TEST_COVERAGE ok total=%s pool=%s pool_hint_ms=%s pool_modeled_ms=%s pool_workers=%s pool_unhinted=%s pool_budget_ms=%s pool_timeout_min=%s serial=%s serial_shards=%s serial_unhinted=%s serial_max_ms=%s serial_budget_ms=%s herdr=%s\n' \
     "$(wc -l <"$tmp/all" | tr -d ' ')" \
-    "$(wc -l <"$tmp/shards_union" | tr -d ' ')" \
-    "$parallel_max_ms" \
-    "$parallel_imbalance_ms" \
-    "$((p1_unhinted + p2_unhinted))" \
-    "$PORTABLE_PARALLEL_MAX_WEIGHT_MS" \
+    "$(wc -l <"$tmp/pool" | tr -d ' ')" \
+    "$pool_hint_ms" \
+    "$pool_modeled_ms" \
+    "$PORTABLE_POOL_WORKERS" \
+    "$pool_unhinted" \
+    "$PORTABLE_POOL_MAX_WEIGHT_MS" \
+    "$PORTABLE_POOL_TIMEOUT_MINUTES" \
     "$(wc -l <"$tmp/serial" | tr -d ' ')" \
     "$PORTABLE_SERIAL_SHARDS" \
     "$unhinted" \
@@ -2459,20 +2494,24 @@ if [ -n "$FAIL_ON_GATE_SKIP" ]; then
   SELECTION_DESC="${SELECTION_DESC};fail-on-gate-skip=$FAIL_ON_GATE_SKIP"
 fi
 if [ "$ESTIMATE_MS" -eq 1 ]; then
+  estimate_pool_hints=true
+  case "$MODE:$LANE" in
+    lane:portable-pool|proven-isolated:*) estimate_pool_hints=portable_pool_weight_hints ;;
+  esac
   printf '%s\n' "${SCRIPTS[@]+"${SCRIPTS[@]}"}" | awk -v fallback="$PORTABLE_SERIAL_DEFAULT_WEIGHT_MS" '
-    FILENAME == ARGV[1] { if (NF) { parallel[$1] = $2 }; next }
+    FILENAME == ARGV[1] { if (NF) { pool[$1] = $2 }; next }
     FILENAME == ARGV[2] { if (NF) { serial[$1] = $2 }; next }
-    NF { total += ($1 in parallel) ? parallel[$1] : (($1 in serial) ? serial[$1] : fallback) }
+    NF { total += ($1 in pool) ? pool[$1] : (($1 in serial) ? serial[$1] : fallback) }
     END { printf "%d\n", total + 0 }
-  ' <(portable_parallel_weight_hints) <(portable_serial_weight_hints) -
+  ' <("$estimate_pool_hints") <(portable_serial_weight_hints) -
   exit 0
 fi
 if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   if [ "$LIST_SCHEDULED" -eq 1 ]; then
     for s in "${SCRIPTS[@]+"${SCRIPTS[@]}"}"; do
       case "$MODE:$LANE" in
-        lane:portable-parallel-1|lane:portable-parallel-2)
-          printf '%s\t%s\n' "$(portable_parallel_weight_for "$s")" "$s"
+        lane:portable-pool|proven-isolated:*)
+          printf '%s\t%s\n' "$(portable_pool_weight_for "$s")" "$s"
           ;;
         *)
           printf '%s\t%s\n' "$(portable_serial_weight_for "$s")" "$s"
@@ -2566,6 +2605,10 @@ if [ "$JOBS" -gt 1 ] && [ "$AUTO_CONCURRENCY" -eq 0 ]; then
   if [ "$MODE" = lane ]; then
     case "$LANE" in
       portable-serial|portable-serial-*) die "--jobs $JOBS refused: portable serial lanes stay serial; use --jobs 1" ;;
+      portable-pool)
+        [ "$JOBS" -le "$PORTABLE_POOL_WORKERS" ] \
+          || die "--jobs $JOBS refused: the portable pool is proven only up to $PORTABLE_POOL_WORKERS concurrent workers"
+        ;;
     esac
   fi
   for s in "${SCRIPTS[@]}"; do
@@ -2605,8 +2648,14 @@ if [ "$JOBS" -gt 1 ]; then
         done < <(list_concurrent_safe_families)
       fi
       # Longest first within each isolation phase: workers are handed scripts
-      # in order, so starting the longest last strands it at the tail.
-      printf '%s\t%s\t%s\n' "$phase" "$(portable_serial_weight_for "$s")" "$s" >>"$SCHEDULE_TMP"
+      # in order, so starting the longest last strands it at the tail. The
+      # individually proven set is weighted by its measured pool hints, which
+      # is the same table the portable-pool CI lane schedules from.
+      if [ "$phase" -eq 0 ]; then
+        printf '%s\t%s\t%s\n' "$phase" "$(portable_pool_weight_for "$s")" "$s" >>"$SCHEDULE_TMP"
+      else
+        printf '%s\t%s\t%s\n' "$phase" "$(portable_serial_weight_for "$s")" "$s" >>"$SCHEDULE_TMP"
+      fi
     else
       SERIAL_TAIL_SCRIPTS+=("$s")
     fi

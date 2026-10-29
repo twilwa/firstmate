@@ -200,9 +200,10 @@ puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("timeout-minutes
 # Tier membership is the executable inventory of the timeout policy: a new job
 # must join a tier, and a job-level value outside these tiers is exactly the
 # one-off number the policy removed.
-FAST_TIER_JOBS='test-coverage invariants tests-timing-aggregate'
+FAST_TIER_JOBS='tests-timing-aggregate'
 NORMAL_TIER_JOBS='lint macos-stock-bash'
-PORTABLE_TIER_JOBS='tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial'
+PORTABLE_TIER_JOBS='tests-portable-pool tests-portable-serial'
+
 HEAVY_TIER_JOBS='tests-herdr'
 
 # Seconds a portable job may spend before its runner step starts: checkout,
@@ -321,11 +322,12 @@ test_normal_tier_shares_one_budget() {
 }
 
 # Portable test tier: the portable lanes share one 50-minute cap above the
-# normal tier and below the heavy backstop. The cap must exceed the setup
-# allowance plus the lane's packing ceiling (parallel_budget_ms or
-# serial_budget_ms from the coverage guard, never today's packed maximum) plus
-# the per-file bound the workflow applies, so any packing the guard accepts
-# leaves a hung file room to fail by name before the job cap.
+# normal tier and below the heavy backstop. For each portable job the cap must
+# exceed the setup allowance plus the lane's packing ceiling (serial_budget_ms
+# for a serial shard, pool_budget_ms for the pool, from the coverage guard and
+# never today's packed maximum) plus the per-file bound the workflow applies,
+# so any packing the guard accepts leaves a hung file room to fail by name
+# before the job cap. ci.yml's pool timeout must also equal the runner's.
 test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
   local normal portable heavy coverage
   # shellcheck disable=SC2086
@@ -340,14 +342,17 @@ test_portable_tier_cap_covers_setup_pack_weight_and_per_file_bound() {
     || fail "portable test tier ($portable) must sit above normal ($normal) and below heavy ($heavy)"
   coverage=$("$ROOT/bin/fm-test-run.sh" --check-coverage 2>/dev/null | grep '^FM_TEST_COVERAGE ok ') \
     || fail "could not read the packing target from the coverage guard"
+  runner_min=$(printf '%s\n' "$coverage" | sed -n 's/.*pool_timeout_min=\([0-9][0-9]*\).*/\1/p')
+  [ -n "$runner_min" ] || fail "coverage guard must report pool_timeout_min: $coverage"
+  [ "$portable" = "$runner_min" ] \
+    || fail "ci.yml pool timeout ($portable) disagrees with the runner's pool budget timeout ($runner_min)"
   ruby -ryaml -rshellwords - "$CI_WORKFLOW" "$coverage" "$PORTABLE_SETUP_ALLOWANCE_SECS" <<'RUBY' \
     || fail "portable job cap does not cover setup, packing target, and the per-file bound"
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 fields = ARGV[1].split.drop(2).to_h { |pair| pair.split("=", 2) }
 setup = Integer(ARGV[2])
 budgets = {
-  "tests-portable-parallel-1" => Integer(fields.fetch("parallel_budget_ms")),
-  "tests-portable-parallel-2" => Integer(fields.fetch("parallel_budget_ms")),
+  "tests-portable-pool" => Integer(fields.fetch("pool_budget_ms")),
   "tests-portable-serial" => Integer(fields.fetch("serial_budget_ms")),
 }
 budgets.each do |job_id, budget_ms|
@@ -465,7 +470,7 @@ TABLE
 }
 
 test_ci_matrices_match_executable_partitions() {
-  ruby -ryaml -ropen3 - "$CI_WORKFLOW" "$ROOT" <<'RUBY' || fail "CI partition contract"
+  ruby -ryaml -ropen3 -rshellwords -rtmpdir -rfileutils - "$CI_WORKFLOW" "$ROOT" <<'RUBY' || fail "CI partition contract"
 jobs = YAML.load_file(ARGV[0]).fetch("jobs")
 root = ARGV[1]
 serial = jobs.fetch("tests-portable-serial").fetch("strategy")
@@ -483,7 +488,7 @@ raise "lint failures must not cancel another partition" unless lint.fetch("fail-
 matrix = lint.fetch("matrix")
 raise "unexpected lint dimensions" unless matrix.keys == ["partition"]
 parts = matrix.fetch("partition")
-raise "lint needs three memory-bounded partitions" unless parts == [1, 2, 3]
+raise "lint needs four memory-bounded partitions" unless parts == [1, 2, 3, 4]
 roots = parts.flat_map do |p|
   output, result = Open3.capture2(File.join(root, "bin/fm-lint.sh"), "--partition", "#{p}of#{parts.length}", "--list-files")
   raise "unsupported lint partition" unless result.success?
@@ -491,6 +496,51 @@ roots = parts.flat_map do |p|
 end
 canonical, result = Open3.capture2({"CI" => "true"}, File.join(root, "bin/fm-lint.sh"), "--list-files")
 raise "lint matrix loses or duplicates canonical roots" unless result.success? && roots.sort == canonical.lines.map(&:strip).sort
+
+# The two folded standalone guards must still execute inside existing jobs:
+# the coverage proof ahead of the pool suite, and the repo invariants once, on
+# lint partition 1, where their real step bodies must reject each violation.
+pool_steps = jobs.fetch("tests-portable-pool").fetch("steps")
+words = pool_steps.map { |s| Shellwords.split(s.fetch("run", "").gsub("\\\n", "")) }
+coverage = words.index(["bin/fm-test-run.sh", "--check-coverage"])
+raise "coverage guard must fold into the pool job" unless coverage
+suite = words.index { |w| w.each_cons(3).include?(["bin/fm-test-run.sh", "--lane", "portable-pool"]) }
+raise "coverage guard must run before the pool suite" unless suite && coverage < suite
+folded = jobs.fetch("lint").fetch("steps").select do |s|
+  s["if"].to_s.strip.match?(/\A\$\{\{\s*matrix\.partition\s*==\s*1\s*\}\}\z/)
+end
+raise "repo invariants must run on an existing lint partition" if folded.empty? || !parts.include?(1)
+git_env = {"GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_NOSYSTEM" => "1"}
+run_folded = lambda do |dir|
+  folded.all? do |s|
+    _out, st = Open3.capture2e(git_env, "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", s.fetch("run"), chdir: dir)
+    st.success?
+  end
+end
+fixture = lambda do |dir|
+  _out, st = Open3.capture2e(git_env, "git", "init", "-q", dir)
+  raise "cannot create invariant fixture" unless st.success?
+  FileUtils.cp(File.join(root, "CLAUDE.md"), File.join(dir, "CLAUDE.md"))
+  FileUtils.mkdir_p(File.join(dir, ".agents/skills"))
+  FileUtils.mkdir_p(File.join(dir, ".claude"))
+  File.symlink("../.agents/skills", File.join(dir, ".claude/skills"))
+end
+Dir.mktmpdir("fm-ci-invariants.") do |dir|
+  fixture.call(dir)
+  raise "folded repo invariants reject a clean checkout" unless run_folded.call(dir)
+  FileUtils.mkdir_p(File.join(dir, "data"))
+  File.write(File.join(dir, "data/fleet.md"), "personal\n")
+  _out, st = Open3.capture2e(git_env, "git", "add", "data/fleet.md", chdir: dir)
+  raise "cannot track fixture data" unless st.success?
+  raise "folded repo invariants accept a tracked data/ file" if run_folded.call(dir)
+end
+Dir.mktmpdir("fm-ci-invariants.") do |dir|
+  fixture.call(dir)
+  File.write(File.join(dir, "AGENTS.md"), "agents\n")
+  FileUtils.rm_f(File.join(dir, "CLAUDE.md"))
+  File.symlink("AGENTS.md", File.join(dir, "CLAUDE.md"))
+  raise "folded repo invariants accept a symlinked CLAUDE.md" if run_folded.call(dir)
+end
 RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
@@ -512,7 +562,7 @@ Dir.mktmpdir("fm-ci-bound.") do |repo|
   end
   FileUtils.cp("#{root}/tests/git-config-helpers.sh", "#{repo}/tests/")
   files.lines.map(&:strip).each { |file| File.write("#{repo}/#{file}", "#!/usr/bin/env bash\nexit 0\n") }
-  %w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
+  %w[tests-portable-pool tests-portable-serial].each do |job_id|
     job = jobs.fetch(job_id)
     step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
     raise "#{job_id}: missing runner command" unless step

@@ -1025,15 +1025,15 @@ test_tern_family_selection() {
   pass "fm-test-run: family tern selects the tern suite and smoke test, and the lane coverage guard accepts them"
 }
 
-test_list_scheduled_proven_isolated_uses_serial_weights() {
-  local tmp
-  tmp=$(fm_test_tmproot fm-test-run-proven-schedule)
-  "$RUNNER" --list --proven-isolated | LC_ALL=C sort >"$tmp/expected"
-  "$RUNNER" --list-scheduled --proven-isolated >"$tmp/actual" \
+test_list_scheduled_proven_isolated_uses_pool_weights() {
+  local first
+  first=$("$RUNNER" --list-scheduled --proven-isolated | head -n 2 | paste -sd ' ' -) \
     || fail "--list-scheduled --proven-isolated failed"
-  cmp -s "$tmp/expected" "$tmp/actual" \
-    || fail "proven-isolated scheduling must break serial-default ties by path"
-  pass "proven-isolated scheduling ignores parallel hints"
+  # The proven set shares the pool lane's hint table, so its schedule must lead
+  # with that table's heaviest members; serial hints would put fm-lint second.
+  [ "$first" = "tests/fm-pr-merge.test.sh tests/fm-test-run.test.sh" ] \
+    || fail "proven-isolated scheduling must order by pool hints, got $first"
+  pass "proven-isolated scheduling orders by pool hints"
 }
 
 test_list_scheduled_non_lane_selections_use_serial_weights() {
@@ -1045,6 +1045,7 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     tests/fm-captain-hold-lifecycle.test.sh
     tests/fm-kimi-harness.test.sh
     tests/fm-brief.test.sh
+    tests/fm-test-run.test.sh
   )
   tmp=$(fm_test_tmproot fm-test-run-non-lane-schedule)
   repo="$tmp/repo"
@@ -1060,12 +1061,15 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
   for script in "${scripts[@]}"; do
     printf '\n' >>"$repo/$script"
   done
+  # fm-lint outweighs fm-test-run serially, but not in the contended pool
+  # table, so this order holds only when pool hints are ignored.
   printf '%s\n' \
+    tests/fm-captain-hold-lifecycle.test.sh \
+    tests/fm-lint.test.sh \
+    tests/fm-test-run.test.sh \
     tests/fm-kimi-harness.test.sh \
     tests/fm-muse-harness.test.sh \
     tests/fm-brief.test.sh \
-    tests/fm-captain-hold-lifecycle.test.sh \
-    tests/fm-lint.test.sh \
     tests/fm-operational-input.test.sh >"$tmp/expected"
   for selection in family all changed scripts; do
     case "$selection" in
@@ -1077,70 +1081,148 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     "$repo/bin/fm-test-run.sh" --list-scheduled "$@" >"$tmp/actual" \
       || fail "--list-scheduled $selection failed"
     cmp -s "$tmp/expected" "$tmp/actual" \
-      || fail "$selection scheduling must use serial hints and path-ordered default ties"
+      || fail "$selection scheduling must use serial hints"
   done
-  pass "family, all, changed, and script selections ignore parallel hints"
+  pass "family, all, changed, and script selections ignore pool hints"
+}
+
+# --estimate-ms weighs a selection as --list-scheduled does: the pool lane and
+# the proven set sum contended pool hints, while every other selection, such as
+# the brief's --all estimate, sums serial durations.
+test_estimate_ms_follows_the_scheduling_weight_rule() {
+  local pool_hint lane proven serial
+  pool_hint=$("$RUNNER" --check-coverage | sed -n 's/.*pool_hint_ms=\([0-9]*\).*/\1/p')
+  [ -n "$pool_hint" ] || fail "coverage guard must report pool_hint_ms"
+  lane=$("$RUNNER" --estimate-ms --lane portable-pool)
+  proven=$("$RUNNER" --estimate-ms --proven-isolated)
+  [ "$lane" = "$pool_hint" ] && [ "$proven" = "$pool_hint" ] \
+    || fail "pool and proven-isolated estimates must sum pool hints ($pool_hint), got $lane and $proven"
+  # shellcheck disable=SC2046
+  serial=$("$RUNNER" --estimate-ms $("$RUNNER" --list --lane portable-pool))
+  [ "$serial" -lt "$pool_hint" ] \
+    || fail "a script selection of the pool members must sum serial hints, got $serial against contended $pool_hint"
+  pass "--estimate-ms sums pool hints only for the pool and proven selections"
 }
 
 test_portable_shard_union_and_coverage_guard() {
-  local s1 s2 proven serial herdr all_count union_count overlap out lane
-  s1=$("$RUNNER" --list --lane portable-parallel-1)
-  s2=$("$RUNNER" --list --lane portable-parallel-2)
+  local pool proven serial herdr all_count union_count out
+  pool=$("$RUNNER" --list --lane portable-pool)
   proven=$("$RUNNER" --list --proven-isolated)
   serial=$("$RUNNER" --list --lane portable-serial)
   herdr=$("$RUNNER" --list --family real-herdr-gated)
-  [ -n "$s1" ] && [ -n "$s2" ] || fail "portable parallel shards must be non-empty"
-  # Shards disjoint.
-  overlap=$(comm -12 <(printf '%s\n' "$s1" | LC_ALL=C sort) <(printf '%s\n' "$s2" | LC_ALL=C sort) || true)
-  [ -z "$overlap" ] || fail "portable parallel shards overlap: $overlap"
-  # Union of shards equals proven-isolated.
-  [ "$(printf '%s\n' "$s1" "$s2" | LC_ALL=C sort -u)" = \
+  [ -n "$pool" ] || fail "portable pool lane must be non-empty"
+  # The pool lane equals proven-isolated exactly.
+  [ "$(printf '%s\n' "$pool" | LC_ALL=C sort -u)" = \
     "$(printf '%s\n' "$proven" | LC_ALL=C sort -u)" ] \
-    || fail "shard union must equal proven-isolated set"
+    || fail "pool lane must equal the proven-isolated set"
   # No herdr in portable lanes.
-  printf '%s\n' "$s1" "$s2" "$serial" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
+  printf '%s\n' "$pool" "$serial" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     && fail "portable lanes must not include real-herdr-gated smoke"
   printf '%s\n' "$herdr" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     || fail "herdr family must include smoke"
   out=$("$RUNNER" --check-coverage)
   assert_contains "$out" "FM_TEST_COVERAGE ok" "coverage guard success marker"
   all_count=$("$RUNNER" --list --all | wc -l | tr -d ' ')
-  union_count=$(printf '%s\n' "$s1" "$s2" "$serial" "$herdr" | LC_ALL=C sort -u | wc -l | tr -d ' ')
+  union_count=$(printf '%s\n' "$pool" "$serial" "$herdr" | LC_ALL=C sort -u | wc -l | tr -d ' ')
   [ "$union_count" = "$all_count" ] \
     || fail "union of lanes ($union_count) must equal --all ($all_count)"
-  # No duplicates across the four partitions.
-  [ "$(printf '%s\n' "$s1" "$s2" "$serial" "$herdr" | LC_ALL=C sort | uniq -d | wc -l | tr -d ' ')" = "0" ] \
+  # No duplicates across the three partitions.
+  [ "$(printf '%s\n' "$pool" "$serial" "$herdr" | LC_ALL=C sort | uniq -d | wc -l | tr -d ' ')" = "0" ] \
     || fail "lanes must not duplicate scripts"
-  # LPT execution order, asserted against the runner's own measured schedule
-  # rather than against a script name: naming the current longest script here is
-  # what let the recorded lane duration go stale unnoticed in the first place.
-  for lane in portable-parallel-1 portable-parallel-2; do
-    [ "$("$RUNNER" --list --lane "$lane")" = "$("$RUNNER" --list-scheduled --lane "$lane")" ] \
-      || fail "$lane membership must be stored longest-measured-first"
-  done
-  pass "portable shard union, disjointness, and coverage guard hold"
+  pass "portable pool union, disjointness, and coverage guard hold"
 }
 
-# The two parallel lanes are only "duration-balanced" while every member has a
-# measured hint and the packing over those hints stays even. Both halves went
-# unchecked until one lane grew past its CI job cap and was cancelled on every
-# run, so assert them through the guard's own reported numbers.
-test_portable_parallel_lanes_stay_duration_balanced() {
-  local out max imbalance unhinted
+# The pool lane schedules from measured hints, so an unhinted member is handed
+# to workers on a guess and the modeled makespan is the only sanity check the
+# guard can report. Assert every member is hinted, the four-worker model stays
+# inside the pool ceiling, and 60s setup + that ceiling + the 1500s per-file
+# bound stays inside the pool job timeout.
+test_portable_pool_stays_fully_hinted_and_bounded() {
+  local out hint modeled unhinted budget timeout
   out=$("$RUNNER" --check-coverage)
-  unhinted=$(printf '%s\n' "$out" | sed -n 's/.*parallel_unhinted=\([0-9]*\).*/\1/p')
-  max=$(printf '%s\n' "$out" | sed -n 's/.*parallel_max_ms=\([0-9]*\).*/\1/p')
-  imbalance=$(printf '%s\n' "$out" | sed -n 's/.*parallel_imbalance_ms=\([0-9]*\).*/\1/p')
-  [ -n "$unhinted" ] && [ -n "$max" ] && [ -n "$imbalance" ] \
-    || fail "coverage guard must report parallel_unhinted, parallel_max_ms, parallel_imbalance_ms: $out"
+  unhinted=$(printf '%s\n' "$out" | sed -n 's/.*pool_unhinted=\([0-9]*\).*/\1/p')
+  hint=$(printf '%s\n' "$out" | sed -n 's/.*pool_hint_ms=\([0-9]*\).*/\1/p')
+  modeled=$(printf '%s\n' "$out" | sed -n 's/.*pool_modeled_ms=\([0-9]*\).*/\1/p')
+  [ -n "$unhinted" ] && [ -n "$hint" ] && [ -n "$modeled" ] \
+    || fail "coverage guard must report pool_unhinted, pool_hint_ms, pool_modeled_ms: $out"
   [ "$unhinted" = "0" ] \
-    || fail "$unhinted proven-isolated scripts have no measured parallel hint, so the lanes are packed on a guess"
-  [ "$max" -gt 0 ] || fail "parallel_max_ms must be a positive packed duration, got $max"
-  # 5% of the worst lane: wide enough that one script's growth does not trip it,
-  # narrow enough that a lopsided partition cannot call itself balanced.
-  [ "$((imbalance * 20))" -le "$max" ] \
-    || fail "parallel lanes differ by ${imbalance}ms against a ${max}ms worst lane, more than 5%"
-  pass "portable parallel lanes are fully hinted and packed within 5% of each other"
+    || fail "$unhinted proven-isolated scripts have no measured pool hint, so the schedule is packed on a guess"
+  [ "$hint" -gt 0 ] || fail "pool_hint_ms must be a positive summed cost, got $hint"
+  [ "$modeled" -gt 0 ] || fail "pool_modeled_ms must be a positive makespan, got $modeled"
+  budget=$(printf '%s\n' "$out" | sed -n 's/.*pool_budget_ms=\([0-9]*\).*/\1/p')
+  timeout=$(printf '%s\n' "$out" | sed -n 's/.*pool_timeout_min=\([0-9]*\).*/\1/p')
+  [ -n "$budget" ] && [ -n "$timeout" ] \
+    || fail "coverage guard must report pool_budget_ms, pool_timeout_min: $out"
+  [ "$((60000 + budget + 1500000))" -lt "$((timeout * 60000))" ] \
+    || fail "pool budget ${budget}ms leaves no room for 60s setup and the 1500s per-file bound in ${timeout} minutes"
+  [ "$modeled" -le "$budget" ] || fail "pool models ${modeled}ms above its ${budget}ms budget"
+  pass "portable pool is fully hinted and models inside its job budget"
+}
+
+# The pool guard must refuse exactly when the modeled makespan passes its
+# budget, and must refuse a budget that leaves 60s setup plus the 1500s
+# per-file bound no room inside the pool job timeout. Load one pool member so
+# its worker alone sets the makespan, without running suites.
+test_portable_pool_wall_budget_boundary() {
+  local tmp repo script out rc budget timeout heavy weight ceiling fits
+  out=$("$RUNNER" --check-coverage)
+  budget=$(printf '%s\n' "$out" | sed -n 's/.*pool_budget_ms=\([0-9]*\).*/\1/p')
+  timeout=$(printf '%s\n' "$out" | sed -n 's/.*pool_timeout_min=\([0-9]*\).*/\1/p')
+  [ -n "$budget" ] && [ -n "$timeout" ] || fail "coverage guard must report the pool budget and timeout: $out"
+  heavy=$("$RUNNER" --list --lane portable-pool | head -n 1)
+  [ -n "$heavy" ] || fail "portable pool lane must be non-empty"
+  tmp=$(fm_test_tmproot fm-test-run-pool-boundary)
+  repo="$tmp/repo"
+  mkdir -p "$repo/bin" "$repo/tests"
+  while IFS= read -r script; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
+  done < <("$RUNNER" --list --all)
+
+  for weight in "$budget" "$((budget + 1))"; do
+    cp "$RUNNER" "$repo/bin/fm-test-run.sh"
+    python3 - "$repo/bin/fm-test-run.sh" "$heavy" "$weight" <<'PY' \
+      || fail "could not seed the fixture's pool hints"
+from pathlib import Path
+import re, sys
+runner, heavy, weight = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = runner.read_text()
+match = re.search(r"portable_pool_weight_hints\(\) \{\n  cat <<'EOF'\n(.*?)\nEOF\n", text, flags=re.S)
+if not match:
+    sys.exit("pool hint table not found")
+lines = [
+    f"{line.split()[0]} {weight if line.split()[0] == heavy else '1'}"
+    for line in match.group(1).splitlines() if line.strip()
+]
+runner.write_text(text[:match.start(1)] + "\n".join(lines) + text[match.end(1):])
+PY
+    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
+    if [ "$weight" -eq "$budget" ]; then
+      expect_code 0 "$rc" "a pool makespan exactly at the budget must be accepted"
+      assert_contains "$out" "pool_modeled_ms=$budget " "fixture did not model the pool exactly at the budget"
+    else
+      expect_code 1 "$rc" "a pool makespan one millisecond above the budget must be refused"
+      assert_contains "$out" "portable pool models a ${weight}ms 4-worker makespan above the ${budget}ms ceiling" \
+        "over-budget pool refusal did not carry its figures"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget pool reported success"
+    fi
+  done
+
+  # The largest accepted ceiling leaves 60s setup + ceiling + 1500s below the cap.
+  fits=$((timeout * 60000 - 60000 - 1500000 - 1))
+  for ceiling in "$fits" "$((fits + 1))"; do
+    sed "s/^PORTABLE_POOL_MAX_WEIGHT_MS=.*/PORTABLE_POOL_MAX_WEIGHT_MS=$ceiling/" "$RUNNER" >"$repo/bin/fm-test-run.sh"
+    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
+    if [ "$ceiling" -eq "$fits" ]; then
+      expect_code 0 "$rc" "a ceiling that leaves setup and the per-file bound inside the timeout must be accepted"
+      assert_contains "$out" "pool_budget_ms=$ceiling " "fixture did not apply the seeded ceiling"
+    else
+      expect_code 1 "$rc" "a ceiling that fills the timeout with setup and the per-file bound must be refused"
+      assert_contains "$out" "portable pool needs $((timeout * 60000))ms (60000ms setup + ${ceiling}ms ceiling + 1500s per-file bound), not below its ${timeout}-minute job timeout" \
+        "window refusal did not carry its figures"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "a ceiling without per-file room reported success"
+    fi
+  done
+  pass "pool budget accepts the exact makespan and window, and refuses one millisecond past either"
 }
 
 test_portable_serial_shards_partition_the_serial_lane() {
@@ -1265,14 +1347,14 @@ new, n = re.subn(
 )
 if n != 1:
     sys.exit("serial hint table not found")
-# Isolate the serial boundary from unrelated parallel measurements on main.
+# Isolate the serial boundary from unrelated pool measurements on main.
 new, n = re.subn(
-    r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n).*?(\nEOF\n)",
+    r"(portable_pool_weight_hints\(\) \{\n  cat <<'EOF'\n).*?(\nEOF\n)",
     lambda match: match.group(1) + "\n".join(f"{s} 1" for s in scripts) + match.group(2),
     new, count=1, flags=re.S,
 )
 if n != 1:
-    sys.exit("parallel hint table not found")
+    sys.exit("pool hint table not found")
 runner.write_text(new)
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
@@ -1289,63 +1371,6 @@ PY
     fi
   done
   pass "serial packing accepts the exact budget and refuses one millisecond above it"
-}
-
-test_portable_parallel_packing_budget_boundary() {
-  local tmp repo script heavy weight out rc
-  tmp=$(fm_test_tmproot fm-test-run-parallel-boundary)
-  repo="$tmp/repo"
-  mkdir -p "$repo/bin" "$repo/tests"
-  while IFS= read -r script; do
-    printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
-  done < <("$RUNNER" --list --all)
-  # The second lane carries the boundary so the guard must compare both lanes.
-  heavy=$("$RUNNER" --list --lane portable-parallel-2 | head -n 1)
-  [ -n "$heavy" ] || fail "portable parallel lane 2 is empty"
-
-  for weight in unhinted 1300000 1300001; do
-    cp "$RUNNER" "$repo/bin/fm-test-run.sh"
-    python3 - "$repo/bin/fm-test-run.sh" "$weight" "$heavy" <<'PY' \
-      || fail "could not seed the fixture's parallel timing input"
-from pathlib import Path
-import re, sys
-runner, weight, heavy = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-text = runner.read_text()
-pattern = r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n)(.*?)(\nEOF\n)"
-match = re.search(pattern, text, flags=re.S)
-if not match:
-    sys.exit("parallel hint table not found")
-scripts = [line.split()[0] for line in match.group(2).splitlines() if line.strip()]
-if heavy not in scripts:
-    sys.exit(f"parallel hint table lost {heavy}")
-# Every other member weighs nothing, so the heavy script's lane packs exactly
-# the fixture weight.
-table = "\n".join(
-    f"{s} {weight if s == heavy else '0'}" for s in scripts
-    if not (weight == "unhinted" and s == heavy)
-)
-runner.write_text(text[:match.start(2)] + table + text[match.end(2):])
-PY
-    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
-    if [ "$weight" = unhinted ]; then
-      expect_code 1 "$rc" "an unhinted parallel script must be refused"
-      assert_contains "$out" "portable parallel members have no measured duration hint" \
-        "unhinted parallel refusal did not explain the missing hint"
-      assert_contains "$out" "$heavy" "unhinted parallel refusal did not name the member"
-      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "unhinted parallel packing reported success"
-    elif [ "$weight" -eq 1300000 ]; then
-      expect_code 0 "$rc" "parallel packing exactly at the budget must be accepted"
-      assert_contains "$out" "FM_TEST_COVERAGE ok" "parallel boundary coverage did not pass"
-      assert_contains "$out" "parallel_max_ms=1300000" "fixture did not pack a parallel lane exactly at the budget"
-      assert_contains "$out" "parallel_budget_ms=1300000" "fixture changed the parallel packing budget"
-    else
-      expect_code 1 "$rc" "parallel packing one millisecond above the budget must be refused"
-      assert_contains "$out" "largest portable parallel lane packs 1300001ms above the 1300000ms target" \
-        "over-budget parallel refusal did not explain the modeled excess"
-      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget parallel packing reported success"
-    fi
-  done
-  pass "parallel packing accepts the exact budget and refuses excess or unhinted members"
 }
 
 test_portable_serial_shard_lane_refusals() {
@@ -1406,8 +1431,18 @@ test_jobs_requires_proven_isolated() {
   [ "$rc" -eq 2 ] || fail "--jobs with a portable serial shard must refuse, got $rc"
   grep -Fq 'portable serial lanes stay serial' "$tmp/err3" \
     || fail "shard --jobs refusal message missing: $(cat "$tmp/err3")"
+  # Every pool member is proven, so only the lane's proven worker bound stops
+  # a CI literal from running the pool above the hosted proof.
+  set +e
+  "$RUNNER" --jobs 5 --lane portable-pool >"$tmp/out4" 2>"$tmp/err4"
+  rc=$?
+  set -e
+  [ "$rc" -eq 2 ] || fail "--jobs above the pool worker bound must refuse, got $rc"
+  grep -Fq 'the portable pool is proven only up to 4 concurrent workers' "$tmp/err4" \
+    || fail "pool --jobs refusal message missing: $(cat "$tmp/err4")"
+  ! grep -q '^FM_TEST_BEGIN' "$tmp/out4" || fail "refused pool --jobs still ran a script"
   rm -rf "$tmp"
-  pass "--jobs refuses non-proven / stateful selections"
+  pass "--jobs refuses non-proven / stateful selections and pool workers above the proof"
 }
 
 # The complement of the refusal above: a family carrying a recorded concurrent
@@ -1987,7 +2022,7 @@ test_aggregate_json() {
   cat >"$tmp/a.json" <<'JSON'
 {
   "run_id": "a",
-  "selection": "lane=portable-parallel-1",
+  "selection": "lane=portable-pool",
   "started_at": "2026-07-22T00:00:00Z",
   "finished_at": "2026-07-22T00:01:00Z",
   "summary": {"total": 1, "failed": 0, "skipped_gate": 0, "duration_ms": 1000},
@@ -2254,14 +2289,15 @@ test_fail_on_gate_skip_token
 test_exclude_family
 test_exclude_script
 test_tern_family_selection
-test_list_scheduled_proven_isolated_uses_serial_weights
+test_list_scheduled_proven_isolated_uses_pool_weights
 test_list_scheduled_non_lane_selections_use_serial_weights
+test_estimate_ms_follows_the_scheduling_weight_rule
 test_portable_shard_union_and_coverage_guard
-test_portable_parallel_lanes_stay_duration_balanced
+test_portable_pool_stays_fully_hinted_and_bounded
+test_portable_pool_wall_budget_boundary
 test_portable_serial_shards_partition_the_serial_lane
 test_portable_serial_hint_coverage_is_reported_and_bounded
 test_portable_serial_packing_budget_boundary
-test_portable_parallel_packing_budget_boundary
 test_portable_serial_shard_lane_refusals
 test_jobs_requires_proven_isolated
 test_jobs_admits_a_concurrent_safe_family

@@ -44,7 +44,7 @@ Add required status checks with `strict_required_status_checks_policy: false`; a
 Bind the checks to the GitHub Actions app already producing them, rather than accepting the same context from any integration.
 No new app installation or manual runner setup is needed for that setting.
 
-Require the actual job contexts: `Lint 1`, `Lint 2`, `Lint 3`, `Test coverage guard`, `Repo invariants`, `Stock macOS Bash snapshot compatibility`, `Behavior portable parallel 1`, `Behavior portable parallel 2`, `Behavior portable serial 1` through `Behavior portable serial 11`, `Behavior tests (Herdr)`, `Behavior timing aggregate`, and `PR must be raised via no-mistakes`.
+Require the actual job contexts: `Lint 1`, `Lint 2`, `Lint 3`, `Lint 4`, `Stock macOS Bash snapshot compatibility`, `Behavior portable pool`, `Behavior portable serial 1` through `Behavior portable serial 13`, `Behavior tests (Herdr)`, `Behavior timing aggregate`, and `PR must be raised via no-mistakes`.
 The last name is the compliance job context, not its workflow title; its existing automation exceptions remain unchanged.
 The timing aggregate is not a substitute for individual jobs because it can succeed while collecting evidence from a failed run.
 
@@ -113,7 +113,7 @@ bin/fm-test-run.sh --changed --max-wall-ms 300000   # same automatic path with a
 bin/fm-test-run.sh --proven-isolated --jobs 4   # explicit local parallel of the individually proven set
 bin/fm-test-run.sh --lane portable-serial   # portable serial remainder (watcher/AFK/tmux/stateful)
 bin/fm-test-run.sh --list-lanes   # discover exact lane names, including the current CI serial shards
-bin/fm-test-run.sh --check-coverage   # prove portable shards + serial + serial shards + Herdr equal the full inventory
+bin/fm-test-run.sh --check-coverage   # prove portable pool + serial + serial shards + Herdr equal the full inventory
 bin/fm-test-run.sh --all   # deliberate complete regression (optional local full walk; not no-mistakes Test)
 bin/fm-test-isolation-proof.sh --list   # proven portable parallel candidate set
 bin/fm-test-isolation-proof.sh --jobs 4 --json /tmp/fm-isolation-proof.json   # re-run the portable candidate proof
@@ -131,7 +131,7 @@ Its header and `--help` own the flags, family labels, lanes, and changed-file ma
 `bin/fm-test-isolation-proof.sh` remains the single owner of the portable candidate proof and reusable family proof harness; see `docs/fm-test-isolation-proof.md`.
 Portable shard balance evidence lives in `docs/fm-test-portable-shards.md`.
 Family selection is the ordinary local path; `--all` is deliberate full regression only.
-CI owns broad regression across required portable parallel shards, the portable serial lane's separate-runner shards, the Herdr lane, lint, invariants, the coverage guard, and stock macOS Bash compatibility in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+CI owns broad regression across the required portable pool lane, the portable serial lane's separate-runner shards, the Herdr lane, lint, the folded invariants and coverage guard, and stock macOS Bash compatibility in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 Pushing a new head to a pull request cancels that pull request's still-running CI so only the current head is validated; pushes to `main` are never cancelled, and the workflow owns that contract and its rationale.
 A fork can set the repository variable `FM_CI_SKIP_PUSH` to `1` to skip the push run of `CI`, and `FM_CI_SKIP_MACOS` to `1` to skip the stock macOS Bash job, without a tracked edit that drifts from upstream.
 Each skip is a job-level condition, so a skipped job reports success rather than leaving the pull request pending, and with neither variable set every job runs on upstream and on every fork exactly as before.
