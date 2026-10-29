@@ -531,7 +531,7 @@ Dir.mktmpdir("fm-ci-bound.") do |repo|
   end
   FileUtils.cp("#{root}/tests/git-config-helpers.sh", "#{repo}/tests/")
   files.lines.map(&:strip).each { |file| File.write("#{repo}/#{file}", "#!/usr/bin/env bash\nexit 0\n") }
-  %w[tests-portable-parallel-1 tests-portable-parallel-2 tests-portable-serial].each do |job_id|
+  %w[tests-portable-pool tests-portable-serial].each do |job_id|
     job = jobs.fetch(job_id)
     step = job.fetch("steps").find { |s| s["run"].to_s.include?("bin/fm-test-run.sh --lane") }
     raise "#{job_id}: missing runner command" unless step

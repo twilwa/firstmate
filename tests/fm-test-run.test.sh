@@ -1310,14 +1310,13 @@ new, n = re.subn(
 )
 if n != 1:
     sys.exit("serial hint table not found")
-# Isolate the serial boundary from unrelated parallel measurements on main.
+# Isolate the serial boundary from unrelated parallel measurements on main;
+# the pool layout removed the parallel hint table, so tolerate its absence.
 new, n = re.subn(
     r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n).*?(\nEOF\n)",
     lambda match: match.group(1) + "\n".join(f"{s} 1" for s in scripts) + match.group(2),
     new, count=1, flags=re.S,
 )
-if n != 1:
-    sys.exit("parallel hint table not found")
 runner.write_text(new)
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
