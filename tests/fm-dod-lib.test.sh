@@ -31,6 +31,18 @@ test_scope_approval_respects_project_and_scope() {
 
 test_scope_approval_respects_project_and_scope
 
+test_scope_approves_unknown_lineage() {
+  local project="$TMP_ROOT/unknown-project" root="$TMP_ROOT/rootless-code" out
+  git init -q "$project"
+  git -C "$project" commit -q --allow-empty -m 'unrelated history'
+  git init -q "$root"
+  out=$(fm_test_scope_section focused no-mistakes "$project" "$root")
+  assert_contains "$out" 'approve it and run the focused selection' 'unknown lineage must not skip Test'
+  pass 'unknown lineage conservatively approves Test'
+}
+
+test_scope_approves_unknown_lineage
+
 accept_done() {  # <kind> <mode> <worktree> <project> <line> [<state> <id> <meta>]
   fm_dod_accept_ship_done "$@"
 }

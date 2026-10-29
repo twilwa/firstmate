@@ -231,7 +231,7 @@ grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (ki
 # captain's project binding, so promotion takes it from the registry rather than
 # from a flag firstmate must remember.
 PROMOTE_PROJECT=$(sed -n 's/^project=//p' "$META" | head -n 1)
-TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "$MODE" "$PROMOTE_PROJECT")
+TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "$MODE" "$PROMOTE_PROJECT" "$FM_ROOT")
 if [ -n "$PROMOTE_PROJECT" ]; then
   PROMOTE_PROJECT_NAME=$(basename "$PROMOTE_PROJECT")
   if ! PROMOTE_STANDING_FORGE=$("$FM_ROOT/bin/fm-project-mode.sh" --forge "$PROMOTE_PROJECT_NAME"); then

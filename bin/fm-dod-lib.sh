@@ -185,7 +185,7 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # answer is limited to none and focused because safe-suite and full ask for the
 # suite to run. The optional project directory selects Test approval at every
 # scope, with no local selection at none, when fm_role_self_repo recognizes
-# Firstmate lineage; the Test attestation is required there. The
+# Firstmate lineage (or cannot determine it); the Test attestation is required there. The
 # timeout-means-needs-decision rule holds at every scope. The Firstmate figures
 # are bin/fm-test-run.sh --estimate-ms over the selections the section names.
 fm_test_scope_valid() {  # <scope>
@@ -196,14 +196,16 @@ fm_test_scope_valid() {  # <scope>
   return 1
 }
 
-fm_test_scope_section() {  # <scope> <flow> [project-dir]
-  local scope=$1 flow=$2 project=${3:-} lib_dir estimate_ms no_figure test_step_approve=
+fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
+  local scope=$1 flow=$2 project=${3:-} root=${4:-} lineage=0
+  local lib_dir estimate_ms no_figure test_step_approve=
   local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   if [ "$flow" = no-mistakes ] && [ -n "$project" ]; then
     # shellcheck source=bin/fm-role-lib.sh
     . "$lib_dir/fm-role-lib.sh"
-    if fm_role_self_repo "$project" "$lib_dir/.."; then
+    fm_role_self_repo "$project" "${root:-$lib_dir/..}" || lineage=$?
+    if [ "$lineage" -ne 1 ]; then
       case "$scope" in
         none) test_step_approve='When the no-mistakes Test step asks for approval, approve it with no local test selection; never skip it.' ;;
         *) test_step_approve="When the no-mistakes Test step asks for approval, approve it and run the $scope selection named by this test scope; never skip it." ;;
