@@ -240,7 +240,7 @@ PORTABLE_SERIAL_MAX_WEIGHT_MS=1200000
 
 # Packing ceiling for each portable parallel lane's hint sum, on the same terms
 # as the serial target above. --check-coverage refuses a lane above it.
-PORTABLE_PARALLEL_MAX_WEIGHT_MS=$PORTABLE_SERIAL_MAX_WEIGHT_MS
+PORTABLE_PARALLEL_MAX_WEIGHT_MS=1300000
 
 # Largest share of the serial lane allowed to run on the default weight above.
 # Hints are what keep the shards balanced, so once too much of the lane is

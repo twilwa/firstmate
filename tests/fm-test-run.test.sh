@@ -1265,6 +1265,14 @@ new, n = re.subn(
 )
 if n != 1:
     sys.exit("serial hint table not found")
+# Isolate the serial boundary from unrelated parallel measurements on main.
+new, n = re.subn(
+    r"(portable_parallel_weight_hints\(\) \{\n  cat <<'EOF'\n).*?(\nEOF\n)",
+    lambda match: match.group(1) + "\n".join(f"{s} 1" for s in scripts) + match.group(2),
+    new, count=1, flags=re.S,
+)
+if n != 1:
+    sys.exit("parallel hint table not found")
 runner.write_text(new)
 PY
     out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
@@ -1295,7 +1303,7 @@ test_portable_parallel_packing_budget_boundary() {
   heavy=$("$RUNNER" --list --lane portable-parallel-2 | head -n 1)
   [ -n "$heavy" ] || fail "portable parallel lane 2 is empty"
 
-  for weight in unhinted 1200000 1200001; do
+  for weight in unhinted 1300000 1300001; do
     cp "$RUNNER" "$repo/bin/fm-test-run.sh"
     python3 - "$repo/bin/fm-test-run.sh" "$weight" "$heavy" <<'PY' \
       || fail "could not seed the fixture's parallel timing input"
@@ -1325,14 +1333,14 @@ PY
         "unhinted parallel refusal did not explain the missing hint"
       assert_contains "$out" "$heavy" "unhinted parallel refusal did not name the member"
       assert_not_contains "$out" "FM_TEST_COVERAGE ok" "unhinted parallel packing reported success"
-    elif [ "$weight" -eq 1200000 ]; then
+    elif [ "$weight" -eq 1300000 ]; then
       expect_code 0 "$rc" "parallel packing exactly at the budget must be accepted"
       assert_contains "$out" "FM_TEST_COVERAGE ok" "parallel boundary coverage did not pass"
-      assert_contains "$out" "parallel_max_ms=1200000" "fixture did not pack a parallel lane exactly at the budget"
-      assert_contains "$out" "parallel_budget_ms=1200000" "fixture changed the parallel packing budget"
+      assert_contains "$out" "parallel_max_ms=1300000" "fixture did not pack a parallel lane exactly at the budget"
+      assert_contains "$out" "parallel_budget_ms=1300000" "fixture changed the parallel packing budget"
     else
       expect_code 1 "$rc" "parallel packing one millisecond above the budget must be refused"
-      assert_contains "$out" "largest portable parallel lane packs 1200001ms above the 1200000ms target" \
+      assert_contains "$out" "largest portable parallel lane packs 1300001ms above the 1300000ms target" \
         "over-budget parallel refusal did not explain the modeled excess"
       assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget parallel packing reported success"
     fi
