@@ -1,0 +1,18 @@
+$ FM_HOME=$LAB bin/fm-promote.sh promo-fm --mode no-mistakes --yolo off --tests focused --upstream-consent github.com/twilwa/firstmate   # meta project=/home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M63CTW2BHQNS2KR98MDMVF4S
+promoted promo-fm to ship mode=no-mistakes yolo=off (teardown protection restored)
+wrote ship instructions for mode=no-mistakes: $LAB/data/promo-fm/ship-instructions.md
+next: FM_HOME=$LAB bin/fm-send.sh fm-promo-fm "$(cat $LAB/data/promo-fm/ship-instructions.md)"
+rc=0
+--- Test-step lines in ship-instructions.md ---
+22:When the no-mistakes Test step asks for approval, approve it and run the focused selection named by this test scope; never skip it.
+23:If the Test step times out, report needs-decision; never choose fix.
+
+$ FM_HOME=$LAB bin/fm-promote.sh promo-unrel --mode no-mistakes --yolo off --tests focused    # meta project=$SCR/unrelated
+promoted promo-unrel to ship mode=no-mistakes yolo=off (teardown protection restored)
+wrote ship instructions for mode=no-mistakes: $LAB/data/promo-unrel/ship-instructions.md
+next: FM_HOME=$LAB bin/fm-send.sh fm-promo-unrel "$(cat $LAB/data/promo-unrel/ship-instructions.md)"
+rc=0
+--- Test-step lines in ship-instructions.md ---
+22:When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.
+23:If the Test step times out, report needs-decision; never choose fix.
+

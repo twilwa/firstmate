@@ -1,0 +1,8 @@
+# BASE commit 15db9c85 (before fix): firstmate project, --mode no-mistakes --tests focused
+scaffolded: $LAB/data/base-fm-focused/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+14:When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.
+15:If the Test step times out, report needs-decision; never choose fix.
+
+# TARGET commit 72eff297 (after fix): same invocation
+14:When the no-mistakes Test step asks for approval, approve it and run the focused selection named by this test scope; never skip it.
+15:If the Test step times out, report needs-decision; never choose fix.
