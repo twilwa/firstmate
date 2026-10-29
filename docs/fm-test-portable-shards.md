@@ -42,7 +42,11 @@ The CI cap follows the three-tier timeout policy in [Timeouts](#timeouts) below.
 Its scheduling regressions also check stored parallel lane order and preserve serial-weight scheduling for other selections.
 These checks do not detect a script outgrowing an existing hint or establish measured job headroom.
 Refresh `portable_parallel_weight_hints` with each script's slowest successful `duration_ms` from several green CI runs' `fm-test-timing-portable-parallel-*` artifacts whenever the parallel set gains scripts or a member grows materially.
-Check a new split against those runs' per-script durations as well as the hints, and prefer one whose lanes stay within ten percent on every measured run: the 2026-10-29 lists keep `tests/fm-captain-hold-lifecycle.test.sh` and `tests/fm-pr-merge.test.sh` together because their variance offsets, which a pure longest-processing-time split of the hints does not.
+Check a new split against those runs' per-script durations as well as the hints, and choose the one whose worst lane gap across every measured run is smallest.
+The 2026-10-29 lists came from an exhaustive search of every split, scored against the four refresh runs plus PR runs [40768416410](https://github.com/twilwa/firstmate/actions/runs/40768416410) and [40805050743](https://github.com/twilwa/firstmate/actions/runs/40805050743).
+The chosen split puts `tests/fm-captain-hold-lifecycle.test.sh` and `tests/fm-pr-merge.test.sh` in different lanes and keeps every run's summed-script lane gap within about 10.4%.
+No split does better on all six runs, because per-script variance pulls some runs in opposite directions.
+An earlier split that kept the two together balanced the hints but measured 914 s against 1261 s in run 40805050743.
 
 ## Portable serial remainder
 
