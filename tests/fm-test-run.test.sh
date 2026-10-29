@@ -1601,8 +1601,8 @@ SH
 # green but whose wall clock outgrew its caller's invocation budget. The caller
 # gets killed mid-run and retries invisibly, so an over-budget run has to be a
 # failure, not a note in the log.
-# tests/fm-watch-triage.test.sh finishes in about 434s alone and about 698s
-# under CI load, so the automatic --changed bound must leave a slow but healthy
+# tests/fm-watch-triage.test.sh finishes in about 934s under CI load, so the
+# automatic --changed bound must leave a slow but healthy
 # watcher-wake-lock script room while still bounding a genuinely hung one
 # (upstream issue #3869). The stub records the bound the runner hands it.
 test_changed_bound_gives_slow_watcher_suites_headroom() {
