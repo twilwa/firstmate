@@ -1,0 +1,49 @@
+== tmux windows after teardown (lab socket)
+firstmate:0: bash* (1 panes) [80x24] 
+== procevent sources after teardown
+no sources registered
+== state files for live1
+(none)
+== crewmate report
+# Scout report: README.md line count (task live1)
+
+## Summary
+
+README.md in the demo repository contains exactly **1 line**. The file is 7 bytes long, consists of the single heading `# demo`, and ends with a terminating newline, so `wc -l` and a logical line count agree on 1. The count was taken against commit `adf4623284ae1f575f35b5c886882d5a46d226b3` (the only commit, "init") in a clean worktree; the file is at `README.md:1`. No code was changed, no tests were run (the task touches no behavior), and no decisions remain for the captain.
+
+## What I did
+
+1. Read the launch brief and confirmed the steering inbox at `/tmp/nmlive.A8VKep/home/state/live1.inbox` was empty.
+2. Counted lines in `README.md` two independent ways and inspected the raw bytes to confirm the trailing newline.
+3. Followed the captain-hold-lifecycle skill: inventoried the report for captain calls, found none, and attested the empty inventory with `fm-captain-hold.sh complete 'live1' --none`.
+
+## Evidence
+
+Commands and output (worktree `/home/firstmate/.treehouse-fm/a0b9c00bf97f/.treehouse/demo-c6aa0f/1/demo`):
+
+```
+$ wc -l README.md
+1 README.md
+
+$ awk 'END{print NR}' README.md
+1
+
+$ tail -c1 README.md | od -An -c
+  \n
+
+$ cat -A README.md
+# demo$
+
+$ ls -l README.md
+-rw-rw-r-- 1 firstmate firstmate 7 Oct 31 00:09 README.md
+
+$ git rev-parse HEAD
+adf4623284ae1f575f35b5c886882d5a46d226b3
+
+$ git status --short
+(clean)
+```
+
+## Recommendation
+
+Nothing to ship. The answer to the captain's question is 1 line. No follow-up work is indicated.

@@ -1,0 +1,145 @@
+Only in norm-target: t-land.md
+diff -u norm-upstream/t-lo.md norm-target/t-lo.md
+--- norm-upstream/t-lo.md	2026-10-31 00:06:56.845063798 +0100
++++ norm-target/t-lo.md	2026-10-31 00:00:30.791698401 +0100
+@@ -7,6 +7,13 @@
+ ## Firstmate spec
+ {FIRSTMATE_SPEC}
+ 
++## Test scope
++Scope: focused.
++Permits: only the tests covering the behavior you touch; never the full local suite.
++Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.
++
++Task budget: wall_secs=21600 output_tokens=1000000
++
+ # Herdr lifecycle declaration - NOT ENABLED
+ **HARD SAFETY GATE:** this scaffold cannot inspect the task text filled in above.
+ If the task will start, stop, delete, restart, profile, or otherwise drive Herdr lifecycle behavior, stop and regenerate the brief with `--herdr-lab` before dispatch.
+@@ -50,6 +57,7 @@
+    Use `blocked:` when you are stuck and need help.
+ 
+ 5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
++   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / 14400 rounded down; once per period, append `needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?` and stop; firstmate decides.
+ 6. If a decision belongs above the implementation worker (product choices, destructive actions),
+    append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+ 
+@@ -81,6 +89,15 @@
+    Use absolute paths, `git -C <abs>`, or a `( cd <abs> && ... )` subshell.
+    Pass this rule to every sub-agent you launch.
+ 
++9. Follow the `tdd` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
++
++# Shared-host safety
++Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use `type -P <name>`, never `command -v`.
++
++Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
++
++Run anything approved from this gate inside a systemd-run user scope, sized to the job; see `<FM_ROOT>/docs/configuration.md` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with `type -P` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with `head -n2` before use. A self-referencing shim can trigger uncontrolled process recursion.
++
+ # Firstmate instruction inbox
+ Firstmate steers you through durable message files in '<FM_HOME>/state/t-lo.inbox'.
+ When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list them with `find '<FM_HOME>/state/t-lo.inbox' -maxdepth 1 -name '*.msg' 2>/dev/null | sort -V`, read the complete contents of each record (including its final line even when it is not newline-terminated) and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '<FM_HOME>/state/t-lo.inbox'/NNN.msg '<FM_HOME>/state/t-lo.inbox'/handled/`.
+diff -u norm-upstream/t-scout.md norm-target/t-scout.md
+--- norm-upstream/t-scout.md	2026-10-31 00:06:56.853063620 +0100
++++ norm-target/t-scout.md	2026-10-31 00:00:30.799698227 +0100
+@@ -7,6 +7,13 @@
+ ## Firstmate spec
+ {FIRSTMATE_SPEC}
+ 
++## Test scope
++Scope: focused.
++Permits: only the tests covering the behavior you touch; never the full local suite.
++Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.
++
++Task budget: wall_secs=21600 output_tokens=1000000
++
+ # Herdr lifecycle declaration - NOT ENABLED
+ **HARD SAFETY GATE:** this scaffold cannot inspect the task text filled in above.
+ If the task will start, stop, delete, restart, profile, or otherwise drive Herdr lifecycle behavior, stop and regenerate the brief with `--herdr-lab` before dispatch.
+@@ -42,6 +49,7 @@
+    Use `blocked:` when you are stuck and need help.
+ 
+ 5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
++   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / 14400 rounded down; once per period, append `needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?` and stop; firstmate decides.
+ 6. If a decision belongs to a human (product choices, destructive actions),
+    append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+    A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+@@ -72,6 +80,13 @@
+    Use absolute paths, `git -C <abs>`, or a `( cd <abs> && ... )` subshell.
+    Pass this rule to every sub-agent you launch.
+ 
++# Shared-host safety
++Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use `type -P <name>`, never `command -v`.
++
++Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
++
++Run anything approved from this gate inside a systemd-run user scope, sized to the job; see `<FM_ROOT>/docs/configuration.md` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with `type -P` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with `head -n2` before use. A self-referencing shim can trigger uncontrolled process recursion.
++
+ # Firstmate instruction inbox
+ Firstmate steers you through durable message files in '<FM_HOME>/state/t-scout.inbox'.
+ When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list them with `find '<FM_HOME>/state/t-scout.inbox' -maxdepth 1 -name '*.msg' 2>/dev/null | sort -V`, read the complete contents of each record (including its final line even when it is not newline-terminated) and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '<FM_HOME>/state/t-scout.inbox'/NNN.msg '<FM_HOME>/state/t-scout.inbox'/handled/`.
+diff -u norm-upstream/t-ship.md norm-target/t-ship.md
+--- norm-upstream/t-ship.md	2026-10-31 00:06:56.864063374 +0100
++++ norm-target/t-ship.md	2026-10-31 00:00:30.807698053 +0100
+@@ -7,6 +7,15 @@
+ ## Firstmate spec
+ {FIRSTMATE_SPEC}
+ 
++## Test scope
++Scope: none.
++Permits: no local test runs; still write any regression test the task requires, and CI runs it.
++When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.
++Expected duration: 0 minutes.
++If the Test step times out, report needs-decision; never choose fix.
++
++Task budget: wall_secs=21600 output_tokens=1000000
++
+ # Herdr lifecycle declaration - NOT ENABLED
+ **HARD SAFETY GATE:** this scaffold cannot inspect the task text filled in above.
+ If the task will start, stop, delete, restart, profile, or otherwise drive Herdr lifecycle behavior, stop and regenerate the brief with `--herdr-lab` before dispatch.
+@@ -51,6 +60,7 @@
+    Use `blocked:` when you are stuck and need help.
+ 
+ 5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
++   If you see the current task budget crossed (age = now - start_epoch >= wall_secs), take budget period n = (age - wall_secs) / 14400 rounded down; once per period, append `needs-decision [at=<epoch>] [key=task-budget-<n>]: budget period <n> crossed; continue or stop?` and stop; firstmate decides.
+ 6. If a decision belongs above the implementation worker (product choices, destructive actions),
+    append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+    For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to `<FM_HOME>/data/t-ship/nm-<run>-findings.txt`, then report the gate with
+@@ -84,6 +94,15 @@
+    Use absolute paths, `git -C <abs>`, or a `( cd <abs> && ... )` subshell.
+    Pass this rule to every sub-agent you launch.
+ 
++9. Follow the `tdd` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
++
++# Shared-host safety
++Use rg for literal or regex text search across files; use ast-grep (never sg) for code structure such as calls, definitions, imports, metavariable patterns and structural rewrites. Use GNU grep/find only inside portable scripts or to filter small piped output; do not add fd. When a script needs a binary's real path, use `type -P <name>`, never `command -v`.
++
++Before changing PATH or shadowing binaries with shims, wrappers, aliases or functions (including LD_PRELOAD, LD_LIBRARY_PATH, profiling or tracing wrappers); before fork- or process-heavy work (load, stress or benchmark runs, recursive scripts or wide parallel fan-out); before system or user-level config changes (systemd units and timers, cron, sysctl, limits, /etc, shell rc files, global git/npm/mise/claude config); or before killing processes outside your own tree or touching the herdr server, tailscale or ssh config: run a Jev risk check with jev-cli or jevhelper on the exact command or diff. Ask whether it could affect processes, services or state outside your own worktree and process tree or destabilise the shared host. If Jev rates it risky or uncertain, stop and ask your supervisor for approval. Jev is advisory; containment applies regardless.
++
++Run anything approved from this gate inside a systemd-run user scope, sized to the job; see `<FM_ROOT>/docs/configuration.md` for the scope recipe. For any shim or wrapper, resolve its target to an absolute path with `type -P` before prepending the shim directory to PATH, drop its own directory from PATH or carry a recursion-guard environment variable, and check it with `head -n2` before use. A self-referencing shim can trigger uncontrolled process recursion.
++
+ # Firstmate instruction inbox
+ Firstmate steers you through durable message files in '<FM_HOME>/state/t-ship.inbox'.
+ When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list them with `find '<FM_HOME>/state/t-ship.inbox' -maxdepth 1 -name '*.msg' 2>/dev/null | sort -V`, read the complete contents of each record (including its final line even when it is not newline-terminated) and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '<FM_HOME>/state/t-ship.inbox'/NNN.msg '<FM_HOME>/state/t-ship.inbox'/handled/`.
+@@ -104,6 +123,7 @@
+ 
+ You drive no-mistakes by responding to its gates, not by implementing fixes.
+ Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and `no-mistakes axi run --help` plus the `help` lines in each `axi` response are authoritative and version-matched to the installed binary.
++Send every `no-mistakes axi respond` call, including a skip taken from an `axi` `help` line, through `<FM_ROOT>/bin/fm-nm-respond.sh` with the same arguments.
+ When starting no-mistakes, pass `--intent` as only this brief's `## Captain's intent` subsection body, not its heading, plus any later words the captain actually said.
+ Preserve the actual words without adding speaker labels or direct address; the subsection heading supplies provenance outside the pipeline input.
+ For a legacy brief with no such subsection, include only words on lines marked `[captain] `, excluding that metadata prefix; never copy its mixed `# Task` wholesale.
+@@ -126,9 +146,10 @@
+ Two firstmate-specific rules layer on top of that guidance:
+ - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
+   Firstmate applies `ask-user-authority` and obtains any required captain decision.
+-  When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+-- NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `no-mistakes axi respond`. It is banned fleet-wide.
++  When the decision comes back, feed it to the gate with `<FM_ROOT>/bin/fm-nm-respond.sh` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
++- NEVER pass `--yes` (or `-y`) to `no-mistakes axi run` or `<FM_ROOT>/bin/fm-nm-respond.sh`. It is banned fleet-wide.
+   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
++  Ask-user gates must return to firstmate as `needs-decision`; the worker never answers its own finding.
+ 
+ After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), read the PR back from the forge and confirm it is not a draft (`gh-axi pr view <number>` must print `draft: no`, where <number> is the PR number from your PR URL); if it is a draft, mark it ready with `gh-axi pr ready <number>`.
+ A draft cannot be merged, so a done report on one leaves the merge unasked.

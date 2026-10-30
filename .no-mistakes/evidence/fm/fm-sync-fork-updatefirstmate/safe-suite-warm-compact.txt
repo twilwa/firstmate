@@ -1,0 +1,5 @@
+== premerge safe-suite selection, warm-compact entries:
+tests/fm-warm-compact-herdr-live-e2e.test.sh
+tests/fm-warm-compact.test.sh
+== target safe-suite selection, warm-compact entries:
+tests/fm-warm-compact.test.sh

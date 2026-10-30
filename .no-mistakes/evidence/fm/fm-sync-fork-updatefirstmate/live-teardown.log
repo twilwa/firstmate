@@ -1,0 +1,16 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/nmlive.A8VKep/home
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+teardown: reaping leaked worktree process(es) for live1: 3316124 3328847 3331464
+teardown: force-killing leaked worktree process(es) for live1: 3316124
+A new version of treehouse is available: v3.1.6 → v3.1.8
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+teardown live1 complete (window firstmate:fm-live1, worktree /home/firstmate/.treehouse-fm/a0b9c00bf97f/.treehouse/demo-c6aa0f/1/demo)
+Backlog: live1 just finished (this home keeps no markdown backlog at /tmp/nmlive.A8VKep/home/data/backlog.md). Update /tmp/nmlive.A8VKep/home/data/backlog.md - move live1 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.

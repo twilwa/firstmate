@@ -1,0 +1,142 @@
+FM_TEST_BEGIN 2026-10-30T23:05:25Z tests/fm-brief.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-brief: scaffolds leave the worker role scope to the launch boundary and keep the secondmate contract
+ok - fm-brief.sh: bash -n succeeds
+/tmp/fm-test-run.rrv9wl/w1/tmp/fm-brief.4rUgGO/heredoc-in-substitution.sh:2
+ok - fm-brief.sh: no heredoc is nested inside a command substitution (Bash 3.2 parse-safe)
+ok - fm-brief.sh: --help renders the complete header
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: ship and scout carry host safety without a home include
+ok - fm-brief.sh: --forge forgejo names tea in Rule 3, the direct-PR DOD, and the draft read-back, marks the delivery contract, and the closed set refuses everything else
+ok - fm-brief.sh: --forge external renders the no-push rule, the review contract, and the adapter, and refuses every impossible shape
+ok - fm-brief.sh: ship --mode is required and closed-set validated
+ok - fm-brief.sh: the explicit ship mode wins over the registered posture
+ok - fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped
+ok - fm-brief.sh: faster paths use configured authority without stacked review
+ok - fm-brief.sh: no-mistakes DOD keeps its apostrophe prose and bans --yes outright
+ok - fm-brief.sh: no-mistakes DOD detects a green PR from the drive call, not a status poll
+ok - fm-brief.sh: PR-based done requires a non-draft PR; a deliberate draft declares a wait
+ok - fm-brief.sh: no-mistakes ask-user findings use one event plus a verbatim snapshot
+ok - fm-brief.sh: ship project-memory wording bounds edits to corrections of wrong information
+ok - fm-brief.sh: --herdr-lab emits the complete hard safety contract
+ok - fm-brief.sh: --herdr-lab uses its quoted Firstmate-owned helper path
+ok - fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible
+ok - fm-brief.sh: the documented {TASK} and {FIRSTMATE_SPEC} fills cannot corrupt the Herdr safety gate
+ok - fm-brief.sh: Herdr lab contract covers scouts and rejects secondmate misuse
+ok - fm-brief.sh: --no-projects scaffolds a project-less charter and guards misuse
+ok - fm-brief.sh: marked requests avoid generic acknowledgements and preserve material reporting
+ok - fm-brief.sh: relative directory inputs ignore CDPATH, render stable absolute charter paths, or fail loudly
+ok - fm-brief.sh: custom pause verb renders in every scaffold
+ok - fm-brief.sh: ship and scout scaffolds declare a validation-round pause once, then hold it
+ok - fm-brief.sh: investigation and visual-review completions load the shared decision policy
+ok - fm-brief.sh: scouts may attest only their own empty inventory through the guarded command
+ok - fm-brief: scout and secondmate code paths still scaffold well-formed briefs
+ok - fm-brief.sh: --landing-crew scaffolds the merge-queue landing contract
+ok - fm-brief.sh: --landing-crew refuses ship-only and conflicting kind flags
+ok - fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor
+ok - fm-brief: inbox listing is silent on empty/absent inbox and numerically ordered
+ok - fm-brief: workers end the turn on a decision, wait in one bounded shell command, and never poll
+ok - fm-brief: without config/wait-no-turns the brief and drive text stay as they were
+ok - fm-brief: inbox guidance explains marked synthetic terminators in every scaffold
+ok - fm-brief.sh: the home brief include lands last on ship and scout, verbatim, and fails closed
+ok - fm-brief.sh: --base-branch records the base, targets the PR at it, and is refused where no PR carries it
+ok - fm-brief.sh: --branch-prefix omitted defaults every ship mode to fm/<task-id>
+ok - fm-brief.sh: a --branch-prefix override renders identically across every generated section
+ok - fm-brief.sh: an empty --branch-prefix override resolves to a bare <task-id> branch
+ok - fm-brief.sh: --branch-prefix is refused on scout and secondmate scaffolds
+ok - fm-brief.sh: --branch-prefix value is validated against embedded spaces and a leading dash
+Switched to a new branch '$(touch${IFS}/tmp/fm-test-run.rrv9wl/w1/tmp/fm-brief.4rUgGO/branch-prefix-shell-safe-marker)brief-branch-safe-g3'
+ok - fm-brief.sh: ref-format-valid shell metacharacters stay literal in generated branch commands
+ok - fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool
+FM_TEST_END 2026-10-30T23:06:12Z tests/fm-brief.test.sh exit=0 duration_ms=46556 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:06:12Z tests/fm-kiro-harness.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-10-30T23:06:12Z tests/fm-brief-test-scope.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-brief.sh help documents the --tests scope choices
+ok - fm-brief.sh generates default and selected scopes through its public interface
+ok - firstmate focused Test runs rather than skipping
+ok - firstmate none Test approves with no local selection
+ok - unrelated focused Test keeps fork CI skip guidance
+ok - scope uses active FM_ROOT lineage
+ok - fm-promote.sh renders the selected test scope into ship instructions and the promoted brief
+ok - safe-suite manifest excludes live Herdr, Codex, and Lavish families
+All test-scope brief tests passed.
+FM_TEST_END 2026-10-30T23:06:49Z tests/fm-brief-test-scope.test.sh exit=0 duration_ms=36777 gate_skip=false
+ok - fm-harness.sh: ancestry detects the kiro-cli command
+ok - fm-harness.sh: ancestry rejects unrelated kiro mentions
+ok - fm-harness.sh: kiro's ancestry outranks an inherited CLAUDECODE (markerless harness)
+ok - fm-agent-process-lib: kiro-cli is an agent, unrelated names are not
+ok - fm-control-lib: kiro control mechanics are Escape / single / /quit, crewmate-scout only
+ok - fm-control-lib: kiro wiring paths are the out-of-tree hook config and its two hook scripts
+ok - fm-busy-lib: kiro-hook is kiro's trusted source and is scoped to kiro
+ok - fm-busy-lib: the kiro-hook record is kiro's only state source; no record is unknown
+ok - fm-composer-lib: kiro's › composer and its real idle row read empty in every colour, typed text pending
+ok - fm-composer-lib: the kiro delivery footer matches busy, its idle row does not, and the union sees it
+ok - fm-spawn: kiro launch carries brief, V2 engine, agent, model, effort with cleared markers
+ok - fm-spawn: kiro writes an out-of-tree per-task hook config and trust setting, never the worktree's .kiro/
+ok - fm-spawn: kiro passes the full effort vocabulary including xhigh
+ok - fm-spawn: an unlisted kiro model refuses before any pane is created
+ok - fm-spawn: a kiro hook path with whitespace or a shell-special character refuses before any pane is created
+ok - fm-spawn: a pretty-printed kiro listing validates listed models and refuses unlisted ones
+ok - fm-spawn: a kiro listing with no readable model_id establishes nothing and launches
+ok - fm-spawn: an unreachable kiro listing establishes nothing and launches
+ok - fm-spawn: a hung kiro listing is cut off and launches unvalidated
+ok - fm-spawn: a kiro secondmate launch is refused
+ok - fm-teardown: kiro's per-task home is removed on teardown
+ok - fm-kiro-signals-live-e2e: an opted-out run never starts kiro-cli
+FM_TEST_END 2026-10-30T23:07:14Z tests/fm-kiro-harness.test.sh exit=0 duration_ms=61729 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:07:14Z tests/fm-brief-tdd.test.sh family=unclassified expected_gate_skip=none
+ok - no-mistakes ship brief carries the shared testing discipline once
+ok - direct-PR ship brief carries the shared testing discipline once
+ok - local-only ship brief carries the shared testing discipline once
+ok - promoted no-mistakes ship instructions carry the shared testing discipline once
+ok - promoted direct-PR ship instructions carry the shared testing discipline once
+ok - promoted local-only ship instructions carry the shared testing discipline once
+FM_TEST_END 2026-10-30T23:07:23Z tests/fm-brief-tdd.test.sh exit=0 duration_ms=9461 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:07:23Z tests/fm-launch-mise-env.test.sh family=unclassified expected_gate_skip=none
+PASS: launch trusts the worktree directory
+PASS: existing destination trust is retained
+PASS: worktree trust survives filtered launch
+PASS: the sourced launch appends worktree trust in sh bash
+SKIP: fish not found; only a static syntax check of the mise trust prefix ran
+PASS: mise trusts every config beneath the worktree
+PASS: trust stays confined to the worktree
+FM_TEST_END 2026-10-30T23:07:23Z tests/fm-launch-mise-env.test.sh exit=0 duration_ms=154 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:07:23Z tests/fm-teardown-procevent.test.sh family=unclassified expected_gate_skip=none
+ok - teardown retains task records and explains source retirement refusals
+ok - teardown retires only its own task process-event sources
+ok - teardown without registered process-event sources is unaffected
+ok - late-source retirement refusal retains the task record after endpoint closure
+ok - teardown retires sources registered after the early pass and before endpoint closure
+FM_TEST_END 2026-10-30T23:07:55Z tests/fm-teardown-procevent.test.sh exit=0 duration_ms=31462 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:07:55Z tests/fm-procevent-retire-task.test.sh family=unclassified expected_gate_skip=none
+ok - matching task owner retires its process-event source
+ok - a different task owner cannot retire a process-event source
+FM_TEST_END 2026-10-30T23:07:57Z tests/fm-procevent-retire-task.test.sh exit=0 duration_ms=2240 gate_skip=false
+FM_TEST_BEGIN 2026-10-30T23:07:57Z tests/fm-backend-hc.test.sh family=hc expected_gate_skip=optional-binary
+1..12
+ok - hc: explicit-only, spawn-capable, with its tool set
+ok - hc: create_task starts an independent labeled terminal and refuses a duplicate
+ok - hc: fm-control interrupt delivers the harness's interrupt key
+ok - hc: another task's, another home's, or an unlabeled terminal gets no input and no close
+ok - hc: an empty session never falls through to the ambient core
+ok - hc: an inherited HC_SOCKET never overrides the session pin
+ok - hc: agent_state maps foreground, finished, not_found and core errors onto the shared vocabulary
+ok - hc: agent_state reads a shell wrapper's process group before calling it dead
+ok - hc: kill ends and removes the terminal and refuses when it survives
+ok - hc: teardown's expected label refuses another task's terminal and closes the matching one
+ok - hc: capture, visible capture, and current path read the recorded terminal
+ok - hc: endpoint validation requires window to equal hc_session:hc_terminal
+FM_TEST_COMPLETE
+FM_TEST_END 2026-10-30T23:08:05Z tests/fm-backend-hc.test.sh exit=0 duration_ms=7217 gate_skip=false
+FM_TEST_SUMMARY total=8 failed=0 skipped_gate=0 duration_ms=159737
+FM_TEST_SUMMARY_FAMILY family=hc count=1 duration_ms=7217 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=3 duration_ms=145062 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=4 duration_ms=43317 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-kiro-harness.test.sh duration_ms=61729
+FM_TEST_SLOWEST rank=2 script=tests/fm-brief.test.sh duration_ms=46556
+FM_TEST_SLOWEST rank=3 script=tests/fm-brief-test-scope.test.sh duration_ms=36777
+FM_TEST_SLOWEST rank=4 script=tests/fm-teardown-procevent.test.sh duration_ms=31462
+FM_TEST_SLOWEST rank=5 script=tests/fm-brief-tdd.test.sh duration_ms=9461
+FM_TEST_SLOWEST rank=6 script=tests/fm-backend-hc.test.sh duration_ms=7217
+FM_TEST_SLOWEST rank=7 script=tests/fm-procevent-retire-task.test.sh duration_ms=2240
+FM_TEST_SLOWEST rank=8 script=tests/fm-launch-mise-env.test.sh duration_ms=154
+FM_TEST_LISTENERS found=0

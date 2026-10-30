@@ -1,0 +1,6 @@
+-- inherited HC_TERMINAL_ID=t7 only (no explicit selection):
+tmux
+-- FM_BACKEND=hc:
+hc
+-- config/backend=hc:
+hc

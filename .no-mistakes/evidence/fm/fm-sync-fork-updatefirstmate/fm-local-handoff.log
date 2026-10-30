@@ -1,0 +1,28 @@
+ok - seeding a local-only project binds an independent child copy to its parent
+ok - local-only seeding is idempotent and refuses an unbound or published copy
+ok - a bound local-only copy refuses to land its own work
+ok - a landing offer pins one exact head and refuses uncommitted work
+ok - the offer bundles and lands the task's recorded branch
+ok - a pinned delegated landing fast-forwards the primary, receipts the child, and closes its row
+ok - a delegated landing refuses an unpinned, colliding, moved, or superseded approval
+ok - a released approval lands only the exact head it was pinned to
+ok - an offer can only be pinned while its captain call is still open
+ok - a refused landing imports nothing durable into the primary clone
+ok - a landing refuses a project that is no longer registered local-only
+ok - receipt recovery proves the landing from the repository and repeats safely
+ok - a failed receipt keeps the landing row open until recovery closes it without relanding
+ok - recovery refuses a missing landing row durably and writes nothing
+ok - recovery of a failed receipt refuses a held or missing row and writes no receipt
+ok - cleanup of a bound local-only task needs the parent's durable receipt
+ok - a receipt naming another clone, or no parent record, opens nothing
+ok - an absent worktree still faces the receipt gate, and the parent's record outlives the child
+ok - a missing worktree cannot hide a later unlanded branch commit
+ok - a receipted landing tears down after its task branch was already deleted
+ok - damaged offer, landing, and receipt records refuse instead of landing or proving anything
+ok - only the pinned captain-call lifecycle and its answer can authorize landing
+ok - a deferral before the release keeps the pinned call's approval
+ok - a released legacy date-only call lands the head it pinned
+ok - a landing record still held for the captain blocks the delegated landing
+ok - overlapping requests cannot replace a published pin
+ok - a captain's answer cannot be recorded inside a pin's publication window
+ok - a pin whose row is released underneath it is withdrawn, not inherited

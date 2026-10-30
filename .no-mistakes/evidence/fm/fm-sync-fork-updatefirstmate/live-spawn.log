@@ -1,0 +1,2 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/nmlive.A8VKep/home
+spawned live1 harness=claude kind=scout window=firstmate:fm-live1 worktree=/home/firstmate/.treehouse-fm/a0b9c00bf97f/.treehouse/demo-c6aa0f/1/demo
