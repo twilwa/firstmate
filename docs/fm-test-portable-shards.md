@@ -14,15 +14,15 @@ Each hint is the script's slowest successful `duration_ms` across those runs' `f
 Per-script run-to-run variance is large on hosted runners: `tests/fm-captain-hold-lifecycle.test.sh` measured between 454829 ms and 671795 ms across those four runs, so a single run's sample is not a packing weight.
 That script now runs on a serial shard with the 671795 ms hint (see [Portable pool lane](#portable-pool-lane)).
 Run 40703025845 failed only on a cancelled macOS job; every portable lane in it succeeded.
-`tests/fm-supervision-host.test.sh` takes only run 40796972623's 517234 ms, because #52 rewrote its handoff waits and the earlier runs measured the old script at about 1046 s.
 The refresh covered all 263 serial members and the 25 pool members, whose serial samples come from the serial lanes those runs used before the pool existed; `--estimate-ms` and the scheduling of selections other than the pool read them. An existing live-capability skip is a portable-runner measurement, not a timing claim for the unavailable live integration.
 A failed script's duration is excluded even when its lane uploaded an artifact, and a cancelled job's wall time is only a lower bound, so its unfinished or never-started scripts have no completed sample.
 Collect successful per-script measurements for every member before calculating a split.
 Observed values are packing weights, not an upper bound on future durations.
 
-The supervision host cases run as two scripts, `tests/fm-supervision-host.test.sh` and `tests/fm-supervision-host-late.test.sh`, on one shared fixture, and the wake triage cases likewise split across `tests/fm-watch-triage.test.sh` and `tests/fm-watch-triage-late.test.sh`.
-Each suite outgrew a single shard's budget unsplit, and every half now carries an ordinary measured hint from the current refresh.
-The first watch-triage script keeps the larger half so it stays its family's longest-hinted member, and it keeps the stock-Bash churn case the macOS lane runs by name.
+The supervision host cases run as four scripts on the shared fixture in `tests/supervision-host-helpers.sh`: `tests/fm-supervision-host-drain.test.sh` (report, dispatch, BRANCH OUTCOMES), `tests/fm-supervision-host-hook.test.sh` (Claude Stop-hook re-arm and hand-back), `tests/fm-supervision-host.test.sh` (host loop wakes, closes, mirror, return), and `tests/fm-supervision-host-park.test.sh` (latch, park boundary, compaction, lock ownership).
+The wake triage cases likewise run as three scripts on `tests/watch-triage-helpers.sh`: `tests/fm-watch-triage.test.sh`, which keeps the stock-Bash churn case the macOS lane runs by name, `tests/fm-watch-triage-pause.test.sh`, and `tests/fm-watch-triage-wedge-defer.test.sh`.
+Those seven scripts, and every script the 2026-10-30 upstream merge added, carry upstream's hints rather than samples from the fork refresh above, because the fork's earlier two-way splits of both suites were replaced; upstream derived the four supervision-host hints from local `duration_ms` scaled by about 2.3 for CI.
+Replace them with fork timing-artifact maxima at the next refresh.
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms Git Bash measurement instead of a portable capability skip.
 
 Hints are not a formality: without one a script packs on the 45000 ms default, which can sit it beside a shard already holding more than eighteen minutes of measured work, so that shard would really have run well past the 20-minute target the guard reserves while the coverage guard still passed.
@@ -85,7 +85,8 @@ Refresh the hints whenever a serial member grows materially or the lane gains sc
 `bin/fm-test-run.sh` owns the per-shard packing, so its `--check-coverage` output is the current account of lane size and coverage rather than a copied inventory.
 Its header and `--help` own the modeled-budget check and output fields; read the current estimates from `--check-coverage` instead of retaining copied lane sums here.
 [`tests/fm-test-run.test.sh`](../tests/fm-test-run.test.sh), in `test_portable_serial_packing_budget_boundary`, verifies acceptance exactly at the budget and refusal one millisecond above it through the executable runner.
-The longest script, `tests/fm-watch-triage.test.sh`, is the indivisible floor for this layout.
+The watch-triage suite is three serial members so no one file occupies a whole CI shard: `tests/fm-watch-triage.test.sh` (classifier, signal/turn-end absorb, wedge ladder, gone endpoints, TERM, busy-pane age, timer repair, procevent, heartbeat/afk hand-off, exit picker; hint 592950 ms), `tests/fm-watch-triage-pause.test.sh` (declared waits, captain-call holds, pause transitions, away/quiet holds, paused-until and background-job waits; hint 466750 ms), and `tests/fm-watch-triage-wedge-defer.test.sh` (wedge-threshold deferrals; 13 tests, hint 526980 ms).
+Those hints are the per-file sums of per-test durations from the slowest CI sample, run [40280579086](https://github.com/kunchenguid/firstmate/actions/runs/40280579086), rounded up, replacing the 1074843 ms single-file sample that sat in a serial shard with about 27.8 minutes of tests against the 30-minute job cap.
 The estimates use per-file maxima from different runs, not measured rebalanced jobs or an end-to-end latency guarantee.
 Each observed completed portable job adds at most 30 seconds beyond its summed scripts in the 2026-09-30 runs [36583881812](https://github.com/kunchenguid/firstmate/actions/runs/36583881812), [36658498535](https://github.com/kunchenguid/firstmate/actions/runs/36658498535), [36663947738](https://github.com/kunchenguid/firstmate/actions/runs/36663947738), [36664663190](https://github.com/kunchenguid/firstmate/actions/runs/36664663190), and [36669175457](https://github.com/kunchenguid/firstmate/actions/runs/36669175457).
 Even so, a few runs' samples do not establish a P95 or guarantee future headroom.
@@ -142,11 +143,11 @@ Its `--list-files` interface exposes partition membership; `tests/fm-lint.test.s
 The workflow uploads each partition's quiet telemetry plus its per-root lifecycle sidecar to distinguish analysis cost, memory use, and host contention.
 No fast mode, path skips, or paid runner provisioning is part of this layout.
 
-The longer-term performance objective remains a complete green run under fifteen minutes including start delay, but the current `tests/fm-watch-triage.test.sh` floor alone exceeds that objective.
+The longer-term performance objective remains a complete green run under fifteen minutes including start delay, but the three watch-triage members still sum to about 26 minutes of CI test time.
 The immediate packing target is the runner's modeled script budget, not a claim that more shards alone can make an indivisible script faster.
-The layout uses nineteen long-lived Linux jobs (thirteen serial, one pool, Herdr, four lint) plus macOS; insufficient shared account capacity can erase the packing gain.
+The layout uses nineteen long-lived Linux jobs (thirteen serial, one pool, Herdr, four lint) plus macOS and the short timing aggregate and Full suite verdict jobs; insufficient shared account capacity can erase the packing gain.
 Compare complete before/after runs, preserve cancelled and partial-run evidence, and measure a representative normal-run sample before claiming a P95 improvement.
-The workflow retains per-PR supersession without cancelling main pushes or changing the compliance workflow's event semantics.
+The workflow retains per-PR supersession and keeps only the newest of close main pushes' runs, without changing the compliance workflow's event semantics.
 
 ## Local entry points
 
@@ -161,7 +162,7 @@ A lane that reaches its tier bound needs investigation and a distribution or run
 
 | Tier | Jobs | Bound | Rationale |
 |---|---|---|---|
-| Fast | timing aggregate | 5 minutes | Seconds-long local work, so the tripwire only catches a hung runner. |
+| Fast | timing aggregate, Full suite verdict | 5 minutes | Seconds-long local work, so the tripwire only catches a hung runner. |
 | Normal | lint partitions, macOS stock Bash | 30 minutes, one value shared by every job in the tier | One shared hang tripwire keeps every ordinary lint and compatibility lane on the same policy instead of allowing per-lane packing estimates or one-off caps to set the bound. |
 | Portable test | portable pool, portable serial shards | 50 minutes, one value shared by every job in the tier, over a 1500-second per-file bound | Each job runs `bin/fm-test-run.sh --per-script-timeout-secs 1500`, so a hung file fails by name with exit 124 and its output, and the timing artifact still uploads. That happens only if the bound fires before the job cap. Each lane's cap must exceed a 60-second setup allowance plus its packing ceiling plus the per-file bound, and the coverage guard refuses a lane above its ceiling. Serial shard rule: `serial_budget_ms` caps each shard's serial hint sum at 1200 seconds, so 60 + 1200 + 1500 = 2760 seconds against 3000, and a file is covered when it starts within 25 minutes of job start. Pool rule: `pool_budget_ms` caps the four-worker makespan over contended pool hints at 1400 seconds, so 60 + 1400 + 1500 = 2960 seconds against 3000, and the guard also refuses a ceiling that breaks this sum. A file that starts later than its rule allows, because setup overruns its allowance or earlier files overrun their hints, can still hit the job cap as an unexplained timeout. |
 | Heavy | Herdr | family-run step 20 minutes under a 75-minute job-level last-resort backstop | Healthy runs finish in about 7-10 minutes, so the step tripwire fails a wedged suite while the `always()` cleanup and timing upload still run, and the job cap only catches a hang outside that step. |

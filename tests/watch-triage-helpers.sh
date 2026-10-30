@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
-# tests/watch-triage-helpers.sh - the fixture and helpers shared by the wake
-# triage suites, tests/fm-watch-triage.test.sh and
-# tests/fm-watch-triage-late.test.sh. Sourcing it loads the wake helpers and the
-# classifier, and creates the suite's TMP_ROOT and watcher cycle trace.
-# Helpers only one suite uses stay in that suite.
+# tests/watch-triage-helpers.sh - shared fixtures for the watch-triage
+# behavior suites. These encode the watcher launch, poll-cycle waits, and
+# wedge-threshold helpers, so they live here rather than in the generic
+# tests/lib.sh. Generic reporters/assertions come from lib.sh via
+# wake-helpers.sh.
+#
+# Source this from a watch-triage test file:
+#   # shellcheck source=tests/watch-triage-helpers.sh
+#   . "$(dirname "${BASH_SOURCE[0]}")/watch-triage-helpers.sh"
+#
+set -u
+
+if [ -n "${FM_WATCH_TRIAGE_HELPERS_SOURCED:-}" ]; then
+  return 0
+fi
+FM_WATCH_TRIAGE_HELPERS_SOURCED=1
 
 # shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
@@ -12,10 +23,6 @@
 
 WATCH="$ROOT/bin/fm-watch.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
-
-TMP_ROOT=$(fm_test_tmproot fm-watch-triage-tests)
-# Each watcher reports cycle boundaries for the test's completed-cycle waits.
-export FM_WATCH_TRACE="$TMP_ROOT/.watch-test-trace"
 
 ack_stopped_cycle() {  # <state>
   local state=$1 err sequence generation
@@ -42,17 +49,6 @@ watch_bg() {  # <state> <fakebin> <out> [extra env assignments...]
     FM_SECONDMATE_LIVENESS_SECS=99999999 "$@" "$WATCH" > "$out" &
 }
 
-# Wait up to <limit> 0.1s ticks while <pid> stays alive; 0 if still alive, 1 if it died.
-wait_live() {
-  local pid=$1 limit=${2:-30} i=0
-  while [ "$i" -lt "$limit" ]; do
-    kill -0 "$pid" 2>/dev/null || return 1
-    sleep 0.1
-    i=$((i + 1))
-  done
-  return 0
-}
-
 # Wait until <pid>'s watcher has completed a whole poll cycle, or exited first.
 # A fixed wait_live budget only proves the process is still ALIVE: fm-watch.sh
 # does bounded startup work (the recovery-marker snapshot, lock acquisition)
@@ -63,7 +59,7 @@ wait_live() {
 # The beacon now advances within a cycle, so a second beacon write no longer
 # proves that a whole scan completed. Snapshot this watcher's cycle-start trace
 # count on entry and wait for two more: the first starts after this call, and
-# the second proves that cycle completed.
+# the second proves that cycle completed. Each suite exports FM_WATCH_TRACE.
 # 0 if the watcher is still alive after a completed cycle, 1 if it exited.
 wait_poll_cycle() {  # <state> <pid> [limit-ticks]
   local pid=$2 limit=${3:-300} i=0 starts target
@@ -83,6 +79,32 @@ watch_cycle_starts() {  # <pid>
   starts=$(grep -c " $1 cycle-start\$" "$FM_WATCH_TRACE" 2>/dev/null || true)
   case "$starts" in ''|*[!0-9]*) starts=0 ;; esac
   printf '%s\n' "$starts"
+}
+
+# Every wait_for_exit budget in this file is 100 ticks (10s), not because any
+# watcher takes that long to decide, but because fm-watch.sh does bounded
+# startup work before its first poll: a tighter budget reaps the process while
+# it is still starting and reports a spurious "did not surface" failure. A
+# generous budget can only remove that false negative - a watcher that never
+# exits still fails the assertion when the budget runs out.
+wait_numeric_file() {
+  local file=$1 limit=${2:-30} i=0 value
+  while [ "$i" -lt "$limit" ]; do
+    value=$(cat "$file" 2>/dev/null || true)
+    case "$value" in
+      ''|*[!0-9]*) ;;
+      *) return 0 ;;
+    esac
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# Portable mtime in epoch seconds. Platform-detected, never the `stat -f || stat -c`
+# fallback (which writes a partial filesystem dump on Linux; see fm-watch.sh).
+file_mtime() {
+  if [ "$(uname)" = Darwin ]; then stat -f %m "$1" 2>/dev/null; else stat -c %Y "$1" 2>/dev/null; fi
 }
 
 # Set <file>'s mtime to exactly <epoch> seconds, for aging a busy-turn marker by
@@ -115,13 +137,6 @@ seen_sig() {
   esac
 }
 
-record_pi_busy() {  # <state-dir> <id>
-  local state=$1 id=$2 gen
-  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" "$id")
-  "$ROOT/bin/fm-busy-event.sh" apply "$state" "$id" busy --gen "$gen" \
-    --source pi-ext --event agent-start
-}
-
 # Stop an owned watcher. TERM must end it through its EXIT cleanup, so one still
 # alive after the file's standard 100-tick budget fails the case here, with the
 # process evidence wait_for_exit prints, instead of an unbounded wait hanging
@@ -137,68 +152,6 @@ reap() {
 # --- pure classifier predicates (fm-classify-lib.sh) ------------------------
 
 size_of() { LC_ALL=C wc -c < "$1" | tr -d '[:space:]'; }
-
-test_status_span_actionable_classifier() {
-  local dir state offset
-  dir=$(make_case classify-signal); state="$dir/state"
-  printf 'working: step 1\nworking: step 2\n' > "$state/a.status"
-  status_span_has_actionable "$state/a.status" 0 && fail "benign working: span classified actionable"
-  printf 'working: x\nneeds-decision: pick A or B\n' > "$state/b.status"
-  status_span_has_actionable "$state/b.status" 0 || fail "captain-relevant span classified benign"
-  # A failure and a merge result are captain-relevant and must always wake.
-  printf 'failed: build broke on main\n' > "$state/d.status"
-  status_span_has_actionable "$state/d.status" 0 || fail "a failed: line was not actionable"
-  printf 'merged\n' > "$state/e.status"
-  status_span_has_actionable "$state/e.status" 0 || fail "a legacy merged line was not actionable"
-  # An offset past the whole log has nothing left to classify: an event already
-  # classified must not re-fire on the next append.
-  offset=$(size_of "$state/b.status")
-  status_span_has_actionable "$state/b.status" "$offset" \
-    && fail "an already-classified needs-decision re-fired from its own end offset"
-  printf 'working: tidying up\n' >> "$state/b.status"
-  status_span_has_actionable "$state/b.status" "$offset" \
-    && fail "a routine append after a classified decision was classified actionable"
-  # An unusable offset (absent, malformed, or past a truncated log) reads the
-  # whole file rather than losing the events it cannot account for.
-  status_span_has_actionable "$state/b.status" "" || fail "an empty offset did not read the whole log"
-  status_span_has_actionable "$state/b.status" "not-a-number" || fail "a malformed offset did not read the whole log"
-  status_span_has_actionable "$state/b.status" 99999 || fail "an offset past the log did not read the whole log"
-  pass "status_span_has_actionable: benign absorbed, captain events surfaced, classified events not re-fired"
-}
-
-# Run one watcher round against a parked-worker fixture, so a round differs only
-# in the pane contents the case just wrote. Armed the way fm-watch-arm.sh arms a
-# successor after firstmate handled a wake, because that is what a supervision
-# turn actually does and it is the only arm that stays in the poll loop instead of
-# re-announcing the previous round's downtime - without it a round exits on
-# `check: rearm-resurface` before it ever reaches the stale path, and every
-# absorb assertion below passes vacuously. A live agent (pane_current_command
-# matching the recorded harness) on an idle pane is the exact population
-# pause_state_class answers `none` for.
-# <mode> `exit` requires the watcher to surface and exit; `absorb` requires it to
-# survive whole poll cycles - enough to see the new hash, count it stable, and
-# reach the stale path. Returns 1 when the watcher does the other thing.
-parked_watch_round() {  # <state> <fakebin> <out> <capture> <window> <exit|absorb>
-  local state=$1 fakebin=$2 out=$3 capture=$4 window=$5 mode=$6 pid cycles=0
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok \
-    FM_FAKE_CREW_STATE='state: paused · source: status-log · parked' \
-    FM_WATCH_HANDLING_SUCCESSOR=1 \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
-    FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" >> "$out" &
-  pid=$!
-  if [ "$mode" = exit ]; then
-    wait_for_exit "$pid" 100 || { reap "$pid"; return 1; }
-    return 0
-  fi
-  while [ "$cycles" -lt 4 ]; do
-    wait_poll_cycle "$state" "$pid" 300 || { reap "$pid"; return 1; }
-    cycles=$((cycles + 1))
-  done
-  reap "$pid"
-  return 0
-}
 
 # --- the wedge threshold consults the worker's own declared wait ------------
 # Upstream kunchenguid/firstmate#3909 and #2614: wedge_timer_check escalated on
@@ -291,12 +244,12 @@ wedge_stale_wakes() {  # <state> <window>
     "$1/.wake-queue" 2>/dev/null || echo 0
 }
 
-# The wait age the deferral PUBLISHES to the captain, read back off the wake it
-# emitted. The wake reason is the watcher's supervisor-facing output contract, so
-# the number in it is the thing under test: it must describe the wait that is
-# actually holding the lane, not whatever unrelated record happened to be handy.
-wedge_reported_wait_secs() {  # <watch-out>
-  sed -n 's/.*waiting \([0-9][0-9]*\)s.*/\1/p' "$1" | head -1
+# bin/fm-captain-hold.sh against a hold fixture's own home.
+run_hold() {  # <dir> <args...>
+  local dir=$1
+  shift
+  FM_HOME="$dir" FM_STATE_OVERRIDE="$dir/state" FM_DATA_OVERRIDE="$dir/data" \
+    FM_CONFIG_OVERRIDE="$dir/config" "$ROOT/bin/fm-captain-hold.sh" "$@" >/dev/null 2>&1
 }
 
 # --- the away-posture record: captain-held items are never rechecked ----------

@@ -1403,7 +1403,6 @@ tests/fm-stow-cascade.test.sh 981
 tests/fm-subagent-pretool-check.test.sh 882
 tests/fm-supervision-events.test.sh 831
 tests/fm-supervision-host-attended-live-e2e.test.sh 4890
-tests/fm-supervision-host-late.test.sh 1982
 tests/fm-supervision-host-live-e2e.test.sh 781
 tests/fm-supervision-host.test.sh 4841
 tests/fm-supervision-instructions.test.sh 980
@@ -1445,7 +1444,6 @@ tests/fm-watch-beacon.test.sh 726
 tests/fm-watch-checkpoint.test.sh 1131
 tests/fm-watch-inbox-meta.test.sh 579
 tests/fm-watch-recovery-loop.test.sh 1082
-tests/fm-watch-triage-late.test.sh 5141
 tests/fm-watch-triage.test.sh 7147
 tests/fm-watch-wedge-cap-live.test.sh 1732
 tests/fm-watch-wedge-cap-unconfigured-parity.test.sh 876
