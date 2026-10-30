@@ -116,6 +116,7 @@ META="$STATE/$ID.meta"
 . "$SCRIPT_DIR/fm-lease-lib.sh"
 fm_lease_forbid_branch "local-only landing (fm-merge-local)"
 
+PARENT_HOME=$(cd "$FM_HOME" && pwd -P)
 MERGE_EXPECTED_SPAWN_GEN=
 MERGE_EXPECTED_HEAD=
 if [ "$DELEGATED" -eq 1 ]; then
@@ -134,6 +135,19 @@ else
     exit 1
   fi
   MERGE_EXPECTED_SPAWN_GEN=$FM_BACKLOG_META_SPAWN_GEN
+  PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
+  MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
+  [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge GitHub PR tasks with bin/fm-pr-review.sh merge <id> <PR url> when the review policy requires the reviewed-head handoff and bin/fm-pr-merge.sh <id> <PR url> otherwise, or GitLab MR tasks with bin/fm-pr-merge.sh <id> <MR url>, after approval" >&2; exit 1; }
+  PROJECT_NAME=$(basename "$PROJ")
+  # A bound local-only clone is a CHILD copy of someone else's project. Landing
+  # it here would produce a merge no receipt can ever prove, and teardown would
+  # then have nothing durable to check, so this refuses and names the path that
+  # does work. It precedes the done-head read, because no record makes a
+  # bound copy landable.
+  if fm_local_handoff_binding_present "$PARENT_HOME" "$PROJECT_NAME"; then
+    echo "error: project $PROJECT_NAME in this home is a bound local-only clone; publish the work with bin/fm-local-handoff.sh offer $ID and have the parent land it" >&2
+    exit 1
+  fi
   MERGE_EXPECTED_HEAD=$(fm_dod_local_done_head "$META") || {
     echo "error: missing or malformed local done head for task $ID; report readiness before approval" >&2
     exit 1
@@ -174,7 +188,6 @@ if [ "$DELEGATED" -eq 0 ]; then
   }
 fi
 
-PARENT_HOME=$(cd "$FM_HOME" && pwd -P)
 OFFER_BLOB=
 LANDING_BLOB=
 if [ "$DELEGATED" -eq 1 ]; then
@@ -228,19 +241,6 @@ if [ "$DELEGATED" -eq 1 ]; then
   fi
   if ! fm_local_handoff_landing_matches_offer "$LANDING_BLOB" "$OFFER_BLOB" "$PARENT_HOME" "$PROJ"; then
     echo "error: $FM_LOCAL_HANDOFF_ERROR" >&2
-    exit 1
-  fi
-else
-  PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
-  MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
-  [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge GitHub PR tasks with bin/fm-pr-review.sh merge <id> <PR url> when the review policy requires the reviewed-head handoff and bin/fm-pr-merge.sh <id> <PR url> otherwise, or GitLab MR tasks with bin/fm-pr-merge.sh <id> <MR url>, after approval" >&2; exit 1; }
-  PROJECT_NAME=$(basename "$PROJ")
-  # A bound local-only clone is a CHILD copy of someone else's project. Landing
-  # it here would produce a merge no receipt can ever prove, and teardown would
-  # then have nothing durable to check, so this refuses and names the path that
-  # does work.
-  if fm_local_handoff_binding_present "$PARENT_HOME" "$PROJECT_NAME"; then
-    echo "error: project $PROJECT_NAME in this home is a bound local-only clone; publish the work with bin/fm-local-handoff.sh offer $ID and have the parent land it" >&2
     exit 1
   fi
 fi

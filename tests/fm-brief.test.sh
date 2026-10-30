@@ -1254,7 +1254,8 @@ mode|landing-r1 alpha --landing-crew --mode direct-PR|--mode applies only to shi
 scout|landing-r2 alpha --landing-crew --scout|--landing-crew cannot be combined with --scout or --secondmate
 branch prefix|landing-r3 alpha --landing-crew --branch-prefix fix/|--branch-prefix applies only to ship briefs
 base branch|landing-r4 alpha --landing-crew --base-branch release|--base-branch takes a branch name and applies only to ship and scout briefs
-forge|landing-r5 alpha --landing-crew --forge gerrit|--forge and --shape apply only to ship briefs
+forge|landing-r5 alpha --landing-crew --forge gerrit|--forge, --shape, and --pr apply only to ship briefs
+pr text|landing-r6 alpha --landing-crew --pr manual|--forge, --shape, and --pr apply only to ship briefs
 ROWS
   pass "fm-brief.sh: --landing-crew refuses ship-only and conflicting kind flags"
 }
