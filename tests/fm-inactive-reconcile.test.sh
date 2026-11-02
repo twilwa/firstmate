@@ -180,7 +180,7 @@ test_terminal_pr_ignores_budget_age() {
   local record fingerprint err seq generation
   make_world terminal-pr-budget
   write_child "$MAIN" child 'working: validation finished'
-  FM_FAKE_CREW_STATE=done FM_FAKE_CREW_SOURCE=run-step \
+  FM_FAKE_CREW_STATE='done' FM_FAKE_CREW_SOURCE=run-step \
     FM_FAKE_CREW_DETAIL='run done · pr=https://example.test/owner/repo/pull/1 · budget: age=120s' \
     run_reconcile "$MAIN" --startup
   record=$(printf '%s\n' "$MAIN/state/terminal-outcomes/"*.pending)
@@ -195,7 +195,7 @@ test_terminal_pr_ignores_budget_age() {
   [ -n "$seq" ] && [ -n "$generation" ] || fail "terminal outcome was not queued for acknowledgement"
   FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" --ack-through "$seq" --recovery-generation "$generation"
 
-  FM_FAKE_CREW_STATE=done FM_FAKE_CREW_SOURCE=run-step \
+  FM_FAKE_CREW_STATE='done' FM_FAKE_CREW_SOURCE=run-step \
     FM_FAKE_CREW_DETAIL='run done · pr=https://example.test/owner/repo/pull/1 · budget: age=180s' \
     run_reconcile "$MAIN" --startup
   [ -f "$MAIN/state/terminal-outcomes/$fingerprint.presented" ] \
