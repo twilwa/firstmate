@@ -2134,8 +2134,28 @@ _fm_composer_select_cursorless() {
   [ -n "$FM_COMPOSER_SELECTED_KIND" ]
 }
 
-fm_composer_extract_selected_content() {  # <caps> <screen>
-  local caps=$1 screen=$2 styled=0 kv plain row raw content glyph joined='' footer_re prompt_row=-1
+# A single-line Claude slash command can open a completion menu whose selected
+# row also starts with ❯. For payload proof only, distinguish that row from the
+# actual input: one glyph row between adjacent rules, immediately followed by
+# an indented selected command with a separate description column. Selection
+# still extracts the input itself; a menu match never proves the payload.
+_fm_composer_select_slash_popup_input() {  # <plain-screen>
+  local plain=$1 input_row=$FM_COMPOSER_SCAN_PI_GLYPH_ROW menu
+  [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
+    && [ "$FM_COMPOSER_SCAN_PI_GLYPH" = '❯' ] \
+    && [ "$FM_COMPOSER_SCAN_PI_OPEN" -eq "$((input_row - 1))" ] \
+    && [ "$FM_COMPOSER_SCAN_PI_CLOSE" -eq "$((input_row + 1))" ] \
+    && [ "$FM_COMPOSER_SCAN_BARE_ROW" -eq "$((input_row + 2))" ] \
+    && [ "$FM_COMPOSER_SCAN_SHELL_ROW" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ] || return 1
+  menu=$(_fm_composer_screen_row "$FM_COMPOSER_SCAN_BARE_ROW" "$plain")
+  [[ "$menu" =~ ^[[:blank:]]+❯[[:blank:]]+/[^[:space:]]+[[:blank:]]{2,}[^[:space:]] ]] || return 1
+  FM_COMPOSER_SELECTED_KIND=bare
+  FM_COMPOSER_SELECTED_FIRST=$input_row
+  FM_COMPOSER_SELECTED_LAST=$input_row
+}
+
+fm_composer_extract_selected_content() {  # <caps> <screen> [slash-payload]
+  local caps=$1 screen=$2 payload=${3:-} styled=0 kv plain row raw content glyph joined='' footer_re prompt_row=-1
   local leading_blank=1 placeholder_position=0 prompt_is_shell=0 cwd_start
   footer_re=${FM_COMPOSER_LEFTBAR_FOOTER_RE:-$FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT}
   while IFS= read -r kv; do
@@ -2145,7 +2165,12 @@ $caps
 EOF
   plain=$(printf '%s\n' "$screen" | fm_composer_strip_ansi)
   _fm_composer_scan_screen "$plain" '' 1
-  _fm_composer_select_cursorless "$plain" || return 1
+  if [[ "$payload" =~ ^/[[:alnum:]_-]+$ ]] \
+    && _fm_composer_select_slash_popup_input "$plain"; then
+    :
+  else
+    _fm_composer_select_cursorless "$plain" || return 1
+  fi
   row=$FM_COMPOSER_SELECTED_FIRST
   cwd_start=-1
   if [ "$FM_COMPOSER_SELECTED_KIND" = leftbar ]; then

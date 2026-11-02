@@ -5575,6 +5575,49 @@ test_send_text_submit_claude_grey_slash_command_is_proven_and_submitted() {
   pass "fm_backend_herdr_send_text_submit: a typed slash command Claude draws in muted truecolor grey is proven and submitted"
 }
 
+# Captured on Herdr 0.9.5: Claude's completion menu has its own selected
+# agent-glyph row below the real composer. The selected row is not input.
+test_send_text_submit_claude_selected_slash_popup_is_not_the_payload() {
+  local dir log resp fb out text input expected enter_count
+  text='/exit'
+  for input in /exit /ex; do
+    expected=empty
+    [ "$input" = /exit ] || expected=send-failed
+    dir="$TMP_ROOT/submit-claude-selected-slash-popup-$expected"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+    herdr_submit_claude_prefix "$resp" "$text"
+    {
+      printf '❯ /exit\nEarlier turn completed.\n\n'
+      printf '%s\n❯ %s\n%s\n' '────────────────────────────────────────────────────────────────────────────────' "$input" '────────────────────────────────────────────────────────────────────────────────'
+      cat <<'EOF'
+  ❯ /exit                                          Exit the CLI
+    /context                                       Visualize current context usage as a colored grid
+    /usage-credits                                 Configure usage credits or request them when you
+                                                   hit a limit
+    /quiet                                         Enter quiet supervision mode
+EOF
+    } > "$resp/4.out"
+    if [ "$expected" = empty ]; then
+      printf '{"result":{"agent":{"agent":"claude","agent_status":"idle"}}}\n' > "$resp/5.out"
+      printf '{"result":{"agent":{"agent_status":"working"}}}\n' > "$resp/7.out"
+    else
+      printf '❯\n' > "$resp/6.out"
+    fi
+    herdr_submit_preflight_prefix "$resp"
+    fb=$(make_herdr_fakebin "$dir")
+    out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 \
+      bash -c 'unset HERDR_ENV HERDR_SESSION HERDR_SOCKET_PATH; . "$0/bin/fm-backend.sh"; fm_backend_send_text_submit herdr firstmate:wVX:p2 "$1" 3 0.01 0.01' "$ROOT" "$text" )
+    [ "$out" = "$expected" ] || fail "composer '$input' with selected /exit popup must report '$expected' from an outside caller, got '$out'"
+    enter_count=$(grep -c $'\x1f''pane'$'\x1f''send-keys'$'\x1f''wVX:p2'$'\x1f''enter' "$log")
+    if [ "$expected" = empty ]; then
+      [ "$enter_count" -eq 1 ] || fail "the proven /exit must be submitted"
+      [ "$(herdr_ctrl_u_count "$log")" -eq 0 ] || fail "the proven command must not be cleared"
+    else
+      [ "$enter_count" -eq 0 ] || fail "the selected /exit popup must not prove a truncated /ex input"
+    fi
+  done
+  pass "fm_backend_send_text_submit: selected slash-menu rows neither contaminate nor substitute for the real Claude composer proof"
+}
+
 test_send_text_submit_lone_paste_placeholder_submits_the_long_payload() {
   local dir log resp fb out enter_count text
   dir="$TMP_ROOT/submit-paste-placeholder"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -6581,6 +6624,7 @@ test_send_text_submit_refuses_marked_digest_missing_its_head
 test_composer_state_claude_slash_popup_pushes_composer_above_tail_window
 test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted
 test_send_text_submit_claude_grey_slash_command_is_proven_and_submitted
+test_send_text_submit_claude_selected_slash_popup_is_not_the_payload
 test_send_text_submit_lone_paste_placeholder_submits_the_long_payload
 test_send_text_submit_multiline_paste_placeholder_submits_the_long_payload
 test_send_text_submit_refuses_placeholder_followed_by_a_literal_remainder
