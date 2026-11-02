@@ -679,6 +679,7 @@ A Claude composer that already holds text, or cannot be read, before the send is
 Before that Enter, the adapter continues only when the selected composer shows the typed payload, or only Claude paste placeholders with no literal remainder.
 Every herdr adapter composer read (`fm_backend_herdr_composer_state`, `fm_backend_herdr_composer_content`) captures the full visible viewport, never a bounded tail.
 An overlay Claude renders between the composer and the pane bottom - the slash-command popup is the verified shape - pushes the composer outside a tail window, and the composer is by definition inside the viewport.
+When that popup's selected entry also starts with `❯`, the post-type proof of a single-token slash command reads the composer row above the popup rather than the selected entry, so a menu entry never stands in for the typed payload; `tests/fm-backend-herdr.test.sh` pins this with a Herdr 0.9.5 capture.
 [`bin/fm-task-inbox-lib.sh`](../bin/fm-task-inbox-lib.sh) owns the separate shared inbox pending-line confirmation read.
 Dated measurement: docs/verification/runtime-backends.md "Claude exit behind the slash-command popup".
 
