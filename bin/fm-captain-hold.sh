@@ -79,6 +79,12 @@
 # rejected. A defer date is part of the recorded decision's digest, so the same
 # words carried back with a new date are a genuinely new answer that records
 # its own resolution on top, while an exact redelivery stays idempotent.
+# `--release` is attended-only: while the away-posture record exists
+# (state/.afk-contract, or the daemon flag state/.afk, read as away; a quiet
+# record is a present captain) it is refused before anything is written, so an
+# unattended supervisor cannot free held work with its own words and then steer
+# it; the captain releases the hold in an attended session. A closing answer
+# without `--release` is not gated by posture.
 # A re-held task may record a new answer on top. On a task already closed outside this script,
 # `answer` records the missing resolution block (the old `repair` path) only
 # when the task still carries the captain-hold provenance tasks-axi preserves
@@ -98,9 +104,11 @@
 # resumes, and `defer` requires a fifth YYYY-MM-DD field strictly later than
 # today's UTC date and records the answer before re-dating the task's existing
 # captain hold; anything else is skipped.
-# A key that names no task, a task that is
-# not held for the captain, or a task already closed is reported as `skipped:`
-# and feeds nothing. A resolved key is reported `closed:` and counted in
+# A `release` line while the away-posture record exists is reported as
+# `refused:` under the same attended-only rule as `answer --release` and feeds
+# nothing. A key that names no task, a task not held for the captain, or a task
+# already closed is reported as `skipped:` and feeds nothing.
+# A resolved key is reported `closed:` and counted in
 # `closed=`, except a deferral, which leaves the task open behind its date and
 # is therefore reported `deferred: <id> until <date>` and counted separately in
 # `deferred=`. A replayed delivery whose answer digest and requested
@@ -268,6 +276,9 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-parent-channel-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
+# shellcheck source=bin/fm-afk-contract.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-afk-contract.sh"
 
 PARENT_HOLD_PUBLISHED=0
 publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
@@ -294,6 +305,7 @@ captain_hold_cleanup() {
     fm_lock_release "$CAPTAIN_CONTROL_LOCK" || true
     CAPTAIN_CONTROL_LOCK_HELD=0
   fi
+  fm_afk_contract_lock_release || true
 }
 trap captain_hold_cleanup EXIT
 
@@ -1291,6 +1303,20 @@ apply_pending_retained_artifact() {  # <task-id>
   esac
 }
 
+# A captain hold is released only in an attended session. The away daemon flag
+# (state/.afk, bin/fm-wake-lib.sh fm_afk_mode) and the posture record
+# (state/.afk-contract, bin/fm-afk-contract.sh mode) are both read: either one
+# reading away refuses, a quiet record is a present captain, and no record is
+# attended. The check runs before any write, so a refusal leaves the hold and
+# the body untouched.
+RELEASE_AWAY_REASON='the away-posture record exists, and a captain hold is released only by the captain in an attended session; retry --release after the return archives the record'
+release_attended() {
+  if [ -e "$STATE/.afk" ] && [ "$(fm_afk_mode "$STATE")" = away ]; then
+    return 1
+  fi
+  ! fm_afk_contract_away_present "$STATE"
+}
+
 close_answered() {  # <task-id> <release-0-or-1>
   if [ "$2" = 1 ]; then
     tasks_axi unhold "$1" >/dev/null
@@ -1416,8 +1442,15 @@ command_answer() {
     return
   fi
   validate_slug task-id "$id"
+  if [ "$release" = 1 ] && ! release_attended; then
+    fail "task $id stays held: $RELEASE_AWAY_REASON"
+  fi
   load_decision "$decision_file"
   acquire_task_control_lock "$id"
+  if [ "$release" = 1 ]; then
+    fm_afk_contract_lock_hold "$STATE" || fail "task $id stays held: the away-posture record is locked"
+    release_attended || fail "task $id stays held: $RELEASE_AWAY_REASON"
+  fi
   require_tasks_axi
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
   show=$TASK_SHOW_OUTPUT
@@ -1692,6 +1725,11 @@ command_answers() {
         continue
         ;;
     esac
+    if [ "$mode" = release ] && ! release_attended; then
+      printf 'refused: %s (%s)\n' "$key" "$RELEASE_AWAY_REASON"
+      skipped=$((skipped + 1))
+      continue
+    fi
     resolve_rc=0
     id=$(resolve_entry "$origin" "$key" 2>"$err") || resolve_rc=$?
     id=${id%% *}
@@ -2071,7 +2109,7 @@ reconcile_note() {
 
 command_complete() {
   local origin=${1:-} meta previous='' supplied='' keys='' entry key status_file open has_meta=0 transfer_rc transfers=() resolved
-  local resolved_how attested_by_prefix='' origin_state unrecorded_origin=''
+  local resolved_how attested_by_prefix='' origin_state unrecorded_origin='' tmp
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   shift
@@ -2126,7 +2164,17 @@ EOF
 
   if [ "$has_meta" = 1 ]; then
     if [ "$(meta_value "$meta" decisions_reviewed)" != 1 ] || [ "$previous" != "$keys" ]; then
-      printf 'decisions_reviewed=1\ndecision_keys=%s\n' "$keys" >> "$meta"
+      tmp=$(mktemp "$STATE/.$origin.meta.XXXXXX") \
+        || fail "cannot stage the completion record for $origin"
+      if ! awk -v keys="$keys" '
+          /^(decisions_reviewed|decision_keys)=/ { next }
+          /^pr=/ && !done { print "decisions_reviewed=1"; print "decision_keys=" keys; done = 1 }
+          { print }
+          END { if (!done) { print "decisions_reviewed=1"; print "decision_keys=" keys } }
+        ' "$meta" > "$tmp" || ! mv -f -- "$tmp" "$meta"; then
+        rm -f -- "$tmp"
+        fail "cannot record completion for $origin"
+      fi
     fi
     fm_lock_release "$CAPTAIN_META_LOCK"
     CAPTAIN_META_LOCK_HELD=0
