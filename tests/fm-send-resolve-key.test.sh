@@ -1018,6 +1018,46 @@ second line"
   pass "fm-send --resolve-key: an unresolvable key refuses without swallowing the message"
 }
 
+# A refused key on a dated deferral must hand back a closing resend that still
+# defers: pasting a resend without --defer-until would close a captain-held task
+# the operator meant to re-date. The plain delivery resend closes nothing, so it
+# carries no date. The refusal is reported even when a status-log key would
+# separately be refused for --defer-until, so the typed message is never lost.
+test_refused_key_resend_keeps_the_deferral_date() {
+  local dir fb log home err rc closing plain
+  dir="$TMP_ROOT/refused-defer"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"; err="$dir/send.err"
+  home=$(setup_home refused-defer)
+  fm_write_meta "$home/state/t14.meta" "window=sess:fm-t14" "kind=ship"
+  printf 'needs-decision [key=alpha]: A or B\n' > "$home/state/t14.status"
+
+  : > "$log"
+  env PATH="$fb:$PATH" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" t14 --resolve-key typo --defer-until 2099-12-01 "revisit after the freeze" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a refused key on a deferral should refuse"
+  [ ! -s "$log" ] || fail "a refused deferral delivered the answer: $(cat "$log")"
+  closing=$(grep -F "t14 --resolve-key '<key>'" "$err") \
+    || fail "the refusal printed no keyed resend: $(cat "$err")"
+  assert_contains "$closing" "--defer-until 2099-12-01" \
+    "the keyed resend dropped the deferral date"
+  plain=$(grep -F 'deliver without closing anything' "$err") \
+    || fail "the refusal printed no plain resend: $(cat "$err")"
+  assert_not_contains "$plain" "--defer-until" \
+    "the plain delivery resend must not carry the deferral date"
+
+  env PATH="$fb:$PATH" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" t14 --resolve-key alpha --resolve-key typo --defer-until 2099-12-01 "revisit after the freeze" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a refused key beside a status-log key on a deferral should refuse"
+  [ ! -s "$log" ] || fail "a refused deferral delivered the answer: $(cat "$log")"
+  assert_contains "$(cat "$err")" "--resolve-key 'typo': no open decision" \
+    "the refused-key diagnostic must win over the status-key deferral refusal"
+  assert_contains "$(cat "$err")" "resend, your message preserved" \
+    "the refusal beside a status-log key lost the typed message"
+  pass "fm-send --resolve-key: a refused key keeps the deferral date on the keyed resend only"
+}
+
 # An empty status open set is not an empty task. fm-captain-hold's `complete`
 # transfers a decision to a durable captain-held task and writes the
 # "captain-held [key=k]" line that the fold drops, so the status log folds to
@@ -1189,6 +1229,7 @@ test_answer_close_is_self_announced
 test_separate_resolve_key_answers_do_not_rewake
 test_listed_key_closes_a_trailing_token_blocker
 test_unresolvable_key_refusal_preserves_the_message
+test_refused_key_resend_keeps_the_deferral_date
 test_refusal_resend_carries_its_own_routing_context
 test_empty_status_open_set_still_offers_the_keyed_resend
 test_refusal_keyed_resend_keeps_the_accepted_keys

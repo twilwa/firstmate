@@ -380,14 +380,16 @@ autoarm_alarm_banner() {
 }
 
 # The one terminal exhaustion decision every failed-suppressed continuation
-# goes through - the ordinary exhausted failure, a lost supervision-host
-# hand-back, an interruption, and a refused healthy-watcher reset alike - so
-# none of them can commit another retry once the episode's attended alarm is
-# due (bin/fm-turnend-guard.sh --claude steps aside for every open claim, so a
-# path that skipped this decision could burn the block budget forever with no
-# participant alarming). In order: commit the attended alarm with the one loud
-# final rewake; close clean when a verified healthy watcher lets the episode
-# reset; otherwise commit failed-suppressed. <cause> says why this continuation
+# goes through - the ordinary exhausted failure, an interruption, and a refused
+# healthy-watcher reset alike - so none of them can commit another retry once
+# the episode's attended alarm is due (bin/fm-turnend-guard.sh --claude steps
+# aside for every open claim, so a path that skipped the alarm commit could
+# burn the block budget forever with no participant alarming). A lost
+# supervision-host hand-back makes the same alarm commit first but never takes
+# the healthy-watcher reset, because a healthy successor cannot prove the
+# refused hand-back reached main. In order: commit the attended alarm with the
+# one loud final rewake; close clean when a verified healthy watcher lets the
+# episode reset; otherwise commit failed-suppressed. <cause> says why this continuation
 # is suppressed, and the appended clause states the outcome the commit actually
 # decided: an already-alarmed episode schedules no Stop-owned retry (exit 0),
 # anything else keeps it alive (exit 2). Text already on stderr, such as the
@@ -691,6 +693,9 @@ if [ "$ACTIONABLE" -eq 1 ]; then
         printf 'firstmate watcher auto-arm could not record its failure notice; this notice may repeat until its marker is writable.\n' >&2
         LOST_HANDBACK_COMMITTED=1
       fi
+    elif autoarm_commit_attended_alarm; then
+      autoarm_alarm_banner
+      LOST_HANDBACK_COMMITTED=1
     else
       autoarm_commit failed-suppressed && LOST_HANDBACK_COMMITTED=1
     fi

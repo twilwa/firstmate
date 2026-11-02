@@ -817,12 +817,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
     resolve_refused_keys="${resolve_refused_keys}${resolve_refused_keys:+ }$k"
     resolve_resend_args="$resolve_resend_args --resolve-key '<key>'"
   done
-  if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
-    [ -z "$RESOLVE_STATUS_KEYS" ] || {
-      echo "error: --defer-until can defer only captain-held task keys; status-log key(s) '$RESOLVE_STATUS_KEYS' have not been transferred to that lifecycle owner. Nothing was sent." >&2
-      exit 1
-    }
-  fi
+  [ "$RESOLVE_DEFER_UNTIL_SET" = 0 ] || resolve_resend_args="$resolve_resend_args --defer-until $RESOLVE_DEFER_UNTIL"
   # Nothing owns a refused key, so refuse rather than deliver. Sending the
   # answer anyway would leave the decision open behind an answer the operator
   # believes settled it - the orphaned decision --resolve-key exists to
@@ -853,6 +848,12 @@ if [ -n "$RESOLVE_KEYS" ]; then
         "$resolve_resend_prefix" "$RESOLVE_TASK_ID" "$resolve_quoted_message"
     } >&2
     exit 1
+  fi
+  if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
+    [ -z "$RESOLVE_STATUS_KEYS" ] || {
+      echo "error: --defer-until can defer only captain-held task keys; status-log key(s) '$RESOLVE_STATUS_KEYS' have not been transferred to that lifecycle owner. Nothing was sent." >&2
+      exit 1
+    }
   fi
   # The decision-answer partition (the header's "Answering a decision"
   # contract): a key that is an open needs-decision, or already a captain-held

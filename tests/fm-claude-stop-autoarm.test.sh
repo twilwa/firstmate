@@ -1899,7 +1899,8 @@ test_host_benign_rewake_refusal_opens_no_failure_episode() {
 
 # The host handed a wake back but left the marker in handling (pending or
 # announced) with no live successor, so no rewake can commit: the hook delivers
-# the failure notice once per episode and keeps exiting 2 without repeating it.
+# the failure notice once per episode and keeps exiting 2 without repeating it
+# until the exhausted block budget commits the one attended alarm.
 assert_host_lost_handback_notifies_once_per_episode() {
   local kind=$1 dir out status
   dir=$(make_primary_dir "$TMP_ROOT/host-$kind")
@@ -1917,6 +1918,16 @@ assert_host_lost_handback_notifies_once_per_episode() {
   assert_not_contains "$out" "auto-arm FAILED" "a repeated lost hand-back must not repeat the failure notice"
   [ "$(epoch_outcome "$dir")" = failed-suppressed ] \
     || fail "a repeated lost hand-back must record outcome=failed-suppressed, got: $(epoch_outcome "$dir")"
+  assert_absent "$dir/state/.claude-autoarm-failure-alarmed" "a lost hand-back alarmed before the block budget was exhausted"
+  printf 'session=sess-autoarm\ncount=4\nepoch=9\n' > "$dir/state/.turnend-claude-blocks"
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 2 "$status" "an exhausted lost hand-back must deliver the attended alarm"
+  assert_contains "$out" "FIRSTMATE SUPERVISION IS GENUINELY DOWN" "an exhausted lost hand-back must deliver the attended alarm banner"
+  assert_contains "$out" "signal: fixture.status" "the attended alarm must still carry the lost hand-back"
+  assert_present "$dir/state/.claude-autoarm-failure-alarmed" "an exhausted lost hand-back did not commit the attended alarm"
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 0 "$status" "a lost hand-back after the attended alarm must schedule no further rewake"
+  assert_not_contains "$out" "GENUINELY DOWN" "a lost hand-back after the attended alarm must not repeat the alarm"
 }
 
 test_host_lost_handback_notifies_once_per_episode() {
