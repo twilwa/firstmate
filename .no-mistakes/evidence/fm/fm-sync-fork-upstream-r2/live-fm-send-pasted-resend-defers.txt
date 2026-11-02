@@ -1,0 +1,37 @@
+$ (pasted keyed resend, <key> -> lab-call)
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+exit=0
+--- tasks-axi show lab-call --full
+task:
+  id: lab-call
+  title: Captain call lab-call
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "waiting for the captain"
+  hold_kind: captain
+  hold_until: 2099-12-01
+  kind: task
+  repo: sample
+  priority: "-"
+  created: 2026-11-02
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-11-02T19:44:58Z\n\nResolution recorded by fm-captain-hold.\nDecision digest: 3e5bbe33c66c71a067d1db62ce8197d6b5d01a3685c132b86e5f9cea3185b733\nResolution mode: deferred\nDeferred until: 2099-12-01\nCaptain hold answered: 2026-11-02T19:44:58Z\n\nCaptain decision:\nCaptain answered this call through a firstmate answer sent to t1.\nTask: lab-call\nAnswer: revisit after the freeze"
+--- t1 inbox
+001.msg
+handled
+schema=fm-task-inbox.v1
+at=2026-11-02T19:45:32Z
+body-terminator=1
+--
+revisit after the freeze
+--- pane
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox'
+steering inbox, read and act on each in numeric order, then mv each into its han
+dled/.
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox'
+steering inbox, read and act on each in numeric order, then mv each into its han
+dled/.

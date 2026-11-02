@@ -1,0 +1,4 @@
+ok - fm-send --resolve-key: an unresolvable key refuses without swallowing the message
+ok - fm-send --resolve-key: a refused key keeps the deferral date on the keyed resend only
+ok - fm-send --resolve-key: a printed resend carries the home, state override, and script path it needs
+ok - fm-send --resolve-key: a refused key's keyed resend keeps every accepted key in order

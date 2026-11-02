@@ -1,0 +1,3 @@
+not ok - the keyed resend dropped the deferral date (missing: '--defer-until 2099-12-01')
+--- output ---
+    FM_HOME=/tmp/fm-send-resolve-key.3uDl7Z/refused-defer-27484 /tmp/nmtest-pre.lpCnVI/bin/fm-send.sh t14 --resolve-key '<key>' revisit\ after\ the\ freeze

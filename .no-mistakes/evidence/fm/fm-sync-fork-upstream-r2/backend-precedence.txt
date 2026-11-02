@@ -1,0 +1,10 @@
+# config/backend absent, TMUX detection signal present
+resolved=tmux detected=tmux signal=TMUX
+# config/backend=herdr, competing detection signals TMUX / rex / hc markers
+resolved=herdr detected=<none> signal=<none>
+resolved=herdr detected=<none> signal=<none>
+resolved=herdr detected=<none> signal=<none>
+# FM_BACKEND=tmux beats config/backend=herdr
+resolved=tmux detected=<none> signal=<none>
+# no explicit, no signals -> default
+resolved=tmux detected=<none> signal=<none>

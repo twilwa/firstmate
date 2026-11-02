@@ -1,0 +1,8 @@
+$ (pre-fix printed resend shape, no --defer-until, key lab-old)
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+exit=0
+  state: done
+  held: no
+  hold_until: "-"
+  closed: 2026-11-02
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: 2c25f3168dcb86cee17fd4c432e6c6ed6d5264b012980561e016cc34e2213234\nResolution mode: answered\nCaptain hold answered: 2026-11-02T19:45:03Z\n\nCaptain decision:\nCaptain answered this call through a firstmate answer sent to t2.\nTask: lab-old\nAnswer: revisit after the freeze"

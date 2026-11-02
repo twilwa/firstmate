@@ -1,0 +1,15 @@
+$ bin/fm-send.sh t2 --resolve-key alpha --resolve-key typo --defer-until 2099-12-01 "revisit after the freeze"
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: --resolve-key 'typo': no open decision or blocker with that key in /tmp/nmlab.VVBXvo/state/t2.status, and no captain-held task 'typo' or 't2-decision-typo' still open (already closed or mistyped); nothing was sent.
+  open on t2: alpha
+  resend, your message preserved:
+    FM_HOME=/tmp/nmlab.VVBXvo /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M6ET0WDZ76DTYJ0TSWCTFG3Q/bin/fm-send.sh t2 --resolve-key alpha --resolve-key '<key>' --defer-until 2099-12-01 revisit\ after\ the\ freeze
+    FM_HOME=/tmp/nmlab.VVBXvo /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M6ET0WDZ76DTYJ0TSWCTFG3Q/bin/fm-send.sh t2 revisit\ after\ the\ freeze   # deliver without closing anything
+exit=1
+t2 inbox records: 1
+$ (status key alone with --defer-until still refused)
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: --defer-until can defer only captain-held task keys; status-log key(s) 'alpha' have not been transferred to that lifecycle owner. Nothing was sent.
+exit=1
+needs-decision [key=alpha]: A or B
+note: the single t2 inbox record (001.msg) predates both refusals - it is the earlier contrast send of lab-old; a post-run listing of state/t2.inbox showed only 001.msg and handled/, so neither refusal delivered anything.

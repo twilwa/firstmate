@@ -1,0 +1,15 @@
+$ bin/fm-send.sh t1 --resolve-key lab-cal --defer-until 2099-12-01 "revisit after the freeze"
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: --resolve-key 'lab-cal': no open decision or blocker with that key in /tmp/nmlab.VVBXvo/state/t1.status, and no captain-held task 'lab-cal' or 't1-decision-lab-cal' still open (already closed or mistyped); nothing was sent.
+  no decision or blocker is open in /tmp/nmlab.VVBXvo/state/t1.status.
+  resend, your message preserved:
+    FM_HOME=/tmp/nmlab.VVBXvo /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M6ET0WDZ76DTYJ0TSWCTFG3Q/bin/fm-send.sh t1 --resolve-key '<key>' --defer-until 2099-12-01 revisit\ after\ the\ freeze
+    FM_HOME=/tmp/nmlab.VVBXvo /home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M6ET0WDZ76DTYJ0TSWCTFG3Q/bin/fm-send.sh t1 revisit\ after\ the\ freeze   # deliver without closing anything
+exit=1
+inbox: 0 records
