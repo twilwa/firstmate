@@ -261,6 +261,7 @@ PORTABLE_POOL_SETUP_ALLOWANCE_MS=60000
 # accepted pool fails by name before the job cap cancels the lane.
 PORTABLE_POOL_MAX_WEIGHT_MS=1400000
 
+
 # Conservative balance hint for a portable-serial script with no measurement.
 # Rounded above the current CI mean, including the capability-skipped scripts.
 PORTABLE_SERIAL_DEFAULT_WEIGHT_MS=45000
@@ -376,6 +377,7 @@ family_for_basename() {
     fm-mail.test.sh|fm-mail-check.test.sh|\
     fm-turnend-foreign-owner-arm-fix.test.sh|\
     fm-wake-queue.test.sh|fm-watch-arm.test.sh|fm-watch-checkpoint.test.sh|fm-watch-recovery-loop.test.sh|\
+    fm-codex-stop-park.test.sh|\
     fm-watch-inbox-meta.test.sh|fm-watch-open-decisions.test.sh|\
     fm-watch-triage.test.sh|fm-watch-triage-pause.test.sh|\
     fm-watch-triage-wedge-defer.test.sh|fm-task-inbox.test.sh|\
@@ -436,7 +438,7 @@ family_for_basename() {
     fm-worker-account-live-e2e.test.sh|\
     fm-opencode-primary-live-e2e.test.sh|fm-pi-branch-live-e2e.test.sh|\
     fm-pi-branch-responsiveness-live-e2e.test.sh|\
-    fm-pi-primary-live-e2e.test.sh|fm-pi-codex-native.test.sh|fm-omp-primary-live-e2e.test.sh|\
+    fm-pi-primary-live-e2e.test.sh|fm-pi-worker-stream-live-e2e.test.sh|fm-pi-codex-native.test.sh|fm-omp-primary-live-e2e.test.sh|\
     fm-pr-state-live-e2e.test.sh|\
     fm-sessionstart-hook-live-e2e.test.sh|fm-sessionstart-instruction-refresh-live-e2e.test.sh|\
     fm-supervision-host-live-e2e.test.sh|fm-supervision-host-attended-live-e2e.test.sh|\
@@ -500,7 +502,7 @@ family_for_basename() {
     fm-backend-tern.test.sh|fm-backend-tern-smoke.test.sh)
       printf '%s\n' tern
       ;;
-    fm-backend-hc.test.sh|fm-backend-hc-smoke.test.sh)
+    fm-backend-hc.test.sh|fm-backend-hc-smoke.test.sh|fm-backend-hc-appdetect-smoke.test.sh)
       printf '%s\n' hc
       ;;
     fm-branch-supervision.test.sh|fm-busy-adapter-wiring.test.sh|\
@@ -934,6 +936,7 @@ tests/fm-pi-primary-live-e2e.test.sh 56
 tests/fm-pi-primary-types.test.sh 27506
 tests/fm-pi-seeded-home-trust-live-e2e.test.sh 2262
 tests/fm-pi-watch-extension.test.sh 73221
+tests/fm-codex-stop-park.test.sh 35000
 tests/fm-pi-windows-shell-invocation.test.sh 5121
 tests/fm-pipeline-spend.test.sh 3013
 tests/fm-polytoken-harness.test.sh 25142
@@ -1022,6 +1025,7 @@ tests/fm-stow-cascade.test.sh 3141
 tests/fm-subagent-pretool-check.test.sh 1127
 tests/fm-supervision-events.test.sh 1202
 tests/fm-supervision-host-attended-live-e2e.test.sh 63
+
 tests/fm-supervision-host-drain.test.sh 45950
 tests/fm-supervision-host-hook.test.sh 403793
 tests/fm-supervision-host-live-e2e.test.sh 90
@@ -1662,10 +1666,16 @@ families_for_changed_path() {
       printf '%s\n' tern
       printf '%s\n' backend-dispatch
       ;;
-    bin/backends/hc.sh)
+    bin/backends/hc.sh|bin/fm-hc-lab.sh|tests/hc-test-safety.sh)
       printf '%s\n' hc
       printf '%s\n' backend-dispatch
       printf '%s\n' "__script__:fm-backend-hc-liveness-live-e2e.test.sh"
+      ;;
+    bin/fm-install-hc.sh|bin/fm-hc-ci-cleanup.sh)
+      printf '%s\n' pure-contract-unit
+      # Pin or cleanup changes also select the hc family so the real lane's
+      # coverage re-runs, mirroring the real-herdr-gated arm above.
+      printf '%s\n' hc
       ;;
     bin/backends/orca*|bin/backends/tmux.sh)
       printf '%s\n' backend-dispatch

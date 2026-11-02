@@ -595,7 +595,8 @@ test_failed_cycles_notify_once_and_keep_retrying() {
   expect_code 2 "$status1" "the first exhausted failure must notify"
   expect_code 2 "$status2" "a consecutive exhausted failure must force another Stop-owned retry"
   [ -n "$out1" ] || fail "the first exhausted failure did not notify"
-  [ -z "$out2" ] || fail "consecutive exhausted failure repeated an operator notice: $out2"
+  assert_contains "$out2" "suppressed continuation" "a suppressed continuation did not carry its one-line reason: $out2"
+  assert_not_contains "$out2" "automatic supervision mechanism is broken" "consecutive exhausted failure repeated the operator notice: $out2"
   [ "$(wc -l < "$dir/state/arm-ran" | tr -d ' ')" -eq 4 ] || fail "each cycle must retain bounded automatic retries"
   assert_present "$dir/state/.claude-autoarm-failure-notified" "failure episode marker was not recorded"
   [ "$(epoch_outcome "$dir")" = failed-suppressed ] || fail "second failure must record failed-suppressed"
@@ -624,7 +625,8 @@ test_failure_notice_marker_write_refuses_delivery_and_retries() {
   [ "$(epoch_field "$dir" epoch)" -gt "$gen1" ] || fail "the successor did not supersede the refused terminal entry"
   assert_present "$marker" "the successful successor did not record the failure notice"
   assert_contains "$out2" "automatic supervision mechanism is broken" "the successful successor did not deliver the failure notice"
-  [ -z "$out3" ] || fail "the firing after the successful marker commit repeated the notice: $out3"
+  assert_contains "$out3" "suppressed continuation" "a suppressed continuation did not carry its one-line reason: $out3"
+  assert_not_contains "$out3" "automatic supervision mechanism is broken" "the firing after the successful marker commit repeated the notice: $out3"
   delivered=$(printf '%s\n%s\n' "$out2" "$out3" | grep -c 'automatic supervision mechanism is broken' || true)
   [ "$delivered" -eq 1 ] || fail "the restored episode delivered $delivered failure notices instead of one"
   pass "auto-arm: marker-write refusal defers delivery until one successor commits the notice"
@@ -652,7 +654,8 @@ test_post_alarm_actionable_close_is_suppressed() {
   write_arm_fixture "$dir" actionable
   out=$(run_autoarm "$dir" 2>/dev/null); status=$?
   expect_code 0 "$status" "an actionable result after attended fail-open must not continue"
-  [ -z "$out" ] || fail "post-alarm actionable result produced continuation output: $out"
+  assert_contains "$out" "suppressed continuation" "a suppressed post-alarm result did not carry its one-line reason: $out"
+  assert_not_contains "$out" "automatic supervision mechanism is broken" "post-alarm result repeated the operator notice: $out"
   assert_present "$dir/state/.claude-autoarm-failure-notified" "post-alarm actionable result cleared the failure notice"
   assert_present "$dir/state/.claude-autoarm-failure-alarmed" "post-alarm actionable result cleared the attended alarm"
   [ "$(epoch_outcome "$dir")" = failed-suppressed ] || fail "post-alarm actionable result must record failed-suppressed"
@@ -706,7 +709,7 @@ test_positive_recovery_budget_contention_preserves_episode() {
   printf '%s\n' "$holder" > "$dir/state/.turnend-claude-blocks.lock/pid"
   out=$(run_autoarm "$dir" 2>/dev/null); status=$?
   expect_code 2 "$status" "a healthy auto-arm must continue when the episode reset lock is busy"
-  [ -z "$out" ] || fail "recovery contention produced an operator notice: $out"
+  assert_contains "$out" "suppressed continuation" "a reset-refused suppressed continuation did not carry its one-line reason: $out"
   [ "$(epoch_outcome "$dir")" = failed-suppressed ] || fail "recovery contention must not record ordinary clean recovery"
   assert_present "$dir/state/.turnend-claude-blocks" "recovery contention partially cleared the block budget"
   assert_present "$dir/state/.claude-autoarm-failure-notified" "recovery contention partially cleared the failure notice"
@@ -1896,7 +1899,8 @@ test_host_benign_rewake_refusal_opens_no_failure_episode() {
 
 # The host handed a wake back but left the marker in handling (pending or
 # announced) with no live successor, so no rewake can commit: the hook delivers
-# the failure notice once per episode and keeps exiting 2 without repeating it.
+# the failure notice once per episode and keeps exiting 2 without repeating it
+# until the exhausted block budget commits the one attended alarm.
 assert_host_lost_handback_notifies_once_per_episode() {
   local kind=$1 dir out status
   dir=$(make_primary_dir "$TMP_ROOT/host-$kind")
@@ -1914,6 +1918,16 @@ assert_host_lost_handback_notifies_once_per_episode() {
   assert_not_contains "$out" "auto-arm FAILED" "a repeated lost hand-back must not repeat the failure notice"
   [ "$(epoch_outcome "$dir")" = failed-suppressed ] \
     || fail "a repeated lost hand-back must record outcome=failed-suppressed, got: $(epoch_outcome "$dir")"
+  assert_absent "$dir/state/.claude-autoarm-failure-alarmed" "a lost hand-back alarmed before the block budget was exhausted"
+  printf 'session=sess-autoarm\ncount=4\nepoch=9\n' > "$dir/state/.turnend-claude-blocks"
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 2 "$status" "an exhausted lost hand-back must deliver the attended alarm"
+  assert_contains "$out" "FIRSTMATE SUPERVISION IS GENUINELY DOWN" "an exhausted lost hand-back must deliver the attended alarm banner"
+  assert_contains "$out" "signal: fixture.status" "the attended alarm must still carry the lost hand-back"
+  assert_present "$dir/state/.claude-autoarm-failure-alarmed" "an exhausted lost hand-back did not commit the attended alarm"
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 0 "$status" "a lost hand-back after the attended alarm must schedule no further rewake"
+  assert_not_contains "$out" "GENUINELY DOWN" "a lost hand-back after the attended alarm must not repeat the alarm"
 }
 
 test_host_lost_handback_notifies_once_per_episode() {

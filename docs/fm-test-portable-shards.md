@@ -26,6 +26,7 @@ Replace them with fork timing-artifact maxima at the next refresh.
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms Git Bash measurement instead of a portable capability skip.
 
 Hints are not a formality: without one a script packs on the 45000 ms default, which can sit it beside a shard already holding more than eighteen minutes of measured work, so that shard would really have run well past the 20-minute target the guard reserves while the coverage guard still passed.
+The wedge-cap suites retain the fork's newer timing-artifact maxima rather than replacing them with the older upstream CI measurements.
 `test_portable_serial_packing_budget_boundary` now pins every other fixture script to 1 ms, so packing exactly at the 1200000 ms budget is accepted and one millisecond above it is refused even when real serial members have no hint.
 The coverage-guard test owns modeled real-hint headroom under that budget.
 `tests/fm-backend-t3code.test.sh` and `tests/fm-t3-mcp.test.sh` run in the portable pool, so their values sit in `portable_pool_weight_hints`: every case id the backend suite spawns carries a per-run suffix and its cleanup removes only the `/tmp/fm-<id>` directories that run created, and both suites passed running concurrently with each other and beside another parallel suite (see [`fm-test-isolation-proof.md`](fm-test-isolation-proof.md)).
@@ -56,6 +57,8 @@ When the guard trips, refresh the pool hints or move work out of the pool rather
 Its scheduling regressions also check pool-hint scheduling for the pool and proven-isolated selections and preserve serial-weight scheduling for other selections.
 These checks do not detect a script outgrowing an existing hint or establish measured job headroom.
 Refresh `portable_pool_weight_hints` with the slowest completed `duration_ms` per script from several green CI runs' `fm-test-timing-portable-pool` artifact whenever the pool gains scripts or a member grows materially.
+
+The remote-secondmate lifecycle hint is 1005249 ms, its completed, passing `FM_TEST_END` sample from Ubuntu run [41289019354](https://github.com/kunchenguid/firstmate/actions/runs/41289019354). Rex lifecycle coverage outgrew the previous 345655 ms hint; serial shard 9 then reached the 30-minute job cap while running later tests. Eleven serial shards accommodate the refreshed weight within the unchanged modeled budget and timeout policy. This is a completed-script measurement from a partial run, not a successful whole-shard timing or a guarantee of future headroom.
 
 ## Portable serial remainder
 
@@ -145,7 +148,7 @@ No fast mode, path skips, or paid runner provisioning is part of this layout.
 
 The longer-term performance objective remains a complete green run under fifteen minutes including start delay, but the three watch-triage members still sum to about 26 minutes of CI test time.
 The immediate packing target is the runner's modeled script budget, not a claim that more shards alone can make an indivisible script faster.
-The layout uses nineteen long-lived Linux jobs (thirteen serial, one pool, Herdr, four lint) plus macOS and the short timing aggregate and Full suite verdict jobs; insufficient shared account capacity can erase the packing gain.
+The layout uses twenty long-lived Linux jobs (thirteen serial, one pool, Herdr, hc, four lint) plus macOS and the short timing aggregate and Full suite verdict jobs; insufficient shared account capacity can erase the packing gain.
 Compare complete before/after runs, preserve cancelled and partial-run evidence, and measure a representative normal-run sample before claiming a P95 improvement.
 The workflow retains per-PR supersession and keeps only the newest of close main pushes' runs, without changing the compliance workflow's event semantics.
 
