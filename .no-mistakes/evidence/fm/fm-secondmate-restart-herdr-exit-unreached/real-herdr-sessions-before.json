@@ -1,0 +1,1 @@
+[{"name":"default","default":true,"running":false,"socket_path":"/home/firstmate/.config/herdr/herdr.sock"},{"name":"firstmate","default":false,"running":true,"socket_path":"/home/firstmate/.config/herdr/sessions/firstmate/herdr.sock"},{"name":"wS0","default":false,"running":true,"socket_path":"/home/firstmate/.config/herdr/sessions/wS0/herdr.sock"}]

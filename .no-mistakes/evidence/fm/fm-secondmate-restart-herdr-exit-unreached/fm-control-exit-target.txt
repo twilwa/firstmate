@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/nmlab.jtubSB/home
+stopped smlab harness=claude backend=herdr endpoint=fm-lab-exitproof-49288-23467:w3:p1 worktree=/tmp/nmlab.jtubSB/wt
+exit_status=0

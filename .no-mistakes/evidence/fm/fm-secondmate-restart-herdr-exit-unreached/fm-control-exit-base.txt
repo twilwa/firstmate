@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/nmlab.jtubSB/home
+error: the exit command could not be sent to task smlab on herdr
+exit_status=1

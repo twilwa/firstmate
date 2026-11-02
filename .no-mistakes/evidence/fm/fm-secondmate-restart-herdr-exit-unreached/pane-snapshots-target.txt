@@ -1,0 +1,748 @@
+=== snapshot 1 23:14:49.948736749 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 2 23:14:50.116689797 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 3 23:14:50.283597489 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 4 23:14:50.451029943 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 5 23:14:50.618566740 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 6 23:14:50.786186371 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 7 23:14:50.955597661 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 8 23:14:51.127129711 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 9 23:14:51.302759092 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 10 23:14:51.472027338 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 11 23:14:51.642036245 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 12 23:14:51.816008828 ===
+Set a global default version with one of the following:
+mise use -g atuin@18.24.4
+mise ERROR Version: 2026.10.19 linux-x64 (2026-10-24)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+=== snapshot 13 23:14:51.985085908 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 14 23:14:52.154767800 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 15 23:14:52.322972454 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 16 23:14:52.492332299 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 17 23:14:52.661564138 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 18 23:14:52.830357362 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 19 23:14:52.997955193 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 20 23:14:53.168529768 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 21 23:14:53.337348330 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 22 23:14:53.507090453 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 23 23:14:53.676803493 ===
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$ claude
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Fable 5.1 · Claude Ultra
+ ▝▝   ▝▝   /tmp/nmlab.jtubSB/wt
+
+  ⎿  SessionStart:startup hook error
+  ⎿  Failed with non-blocking status code: mise ERROR No version is set for shim: node
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /exit                                Exit the CLI
+    /context                             Visualize current context usage as a colored grid
+    /usage-credits                       Configure usage credits or request them from your
+                                         admin when you hit a limit
+=== snapshot 24 23:14:53.844793660 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 25 23:14:54.013511656 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 26 23:14:54.183186064 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 27 23:14:54.351850070 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 28 23:14:54.522129899 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 29 23:14:54.690108335 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 30 23:14:54.856036781 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 31 23:14:55.025082624 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 32 23:14:55.194976059 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 33 23:14:55.365639218 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 34 23:14:55.539330048 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 35 23:14:55.708731330 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 36 23:14:55.876935384 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 37 23:14:56.044499902 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 38 23:14:56.211958985 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 39 23:14:56.378749539 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 40 23:14:56.547721225 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 41 23:14:56.715892758 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 42 23:14:56.882891980 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 43 23:14:57.051773467 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+=== snapshot 44 23:14:57.218513629 ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$
+firstmate@vmi3582798:/tmp/nmlab.jtubSB/wt$

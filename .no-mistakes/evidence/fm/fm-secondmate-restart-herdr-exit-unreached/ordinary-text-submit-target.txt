@@ -1,0 +1,14 @@
+$ fm_backend_send_text_submit herdr fm-lab-exitproof-49288-23467:w3:p1 'Reply with exactly the word PONG and nothing else.' 3 0.2 1.2
+empty
+rc=0
+--- pane after submit ---
+
+● PONG
+
+✻ Brewed for 1s · done 11:18 PM
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent
+                       Advisor Tool (experimental) is on and may use more tokens · /advisor
