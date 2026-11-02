@@ -187,7 +187,9 @@
 # resend closes all of them. It is printed even when the status log holds
 # nothing open, because a key transferred to a captain-held task is answerable
 # through that other ledger alone; the status log's own emptiness is stated as
-# the emptiness of that FILE, never as a claim about the task. The plain resend
+# the emptiness of that FILE, never as a claim about the task. The keyed resend
+# repeats any --defer-until date, so a corrected key still re-dates its
+# captain-held task instead of closing it; the plain resend carries no date and
 # delivers the message without closing any decision. After a delivered close it
 # also re-folds and fails loudly if the named key is still open. On the inbox plane
 # the close happens at ENQUEUE time, because enqueue is durable delivery to
