@@ -711,7 +711,7 @@ run_pr_merge() {
   [ "${FM_TEST_MERGE_VIA_REVIEW:-0}" != 1 ] || entry=("$ROOT/bin/fm-pr-review.sh" merge)
   if [ "${FM_PR_REVIEW_EXPECTED_HEAD+x}" = x ]; then
     reviewed_head=$FM_PR_REVIEW_EXPECTED_HEAD
-  elif [ "${2:-}" != "${2#https://github.com/}" ] && [ -s "$case_dir/github-head" ]; then
+  elif [[ "${2:-}" == https://github.com/* ]] && [ -s "$case_dir/github-head" ]; then
     reviewed_head=$(cat "$case_dir/github-head")
   else
     reviewed_head=
