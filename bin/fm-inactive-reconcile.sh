@@ -347,6 +347,7 @@ state_line_source() { # <state-line>
 state_line_pr() { # <state-line>
   local rest=${1##*"$STATE_LINE_SEP"pr=}
   [ "$rest" != "$1" ] || return 0
+  case "$rest" in *"$STATE_LINE_SEP"*) rest=${rest%%"$STATE_LINE_SEP"*} ;; esac
   printf '%s' "$rest"
 }
 
