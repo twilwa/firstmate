@@ -1518,7 +1518,7 @@ test_paused_unreadable_probe_keeps_reported_death() {
   ack_stopped_cycle "$state" || fail "could not acknowledge the initial death"
 
   # An unreadable capture must reach the due probe even for an ordinary worker.
-  export FM_TEST_PANE_COMMAND= FM_FAKE_TMUX_FORBIDDEN_TARGET="$window"
+  export FM_TEST_PANE_COMMAND='' FM_FAKE_TMUX_FORBIDDEN_TARGET="$window"
   set_mtime "$(( $(date +%s) - 500 ))" "$marker"
   : > "$out"
   wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
