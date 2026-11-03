@@ -1901,13 +1901,14 @@ wedge_defer_validating() {  # <window> <since-file> <triage-label> <idle-age> <t
 # The marker is owned entirely by this function and records the verdict together
 # with the agent incarnation it was reported for: the task's per-incarnation busy
 # gen (bin/fm-busy-lib.sh, state/<id>.busy-gen), which changes exactly when the
-# agent is replaced, so a repeat is absorbed only while BOTH still match, a read
-# that stops being gone still drops it, and no other reset site has to know this
-# file exists. The incarnation half re-arms a relaunch: a successor's own later
-# death is reported in full even when its dead display hashes identically to the
-# reported one. Only when no incarnation token is readable for the task does the
-# pane hash stand in as the discriminator - an unreadable token must never mean
-# re-report on every threshold, so that fallback keeps today's hash-keyed absorb,
+# agent is replaced, so a repeat is absorbed only while BOTH still match. An
+# unreadable probe retains it; other non-gone verdicts drop it, and no other
+# reset site has to know this file exists. The incarnation half re-arms a relaunch:
+# a successor's own later death is reported in full even when its dead display
+# hashes identically to the reported one. Only when no incarnation token is
+# readable for the task does the pane hash stand in as the discriminator - an
+# unreadable token must never mean re-report on every threshold, so that fallback
+# keeps today's hash-keyed absorb,
 # with the residual that a record-less successor dying into a byte-identical dead
 # display stays absorbed. Under one unchanged incarnation a dead pane's static
 # display absorbs on every threshold either way.
@@ -1921,6 +1922,7 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
   case "$agent_state" in
     dead) detail='the endpoint is still there with no agent running in it' ;;
     missing) detail='the recorded endpoint is gone' ;;
+    unreadable) return 1 ;;
     *) rm -f "$marker"; return 1 ;;
   esac
   # Advance the caller's cadence on both handled paths. Paused rechecks retain
@@ -2460,9 +2462,12 @@ busy_stream_snapshot_current() {  # <task> <observed snapshot>
 # cheap: it NEVER re-reads crew state. The re-surface age is anchored on the
 # status file mtime, not a per-hash marker, so a churny idle pane (a ticking
 # clock, a token counter) cannot keep resetting the cadence the way a hash-tied
-# timer would. The bounded re-surface itself is the shared resurface_absorbed
-# above, throttled by this window's own .paused-resurfaced-<key> marker. Advances
-# the stale suppressor to <hash> and flags the key paused.
+# timer would. Due paused rechecks probe liveness: dead/missing agents use
+# wedge_dead_record's report-once path; live or inconclusive results keep the
+# ordinary wait confirmation via resurface_absorbed. Captain-held waits use only
+# that ordinary re-surface. Both paths share this window's declaration-scoped
+# .paused-resurfaced-<key> throttle. Advances the stale suppressor to <hash> and
+# flags the key paused.
 #
 # The recheck distinguishes the declared dependency from a captain decision:
 # the legacy external-wait wording for paused: (bin/fm-classify-lib.sh), and the
