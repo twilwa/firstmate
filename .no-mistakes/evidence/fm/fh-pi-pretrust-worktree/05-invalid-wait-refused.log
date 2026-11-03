@@ -1,0 +1,8 @@
+WAIT=0 exit=1
+not ok - FM_PI_WORKTREE_TRUST_WAIT_SECONDS must be a positive decimal integer
+WAIT=abc exit=1
+not ok - FM_PI_WORKTREE_TRUST_WAIT_SECONDS must be a positive decimal integer
+WAIT=01 exit=1
+not ok - FM_PI_WORKTREE_TRUST_WAIT_SECONDS must be a positive decimal integer
+WAIT=-5 exit=1
+not ok - FM_PI_WORKTREE_TRUST_WAIT_SECONDS must be a positive decimal integer
