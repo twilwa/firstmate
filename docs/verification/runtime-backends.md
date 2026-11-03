@@ -3590,7 +3590,7 @@ The default socket path under the scratchpad temp directory exceeded the 103-byt
 | `hello` over `hc connect --session <s>` (0.1.14, 2026-10-30) | Answered `{"result":{"generation":1,...}}`; the adapter refuses any other generation. |
 | `hc send <t> --wait --timeout <n> -- <text>` (0.1.14, 2026-10-30) | Returns `{"started":<bool|null>,"wait":{"status",...}}`; `started:true` or `wait.status:working` natively confirms the submit. Exit 9 is `blocked` (never forced), 3 `not_found`, 11 `finished`; text after `--` survives leading dashes. |
 | `hc keys <t> -- <key>` (0.1.14, 2026-10-30) | Accepts the `--` delimiter before key names. |
-| `server stop` on a lab session (0.1.14, 2026-10-30) | Closes the API listener only; the session's `serve` and `hold` daemons stay by design and take ~30-60s to finish exiting after TERM/KILL. `bin/fm-hc-lab.sh` sweeps them by their exact `HC_SESSION=<name>` env token. |
+| `server stop` on a lab session | Does not preserve the agent: kept terminals restart as shells, not the previous process. A finished terminal is `missing` to the adapter and cannot be rebound. Session `serve`/`hold` daemons can outlive the listener; `bin/fm-hc-lab.sh` sweeps them by their exact `HC_SESSION=<name>` env token. |
 | `hc get` of a terminal running the user's `claude` wrapper | `foreground` was `{"name":"hats","argv":["/Users/fran/.cargo/bin/hats","run","--"]}`; the Claude process was another member of that process group. |
 
 ### Adapter lifecycle
@@ -3632,7 +3632,9 @@ FM_TEST_COMPLETE
 ```
 
 The adapter regression also verifies that a stale foreground PID reads `unreadable`, never `dead`, a native group leader overrides a stale shell name, and control checks task ownership before accepting a stopped shell.
-`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, and terminal kill.
+`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, core restart, and terminal kill.
+The restart case requires the lost agent to read `dead` or `missing`, never `alive`: a retained dead shell must relaunch in place, while a finished/missing terminal must refuse relaunch without rebinding.
+Both paths preserve the recorded terminal identity, branch HEAD, and unfinished work.
 Those additional control cases require `cc` in CI; the portable fake-CLI result above does not stand in for that real-core run.
 
 The Devin 3000.11.234 SWE-2 High regression uses the four-row styled excerpt in `tests/fixtures/devin-3000.11.234/idle.ansi`, captured read-only on 2026-11-02.
