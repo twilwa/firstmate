@@ -256,12 +256,13 @@
 #   name from PATH once, probes that concrete path with --help, and launches the
 #   same path. It adds --tui-mode regular only when that help advertises the flag;
 #   a failed or inconclusive probe omits it so older Pi versions remain launchable.
-#   A --secondmate launch of a Firstmate-seeded home (the existing
-#   .fm-secondmate-home marker validate_firstmate_home_for_spawn already requires)
-#   also adds --approve when that help advertises it, so the first unattended
-#   launch does not stall on Pi's "Trust project folder?" dialog for that home
-#   path; --approve is session-scoped to the launch cwd and does not rewrite the
-#   operator's trust.json. Ordinary Pi worker launches never receive --approve.
+#   Ship and scout launches of exact registered projects also add --approve when
+#   that help advertises it, avoiding Pi's "Trust project folder?" dialog at the
+#   isolated task cwd. Seeded --secondmate launches retain the same approval
+#   (validate_firstmate_home_for_spawn requires their .fm-secondmate-home marker).
+#   Approval is scoped to that process and launch cwd, without rewriting the
+#   operator's trust.json or global settings. Unregistered projects and versions
+#   without the flag retain their existing launch behavior.
 #   A missing selected executable refuses before endpoint creation, and pi-signed
 #   never falls back to pi.
 #   Devin is worker-only: --permission-mode dangerous and
@@ -539,9 +540,8 @@
 #                  state/<task-id>.claude-settings.json for a secondmate
 #     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
 #     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
-#     __PIAPPROVE__ optional --approve on a seeded Pi/pi-signed secondmate when
-#                  that executable advertises the flag (empty otherwise; session
-#                  trust for the launch cwd only, never a trust.json rewrite)
+#     __PIAPPROVE__ optional --approve; the Pi-family launch policy above owns
+#                  its scope and compatibility fallback.
 #     __PIEXCLUDE__ optional ` --exclude-tools '<comma-joined names>'` from
 #                  config/crew-exclude-tools on Pi/pi-signed ship and scout
 #                  launches (supplies its own leading space, empty otherwise)
@@ -2650,9 +2650,7 @@ pi_supports_tui_mode() {
 }
 
 # Same help-probe shape as pi_supports_tui_mode for the session-scoped project
-# trust flag. A seeded secondmate home carries tracked .pi/extensions that gate
-# Pi behind "Trust project folder?" on first launch; --approve trusts that
-# launch cwd for the run without rewriting ~/.pi/agent/trust.json.
+# trust flag; __PIAPPROVE__ in the header owns the launch scope.
 pi_supports_approve() {
   local executable=$1 help
   help=$("$executable" --help 2>&1) || return 1
@@ -3271,15 +3269,6 @@ pi | pi-signed)
     PI_TUI_MODE=' --tui-mode regular'
   fi
   LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
-  # Seeded-home signal is .fm-secondmate-home (required by
-  # validate_firstmate_home_for_spawn before any secondmate launch reaches
-  # the pane). Session-only --approve; never expand to a parent path or
-  # rewrite the operator trust store.
-  PI_APPROVE=
-  if [ "$KIND" = secondmate ] && pi_supports_approve "$PI_BIN"; then
-    PI_APPROVE=' --approve'
-  fi
-  LAUNCH=${LAUNCH//__PIAPPROVE__/$PI_APPROVE}
   PI_EXCLUDE=
   [ -z "$EXCLUDE_TOOLS" ] || PI_EXCLUDE=" --exclude-tools $(shell_quote "$EXCLUDE_TOOLS")"
   LAUNCH=${LAUNCH//__PIEXCLUDE__/$PI_EXCLUDE}
@@ -7513,7 +7502,18 @@ LAUNCH=${LAUNCH//__OMPEXT__/$sq_ompext}
 LAUNCH=${LAUNCH//__OMPWORKERCFG__/$sq_ompcfg}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
 case "$HARNESS" in
-pi | pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;
+pi | pi-signed)
+  LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"}
+  PI_APPROVE=
+  # Project identity and the isolated launch cwd are established by now.
+  # Query the registry owner rather than inferring registration from defaults.
+  if { [ "$KIND" = secondmate ] ||
+    [ "$("$FM_ROOT/bin/fm-project-mode.sh" --registered "$(basename "$PROJ_ABS")")" = yes ]; } &&
+    pi_supports_approve "$PI_BIN"; then
+    PI_APPROVE=' --approve'
+  fi
+  LAUNCH=${LAUNCH//__PIAPPROVE__/$PI_APPROVE}
+  ;;
 cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemini-settings.json")"} ;;
 omp)

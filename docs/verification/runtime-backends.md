@@ -587,10 +587,39 @@ The lab home was deleted and the test entry was removed from the store and verif
 That automated spawn case runs against a fake claude, so it asserts the store entry and the launch command and nothing more; the live arms above are what establish that the entry actually suppresses the dialog.
 The composer-classification record below observes the same gate from the other side, where an untrusted worktree left Claude, Grok, and Muse unverified because the guard reads a first-launch trust dialog as an unreadable composer.
 
-## Pi seeded-secondmate project trust
+## Pi project trust
 
-[`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the seeded-secondmate project-trust approval contract and compatibility fallback.
-The live guard below isolates Pi's trust-gate behavior in secondmate-shaped homes; portable launch-command coverage separately verifies that spawn selects the flag for the intended launches.
+[`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the project-trust approval contract and compatibility fallback.
+The live guards isolate Pi's trust-gate behavior; portable launch-command coverage separately verifies that spawn selects the flag for the intended launches.
+
+### Registered-project ship and scout launches
+
+Verified 2026-11-03 on Pi 1.4.0.
+Its installed `--help`, `docs/cli.md`, and `docs/security.md` describe `--approve` as process-local project approval, not a persistent trust-store change.
+The token-free live guard confirms the fresh task directory reaches the composer; a new process at that same directory, its parent, and its sibling still prompts.
+Neither the isolated `trust.json` nor `settings.json` changes.
+No global trust setting is changed and no dialog is accepted.
+
+```sh
+FM_PI_WORKTREE_TRUST_LIVE=1 bash tests/fm-pi-worktree-trust-live-e2e.test.sh
+```
+
+```
+# live pi version: 1.4.0
+ok - pi: fresh task with .pi/extensions prompts without approval
+ok - pi: approved task reaches the composer without changing trust.json or settings.json
+ok - pi: the same task prompts again in a new process without approval
+ok - pi: parent and sibling still prompt without approval
+skip: live: pi-signed absent
+# all fm-pi-worktree-trust-live-e2e checks passed (1 checked)
+```
+
+The guard belongs to `live-harness-optin` and runs without model tokens wherever a supported Pi surface and tmux are installed.
+It checks each installed `pi`/`pi-signed` executable and reports an absent surface explicitly.
+Portable `test_pi_registered_workers_preapprove_only_the_task_launch` covers both surfaces for ships and scouts, including unregistered projects, absent registries, and executables without `--approve`.
+`tests/fm-project-mode.test.sh` verifies exact registry membership, including absent registries and prefix mismatches.
+
+### Pi seeded-secondmate project trust
 
 Verified 2026-10-02 on pi 0.82.0 through the default-on live guard (disposable `PI_CODING_AGENT_DIR` / `HOME` only; never `~/.pi`):
 
@@ -606,7 +635,7 @@ ok - unseeded path without --approve still prompts on Trust project folder?
 # all fm-pi-seeded-home-trust-live-e2e checks passed (3)
 ```
 
-Portable launch-command coverage lives in `tests/fm-spawn-dispatch-profile.test.sh` (`test_pi_seeded_secondmate_preapproves_project_trust`, `test_pi_worker_launch_omits_seeded_home_approve`, `test_pi_approve_probe_omits_unsupported_flag`).
+Seeded-secondmate launch-command coverage remains in `tests/fm-spawn-dispatch-profile.test.sh` (`test_pi_seeded_secondmate_preapproves_project_trust`, `test_pi_approve_probe_omits_unsupported_flag`); that behavior is unchanged.
 
 ## Launch-prompt backstop signatures
 

@@ -1454,21 +1454,45 @@ test_pi_seeded_secondmate_preapproves_project_trust() {
   pass "seeded Pi/pi-signed secondmate launches carry session --approve when advertised"
 }
 
-test_pi_worker_launch_omits_seeded_home_approve() {
-  local rec id out status launch
-  id=profile-pi-worker-no-approve-z8f
-  rec=$(make_spawn_case profile-pi-worker-no-approve pi "$id")
-  read_case_record "$rec"
-
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
-  status=$?
-  expect_code 0 "$status" "pi ship spawn should succeed"
-  launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular" \
-    "pi worker launch lost its regular TUI probe"
-  assert_not_contains "$launch" "--approve" \
-    "ordinary Pi worker launches must not receive secondmate seeded-home --approve"
-  pass "ordinary Pi worker launches omit --approve"
+test_pi_registered_workers_preapprove_only_the_task_launch() {
+  local harness kind scenario rec id out status launch version
+  for harness in pi pi-signed; do
+    for kind in ship scout; do
+      for scenario in registered unregistered absent unsupported; do
+        id="approve-${harness}-${kind}-${scenario}"
+        rec=$(make_spawn_case "$id" "$harness" "$id")
+        read_case_record "$rec"
+        version=0.84.0
+        if [ "$scenario" = unregistered ]; then
+          # A prefix match must not authorize an unregistered project.
+          printf '%s\n' '- project-other [no-mistakes]' > "$HOME_DIR/data/projects.md"
+        elif [ "$scenario" != absent ]; then
+          printf '%s\n' '- project [no-mistakes]' > "$HOME_DIR/data/projects.md"
+        fi
+        [ "$scenario" != unsupported ] || version=0.50.0
+        if [ "$kind" = scout ]; then
+          out=$(FM_TEST_PI_VERSION="$version" FM_TEST_PANE_LOG="$CASE_DIR/pane.log" \
+            run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout)
+        else
+          out=$(FM_TEST_PI_VERSION="$version" FM_TEST_PANE_LOG="$CASE_DIR/pane.log" \
+            run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+        fi
+        status=$?
+        expect_code 0 "$status" "$harness $kind $scenario spawn should succeed: $out"
+        launch=$(cat "$LAUNCH_LOG")
+        assert_contains "$launch" "FM_PI_HARNESS=$harness '$FAKEBIN_DIR/$harness'" \
+          "worker must launch the probed executable"
+        assert_grep "cd -- '$WT_DIR'" "$CASE_DIR/pane.log" \
+          "approval must apply at the recorded task worktree, not its primary or parent"
+        if [ "$scenario" = registered ]; then
+          assert_contains "$launch" "--approve" "$harness $kind must approve the registered task launch"
+        else
+          assert_not_contains "$launch" "--approve" "$harness $kind $scenario must omit approval"
+        fi
+      done
+    done
+  done
+  pass "registered Pi/pi-signed ships and scouts approve only the supported task launch"
 }
 
 test_pi_approve_probe_omits_unsupported_flag() {
@@ -2316,12 +2340,6 @@ SH
   done
 }
 
-test_launch_environment_allowlist
-test_launch_environment_invalid_config_refuses
-test_launch_environment_inaccessible_config_refuses
-test_launch_environment_inherited_by_secondmate
-test_launch_environment_inheritance_preserves_on_source_errors
-
 test_worker_launch_delivers_role_scope() {
   local rec id out launch kind prompt envelope encoded brief_kind brief content first_line role_line task_line inbox
   for brief_kind in heading legacy scaffold; do
@@ -2710,6 +2728,16 @@ test_codex_permission_does_not_change_other_harnesses() {
   pass "Codex restricted mode leaves other harness launch flags unchanged"
 }
 
+if [ -n "${FM_TEST_ONLY:-}" ]; then
+  "$FM_TEST_ONLY"
+  exit "$?"
+fi
+
+test_launch_environment_allowlist
+test_launch_environment_invalid_config_refuses
+test_launch_environment_inaccessible_config_refuses
+test_launch_environment_inherited_by_secondmate
+test_launch_environment_inheritance_preserves_on_source_errors
 test_codex_permission_modes
 test_codex_permission_invalid_refuses_before_mutation
 test_codex_permission_does_not_change_other_harnesses
@@ -2768,7 +2796,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_pi_seeded_secondmate_preapproves_project_trust
-test_pi_worker_launch_omits_seeded_home_approve
+test_pi_registered_workers_preapprove_only_the_task_launch
 test_pi_approve_probe_omits_unsupported_flag
 test_pi_exclude_tools_reach_ship_and_scout_launches
 test_pi_exclude_tools_worker_registry_reports

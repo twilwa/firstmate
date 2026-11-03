@@ -42,6 +42,19 @@ cat > "$DATA/projects.md" <<'EOF'
 - hand-auto [no-mistakes pr=auto] - auto is the absence of the token, not a value (added 2026-01-01)
 EOF
 
+# Registration is an exact-name query, not an inference from a default posture.
+for name in legacy flagged lab; do
+  out=$(FM_DATA_OVERRIDE="$DATA" "$PROJECT_MODE" --registered "$name" 2>/dev/null)
+  [ "$out" = yes ] || fail "registered project $name must report yes, got '$out'"
+done
+for name in missing leg lab-suffix; do
+  out=$(FM_DATA_OVERRIDE="$DATA" "$PROJECT_MODE" --registered "$name" 2>/dev/null)
+  [ "$out" = no ] || fail "unregistered project $name must report no, got '$out'"
+done
+out=$(FM_DATA_OVERRIDE="$TMP_ROOT/absent" "$PROJECT_MODE" --registered legacy 2>/dev/null)
+[ "$out" = no ] || fail "absent registry must report no, got '$out'"
+pass "fm-project-mode: registration distinguishes exact entries from defaults and absent registries"
+
 run_mode() {
   FM_DATA_OVERRIDE="$DATA" "$PROJECT_MODE" "$1" 2>/dev/null
 }
