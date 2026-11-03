@@ -1,0 +1,47 @@
+server env isolated: PI_CODING_AGENT_DIR under $LAB
+== fm-spawn.sh lab-reg-scout-a1 regproj --scout --backend tmux -> rc=0
+fm-gate-refuse: gate agent lifecycle permitted only against lab home $LAB
+spawned lab-reg-scout-a1 harness=pi kind=scout window=primary:fm-lab-reg-scout-a1 worktree=$LAB/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj
+-- meta lab-reg-scout-a1:
+window=primary:fm-lab-reg-scout-a1
+worktree=$LAB/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj
+project=$LAB/projects/regproj
+harness=pi
+kind=scout
+-- Pi process argv in pane (primary:fm-lab-reg-scout-a1):
+~/.local/share/mise/installs/pi/latest/pi/pi --tui-mode regular --approve -e $LAB/state/lab-reg-scout-a1.pi-ext.ts ⁣FIRSTMATE_OP: v1 launch-brief: # Current worker role contract You are a crewmate: an autonomous worker agent managed by firstmate. This section establishes your current identity before every project or task instruction below and supersedes any conflicting role identit
+Pi pid env: PI_CODING_AGENT_DIR=$LAB/user-home/.pi/agent HOME=~ PI_OFFLINE=1 
+RESULT lab-reg-scout-a1: no trust dialog
+RESULT lab-reg-scout-a1: Pi composer/main UI reached
+== fm-spawn.sh lab-reg-ship-b2 regproj --mode no-mistakes --yolo off --backend tmux -> rc=0
+fm-gate-refuse: gate agent lifecycle permitted only against lab home $LAB
+warning: $LAB/data/lab-reg-ship-b2/launch-brief.md records no ship branch; defaulting to legacy branch fm/lab-reg-ship-b2
+warning: $LAB/data/lab-reg-ship-b2/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned lab-reg-ship-b2 harness=pi kind=ship mode=no-mistakes yolo=off window=primary:fm-lab-reg-ship-b2 worktree=$LAB/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj
+-- meta lab-reg-ship-b2:
+window=primary:fm-lab-reg-ship-b2
+worktree=$LAB/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj
+project=$LAB/projects/regproj
+harness=pi
+kind=ship
+-- Pi process argv in pane (primary:fm-lab-reg-ship-b2):
+~/.local/share/mise/installs/pi/latest/pi/pi --tui-mode regular --approve -e $LAB/state/lab-reg-ship-b2.pi-ext.ts ⁣FIRSTMATE_OP: v1 launch-brief: # Current worker role contract You are a crewmate: an autonomous worker agent managed by firstmate. This section establishes your current identity before every project or task instruction below and supersedes any conflicting role identity
+Pi pid env: PI_CODING_AGENT_DIR=$LAB/user-home/.pi/agent HOME=~ PI_OFFLINE=1 
+RESULT lab-reg-ship-b2: no trust dialog
+RESULT lab-reg-ship-b2: Pi composer/main UI reached
+== fm-spawn.sh lab-unreg-scout-c3 unregproj --scout --backend tmux -> rc=0
+fm-gate-refuse: gate agent lifecycle permitted only against lab home $LAB
+spawned lab-unreg-scout-c3 harness=pi kind=scout window=primary:fm-lab-unreg-scout-c3 worktree=$LAB/user-home/.treehouse-fm/82c7e0d3cbf3/.treehouse/unregproj-91960d/1/unregproj
+-- meta lab-unreg-scout-c3:
+window=primary:fm-lab-unreg-scout-c3
+worktree=$LAB/user-home/.treehouse-fm/82c7e0d3cbf3/.treehouse/unregproj-91960d/1/unregproj
+project=$LAB/projects/unregproj
+harness=pi
+kind=scout
+-- Pi process argv in pane (primary:fm-lab-unreg-scout-c3):
+~/.local/share/mise/installs/pi/latest/pi/pi --tui-mode regular -e $LAB/state/lab-unreg-scout-c3.pi-ext.ts ⁣FIRSTMATE_OP: v1 launch-brief: # Current worker role contract You are a crewmate: an autonomous worker agent managed by firstmate. This section establishes your current identity before every project or task instruction below and supersedes any conflicting role identity in tho
+Pi pid env: PI_CODING_AGENT_DIR=$LAB/user-home/.pi/agent HOME=~ PI_OFFLINE=1 
+RESULT lab-unreg-scout-c3: TRUST DIALOG SHOWN
+== Pi stores after all launches
+trust.json unchanged: {}
+settings.json unchanged (defaultProjectTrust=ask)

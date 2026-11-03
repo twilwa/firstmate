@@ -1,0 +1,48 @@
+treehouse --root '/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda' get
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/projects/regproj$ treehouse --root '/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda' get
+A new version of treehouse is available: v3.1.6 → v3.1.8
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Entered worktree at /tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj. Type 'exit' to return.
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj$ cd -- '/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21
+c5/1/regproj'
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj$ export GOTMPDIR=/tmp/fm-lab-reg-scout-a1/gotmp
+export COMPACT_ADVISER_DISABLE=1
+export FM_TASK_ID=lab-reg-scout-a1
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj$ export FM_TASK_ID=lab-reg-scout-a1
+firstmate@vmi3582798:/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj$ . '/tmp/fm-lab-reg-scout-a1+a3acddd00ddca5fcdc93963534b4ee0fe8bfdffc7fa7977ffb91acd35e
+35dd31/launch.s1793741276.2894807.5173.sh'
+
+ ▀▀█  v1.4.0
+ █▀ █ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+[Skills]
+  bend-build, codebase-design, domain-modeling, grill-me, grill-with-docs, grilling, improve-codebase-architecture, modal, no-mistakes, prototype, research, setup-matt-pocock-skills, show-me, tdd,
+typesafe-ai, unslop, wayfinder
+
+[Extensions]
+  lab-reg-scout-a1.pi-ext.ts, project-ext.ts
+
+
+ Warning: No models available. Use /login to log into a provider via OAuth or API key. See:
+   ~/.local/share/mise/installs/pi/1.4.0/pi/docs/providers.md
+   ~/.local/share/mise/installs/pi/1.4.0/pi/docs/models.md
+
+ Error: No API key found for the selected model.
+
+ Use /login to log into a provider via OAuth or API key. See:
+   ~/.local/share/mise/installs/pi/1.4.0/pi/docs/providers.md
+   ~/.local/share/mise/installs/pi/1.4.0/pi/docs/models.md
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/fm-lab.Qsu7XA/user-home/.treehouse-fm/83421e060fda/.treehouse/regproj-ee21c5/1/regproj (detached)
+0.0%/0 (auto)                                                                                                                                                                                    unknown

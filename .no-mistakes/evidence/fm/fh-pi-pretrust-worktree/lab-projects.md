@@ -1,0 +1,2 @@
+- regproj [no-mistakes] - lab registered project (added 2026-11-03)
+- unregproj-other [no-mistakes] - prefix decoy, unregproj itself is unregistered

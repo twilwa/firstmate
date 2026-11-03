@@ -1,0 +1,2 @@
+ok - Pi approve probing omits --approve when help does not advertise it
+EXIT=0

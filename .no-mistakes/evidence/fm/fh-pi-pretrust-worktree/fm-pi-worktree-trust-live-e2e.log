@@ -1,0 +1,8 @@
+# live pi version: 1.4.0
+ok - pi: fresh task with .pi/extensions prompts without approval
+ok - pi: approved task reaches the composer without changing trust.json or settings.json
+ok - pi: the same task prompts again in a new process without approval
+ok - pi: parent and sibling still prompt without approval
+skip: live: pi-signed absent
+# all fm-pi-worktree-trust-live-e2e checks passed (1 checked)
+EXIT=0
