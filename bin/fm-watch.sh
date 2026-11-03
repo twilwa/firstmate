@@ -629,7 +629,7 @@ inbox_steer_busy() {  # <window> <backend> <task> <tail40>
 # Runs for secondmates too: their pane-staleness exemption is about quiet panes
 # being healthy, while an unacknowledged instruction can still be a stuck steer.
 inbox_steer_check() {  # <window> <task>
-  local w=$1 task=$2 action verb rec count tail40 pane_hash='' reason='' ring_rc backend agent_state
+  local w=$1 task=$2 action verb rec count tail40 progress_token reason='' ring_rc backend agent_state
   action=$(fm_task_inbox_due_action "$STATE" "$task") || return 0
   verb=${action%% *}
   [ "$verb" != quiet ] || return 0
@@ -660,12 +660,13 @@ inbox_steer_check() {  # <window> <task>
   tail40=$WATCHER_CAPTURE
   if inbox_steer_busy "$w" "$backend" "$task" "$tail40"; then
     [ "$verb" != retry ] || return 0
-    [ -z "$tail40" ] || pane_hash=$(printf '%s' "$tail40" | hash_pane)
-    if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec" "$pane_hash"); then
+    busy_progress_read "$task"
+    progress_token="$BUSY_PROGRESS_FILE $(stat_mtime "$BUSY_PROGRESS_FILE" || true)${BUSY_PROGRESS_MODEL_TS:+ $BUSY_PROGRESS_MODEL_TS}"
+    if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec" "$progress_token"); then
       [ -f "$rec" ] || return 0
       reason="stale: $w (steering-inbox busy bookkeeping unwritable: ${rec%/*}/.busy-state cannot be written while $rec stays unhandled; inspect the inbox directory)"
     elif [ "$count" -ge "$(fm_task_inbox_busy_max)" ]; then
-      reason="stale: $w (unread firstmate instruction: stuck-busy after $count consecutive frozen busy-deferred due doorbells; $rec stays unhandled and no doorbell was typed; inspect the worker)"
+      reason="stale: $w (unread firstmate instruction: stuck-busy after $count consecutive busy-deferred due doorbells without recorded busy progress; $rec stays unhandled and no doorbell was typed; inspect the worker)"
     else
       return 0
     fi
@@ -2402,7 +2403,7 @@ wedge_defer_t3code_running() {  # <window> <since-file> <triage-label> <idle-age
 # This probe does not emit a wake or change semantic busy state.
 # The caller checks busy state and routes a crossed bound through inspection.
 busy_turn_over_age() {  # <task>
-  local task=$1 f progress harness snapshot gen request rev ts age model_ts model_age
+  local task=$1 harness snapshot gen request rev ts age model_age
   BUSY_STREAM_SNAPSHOT=
   if [ "$STREAM_SILENT_MAX_SECS" -gt 0 ]; then
     harness=$(grep '^harness=' "$STATE/$task.meta" 2>/dev/null | cut -d= -f2- || true)
@@ -2415,19 +2416,34 @@ busy_turn_over_age() {  # <task>
       fi
     fi
   fi
-  f="$STATE/$task.turn-ended"
-  [ -e "$f" ] || f="$STATE/$task.meta"
-  progress="$STATE/$task.progress"
-  if [ -f "$progress" ] && [ "$progress" -nt "$f" ]; then f="$progress"; fi
-  age=$(age_of "$f")
-  if [ "$STREAM_SILENT_MAX_SECS" -gt 0 ] &&
-     model_ts=$(fm_busy_model_progress_ts "$STATE" "$task" "$harness"); then
-    model_age=$(( $(date +%s) - model_ts ))
+  busy_progress_read "$task" "${harness-}"
+  age=$(age_of "$BUSY_PROGRESS_FILE")
+  if [ -n "$BUSY_PROGRESS_MODEL_TS" ]; then
+    model_age=$(( $(date +%s) - BUSY_PROGRESS_MODEL_TS ))
     if [ "$model_age" -ge 0 ] && [ "$model_age" -lt "$age" ]; then
       age=$model_age
     fi
   fi
   [ "$age" -ge "$BUSY_TURN_MAX_SECS" ]
+}
+
+# busy_progress_read: the structural progress evidence busy_turn_over_age ages
+# and the steering-inbox stuck-busy count compares, so both agree on what counts
+# as a busy turn advancing. Sets BUSY_PROGRESS_FILE to the newest of the
+# turn-end marker (else the spawn record) and the native-progress marker, and
+# BUSY_PROGRESS_MODEL_TS to opted-in model progress, empty otherwise. Rendered
+# pane text is never evidence here: a ticking footer is not progress.
+busy_progress_read() {  # <task> [harness]
+  local task=$1 harness=${2-} progress
+  BUSY_PROGRESS_FILE="$STATE/$task.turn-ended"
+  [ -e "$BUSY_PROGRESS_FILE" ] || BUSY_PROGRESS_FILE="$STATE/$task.meta"
+  progress="$STATE/$task.progress"
+  if [ -f "$progress" ] && [ "$progress" -nt "$BUSY_PROGRESS_FILE" ]; then BUSY_PROGRESS_FILE=$progress; fi
+  BUSY_PROGRESS_MODEL_TS=
+  if [ "$STREAM_SILENT_MAX_SECS" -gt 0 ]; then
+    [ -n "$harness" ] || harness=$(grep '^harness=' "$STATE/$task.meta" 2>/dev/null | cut -d= -f2- || true)
+    BUSY_PROGRESS_MODEL_TS=$(fm_busy_model_progress_ts "$STATE" "$task" "$harness") || BUSY_PROGRESS_MODEL_TS=
+  fi
 }
 
 busy_stream_snapshot_current() {  # <task> <observed snapshot>

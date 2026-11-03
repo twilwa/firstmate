@@ -906,38 +906,48 @@ busy_case() {
   printf '%s' "$dir"
 }
 
-test_watcher_busy_progress_requires_a_frozen_pane() {
-  local dir state out log pid n i
-  dir=$(busy_case busy-progress)
-  state="$dir/state"; out="$dir/watch.out"; log="$dir/send.log"
-  watch_bg "$state" "$dir/fakebin" "$out" \
-    FM_SEND_LOG="$log" FM_FAKE_TMUX_CAPTURE="$dir/busy.capture" \
-    FM_BUSY_REGEX=BUSYTOKEN FM_TASK_INBOX_BUSY_MAX=2 FM_WATCH_TRACE="$dir/trace"
-  pid=$!
-  for n in 1 2 3 4; do
-    i=0
-    while [ "$i" -lt 150 ]; do
-      [ "$(grep -c ' heartbeat$' "$dir/trace" 2>/dev/null || true)" -ge "$n" ] 2>/dev/null && break
-      kill -0 "$pid" 2>/dev/null || break
-      sleep 0.1
-      i=$((i + 1))
-    done
-    if ! kill -0 "$pid" 2>/dev/null || [ "$i" -ge 150 ]; then
-      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-      fail "advancing busy output escalated or stopped polling: $(cat "$out")"
-    fi
-    printf 'completed output chunk %s\nBUSYTOKEN active\n' "$n" > "$dir/next.capture"
-    mv "$dir/next.capture" "$dir/busy.capture"
-  done
-  [ ! -s "$state/.wake-queue" ] || { kill "$pid"; fail "advancing busy output queued a wake"; }
-  # Stop advancing the actual captured output. The same live busy pane must
-  # now escalate without typing a doorbell or dropping its unread instruction.
-  wait_watcher_gone "$pid" 150 || { kill "$pid"; wait "$pid" 2>/dev/null; fail "frozen busy pane never escalated"; }
-  wait "$pid" 2>/dev/null
-  grep -F 'stuck-busy' "$out" >/dev/null || fail "frozen busy pane raised the wrong alert: $(cat "$out")"
-  [ ! -s "$log" ] || fail "busy progress/freeze typed into the pane"
-  [ -f "$state/t1.inbox/001.msg" ] || fail "busy progress/freeze lost its unread instruction"
-  pass "watcher: advancing busy output stays quiet, then frozen output escalates without typing"
+# A busy pane whose only change is its ticking footer has made no progress, so
+# the stuck-busy budget still counts it. Recorded native-harness progress (the
+# fm-busy-event.sh progress marker) is real progress and restarts the count.
+test_watcher_busy_progress_requires_recorded_progress() {
+  local dir gen
+  dir=$(busy_case busy-footer-tick)
+  printf 'some output\nBUSYTOKEN active 61s\n' > "$dir/busy.capture"
+  busy_steer_check "$dir"
+  [ ! -s "$dir/state/.wake-queue" ] || fail "first footer-tick deferral must wait"
+  printf 'some output\nBUSYTOKEN active 62s\n' > "$dir/busy.capture"
+  busy_steer_check "$dir"
+  grep -q 'stuck-busy after 2 consecutive' "$dir/state/.wake-queue" \
+    || fail "a footer-only change reset the stuck-busy budget: $(cat "$dir/check.out")"
+  [ ! -s "$dir/send.log" ] || fail "footer-tick escalation typed into the pane"
+  [ -f "$dir/state/t1.inbox/001.msg" ] || fail "footer-tick escalation lost the steer"
+
+  dir=$(busy_case busy-recorded-progress)
+  fm_write_meta "$dir/state/t1.meta" "window=sess:fm-t1" "kind=ship" "harness=pi"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$dir/state" t1) || fail "arming busy state failed"
+  "$ROOT/bin/fm-busy-event.sh" apply "$dir/state" t1 busy --gen "$gen" --source pi-ext --event agent-start \
+    || fail "recording a busy turn failed"
+  busy_steer_check "$dir"
+  "$ROOT/bin/fm-busy-event.sh" progress "$dir/state" t1 --gen "$gen" || fail "recording progress failed"
+  busy_steer_check "$dir"
+  [ ! -s "$dir/state/.wake-queue" ] || fail "recorded busy progress did not restart the stuck-busy budget"
+  busy_steer_check "$dir"
+  grep -q 'stuck-busy after 2 consecutive' "$dir/state/.wake-queue" \
+    || fail "a busy pane without further progress never escalated: $(cat "$dir/check.out")"
+  [ ! -s "$dir/send.log" ] || fail "recorded-progress case typed into the pane"
+  pass "watcher: footer ticks still count toward stuck-busy, recorded progress restarts the count"
+}
+
+# The budget has no notion of capture evidence: an empty progress token is an
+# unchanged one and still counts toward the bound.
+test_busy_budget_counts_empty_progress_token() {
+  local state rec first second
+  state="$TMP_ROOT/busy-empty-token/state"; mkdir -p "$state"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  first=$(inbox_lib "$state" fm_task_inbox_record_busy "$state" t1 "$rec" "")
+  second=$(inbox_lib "$state" fm_task_inbox_record_busy "$state" t1 "$rec" "")
+  [ "$first $second" = "1 2" ] || fail "empty progress token did not count toward stuck-busy: $first $second"
+  pass "busy budget: an empty progress token counts toward the stuck-busy bound"
 }
 
 test_watcher_waits_on_busy_pane() {
@@ -1426,7 +1436,8 @@ test_fire_and_forget_retry_is_owed_once
 test_fire_and_forget_retry_is_quiet_without_the_flag
 test_ring_ladder_policy
 test_watcher_rerings_idle_pane_quietly
-test_watcher_busy_progress_requires_a_frozen_pane
+test_watcher_busy_progress_requires_recorded_progress
+test_busy_budget_counts_empty_progress_token
 test_watcher_waits_on_busy_pane
 test_watcher_busy_budget_resets_on_ring_and_ack
 test_watcher_busy_bookkeeping_failure_surfaces
