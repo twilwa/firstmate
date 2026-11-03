@@ -1994,7 +1994,7 @@ _fm_composer_locate_footer_zone() {  # <plain>
 # edges keeps the staleness rule intact everywhere else: a glyph stranded in
 # scrollback has transcript rows, not its own rules, around it.
 _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
-  local plain=$1 row=$2 above below
+  local plain=$1 row=$2 above below prompt
   [ "$row" -ge 1 ] || return 1
   [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -eq "$((row + 1))" ] || return 1
   below=$(_fm_composer_screen_row "$((row + 1))" "$plain")
@@ -2002,6 +2002,13 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
   _fm_composer_pi_separator_row "$below" || return 1
   above=$(_fm_composer_screen_row "$((row - 1))" "$plain")
   fm_composer_normalize_trim_var above
+  # Devin 3000.11.234 truncates its title with a one-column U+2026. Only
+  # Devin's own glyph admits that extra title cell; other harnesses retain
+  # the ASCII-only title proof. Replace before the byte-oriented width check
+  # so the geometry is identical under UTF-8 and LC_ALL=C.
+  prompt=$(_fm_composer_screen_row "$row" "$plain")
+  fm_composer_normalize_trim_var prompt
+  case "$prompt" in '❭'|'❭ '*) above=${above//…/x} ;; esac
   _fm_composer_titled_rule_row "$above" "${below//─/ }"
 }
 

@@ -93,7 +93,7 @@ fm_backend_source hc || fail "fm_backend_source hc failed"
 CHECKED=0
 SKIPPED=
 HC_VERSION=$("$HC_TOOL" --version 2>/dev/null | head -1)
-for harness in claude codex opencode pi grok kimi; do
+for harness in claude codex opencode pi grok kimi devin; do
   bin_path=$(command -v "$harness" 2>/dev/null || true)
   if [ -z "$bin_path" ] || [ ! -x "$bin_path" ]; then
     SKIPPED="$SKIPPED $harness"

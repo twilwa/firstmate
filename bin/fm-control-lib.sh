@@ -354,14 +354,14 @@ fm_control_backend_supports_key() {  # <backend> <key>
 }
 
 # Whether <backend> has a recovery-grade agent-state classifier. tmux, herdr,
-# rex, and t3code implement fm_backend_agent_state; zellij, orca, cmux, and paseo report
+# rex, hc, and t3code implement fm_backend_agent_state; zellij, orca, cmux, and paseo report
 # `unverified`, and tern's `tern process` classifier answers for display but is
 # not promoted to this list, so no reading of theirs can prove an agent stopped.
 # The control plane refuses a stop-proving verb there instead of reporting an
 # unprovable transition as success.
 fm_control_backend_state_verified() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex|t3code) return 0 ;;
+    tmux|herdr|rex|hc|t3code) return 0 ;;
   esac
   return 1
 }
@@ -389,7 +389,7 @@ fm_control_backend_exit_supported() {  # <backend>
 # fm_control_backend_state_verified first.
 fm_control_backend_relaunch_supported() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex) return 0 ;;
+    tmux|herdr|rex|hc) return 0 ;;
   esac
   return 1
 }
@@ -487,6 +487,12 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target> [meta]
         missing) printf 'gone\t' ;;
         *) printf 'unproven\tthe Rex server the task was created on could not be reached from here, or its block could not be classified' ;;
       esac
+      ;;
+    hc)
+      # An hc record binds a session/address, not the socket override or a
+      # core incarnation. A not-found on the caller's selected core cannot
+      # authorize recreating an endpoint that may survive on another core.
+      printf 'unproven\thc absence cannot be proven from a task record: its core socket identity is not recorded; missing or finished terminals are not rebound'
       ;;
     t3code)
       # A T3 `missing` is the server's own answer (an archived thread or an

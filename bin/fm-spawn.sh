@@ -82,7 +82,8 @@
 #   model, and effort may change, which is what makes a harness switch one
 #   ordinary relaunch. It refuses unless the recorded endpoint is positively
 #   agent-free on a backend with both a recovery-grade agent-state classifier
-#   and replacement-agent support (tmux or herdr), and clears the previous
+#   and replacement-agent support (fm_control_backend_relaunch_supported in
+#   bin/fm-control-lib.sh owns that list), and clears the previous
 #   harness's per-task wiring before arming the new incarnation. T3 Code has
 #   the classifier but refuses relaunch because a thread keeps its conversation
 #   across turns and provider changes. Two verdicts are agent-free: a `dead`
@@ -2500,7 +2501,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # owns that vocabulary). The proof itself lives in one place for the whole
   # control plane - fm_control_endpoint_absence_verdict - so `exit` and
   # `relaunch` cannot reach two different answers about one endpoint.
-  RELAUNCH_STATE=$(fm_backend_agent_state "$BACKEND" "$RELAUNCH_TARGET")
+  RELAUNCH_STATE=$(fm_backend_agent_state "$BACKEND" "$RELAUNCH_TARGET" "fm-$ID")
   if fm_control_absence_recheck_applies "$BACKEND" "$RELAUNCH_STATE"; then
     RELAUNCH_ABSENCE=$(fm_control_endpoint_absence_verdict "$BACKEND" "$RELAUNCH_TARGET" "$RELAUNCH_META")
     case "${RELAUNCH_ABSENCE%%$'\t'*}" in
@@ -2571,6 +2572,13 @@ if [ "$RELAUNCH" -eq 1 ]; then
     HERDR_WORKSPACE_ID=$(fm_meta_get "$RELAUNCH_META" herdr_workspace_id)
     HERDR_TAB_ID=$(fm_meta_get "$RELAUNCH_META" herdr_tab_id)
     HERDR_PANE_ID=$(fm_meta_get "$RELAUNCH_META" herdr_pane_id)
+  fi
+  if [ "$BACKEND" = hc ]; then
+    # Relaunch adopts the validated live terminal. Preserve the hc identity
+    # fields when publishing its replacement record; missing endpoints have
+    # no recovery proof and are refused before this path.
+    HC_SES=$(fm_meta_get "$RELAUNCH_META" hc_session)
+    HC_TERMINAL=$(fm_meta_get "$RELAUNCH_META" hc_terminal)
   fi
   if [ "$BACKEND" = rex ]; then
     FM_REX_TASK_SESSION_ID=$(fm_meta_get "$RELAUNCH_META" rex_session_id)

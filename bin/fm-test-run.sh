@@ -502,7 +502,7 @@ family_for_basename() {
     fm-backend-tern.test.sh|fm-backend-tern-smoke.test.sh)
       printf '%s\n' tern
       ;;
-    fm-backend-hc.test.sh|fm-backend-hc-smoke.test.sh|fm-backend-hc-appdetect-smoke.test.sh)
+    fm-backend-hc.test.sh|fm-backend-hc-smoke.test.sh|fm-backend-hc-appdetect-smoke.test.sh|fm-control-hc.test.sh)
       printf '%s\n' hc
       ;;
     fm-branch-supervision.test.sh|fm-busy-adapter-wiring.test.sh|\
@@ -1666,7 +1666,7 @@ families_for_changed_path() {
       printf '%s\n' tern
       printf '%s\n' backend-dispatch
       ;;
-    bin/backends/hc.sh|bin/fm-hc-lab.sh|tests/hc-test-safety.sh)
+    bin/backends/hc.sh|bin/fm-hc-lab.sh|tests/hc-test-safety.sh|tests/hc-fake-fixture.sh)
       printf '%s\n' hc
       printf '%s\n' backend-dispatch
       printf '%s\n' "__script__:fm-backend-hc-liveness-live-e2e.test.sh"

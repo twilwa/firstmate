@@ -3590,7 +3590,7 @@ The default socket path under the scratchpad temp directory exceeded the 103-byt
 | `hello` over `hc connect --session <s>` (0.1.14, 2026-10-30) | Answered `{"result":{"generation":1,...}}`; the adapter refuses any other generation. |
 | `hc send <t> --wait --timeout <n> -- <text>` (0.1.14, 2026-10-30) | Returns `{"started":<bool|null>,"wait":{"status",...}}`; `started:true` or `wait.status:working` natively confirms the submit. Exit 9 is `blocked` (never forced), 3 `not_found`, 11 `finished`; text after `--` survives leading dashes. |
 | `hc keys <t> -- <key>` (0.1.14, 2026-10-30) | Accepts the `--` delimiter before key names. |
-| `server stop` on a lab session (0.1.14, 2026-10-30) | Closes the API listener only; the session's `serve` and `hold` daemons stay by design and take ~30-60s to finish exiting after TERM/KILL. `bin/fm-hc-lab.sh` sweeps them by their exact `HC_SESSION=<name>` env token. |
+| `server stop` on a lab session (hc 0.1.17 observed, CI pin 0.1.14, 2026-11-03) | Does not preserve the agent: every terminal is SIGHUPed and `hc get` then reports `state: finished`, `reason: server_stop`, `signal: 1`. A finished terminal is `missing` to the adapter and cannot be rebound. Session `serve`/`hold` daemons can outlive the listener; `bin/fm-hc-lab.sh` sweeps them by their exact `HC_SESSION=<name>` env token. |
 | `hc get` of a terminal running the user's `claude` wrapper | `foreground` was `{"name":"hats","argv":["/Users/fran/.cargo/bin/hats","run","--"]}`; the Claude process was another member of that process group. |
 
 ### Adapter lifecycle
@@ -3610,6 +3610,38 @@ FM_TEST_COMPLETE
 
 A real Claude Code launch through the user's `claude` wrapper, typed into a task terminal with `fm_backend_hc_send_text_line` and never given a prompt, read `alive` from `fm_backend_agent_state` within three polls, and `fm_backend_kill` returned 0 with no surviving member of its process group.
 Before reading the process group, the same launch read `ambiguous`.
+
+### Control and composer regression boundaries
+
+Portable regression run on Linux, 2026-11-02, Bash 5.2.21, with a fake hc 0.1.14 CLI (not a new real-core measurement):
+
+```sh
+bash tests/fm-backend-hc.test.sh
+bash tests/fm-control-hc.test.sh
+bash tests/fm-composer-lib.test.sh
+```
+
+The control suite reported:
+
+```text
+ok - hc: control exit proves stopped without killing the terminal; send acceptance alone cannot prove it
+ok - hc: relaunch reuses endpoint and work
+ok - hc: missing, finished, and unreadable refuse rebind
+ok - hc: pending, unknown, ambiguous, unreadable, and foreign refuse before input
+FM_TEST_COMPLETE
+```
+
+The adapter regression also verifies that a stale foreground PID reads `unreadable`, never `dead`, a native group leader overrides a stale shell name, and control checks task ownership before accepting a stopped shell.
+`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, core stop, and terminal kill.
+The core-stop case asserts the measured outcome: the terminal finishes with reason `server_stop`, agent state reads `missing`, and relaunch refuses without rebinding.
+The refusal preserves the recorded terminal identity, branch HEAD, and unfinished work.
+Those additional control cases require `cc` in CI; the portable fake-CLI result above does not stand in for that real-core run.
+
+The Devin 3000.11.234 SWE-2 High regression uses the four-row styled excerpt in `tests/fixtures/devin-3000.11.234/idle.ansi`, captured read-only on 2026-11-02.
+Its titled top rule ends in a Unicode ellipsis; the styled placeholder reads `empty`.
+The pending case is derived by replacing that placeholder with input-foreground text, not by typing into the captured terminal.
+Both ordinary typed text and the placeholder's own words in input styling read `pending`; removing styling leaves the placeholder `unknown`, and a non-Devin glyph does not gain the Unicode-title exception.
+The hc `get`/plain-screen evidence contains no cursor or composer-content proof that resolves that collision.
 
 ### Spawn, steer, peek, and teardown
 

@@ -171,6 +171,30 @@ assert_screen() {
   [ "$out" = "$want" ] || fail "$label under LC_ALL=C: expected $want, got '$out'"
 }
 
+test_devin_captured_idle_titled_composer() {
+  local screen plain pending placeholder
+  # 2026-11-02, Devin 3000.11.234 SWE-2 High: last four rows of a
+  # read-only Herdr ANSI capture, with CRLF normalized to LF. Its truncated
+  # title contains U+2026.
+  screen=$(cat "$ROOT/tests/fixtures/devin-3000.11.234/idle.ansi")
+  assert_screen "captured Devin idle on herdr" empty "$CAPS_STYLED" "$screen"
+  plain=$(printf '%s' "$screen" | fm_composer_strip_ansi)
+  assert_screen "plain Devin placeholder remains ambiguous on hc" unknown "$CAPS_PLAIN" "$plain"
+  # Derived pending fixtures: replace only the captured dim placeholder run
+  # with normal input-foreground text. No live input was sent for these cases.
+  placeholder=$'\033[38;2;124;124;124mAsk Devin to build features, fix bugs, or work on your code'
+  pending=${screen/"$placeholder"/fix the lifecycle regression}
+  assert_screen "derived Devin typed input" pending "$CAPS_STYLED" "$pending"
+  pending=${screen/"$placeholder"/Ask Devin to build features, fix bugs, or work on your code}
+  assert_screen "typed placeholder words are still pending" pending "$CAPS_STYLED" "$pending"
+  # The title exception belongs to Devin's glyph, not every bare composer.
+  screen=${screen//❭/❯}
+  assert_screen "non-Devin Unicode title remains unproven" unknown "$CAPS_STYLED" "$screen"
+  pass "captured Devin titled idle is empty only with styling; plain hc stays unknown"
+}
+
+test_devin_captured_idle_titled_composer
+
 test_matrix_claude_bare_nbsp_row() {
   # Real idle claude: `❯` + U+00A0, borderless, between horizontal rules.
   # The audit's headline defect: this row read `pending` under LC_ALL=C
