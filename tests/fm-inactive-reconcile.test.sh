@@ -175,6 +175,38 @@ test_main_direct_terminal_presentation_receipt() {
   pass "main direct terminal presentation has a durable receipt"
 }
 
+# Budget telemetry is not part of a terminal outcome's PR or identity.
+test_terminal_pr_ignores_budget_age() {
+  local record fingerprint err seq generation
+  make_world terminal-pr-budget
+  write_child "$MAIN" child 'working: validation finished'
+  FM_FAKE_CREW_STATE='done' FM_FAKE_CREW_SOURCE=run-step \
+    FM_FAKE_CREW_DETAIL='run done · pr=https://example.test/owner/repo/pull/1 · budget: age=120s' \
+    run_reconcile "$MAIN" --startup
+  record=$(printf '%s\n' "$MAIN/state/terminal-outcomes/"*.pending)
+  grep -Fxq 'pr=https://example.test/owner/repo/pull/1' "$record" \
+    || fail "terminal receipt PR includes budget telemetry"
+  fingerprint=$(sed -n 's/^fingerprint=//p' "$record")
+
+  err="$WORLD/drain.err"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" >/dev/null 2> "$err"
+  seq=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*/\1/p' "$err")
+  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
+  [ -n "$seq" ] && [ -n "$generation" ] || fail "terminal outcome was not queued for acknowledgement"
+  FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" "$DRAIN" --ack-through "$seq" --recovery-generation "$generation"
+
+  FM_FAKE_CREW_STATE='done' FM_FAKE_CREW_SOURCE=run-step \
+    FM_FAKE_CREW_DETAIL='run done · pr=https://example.test/owner/repo/pull/1 · budget: age=180s' \
+    run_reconcile "$MAIN" --startup
+  [ -f "$MAIN/state/terminal-outcomes/$fingerprint.presented" ] \
+    || fail "acknowledged outcome lost its fingerprint"
+  [ "$(outcome_count "$MAIN" presented)" = 1 ] && [ "$(outcome_count "$MAIN" pending)" = 0 ] \
+    || fail "changed budget age minted a second outcome fingerprint"
+  [ "$(wake_count "$MAIN" 'inactive-outcome:')" = 0 ] \
+    || fail "changed budget age notified again after acknowledgement"
+  pass "terminal PR stays exact and budget age does not repeat an acknowledged outcome"
+}
+
 # Away-posture regression: a branch-actor drain that consumes an
 # inactive-outcome check row must retire its terminal-outcome receipt exactly
 # like a main ack does. The 2026-09-25 away window on the supervision host
@@ -1322,6 +1354,7 @@ SH
 }
 
 test_main_direct_terminal_presentation_receipt
+test_terminal_pr_ignores_budget_age
 test_branch_ack_retires_inactive_outcome_receipt
 test_unpushed_ci_ready_done_is_not_published
 test_local_done_head_is_pinned_before_parent_delivery
