@@ -2455,7 +2455,8 @@ busy_stream_snapshot_current() {  # <task> <observed snapshot>
 # Absorb a stale pane under a declared external-wait pause (paused:) or a
 # dead-agent captain-held transfer, and re-surface it once every
 # PAUSE_RESURFACE_SECS for a recheck so it cannot rot invisibly. Called on any
-# stale poll once pause_state_class permits the bounded cadence, so it must be
+# stale poll once pause_state_class permits the bounded cadence (or directly
+# from the capture-failure branch for a declared `paused:`), so it must be
 # cheap: it NEVER re-reads crew state. The re-surface age is anchored on the
 # status file mtime, not a per-hash marker, so a churny idle pane (a ticking
 # clock, a token counter) cannot keep resetting the cadence the way a hash-tied
@@ -4458,6 +4459,16 @@ EOF
       continue
     fi
     watcher_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" || {
+      # A declared pause whose endpoint cannot be read is exactly how a vanished
+      # pane looks, so it keeps its bounded recheck (and the due liveness probe
+      # inside it) instead of being skipped. pause_state_class is bypassed here:
+      # there is no pane to classify, and the backend probe is the only evidence.
+      # The last recorded hash keeps the report-once identity stable. Only the
+      # owners of the stable-stale paused path take this; every other capture
+      # failure keeps the skip.
+      if status_is_paused "$last" && { [ "$kind" = secondmate ] || ! afk_present; }; then
+        handle_paused_stale "$w" "$task" "$(cat "$STATE/.hash-$key" 2>/dev/null || true)"
+      fi
       watch_step_done "report:$task"
       continue
     }

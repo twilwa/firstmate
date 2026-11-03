@@ -1547,6 +1547,78 @@ test_paused_alive_or_unreadable_keeps_recheck_cadence() {
   pass "alive and unreadable paused rechecks keep the original wait confirmation and cadence, with one due probe"
 }
 
+# A fake herdr whose recorded pane cannot be read. <verdict> picks what the pane
+# lookup says: missing answers pane_not_found (a pane gone in a server restart),
+# unreadable answers an unrelated error, which must never be taken for absence.
+make_uncapturable_herdr() {  # <fakebin> <missing|unreadable>
+  local code=pane_not_found
+  [ "$2" = missing ] || code=internal_error
+  cat > "$1/herdr" <<SH
+#!/usr/bin/env bash
+args=()
+while [ "\$#" -gt 0 ]; do
+  if [ "\$1" = --session ]; then shift 2; continue; fi
+  args+=("\$1"); shift
+done
+set -- "\${args[@]}"
+case "\${1:-} \${2:-}" in
+  "status --json") printf '{"client":{"version":"0.7.3","protocol":16},"server":{"running":true}}\n' ;;
+  "pane get") printf '{"error":{"code":"$code"}}\n' ;;
+  "pane read") exit 1 ;;
+esac
+exit 0
+SH
+  chmod +x "$1/herdr"
+}
+
+# The issue-67 incidents were panes that vanished in a daemon or Herdr restart,
+# so the capture the stale loop takes first fails. A declared pause must still
+# reach its due liveness probe there: a missing endpoint is reported once on
+# either backend, while a live or unreadable one keeps the paused cadence's wait
+# confirmation and is never called dead.
+test_paused_uncapturable_endpoint_reports_missing_once() {
+  local spec name backend verdict dir state window key out marker before
+  window=test:fm-wedge; key=test_fm-wedge
+  for spec in tmux:missing tmux:alive herdr:missing herdr:unreadable; do
+    backend=${spec%%:*}; verdict=${spec#*:}; name="uncapturable-$backend-$verdict"
+    dir=$(wedge_threshold_fixture "$name" 'paused: waiting for an upstream release' 500)
+    state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
+    printf 'window=%s\nkind=ship\nharness=grok\nbackend=%s\n' "$window" "$backend" > "$state/wedge.meta"
+    [ "$backend" != herdr ] || make_uncapturable_herdr "$dir/fakebin" "$verdict"
+    FM_TEST_TMUX_WINDOWS=fm-wedge
+    [ "$spec" != tmux:missing ] || FM_TEST_TMUX_WINDOWS=another-window
+    export FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE=240 FM_TEST_PANE_COMMAND=grok
+    export FM_FAKE_TMUX_FORBIDDEN_TARGET="$window" FM_BACKEND_HERDR_EVENTS_FORCE=0
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' exit || fail "$spec uncapturable pause was skipped at its due recheck"
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] || fail "$spec due recheck did not notify exactly once"
+    if [ "$verdict" = missing ]; then
+      grep -F 'agent missing' "$out" >/dev/null || fail "$spec vanished endpoint was not reported missing"
+      grep -F 'stopped while paused' "$out" >/dev/null || fail "$spec report omitted the declared pause"
+      case "$(cat "$state/.dead-reported-$key" 2>/dev/null)" in
+        'missing '*) ;; *) fail "$spec report did not use the shared report-once record" ;;
+      esac
+      ack_stopped_cycle "$state" || fail "could not acknowledge the $spec report"
+      before=$(file_mtime "$marker")
+      set_mtime "$(( before - 500 ))" "$marker"
+    else
+      grep -F 'awaiting external' "$out" >/dev/null || fail "$spec pause lost its wait confirmation"
+      grep -F 'stopped while paused' "$out" >/dev/null && fail "$spec endpoint was reported as an agent death"
+      [ ! -e "$state/.dead-reported-$key" ] || fail "$spec endpoint left a death record"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the $spec recheck"
+    fi
+    # Missing: the next due recheck stays quiet. Live/unreadable: still inside
+    # the cadence, so no repeat either.
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' absorb || fail "$spec uncapturable pause notified again"
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] || fail "$spec enqueued another notification"
+    [ ! -e "$state/.wedge-escalations-$key" ] || fail "$spec pause entered the wedge ladder"
+  done
+  unset FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE \
+    FM_FAKE_TMUX_FORBIDDEN_TARGET FM_BACKEND_HERDR_EVENTS_FORCE
+  pass "an uncapturable paused endpoint is reported missing once on tmux and herdr, and never called dead when live or unreadable"
+}
+
 if [ -n "${FM_TEST_ONLY:-}" ]; then
   "$FM_TEST_ONLY"
   exit 0
@@ -1556,6 +1628,7 @@ fm_test_run \
   test_required_captain_hold_tests_fail_without_tasks_axi \
   test_paused_dead_or_missing_agent_reports_once \
   test_paused_alive_or_unreadable_keeps_recheck_cadence \
+  test_paused_uncapturable_endpoint_reports_missing_once \
   test_nonterminal_stale_not_working_surfaced \
   test_nonterminal_stale_paused_absorbed_then_resurfaced \
   test_exited_declared_pause_is_bounded_but_live_gate_surfaces \
