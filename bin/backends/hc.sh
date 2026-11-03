@@ -449,13 +449,18 @@ fm_backend_hc_kill() {  # <target> [unused] [expected-label]
 # finished terminal is `missing`: an hc terminal whose program ended can never
 # host the agent again, exactly like a closed tmux window. A live terminal is
 # classified from hc's foreground process through the shared classifier.
-fm_backend_hc_agent_state() {  # <target>
-  local json rc fields state name argv0 args pid class
+fm_backend_hc_agent_state() {  # <target> [expected-label]
+  local json rc fields state name argv0 args pid class group_rc=0
   fm_backend_hc_parse_target "${1:-}" || { printf 'unreadable'; return 0; }
   json=$(fm_backend_hc_get "$1")
   rc=$?
   if [ "$rc" -eq 3 ]; then printf 'missing'; return 0; fi
   [ "$rc" -eq 0 ] || { printf 'unreadable'; return 0; }
+  if [ -n "${2:-}" ]; then
+    printf '%s' "$json" | jq -e --arg task "$2" --arg home "$(fm_backend_hometag)" \
+      '.labels["firstmate.task"] == $task and .labels["firstmate.home"] == $home' >/dev/null 2>&1 \
+      || { printf 'unreadable'; return 0; }
+  fi
   fields=$(printf '%s' "$json" | jq -r '[.state // "", .foreground.name // "", .foreground.argv[0] // "",
     ((.foreground.argv // []) | join(" ")), (.foreground.pid // "" | tostring)] | @tsv' 2>/dev/null) || {
     printf 'unreadable'
@@ -477,24 +482,33 @@ EOF
   # of the same foreground process group, which is what tmux reads too. A shell
   # wrapper waiting on the harness is such a launcher, so a shell is only dead
   # once its group holds no harness.
-  fm_backend_hc_group_has_agent "$pid" && { printf 'alive'; return 0; }
+  fm_backend_hc_group_has_agent "$pid" || group_rc=$?
+  case "$group_rc" in
+    0) printf 'alive'; return 0 ;;
+    2) printf 'unreadable'; return 0 ;;
+  esac
   [ "$class" != shell ] || { printf 'dead'; return 0; }
   printf 'ambiguous'
 }
 
-# fm_backend_hc_group_has_agent: whether any other process in <pid>'s process
-# group classifies as a harness. Positive evidence only.
+# fm_backend_hc_group_has_agent: whether any process in <pid>'s process
+# group classifies as a harness. Returns 0 for an agent, 1 for a fully read
+# group without one, and 2 when process-group inspection is unavailable.
 fm_backend_hc_group_has_agent() {  # <pid>
-  local pid=$1 pgid member mpgid comm args
-  case "$pid" in ''|*[!0123456789]*) return 1 ;; esac
-  pgid=$(LC_ALL=C ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ') || return 1
-  [ -n "$pgid" ] || return 1
+  local pid=$1 pgid member mpgid comm args processes found=0
+  case "$pid" in ''|0|*[!0123456789]*) return 2 ;; esac
+  pgid=$(LC_ALL=C ps -o pgid= -p "$pid" 2>/dev/null) || return 2
+  pgid=${pgid//[[:space:]]/}
+  [ -n "$pgid" ] || return 2
+  processes=$(LC_ALL=C ps -A -o pid=,pgid=,comm= 2>/dev/null) || return 2
   while read -r member mpgid comm; do
-    [ "$mpgid" = "$pgid" ] && [ "$member" != "$pid" ] || continue
-    args=$(LC_ALL=C ps -o args= -p "$member" 2>/dev/null) || continue
+    if [ "$member" = "$pid" ] && [ "$mpgid" = "$pgid" ]; then found=1; fi
+    [ "$mpgid" = "$pgid" ] || continue
+    args=$(LC_ALL=C ps -o args= -p "$member" 2>/dev/null) || return 2
     [ "$(fm_agent_process_classify "$comm" "${args%% *}" "$args" "$member")" = agent ] && return 0
   done <<EOF
-$(LC_ALL=C ps -A -o pid=,pgid=,comm= 2>/dev/null)
+$processes
 EOF
+  [ "$found" = 1 ] || return 2
   return 1
 }

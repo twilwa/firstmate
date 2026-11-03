@@ -3611,6 +3611,36 @@ FM_TEST_COMPLETE
 A real Claude Code launch through the user's `claude` wrapper, typed into a task terminal with `fm_backend_hc_send_text_line` and never given a prompt, read `alive` from `fm_backend_agent_state` within three polls, and `fm_backend_kill` returned 0 with no surviving member of its process group.
 Before reading the process group, the same launch read `ambiguous`.
 
+### Control and composer regression boundaries
+
+Portable regression run on Linux, 2026-11-02, Bash 5.2.21, with a fake hc 0.1.14 CLI (not a new real-core measurement):
+
+```sh
+bash tests/fm-backend-hc.test.sh
+bash tests/fm-control-hc.test.sh
+bash tests/fm-composer-lib.test.sh
+```
+
+The control suite reported:
+
+```text
+ok - hc: control exit proves stopped without killing the terminal; send acceptance alone cannot prove it
+ok - hc: relaunch reuses endpoint and work
+ok - hc: missing, finished, and unreadable refuse rebind
+ok - hc: pending, unknown, ambiguous, unreadable, and foreign refuse before input
+FM_TEST_COMPLETE
+```
+
+The adapter regression also verifies that a stale foreground PID reads `unreadable`, never `dead`, a native group leader overrides a stale shell name, and control checks task ownership before accepting a stopped shell.
+`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, terminal kill, and listener stop/restart with its surviving foreground PID unchanged.
+Those additional control cases require `cc` in CI; the portable fake-CLI result above does not stand in for that real-core run.
+
+The Devin 3000.11.234 SWE-2 High regression uses the four-row styled excerpt in `tests/fixtures/devin-3000.11.234/idle.ansi`, captured read-only on 2026-11-02.
+Its titled top rule ends in a Unicode ellipsis; the styled placeholder reads `empty`.
+The pending case is derived by replacing that placeholder with input-foreground text, not by typing into the captured terminal.
+Both ordinary typed text and the placeholder's own words in input styling read `pending`; removing styling leaves the placeholder `unknown`, and a non-Devin glyph does not gain the Unicode-title exception.
+The hc `get`/plain-screen evidence contains no cursor or composer-content proof that resolves that collision.
+
 ### Spawn, steer, peek, and teardown
 
 A scout ran end to end in a scratch home with `HOME` and `TREEHOUSE_ROOT` in the scratch root, a private core (`HC_SESSION=fme1`), a local bare-origin project, and a compiled stand-in agent at `<root>/agents/claude/claude` that logs its argv, its `HC_*` and `FM_*` environment, and every input line:

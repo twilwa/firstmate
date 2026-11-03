@@ -11,96 +11,8 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-backend-hc-tests)
 
-# The stub answers `get` from <dir>/<address>.json (exit from <address>.exit,
-# 3 = not_found when no file exists), `ls` from <dir>/ls.json, `run` with
-# <dir>/run.json, and removes <address>.json on `rm` unless <dir>/rm-sticks
-# exists. Every call is logged with its HC_SESSION and HC_SOCKET.
-make_hc_fakebin() {  # <dir> -> echoes fakebin dir
-  local fb="$1/fakebin"
-  mkdir -p "$fb"
-  cat > "$fb/hc" <<'SH'
-#!/usr/bin/env bash
-set -u
-D="${FAKE_HC_DIR:?}"
-{
-  printf 'HC_SESSION=%s HC_SOCKET=%s' "${HC_SESSION:-}" "${HC_SOCKET:-}"
-  for a in "$@"; do printf '\x1f%s' "$a"; done
-  printf '\n'
-} >> "$D/log"
-cmd=${1:-}
-last=""
-for a in "$@"; do last=$a; done
-case "$cmd" in
-  --version) printf 'hc %s\n' "${FAKE_HC_VERSION:-0.1.14}" ;;
-  server) printf '{"live":0}\n' ;;
-  connect)
-    IFS= read -r _req || true
-    printf '{"jsonrpc":"2.0","id":1,"result":{"generation":%s}}\n' "${FAKE_HC_GENERATION:-1}"
-    ;;
-  ls) cat "$D/ls.json" 2>/dev/null || printf '{"terminals":[]}\n' ;;
-  run) cat "$D/run.json" ;;
-  get)
-    [ -f "$D/$last.exit" ] && exit "$(cat "$D/$last.exit")"
-    [ -f "$D/$last.json" ] || { printf '{"error":{"kind":"not_found"}}\n' >&2; exit 3; }
-    cat "$D/$last.json"
-    ;;
-  rm) [ -e "$D/rm-sticks" ] || rm -f "$D/$last.json"; printf '{}\n' ;;
-  read) printf 'screen of %s\n' "$last" ;;
-  send)
-    if [ -f "$D/send.exit" ]; then
-      printf '{"error":{"kind":"%s"}}\n' "$(cat "$D/send.kind" 2>/dev/null || echo blocked)" >&2
-      exit "$(cat "$D/send.exit")"
-    fi
-    cat "$D/send.json" 2>/dev/null || printf '{"started":true,"wait":{"status":"working"}}\n'
-    ;;
-  *) printf '{}\n' ;;
-esac
-SH
-  chmod +x "$fb/hc"
-  printf '%s\n' "$fb"
-}
-
-# Each case runs in its own shell with a fresh stub directory and home.
-setup_case() {  # <name> -> sets D, FB, HOMEDIR
-  D="$TMP_ROOT/$1"
-  mkdir -p "$D"
-  FB=$(make_hc_fakebin "$D")
-  HOMEDIR="$D/home"
-  mkdir -p "$HOMEDIR"
-}
-
-# hc_shell <script>: run <script> in bash with the adapter sourced against the
-# stub. FM_HC_BIN pins the stub so an inherited FM_HC_BIN or an installed
-# herdr-core never wins; CASE_HC_BIN overrides it for binary-resolution cases.
-# HOMETAG is exported so the script can build matching labels.
-hc_shell() {  # <script>
-  FAKE_HC_DIR=$D PATH="$FB:$PATH" FM_HC_BIN=${CASE_HC_BIN:-$FB/hc} \
-    FM_HOME=$HOMEDIR FM_ROOT_OVERRIDE=$HOMEDIR \
-    HC_SESSION=fmtest bash -c '
-      . "'"$FM_TEST_ROOT"'/bin/fm-backend.sh"
-      fm_backend_source hc || { echo "source failed" >&2; exit 90; }
-      HOMETAG=$(fm_backend_hometag)
-      '"$1"
-}
-
-# terminal_json <address> <state> <task-label> <home> <fg-name> <fg-argv0>
-write_terminal() {
-  jq -n --arg a "$2" --arg s "$3" --arg t "$4" --arg h "$5" --arg n "$6" --arg v "$7" '
-    {address: $a, state: $s, labels: {"firstmate.task": $t, "firstmate.home": $h},
-     cwd: "/start", foreground: (if $n == "" then null else {name: $n, argv: [$v], cwd: "/live", pid: 1} end)}' \
-    > "$1/$2.json"
-}
-
-hometag_of() {
-  FM_HOME=$HOMEDIR FM_ROOT_OVERRIDE=$HOMEDIR bash -c '. "'"$FM_TEST_ROOT"'/bin/fm-backend.sh"; fm_backend_source hc; fm_backend_hometag'
-}
-
-# expect_refused <cmd...>: the command must exit nonzero.
-expect_refused() {
-  local rc=0
-  "$@" >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] || fail "expected a refusal from: ${*: -1}"
-}
+# shellcheck source=tests/hc-fake-fixture.sh
+. "$(dirname "${BASH_SOURCE[0]}")/hc-fake-fixture.sh"
 
 FM_TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -147,7 +59,7 @@ test_control_interrupt_delivers_the_harness_keys() {
   mkdir -p "$HOMEDIR/state" "$HOMEDIR/data"
   printf 'window=fmtest:t2\nendpoint_task_id=%s\nworktree=%s\nproject=%s\nharness=claude\nkind=scout\nbackend=hc\nhc_session=fmtest\nhc_terminal=t2\n' \
     "$id" "$D" "$D" > "$HOMEDIR/state/$id.meta"
-  out=$(FAKE_HC_DIR=$D PATH="$FB:$PATH" FM_HC_BIN="$FB/hc" FM_HOME=$HOMEDIR FM_ROOT_OVERRIDE=$HOMEDIR \
+  out=$(FAKE_HC_DIR=$D PATH="$FB:$PATH" FM_HC_BIN="$FB/hc" FM_HOME=$HOMEDIR FM_ROOT_OVERRIDE=$FM_TEST_ROOT \
     FM_STATE_OVERRIDE="$HOMEDIR/state" FM_DATA_OVERRIDE="$HOMEDIR/data" FM_CONTROL_POLL=0.05 \
     "$FM_TEST_ROOT/bin/fm-control.sh" "$id" interrupt 2>&1) || rc=$?
   expect_code 0 "$rc" "interrupt on an hc task should succeed"$'\n'"$out"
@@ -251,6 +163,41 @@ test_kill_refuses_another_tasks_terminal() {
   hc_shell 'fm_backend_kill hc fmtest:t2 "" fm-a1' || fail "closing the task's own labeled terminal must succeed"
   [ ! -f "$D/t2.json" ] || fail "the task's own terminal must be removed"
   pass "hc: teardown's expected label refuses another task's terminal and closes the matching one"
+}
+
+test_kernel_group_leader_survives_stale_foreground_name() {
+  local tag standin leader out
+  setup_case exec-leader
+  tag=$(hometag_of)
+  standin=$(fm_agent_standin "$D/standin") || fail 'no native agent stand-in available'
+  cp "$standin" "$D/claude"
+  set -m
+  "$D/claude" 30 &
+  leader=$!
+  set +m
+  # Model an exec racing hc's cached foreground name. The kernel already
+  # names the leader claude; excluding that PID would falsely prove dead.
+  write_terminal "$D" t1 live fm-a1 "$tag" bash /bin/bash
+  jq --argjson p "$leader" '.foreground.pid=$p' "$D/t1.json" > "$D/leader.json"
+  mv "$D/leader.json" "$D/t1.json"
+  out=$(hc_shell 'fm_backend_agent_state hc fmtest:t1')
+  kill "$leader" 2>/dev/null || true
+  wait "$leader" 2>/dev/null || true
+  assert_equals "$out" alive 'kernel leader evidence must override a stale shell name'
+  pass 'hc: kernel group leader remains alive despite a stale foreground shell name'
+}
+
+test_shell_without_readable_process_group_is_not_dead() {
+  local tag out
+  setup_case missing-process-group
+  tag=$(hometag_of)
+  write_terminal "$D" t1 live fm-a1 "$tag" bash /bin/bash
+  # A stale foreground pid must not turn failed process reads into dead.
+  jq '.foreground.pid = 2147483647' "$D/t1.json" > "$D/stale.json"
+  mv "$D/stale.json" "$D/t1.json"
+  out=$(hc_shell 'fm_backend_agent_state hc fmtest:t1')
+  assert_equals "$out" unreadable "unavailable process-group proof cannot establish a stopped agent"
+  pass "hc: stale foreground pid refuses to prove the shell group is agent-free"
 }
 
 test_capture_and_current_path_read_the_recorded_terminal() {
@@ -370,6 +317,8 @@ fm_test_run \
   test_inherited_socket_never_overrides_the_session \
   test_agent_state_classifies_foreground_and_absence \
   test_agent_state_reads_a_shell_wrappers_group \
+  test_shell_without_readable_process_group_is_not_dead \
+  test_kernel_group_leader_survives_stale_foreground_name \
   test_kill_proves_the_terminal_is_gone \
   test_kill_refuses_another_tasks_terminal \
   test_capture_and_current_path_read_the_recorded_terminal \

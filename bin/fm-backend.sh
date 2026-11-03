@@ -1534,9 +1534,10 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # Tern answers through the same process classifier from `tern process`, but
 # bin/fm-control-lib.sh's fm_control_backend_state_verified does not list it, so
 # no control-plane verb treats a Tern verdict as proof that an agent stopped.
-# hc classifies the one foreground process `hc get` reports through the same
-# classifier and is likewise absent from fm_control_backend_state_verified.
-fm_backend_agent_state() {  # <backend> <target>
+# hc classifies the foreground process and its process group. Control and
+# relaunch pass an expected label so hc proves ownership from the same read
+# before reporting a stopped shell, not merely before sending input.
+fm_backend_agent_state() {  # <backend> <target> [expected-label (hc)]
   local backend=$1 target=$2
   fm_backend_source "$backend" || { printf 'unverified'; return 0; }
   case "$backend" in
@@ -1545,7 +1546,7 @@ fm_backend_agent_state() {  # <backend> <target>
     rex) fm_backend_rex_agent_state "$target" ;;
     t3code) fm_backend_t3code_agent_state "$target" ;;
     tern) fm_backend_tern_agent_state "$target" ;;
-    hc) fm_backend_hc_agent_state "$target" ;;
+    hc) fm_backend_hc_agent_state "$target" "${3:-}" ;;
     *) printf 'unverified' ;;
   esac
 }

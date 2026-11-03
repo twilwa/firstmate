@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/fm-backend-hc-smoke.test.sh - real herdr-core smoke test for the hc
 # session-provider adapter (bin/backends/hc.sh, docs/hc-backend.md).
-# Every other hc suite fakes the CLI; this one drives the REAL hc binary, but
+# Portable hc suites fake the CLI; this one drives the REAL hc binary, but
 # only inside a lab session provisioned by bin/fm-hc-lab.sh: a unique
 # fm-hclab-* HC_SESSION, scratch XDG roots, a pinned FM_HC_SOCKET, a
 # real-fleet tripwire, and a teardown that sweeps the session's serve/hold
@@ -12,7 +12,9 @@
 # Covers one task lifecycle through the bin/fm-backend.sh dispatcher: binary
 # and generation gates, container ensure, create, submitted input, cwd
 # tracking, capture, agent state for a shell and for an agent-named process,
-# and a proven close.
+# and a proven close. With a C compiler, a native fake agent additionally
+# exercises control exit/relaunch and a guarded core stop/auto-restart; it
+# never starts an authenticated harness or spends tokens.
 #
 # Skips cleanly (exit 0, "skip: hc not found ...") when no herdr-core binary
 # is installed (optional-binary gate); to pin a specific binary run
@@ -76,7 +78,7 @@ FM_HOME_DIR=$TMP_ROOT/home
 WORK_DIR=$TMP_ROOT/work
 mkdir -p "$FM_HOME_DIR" "$WORK_DIR"
 WORK_DIR=$(cd "$WORK_DIR" && pwd -P)
-export FM_HOME=$FM_HOME_DIR FM_ROOT_OVERRIDE=$FM_HOME_DIR
+export FM_HOME=$FM_HOME_DIR FM_ROOT_OVERRIDE=$ROOT
 
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-backend.sh"
@@ -135,4 +137,84 @@ fm_backend_kill hc "$T" || fail "kill failed"
 assert_equals "$(fm_backend_agent_state hc "$T")" missing "a closed terminal is missing"
 fm_backend_kill hc "$T" || fail "closing an already-closed terminal must be a silent success"
 pass "hc smoke: kill closes and removes the terminal"
+# Control proof uses a native fake agent: foreground naming and kernel
+# process groups are real, while no vendor service or credential is involved.
+# CI's tests-hc lane supplies cc. Without it this subcase is explicitly absent.
+CC=$(type -P cc 2>/dev/null || true)
+if [ -z "$CC" ]; then
+  [ -z "${CI:-}" ] || fail 'cc is required for the hc control lifecycle proof in CI'
+  echo '# skip: cc not found; hc control exit/relaunch/core-restart proof not run'
+else
+  mkdir -p "$TMP_ROOT/agent-bin" "$TMP_ROOT/user-home" "$FM_HOME_DIR/state" "$FM_HOME_DIR/data"
+  cat > "$TMP_ROOT/agent.c" <<'C'
+#include <stdio.h>
+#include <string.h>
+int main(void) {
+  char line[4096];
+  puts("╭────────────────────────╮\n│                        │\n╰────────────────────────╯");
+  fflush(stdout);
+  while (fgets(line, sizeof line, stdin)) {
+    if (!strcmp(line, "/exit\n")) return 0;
+  }
+  return 0;
+}
+C
+  "$CC" -o "$TMP_ROOT/agent-bin/claude" "$TMP_ROOT/agent.c" || fail 'native fake agent compilation failed'
+  ID="hc-control-$$-$RANDOM"
+  # Reserve this unique task temp root ourselves so cleanup cannot adopt
+  # another task's directory, even if relaunch fails before publishing meta.
+  mkdir -m 700 "/tmp/fm-$ID" || fail 'unique task temp directory unavailable'
+  FM_TEST_CLEANUP_DIRS+=("/tmp/fm-$ID")
+  fm_git_worktree "$TMP_ROOT/proj" "$TMP_ROOT/wt" "task-$ID"
+  WT=$(cd "$TMP_ROOT/wt" && pwd -P)
+  printf 'preserve unfinished work\n' > "$WT/draft.txt"
+  HEAD_BEFORE=$(git -C "$WT" rev-parse HEAD)
+  mkdir -p "$FM_HOME_DIR/data/$ID"
+  printf '# Task\n## Captain\x27s intent\nExercise hc control.\n\n## Firstmate spec\nPreserve this task.\n' > "$FM_HOME_DIR/data/$ID/brief.md"
+  LABEL="fm-$ID"
+  ADDR=$(fm_backend_hc_create_task "$SES" "$LABEL" "$WT") || fail 'control terminal create failed'
+  T="$SES:$ADDR"
+  printf 'window=%s\nendpoint_task_id=%s\nworktree=%s\nproject=%s\nharness=claude\nkind=ship\nmode=no-mistakes\nyolo=off\nmodel=default\neffort=default\nbackend=hc\nhc_session=%s\nhc_terminal=%s\n' \
+    "$T" "$ID" "$WT" "$TMP_ROOT/proj" "$SES" "$ADDR" > "$FM_HOME_DIR/state/$ID.meta"
+  # The fake binary is also the only claude the terminal's later relaunch
+  # can resolve. The parent has a scratch HOME for Claude's local trust file.
+  fm_backend_hc_send_text_line "$T" "export PATH='$TMP_ROOT/agent-bin':\$PATH HOME='$TMP_ROOT/user-home'; '$TMP_ROOT/agent-bin/claude'" "$LABEL" \
+    || fail 'fake agent start failed'
+  wait_for 10 is_alive || fail 'native fake agent did not become alive'
+  FG_BEFORE=$(fm_backend_hc_get "$T" | jq -er '.foreground.pid') || fail 'fake agent pid unavailable'
+  "$ROOT/bin/fm-hc-lab.sh" stop "$SES" >/dev/null || fail 'guarded lab core stop failed'
+  # A passive adapter read reconnects/auto-starts the listener. Its holders
+  # survive server stop, so neither a missing agent nor a dead shell is valid.
+  wait_for 10 is_alive || fail 'core restart lost the surviving fake agent'
+  FG_AFTER=$(fm_backend_hc_get "$T" | jq -er '.foreground.pid') || fail 'restarted core has no foreground pid'
+  assert_equals "$FG_AFTER" "$FG_BEFORE" 'core restart must retain the same foreground process'
+  fm_backend_target_exists hc "$T" "$LABEL" || fail 'restart lost the task labels'
+  pass 'hc control: core restart preserves the alive process and labeled endpoint'
+
+  control() {
+    PATH="$TMP_ROOT/agent-bin:$PATH" HOME="$TMP_ROOT/user-home" CLAUDE_CONFIG_DIR='' FM_SPAWN_NO_GUARD=1 \
+      FM_CONTROL_POLL=0.1 FM_CONTROL_EXIT_WAIT=15 FM_CONTROL_LAUNCH_WAIT=15 \
+      bash "$ROOT/bin/fm-control.sh" "$ID" "$@"
+  }
+  control exit || fail 'control exit did not prove the fake agent stopped'
+  assert_equals "$(fm_backend_agent_state hc "$T")" dead 'exit returns to an agent-free shell'
+  fm_backend_target_exists hc "$T" "$LABEL" || fail 'exit removed the terminal'
+  pass 'hc control: normal agent exit leaves a dead shell in the same terminal'
+
+  RC=0
+  control relaunch --note 'continue the preserved test task' || RC=$?
+  for launchdir in "/tmp/fm-$ID"+*; do
+    [ ! -d "$launchdir" ] || FM_TEST_CLEANUP_DIRS+=("$launchdir")
+  done
+  [ "$RC" = 0 ] || fail 'control relaunch did not start a replacement in place'
+  wait_for 10 is_alive || fail 'relaunch replacement is not alive'
+  assert_grep "hc_terminal=$ADDR" "$FM_HOME_DIR/state/$ID.meta" 'relaunch retains terminal identity'
+  assert_equals "$(git -C "$WT" rev-parse HEAD)" "$HEAD_BEFORE" 'relaunch preserves branch HEAD'
+  assert_equals "$(cat "$WT/draft.txt")" 'preserve unfinished work' 'relaunch preserves unfinished work'
+  pass 'hc control: relaunch replaces the agent in place without changing its work'
+
+  fm_backend_kill hc "$T" '' "$LABEL" || fail 'replacement terminal close failed'
+  assert_equals "$(fm_backend_agent_state hc "$T")" missing 'terminal kill is missing, not dead'
+  pass 'hc control: killed terminal reports missing'
+fi
 echo FM_TEST_COMPLETE
