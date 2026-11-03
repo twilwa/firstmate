@@ -121,6 +121,57 @@ drain_out() {  # <home>
   FM_STATE_OVERRIDE="$1/state" "$DRAIN" 2>/dev/null
 }
 
+test_park_answer_declares_the_wait() {
+  local dir fb log home out rc
+  dir="$TMP_ROOT/park-answer"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home park-answer)
+  fm_write_meta "$home/state/t1.meta" "window=sess:fm-t1" "kind=ship"
+  printf 'needs-decision [key=posture]: resume or stay parked?\n' > "$home/state/t1.status"
+  run_send "$fb" "$home" "$log" t1 --resolve-key posture --park 'Stay parked until the upstream check finishes'; rc=$?
+  expect_code 0 "$rc" "a supervisor park answer should succeed"
+  grep -E '^paused( \[at=[0-9]+\])?: supervisor parked: Stay parked until the upstream check finishes$' "$home/state/t1.status" >/dev/null \
+    || fail "a park answer left no declared wait: $(cat "$home/state/t1.status")"
+  grep -F 'Stay parked until the upstream check finishes' "$home/state/t1.inbox/001.msg" >/dev/null \
+    || fail "the park answer was not durably delivered"
+  out=$(drain_out "$home")
+  assert_not_contains "$out" 'OPEN DECISIONS' "the parked answer left its decision open"
+  pass "fm-send --park: a supervisor answer closes its decision and declares the wait at durable delivery"
+}
+
+test_park_answer_delivery_boundaries() {
+  local dir fb log home mode rc send_fail args
+  for mode in ring-failure enqueue-failure missing-key duplicate; do
+    dir="$TMP_ROOT/park-$mode"; mkdir -p "$dir"
+    fb=$(make_stubs "$dir"); log="$dir/send.log"
+    home=$(setup_home "park-$mode")
+    fm_write_meta "$home/state/t1.meta" "window=sess:fm-t1" "kind=ship"
+    printf 'needs-decision [key=posture]: resume or stay parked?\n' > "$home/state/t1.status"
+    args=(t1 --resolve-key posture --park)
+    send_fail=0
+    case "$mode" in
+      ring-failure) send_fail=1 ;;
+      enqueue-failure) : > "$home/state/t1.inbox" ;;
+      missing-key) args=(t1 --park) ;;
+      duplicate) args+=(--park) ;;
+    esac
+    FM_FAKE_TMUX_SEND_FAIL=$send_fail run_send "$fb" "$home" "$log" "${args[@]}" 'Stay parked until the upstream check finishes' >/dev/null; rc=$?
+    if [ "$mode" = ring-failure ]; then
+      expect_code 0 "$rc" "a failed doorbell must not undo a durably delivered park"
+      grep -E '^paused( \[at=[0-9]+\])?:' "$home/state/t1.status" >/dev/null \
+        || fail "a failed doorbell lost the declared wait"
+      [ -f "$home/state/t1.inbox/001.msg" ] || fail "park answer lost at failed doorbell"
+    else
+      [ "$rc" -ne 0 ] || fail "$mode: invalid or undelivered park succeeded"
+      grep -E '^(resolved|paused)' "$home/state/t1.status" >/dev/null \
+        && fail "$mode: invalid or undelivered park changed the decision/wait"
+      [ ! -s "$log" ] || fail "$mode: invalid or undelivered park typed into the pane"
+      [ ! -f "$home/state/t1.inbox/001.msg" ] || fail "$mode: refused park was enqueued"
+    fi
+  done
+  pass "fm-send --park: waits follow durable delivery, survive failed ringing, and reject invalid flags"
+}
+
 test_answer_send_closes_open_decision() {
   local dir fb log home rc out
   dir="$TMP_ROOT/closes"; mkdir -p "$dir"
@@ -1224,6 +1275,8 @@ test_refusal_keyed_resend_keeps_the_accepted_keys() {
   pass "fm-send --resolve-key: a refused key's keyed resend keeps every accepted key in order"
 }
 
+test_park_answer_declares_the_wait
+test_park_answer_delivery_boundaries
 test_answer_send_closes_open_decision
 test_answer_close_is_self_announced
 test_separate_resolve_key_answers_do_not_rewake

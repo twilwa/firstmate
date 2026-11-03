@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell through its backend endpoint, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--defer-until YYYY-MM-DD] [--fire-and-forget <delivery-id>] <text...>
+# Usage: fm-send.sh <target> [--resolve-key <key>]... [--park] [--defer-until YYYY-MM-DD] [--fire-and-forget <delivery-id>] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -158,6 +158,13 @@
 # and --key alike, before anything is recorded, typed, or armed: it has no agent
 # to read a steer, so a routed request would sit unread in a dark home. The
 # refusal names the wake command.
+#
+# Parking answers: add --park to --resolve-key when the answer deliberately
+# leaves the task waiting. The answer must name what clears the wait. At the
+# same delivery boundary as the close, append a self-announced `paused:` line
+# with the answer, after the resolved lines, so the declared-pause cadence owns
+# the wait even before the worker reads it. No prose heuristic infers parking;
+# ordinary answers continue normally. --park without --resolve-key is refused.
 #
 # Decision closure (answerer-closes): pass --resolve-key <key> (repeatable,
 # before the message) when this send answers an open keyed needs-decision: or
@@ -540,6 +547,7 @@ fi
 # must precede --key or the message text; everything after the last flag is the
 # message exactly as before, so ordinary sends are byte-identical.
 RESOLVE_KEYS=
+RESOLVE_PARK=0
 RESOLVE_DEFER_UNTIL=
 RESOLVE_DEFER_UNTIL_SET=0
 RESOLVE_DEFER_TODAY=
@@ -573,6 +581,14 @@ while :; do
     ;;
   --resolve-key=*)
     fm_send_add_resolve_key "${1#--resolve-key=}" || exit 1
+    shift
+    ;;
+  --park)
+    [ "$RESOLVE_PARK" = 0 ] || {
+      echo "error: duplicate --park; nothing was sent" >&2
+      exit 1
+    }
+    RESOLVE_PARK=1
     shift
     ;;
   --defer-until)
@@ -619,12 +635,17 @@ while :; do
     ;;
   --key) break ;;
   --*)
-    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --defer-until, --fire-and-forget, and --key. Nothing was sent." >&2
+    echo "error: unknown flag '$1'; fm-send accepts --resolve-key, --park, --defer-until, --fire-and-forget, and --key. Nothing was sent." >&2
     exit 1
     ;;
   *) break ;;
   esac
 done
+
+if [ "$RESOLVE_PARK" = 1 ] && [ -z "$RESOLVE_KEYS" ]; then
+  echo "error: --park requires --resolve-key; nothing was sent" >&2
+  exit 1
+fi
 
 if [ "$RESOLVE_DEFER_UNTIL_SET" = 1 ]; then
   fm_valid_calendar_day "$RESOLVE_DEFER_UNTIL" || {
@@ -838,6 +859,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
       else
         printf '  no decision or blocker is open in %s.\n' "$RESOLVE_STATUS_FILE"
       fi
+      [ "$RESOLVE_PARK" = 0 ] || resolve_resend_args="$resolve_resend_args --park"
       resolve_quoted_message=$(fm_send_quoted_message "$@")
       # Carry this invocation's own routing context into both printed commands:
       # a resend that resolves to another home, or to no script at all, delivers
@@ -922,6 +944,10 @@ fm_send_close_resolved_keys() { # <answer-text>
     fm_cap_line_var "resolved [key=$k]: $close_note" "$RESOLVE_CLOSE_MAX"
     close_lines+=("$FM_LINE_CAP_LINE")
   done
+  if [ "$RESOLVE_PARK" = 1 ]; then
+    fm_cap_line_var "paused: supervisor parked: $note" "$RESOLVE_CLOSE_MAX"
+    close_lines+=("$FM_LINE_CAP_LINE")
+  fi
   [ "${#close_lines[@]}" -gt 0 ] || return 0
   append_rc=0
   fm_wake_status_append_self_announced "$STATE" "$RESOLVE_STATUS_FILE" "${close_lines[@]}" || append_rc=$?

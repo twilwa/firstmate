@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# tests/fm-watch-wedge-cap-unconfigured-parity.test.sh - the unconfigured-home
-# parity proof for the wedge cap. FM_WEDGE_MAX_ESCALATIONS unset or 0 must leave
+# tests/fm-watch-wedge-cap-unconfigured-parity.test.sh - the explicit-opt-out
+# parity proof for the wedge cap. FM_WEDGE_MAX_ESCALATIONS=0 must leave
 # the watcher's escalation ladder IDENTICAL to upstream main, including that a
 # stuck pane still receives the demand-deep-inspection prompt. This drives ONE
 # stuck-pane scenario twice - once against upstream main's bin/fm-watch.sh and
@@ -203,8 +203,8 @@ test_unconfigured_ladder_matches_upstream_main() {
   local baseline candidate base_trace
   baseline=$(upstream_tree "$TMP_ROOT/upstream-main") || fail "could not materialise upstream main's bin/ tree for the parity baseline"
   candidate="$ROOT/bin/fm-watch.sh"
-  base_trace=$(run_scenario "$baseline" upstream)
-  PARITY_BRANCH_TRACE=$(run_scenario "$candidate" branch)
+  base_trace=$(run_scenario "$baseline" upstream 'FM_WEDGE_MAX_ESCALATIONS=0')
+  PARITY_BRANCH_TRACE=$(run_scenario "$candidate" branch 'FM_WEDGE_MAX_ESCALATIONS=0')
   local cand_trace=$PARITY_BRANCH_TRACE
 
   if ! diff -u "$base_trace" "$cand_trace" > "$TMP_ROOT/parity.diff"; then
@@ -228,28 +228,20 @@ $(cat "$TMP_ROOT/parity.diff")"
   fi
   grep -F 'final counter=4 marker=0' "$cand_trace" >/dev/null \
     || fail "scenario did not end at counter 4 with no cap marker: $(cat "$cand_trace")"
-  pass "unconfigured-home wedge ladder is observably identical to upstream main across the busy ladder and the first-sight surface, and still reaches the demand-deep-inspection prompt"
+  pass "explicit-zero wedge ladder is observably identical to upstream main across the busy ladder and the first-sight surface, and still reaches the demand-deep-inspection prompt"
 }
 
 test_unconfigured_ladder_matches_upstream_main
 
-# Every value the normalization maps to "off" must behave EXACTLY like the
-# unset case - including through the keep-count routes, since the cap-gated
-# reset reads the normalized value. Each shape runs the same scenario against
-# this branch's watcher and must produce the unset case's trace, which is the
-# branch trace the differential test already drove. The out-of-range shape is
-# the one a shell cannot compare: bash's test ERRORS on such a value and an
-# errored comparison reads as false, so a value left unnormalized would count
-# as CONFIGURED (its "is it 0" test errors false) and would reset the counter
-# the unset case keeps - and its "at least the cap" test would never fire.
+# Invalid or empty values use the bounded default, never silently opting out.
+# Compare the episode-reset behavior as well as the initial busy ladder.
 test_unconfigured_value_shapes_match_the_unset_case() {
   local canonical shape env_assignment shape_trace
-  canonical=$PARITY_BRANCH_TRACE
+  canonical=$(run_scenario "$ROOT/bin/fm-watch.sh" default)
   [ -n "$canonical" ] && [ -f "$canonical" ] \
     || fail "the unset-case trace from the differential test is missing: $canonical"
-  for shape in zero empty negative garbage out-of-range; do
+  for shape in empty negative garbage out-of-range; do
     case "$shape" in
-      zero)     env_assignment='FM_WEDGE_MAX_ESCALATIONS=0' ;;
       empty)    env_assignment='FM_WEDGE_MAX_ESCALATIONS=' ;;
       negative) env_assignment='FM_WEDGE_MAX_ESCALATIONS=-3' ;;
       garbage)  env_assignment='FM_WEDGE_MAX_ESCALATIONS=garbage' ;;
@@ -260,15 +252,15 @@ test_unconfigured_value_shapes_match_the_unset_case() {
       fail "FM_WEDGE_MAX_ESCALATIONS=$shape diverged from the unset case:
 $(cat "$TMP_ROOT/shape-$shape.diff")"
     fi
-    grep -F 'rung3-after-surface esc=3 inspect=1 capped=0' "$shape_trace" >/dev/null \
-      || fail "shape $shape did not reach escalation 3 with demand-deep-inspection: $(cat "$shape_trace")"
+    grep -F 'rung3-after-surface esc=1 inspect=0 capped=0' "$shape_trace" >/dev/null \
+      || fail "shape $shape did not reset its bounded episode at the surface: $(cat "$shape_trace")"
     if grep -F 'capped=1' "$shape_trace" >/dev/null; then
       fail "shape $shape fired PERMANENTLY-WEDGED: $(cat "$shape_trace")"
     fi
-    grep -F 'final counter=4 marker=0' "$shape_trace" >/dev/null \
-      || fail "shape $shape did not end at counter 4 with no cap marker: $(cat "$shape_trace")"
+    grep -F 'final counter=2 marker=0' "$shape_trace" >/dev/null \
+      || fail "shape $shape did not end at counter 2 with no cap marker: $(cat "$shape_trace")"
   done
-  pass "FM_WEDGE_MAX_ESCALATIONS at 0, empty, negative, non-numeric, and out-of-range all keep the unchanged ladder through the keep-count routes: 1 2 3 4 with demand-deep-inspection at 3, no PERMANENTLY-WEDGED, no cap marker, no crash"
+  pass "empty, negative, non-numeric, and out-of-range caps use the bounded default and reset at a new episode"
 }
 
 test_unconfigured_value_shapes_match_the_unset_case
@@ -285,7 +277,7 @@ test_configured_cap_is_delivered_to_the_watcher() {
     || fail "a configured cap of 2 did not fire PERMANENTLY-WEDGED at its threshold, so the harness does not deliver the setting: $(cat "$trace")"
   grep -F 'final counter=- marker=1' "$trace" >/dev/null \
     || fail "a configured cap did not leave its window-scoped marker standing: $(cat "$trace")"
-  pass "the harness really delivers FM_WEDGE_MAX_ESCALATIONS to the watcher: a configured cap of 2 fires PERMANENTLY-WEDGED at count 2 and leaves its marker standing, while every unconfigured value leaves the ladder untouched"
+  pass "the harness really delivers FM_WEDGE_MAX_ESCALATIONS to the watcher: a configured cap of 2 fires PERMANENTLY-WEDGED at count 2 and leaves its marker standing, while explicit 0 preserves the legacy ladder"
 }
 
 test_configured_cap_is_delivered_to_the_watcher

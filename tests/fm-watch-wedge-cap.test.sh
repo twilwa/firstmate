@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/fm-watch-wedge-cap.test.sh - bounded wedge escalations for one
-# worker window. Disabled by default; FM_WEDGE_MAX_ESCALATIONS=N caps the
+# worker window. Bounded by default; FM_WEDGE_MAX_ESCALATIONS=N caps the
 # per-window escalation count to N consecutive stale-hash wedges before a
 # single PERMANENTLY-WEDGED wake, with the window-scoped
 # STATE/.wedge-permanent-<key> marker silencing the wedge path for
@@ -251,10 +251,12 @@ queued_wakes_carrying() {  # <state> <window> <needle>
     "$1/.wake-queue" 2>/dev/null || printf '0\n'
 }
 
-# 1. Disabled by default: FM_WEDGE_MAX_ESCALATIONS=0 leaves the cap inert,
+# 1. Explicit opt-out: FM_WEDGE_MAX_ESCALATIONS=0 leaves the cap inert,
 # and a wedged worker keeps receiving stale wakes without ever firing
 # PERMANENTLY-WEDGED.
-test_wedge_cap_disabled_by_default() {
+test_wedge_cap_explicit_opt_out() {
+  local FM_WEDGE_MAX_ESCALATIONS=0
+  export FM_WEDGE_MAX_ESCALATIONS
   local dir state out capture_file window key pane_hash sig pid
   dir=$(make_case wedge-cap-disabled); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
@@ -308,7 +310,7 @@ test_wedge_cap_disabled_by_default() {
 # 2. Cap fires at threshold with PERMANENTLY-WEDGED and writes the
 # window-scoped cap marker.
 test_wedge_cap_fires_permanently_wedged_at_threshold() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash sig gen
   dir=$(make_case wedge-cap-fires); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   window="test:fm-wedge-cap-fires"
@@ -321,11 +323,11 @@ test_wedge_cap_fires_permanently_wedged_at_threshold() {
   printf '%s' "$pane_hash" > "$state/.hash-$key"
   printf '1\n' > "$state/.count-$key"
   export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
-  prime_and_ack "$dir" 4 || fail "prime-and-ack failed"
+  prime_and_ack "$dir" '' || fail "prime-and-ack failed"
   local n max
-  n=1; max=4
+  n=1; max=3
   while [ "$n" -le "$max" ]; do
-    poll_wedge_round "$dir" "$max" ""
+    poll_wedge_round "$dir" '' ""
     grep -F "escalation $n" "$out" >/dev/null || fail "round $n did not report escalation count $n: $(cat "$out")"
     if [ "$n" -lt "$max" ]; then
       grep -F "PERMANENTLY-WEDGED" "$out" >/dev/null && fail "round $n fired PERMANENTLY-WEDGED before threshold"
@@ -337,7 +339,18 @@ test_wedge_cap_fires_permanently_wedged_at_threshold() {
   done
   [ -e "$state/.wedge-permanent-$key" ] || fail "window-scoped cap marker missing after cap fired"
   unset FM_FAKE_CREW_STATE
-  pass "wedge cap fires PERMANENTLY-WEDGED at FM_WEDGE_MAX_ESCALATIONS and writes the window-scoped cap marker"
+  hold_capped_polls "$dir" '' 1 500 2 || fail "default cap re-woke an unchanged pane"
+  ack_stopped_cycle "$state" || fail "capped polls ack failed"
+  # Change the actual captured pane, not its stored hash. Even an over-age busy
+  # turn must be able to raise a fresh alert after a real change.
+  printf 'harness=pi\n' >> "$state/wedge-cap-fires.meta"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" wedge-cap-fires)
+  "$ROOT/bin/fm-busy-event.sh" apply "$state" wedge-cap-fires busy --gen "$gen" --source pi-ext --event agent-start >/dev/null
+  touch -t 200001010000 "$state/wedge-cap-fires.meta"
+  printf 'changed busy pane\n' > "$capture_file"
+  poll_wedge_round "$dir" '' 'FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=1'
+  grep -F 'possible wedge, escalation 1' "$out" >/dev/null || fail "changed pane inherited the cap: $(cat "$out")"
+  pass "default cap delivers first/deep alerts, silences unchanged panes, and releases on a changed busy pane"
 }
 
 # 3. After the cap fires, subsequent polls on the SAME hash are silent
@@ -668,8 +681,7 @@ test_wedge_cap_validates_invalid_overrides() {
   printf '1\n' > "$state/.count-$key"
   export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
 
-  # Non-integer FM_WEDGE_MAX_ESCALATIONS falls back to 0 (cap disabled) and
-  # the watcher must NOT fire PERMANENTLY-WEDGED across repeated wedges.
+  # Non-integer FM_WEDGE_MAX_ESCALATIONS falls back to the bounded default.
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
     FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
@@ -685,7 +697,7 @@ test_wedge_cap_validates_invalid_overrides() {
   ack_stopped_cycle "$state" || fail "priming ack failed"
   local n
   n=1
-  while [ "$n" -le 4 ]; do
+  while [ "$n" -le 3 ]; do
     echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
     : > "$out"
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
@@ -698,11 +710,16 @@ test_wedge_cap_validates_invalid_overrides() {
     if ! wait_for_exit "$pid" 100; then
       reap "$pid"; fail "round $n (garbage override) failed to exit"
     fi
-    grep -F "PERMANENTLY-WEDGED" "$out" >/dev/null && fail "garbage override round $n fired PERMANENTLY-WEDGED - validation did not fall back to 0"
+    if [ "$n" -eq 3 ]; then
+      grep -F 'FM_WEDGE_MAX_ESCALATIONS=3 reached' "$out" >/dev/null || fail "invalid cap did not use the bounded default"
+    else
+      grep -F 'PERMANENTLY-WEDGED' "$out" >/dev/null && fail "invalid cap fired before the default bound"
+    fi
+    ack_stopped_cycle "$state" || fail "invalid-cap round $n ack failed"
     n=$((n + 1))
   done
   unset FM_FAKE_CREW_STATE
-  pass "non-integer FM_WEDGE_MAX_ESCALATIONS falls back to 0 and the cap stays inert"
+  pass "non-integer FM_WEDGE_MAX_ESCALATIONS falls back to 3 and caps repeated wakes"
 }
 
 # 7b. The escalation count is a count of consecutive escalations, so the
@@ -1809,7 +1826,7 @@ test_wedge_cap_releases_after_nonterminal_stale_episode() {
   pass "a non-terminal stale poll ends the episode, releases the cap, and lets the fresh wedge escalate immediately"
 }
 
-test_wedge_cap_disabled_by_default
+test_wedge_cap_explicit_opt_out
 test_wedge_cap_fires_permanently_wedged_at_threshold
 test_wedge_cap_silences_subsequent_polls_for_same_hash
 test_wedge_cap_window_marker_silences_hash_churning_busy_pane

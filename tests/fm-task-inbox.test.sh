@@ -906,6 +906,40 @@ busy_case() {
   printf '%s' "$dir"
 }
 
+test_watcher_busy_progress_requires_a_frozen_pane() {
+  local dir state out log pid n i
+  dir=$(busy_case busy-progress)
+  state="$dir/state"; out="$dir/watch.out"; log="$dir/send.log"
+  watch_bg "$state" "$dir/fakebin" "$out" \
+    FM_SEND_LOG="$log" FM_FAKE_TMUX_CAPTURE="$dir/busy.capture" \
+    FM_BUSY_REGEX=BUSYTOKEN FM_TASK_INBOX_BUSY_MAX=2 FM_WATCH_TRACE="$dir/trace"
+  pid=$!
+  for n in 1 2 3 4; do
+    i=0
+    while [ "$i" -lt 150 ]; do
+      [ "$(grep -c ' heartbeat$' "$dir/trace" 2>/dev/null || true)" -ge "$n" ] 2>/dev/null && break
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.1
+      i=$((i + 1))
+    done
+    if ! kill -0 "$pid" 2>/dev/null || [ "$i" -ge 150 ]; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+      fail "advancing busy output escalated or stopped polling: $(cat "$out")"
+    fi
+    printf 'completed output chunk %s\nBUSYTOKEN active\n' "$n" > "$dir/next.capture"
+    mv "$dir/next.capture" "$dir/busy.capture"
+  done
+  [ ! -s "$state/.wake-queue" ] || { kill "$pid"; fail "advancing busy output queued a wake"; }
+  # Stop advancing the actual captured output. The same live busy pane must
+  # now escalate without typing a doorbell or dropping its unread instruction.
+  wait_watcher_gone "$pid" 150 || { kill "$pid"; wait "$pid" 2>/dev/null; fail "frozen busy pane never escalated"; }
+  wait "$pid" 2>/dev/null
+  grep -F 'stuck-busy' "$out" >/dev/null || fail "frozen busy pane raised the wrong alert: $(cat "$out")"
+  [ ! -s "$log" ] || fail "busy progress/freeze typed into the pane"
+  [ -f "$state/t1.inbox/001.msg" ] || fail "busy progress/freeze lost its unread instruction"
+  pass "watcher: advancing busy output stays quiet, then frozen output escalates without typing"
+}
+
 test_watcher_waits_on_busy_pane() {
   local dir wakes
   dir=$(busy_case busywait)
@@ -1392,6 +1426,7 @@ test_fire_and_forget_retry_is_owed_once
 test_fire_and_forget_retry_is_quiet_without_the_flag
 test_ring_ladder_policy
 test_watcher_rerings_idle_pane_quietly
+test_watcher_busy_progress_requires_a_frozen_pane
 test_watcher_waits_on_busy_pane
 test_watcher_busy_budget_resets_on_ring_and_ack
 test_watcher_busy_bookkeeping_failure_surfaces
