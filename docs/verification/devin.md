@@ -111,6 +111,7 @@ Herdr names the pane from its own screen-detection manifest; with Claude hook im
 `/no-mistakes` typed through `fm-send` submitted as a slash command and loaded the skill.
 A second `fm-send` while the worker ran `sleep 40` rendered no cancellation, and both the running instruction and the queued one completed.
 `exit` on Herdr refuses for a Devin worker: the cursorless composer classifier finds the `❭` row but reads the plain rule below it as an unpaired Pi separator and answers `unknown`.
+A later read-only capture of Devin 3000.11.234 on Herdr reads `empty` through the styled classifier; [its runtime-backends record](runtime-backends.md#control-and-composer-regression-boundaries) owns that regression, and no live Herdr `exit` was repeated.
 
 ## Coverage and limits
 
@@ -118,7 +119,7 @@ The portable regression drives ancestry evidence, rejects unrelated process name
 The control-plane regression covers the armed second press and its minimum gap, the single press on an idle agent, revert-picker dismissal and the exit refusal, and conservative state invalidation.
 Rejected stale-generation events emit no turn-end notification.
 The live guard checks main-turn completion, Claude hook isolation, commit attribution, doorbell acknowledgement, idle and busy interruption, the revert picker, process liveness, exit, and native resume.
-The shared process classifier supplies the same native identity to tmux and Herdr; Herdr interrupt, steering, and identity were exercised in a lab session, while Herdr `exit` refuses as described above.
+The shared process classifier supplies the same native identity to tmux and Herdr; Herdr interrupt, steering, and identity were exercised in a lab session; Herdr `exit` was live-tested only on 3000.11.1, where it refused as described above.
 Zellij, Orca, and cmux were inspected through their existing backend-neutral delivery and key capability surfaces, not live-tested here.
 Orca's existing lack of Escape delivery means a Devin interrupt is refused there.
 A direct keyboard cancellation bypassing `fm-control` can retain a busy record until normal completion or session exit; no primary supervision guarantee is implied by these worker hooks.

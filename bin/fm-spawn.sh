@@ -82,7 +82,8 @@
 #   model, and effort may change, which is what makes a harness switch one
 #   ordinary relaunch. It refuses unless the recorded endpoint is positively
 #   agent-free on a backend with both a recovery-grade agent-state classifier
-#   and replacement-agent support (tmux or herdr), and clears the previous
+#   and replacement-agent support (fm_control_backend_relaunch_supported in
+#   bin/fm-control-lib.sh owns that list), and clears the previous
 #   harness's per-task wiring before arming the new incarnation. T3 Code has
 #   the classifier but refuses relaunch because a thread keeps its conversation
 #   across turns and provider changes. Two verdicts are agent-free: a `dead`

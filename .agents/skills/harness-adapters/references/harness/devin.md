@@ -28,7 +28,9 @@ The control plane therefore invalidates the interrupted incarnation to `unknown`
 A manual keyboard cancellation outside that control plane can leave the last busy record until the next normal completion or session exit.
 An open revert picker is closed with one Esc, never Enter; the control plane does that after its own presses and refuses to type an exit command into it.
 Tool responses are not used as main-turn completion signals.
-Herdr identifies a Devin pane natively from its own screen-detection manifest, and interrupt and steering work there, but `exit` and therefore `relaunch` refuse on Herdr: its cursorless composer read answers `unknown` for Devin's frame.
+Herdr identifies a Devin pane natively from its own screen-detection manifest, and interrupt and steering work there.
+Herdr's styled composer read proves Devin 3000.11.234's idle placeholder `empty`, including a title truncated with `…` ([verification](../../../../../docs/verification/devin.md#herdr-lab-session)).
+On hc the composer capture is plain text, so the same placeholder stays `unknown` and `exit` and therefore `relaunch` refuse there ([hc limits](../../../../../docs/hc-backend.md#limits)).
 
 `../../../../../bin/fm-spawn.sh` owns autonomy, trust, typed brief delivery, color preservation, and the omission of the Claude permission-mode mapping.
 `../../../../../bin/fm-devin-config.sh` owns the private user-config snapshot and appended lifecycle hooks; the user and project configs remain vendor-owned.
