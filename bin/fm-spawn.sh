@@ -256,9 +256,11 @@
 #   name from PATH once, probes that concrete path with --help, and launches the
 #   same path. It adds --tui-mode regular only when that help advertises the flag;
 #   a failed or inconclusive probe omits it so older Pi versions remain launchable.
-#   Ship and scout launches of exact registered projects also add --approve when
-#   that help advertises it, avoiding Pi's "Trust project folder?" dialog at the
-#   isolated task cwd. Seeded --secondmate launches retain the same approval
+#   Ship and scout launches add --approve when that help advertises it and their
+#   repository matches this home's registered projects/<name> clone or a linked
+#   worktree of that clone, avoiding Pi's "Trust project folder?" dialog at the
+#   isolated task cwd. A same-basename unrelated clone is not eligible.
+#   Seeded --secondmate launches retain the same approval
 #   (validate_firstmate_home_for_spawn requires their .fm-secondmate-home marker).
 #   Approval is scoped to that process and launch cwd, without rewriting the
 #   operator's trust.json or global settings. Unregistered projects and versions
@@ -2656,6 +2658,30 @@ pi_supports_approve() {
   help=$("$executable" --help 2>&1) || return 1
   # Pi prints "--approve, -a"; allow comma (and any non-token char) after the name.
   printf '%s\n' "$help" | grep -Eq -- '(^|[[:space:]])--approve([^[:alnum:]_-]|$)'
+}
+
+# Match repository identity before consulting the registry's exact-name owner.
+# Both the spawning directory and home clone must be roots, not subdirectories.
+pi_project_registered() {
+  local project_top clone clone_real clone_top clone_common
+  [ -n "${PROJ_COMMON_REAL:-}" ] || return 1
+  project_top=$(git -C "$PROJ_ABS_REAL" rev-parse --show-toplevel 2>/dev/null) || return 1
+  project_top=$(resolved_existing_dir "$project_top" 2>/dev/null) || return 1
+  [ "$project_top" = "$PROJ_ABS_REAL" ] || return 1
+  for clone in "$PROJECTS"/* "$PROJECTS"/.[!.]* "$PROJECTS"/..?*; do
+    [ -d "$clone" ] || continue
+    clone_real=$(resolved_existing_dir "$clone" 2>/dev/null) || continue
+    clone_top=$(git -C "$clone_real" rev-parse --show-toplevel 2>/dev/null) || continue
+    clone_top=$(resolved_existing_dir "$clone_top" 2>/dev/null) || continue
+    [ "$clone_real" = "$clone_top" ] || continue
+    clone_common=$(git -C "$clone_real" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+    clone_common=$(resolved_existing_dir "$clone_common" 2>/dev/null) || continue
+    [ "$clone_common" = "$PROJ_COMMON_REAL" ] || continue
+    if [ "$("$FM_ROOT/bin/fm-project-mode.sh" --registered "${clone##*/}")" = yes ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # omp pre-launch model validation. `omp models --json` (omp 18.1.11) prints
@@ -7506,9 +7532,7 @@ pi | pi-signed)
   LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"}
   PI_APPROVE=
   # Project identity and the isolated launch cwd are established by now.
-  # Query the registry owner rather than inferring registration from defaults.
-  if { [ "$KIND" = secondmate ] ||
-    [ "$("$FM_ROOT/bin/fm-project-mode.sh" --registered "$(basename "$PROJ_ABS")")" = yes ]; } &&
+  if { [ "$KIND" = secondmate ] || pi_project_registered; } &&
     pi_supports_approve "$PI_BIN"; then
     PI_APPROVE=' --approve'
   fi

@@ -1458,10 +1458,25 @@ test_pi_registered_workers_preapprove_only_the_task_launch() {
   local harness kind scenario rec id out status launch version
   for harness in pi pi-signed; do
     for kind in ship scout; do
-      for scenario in registered unregistered absent unsupported; do
+      for scenario in registered other-checkout linked subdirectory unregistered absent unsupported; do
         id="approve-${harness}-${kind}-${scenario}"
         rec=$(make_spawn_case "$id" "$harness" "$id")
         read_case_record "$rec"
+        mkdir -p "$HOME_DIR/projects"
+        if [ "$scenario" = other-checkout ]; then
+          # Same basename and registry entry, but a different Git identity.
+          fm_git_worktree "$HOME_DIR/projects/project" "$CASE_DIR/registered-wt" "registered-$id"
+        else
+          # Physical identity, not the spelling of a symlink, owns approval.
+          ln -s "$PROJ_DIR" "$HOME_DIR/projects/project"
+        fi
+        if [ "$scenario" = linked ]; then
+          git -C "$PROJ_DIR" worktree add -q -b "linked-$id" "$CASE_DIR/linked"
+          PROJ_DIR="$CASE_DIR/linked"
+        elif [ "$scenario" = subdirectory ]; then
+          mkdir -p "$PROJ_DIR/nested"
+          PROJ_DIR="$PROJ_DIR/nested"
+        fi
         version=0.84.0
         if [ "$scenario" = unregistered ]; then
           # A prefix match must not authorize an unregistered project.
@@ -1484,8 +1499,8 @@ test_pi_registered_workers_preapprove_only_the_task_launch() {
           "worker must launch the probed executable"
         assert_grep "cd -- '$WT_DIR'" "$CASE_DIR/pane.log" \
           "approval must apply at the recorded task worktree, not its primary or parent"
-        if [ "$scenario" = registered ]; then
-          assert_contains "$launch" "--approve" "$harness $kind must approve the registered task launch"
+        if [ "$scenario" = registered ] || [ "$scenario" = linked ]; then
+          assert_contains "$launch" "--approve" "$harness $kind $scenario must approve the registered task launch"
         else
           assert_not_contains "$launch" "--approve" "$harness $kind $scenario must omit approval"
         fi

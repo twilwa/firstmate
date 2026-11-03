@@ -602,7 +602,7 @@ No global trust setting is changed and no dialog is accepted.
 The private tmux server and every Pi invocation run under a lab `HOME` and `XDG_CONFIG_HOME`, with Pi on a lab `PI_CODING_AGENT_DIR`; the guard resolves a mise shim to its concrete binary first and finally asserts the operator's real `trust.json` and `settings.json` are byte-identical.
 
 ```sh
-FM_PI_WORKTREE_TRUST_LIVE=1 bash tests/fm-pi-worktree-trust-live-e2e.test.sh
+env -u PI_CODING_AGENT_DIR -u FM_PI_WORKTREE_TRUST_WAIT_SECONDS FM_PI_WORKTREE_TRUST_LIVE=1 bash tests/fm-pi-worktree-trust-live-e2e.test.sh
 ```
 
 ```
@@ -617,7 +617,8 @@ skip: live: pi-signed absent
 
 The guard belongs to `live-harness-optin` and runs without model tokens wherever a supported Pi surface and tmux are installed.
 It checks each installed `pi`/`pi-signed` executable and reports an absent surface explicitly.
-Portable `test_pi_registered_workers_preapprove_only_the_task_launch` covers both surfaces for ships and scouts, including unregistered projects, absent registries, and executables without `--approve`.
+The [live guard's header](../../tests/fm-pi-worktree-trust-live-e2e.test.sh) documents its startup-wait override.
+Portable `test_pi_registered_workers_preapprove_only_the_task_launch` covers both surfaces for ships and scouts, including clone-path aliases, differently named linked worktrees, unrelated same-basename clones, project subdirectories, unregistered projects, absent registries, and executables without `--approve`.
 `tests/fm-project-mode.test.sh` verifies exact registry membership, including absent registries and prefix mismatches.
 
 ### Pi seeded-secondmate project trust

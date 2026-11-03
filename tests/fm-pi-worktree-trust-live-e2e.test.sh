@@ -5,12 +5,18 @@
 # and Pi with a lab PI_CODING_AGENT_DIR; the operator's real Pi trust.json and
 # settings.json must be byte-identical afterwards. A tool-manager shim needs the
 # operator HOME to resolve, so the concrete Pi binary is resolved first.
+# FM_PI_WORKTREE_TRUST_WAIT_SECONDS: positive decimal seconds per startup wait
+# (default 60); raise it on slower or heavily loaded hosts.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 fm_live_gate default-on FM_PI_WORKTREE_TRUST_LIVE tmux
+WAIT_SECONDS=${FM_PI_WORKTREE_TRUST_WAIT_SECONDS:-60}
+case "$WAIT_SECONDS" in
+  *[!0-9]* | 0*) fail "FM_PI_WORKTREE_TRUST_WAIT_SECONDS must be a positive decimal integer" ;;
+esac
 REAL_TMUX=$(type -P tmux) || fail "tmux missing after live gate"
 SOCKET="fm-pi-worktree-trust-$$"
 LAB=
@@ -39,8 +45,9 @@ env HOME="$ISO_HOME" XDG_CONFIG_HOME="$ISO_XDG" \
 "$REAL_TMUX" -L "$SOCKET" set-option -g remain-on-exit on || fail "could not retain test panes"
 
 capture_until() { # <session> <regex>
-  local session=$1 expect=$2 pane='' i
-  for ((i = 0; i < 75; i++)); do
+  local session=$1 expect=$2 pane='' i limit
+  limit=$((WAIT_SECONDS * 5))
+  for ((i = 0; i < limit; i++)); do
     pane=$("$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "$session:w" -S -100 2>/dev/null) || true
     if printf '%s' "$pane" | grep -qE "$expect"; then
       printf '%s\n' "$pane" > "$RUN_DIR/$session.txt"
@@ -48,7 +55,7 @@ capture_until() { # <session> <regex>
     fi
     sleep 0.2
   done
-  fail "$HARNESS $VERSION_OUT: $session did not show $expect within 15s:
+  fail "$HARNESS $VERSION_OUT: $session did not show $expect within ${WAIT_SECONDS}s:
 $pane"
 }
 
