@@ -1,0 +1,34 @@
+lab=/tmp/fm-lab.yu968r socket=/tmp/fml.N4FbBb/tmux-1001/fm-lab-paused-2152984 window=labfleet:fm-paused mode=dead
+real tmux inventory on the lab socket:
+  labfleet:fm-paused cmd=bash
+real backend agent_state for labfleet:fm-paused: dead
+--- round 1
+  watcher: exited after 5s with a wake
+  out| signal: /tmp/fm-lab.yu968r/state/paused.status
+  drained| 1793740332	1	signal	paused.status	signal: /tmp/fm-lab.yu968r/state/paused.status
+  drained| wake annotation: unread wake-EVENT since last drain, not current state: paused.status: working: implementing
+  drained| wake annotation: latest wake-EVENT observed at drain, not current state: paused.status: paused: waiting for an upstream release
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent
+--- round 2
+  watcher: exited after 4s with a wake
+  out| stale: labfleet:fm-paused (paused 912s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  drained| 1793740339	2	stale	labfleet:fm-paused	stale: labfleet:fm-paused (paused 912s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132383639353a323032362d31312d30332032323a31323a30372e373837363030313730202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent
+--- round 3
+  watcher: exited after 7s with a wake
+  out| stale: labfleet:fm-paused (paused 922s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  drained| 1793740349	3	stale	labfleet:fm-paused	stale: labfleet:fm-paused (paused 922s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132383639353a323032362d31312d30332032323a31323a30372e373837363030313730202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent
+--- round 4
+  watcher: exited after 4s with a wake
+  out| stale: labfleet:fm-paused (paused 930s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  drained| 1793740357	4	stale	labfleet:fm-paused	stale: labfleet:fm-paused (paused 930s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132383639353a323032362d31312d30332032323a31323a30372e373837363030313730202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent

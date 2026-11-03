@@ -1,0 +1,77 @@
+21:35:27Z [aeba996ac8b3/cd88578b alive] lab up: socket=/tmp/fml.O4rHHw/tmux-1001/default window=fmlab:crew agent pid=3266632 status='paused: waiting for an upstream release' (aged 600s)
+21:35:27Z [aeba996ac8b3/cd88578b alive] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:35:40Z [aeba996ac8b3/cd88578b alive] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:35:57Z [aeba996ac8b3/cd88578b alive] round 2 (agent alive, inside cadence): woke=0 poll-cycles=4 wake=none
+21:36:02Z [aeba996ac8b3/cd88578b alive] aged recheck throttle past the 120s cadence (recheck now due)
+21:36:08Z [aeba996ac8b3/cd88578b alive] round 3 (agent alive, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (paused 639s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+21:36:13Z [aeba996ac8b3/cd88578b alive] done
+21:36:31Z [aeba996ac8b3/cd88578b dead] lab up: socket=/tmp/fml.qzR2G6/tmux-1001/default window=fmlab:crew agent pid=3322627 status='paused: waiting for an upstream release' (aged 600s)
+21:36:31Z [aeba996ac8b3/cd88578b dead] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:36:42Z [aeba996ac8b3/cd88578b dead] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:36:47Z [aeba996ac8b3/cd88578b dead] killed the agent process; pane now shows a bare shell
+21:36:47Z [aeba996ac8b3/cd88578b dead] probe: fm_backend_agent_state tmux fmlab:crew -> dead
+21:36:47Z [aeba996ac8b3/cd88578b dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:36:54Z [aeba996ac8b3/cd88578b dead] round 2 (agent dead, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (idle 620s, agent dead - stopped while paused; the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+21:36:54Z [aeba996ac8b3/cd88578b dead]   .dead-reported-fmlab_crew = 'dead f69fe9eec62e0cb583bebfa5f0700a23'
+21:36:59Z [aeba996ac8b3/cd88578b dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:37:16Z [aeba996ac8b3/cd88578b dead] round 3 (agent dead, following due recheck): woke=0 poll-cycles=4 wake=none
+21:37:16Z [aeba996ac8b3/cd88578b dead]   .dead-reported-fmlab_crew = 'dead f69fe9eec62e0cb583bebfa5f0700a23'
+21:37:22Z [aeba996ac8b3/cd88578b dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:37:43Z [aeba996ac8b3/cd88578b dead] round 4 (agent dead, third due recheck): woke=0 poll-cycles=4 wake=none
+21:37:43Z [aeba996ac8b3/cd88578b dead]   .dead-reported-fmlab_crew = 'dead f69fe9eec62e0cb583bebfa5f0700a23'
+  triage: [2026-11-03T22:37:09+0100] absorbed paused (agent dead, already reported once, idle 637s): fmlab:crew
+  triage: [2026-11-03T22:37:14+0100] absorbed stale (paused, awaiting external, age 643s): fmlab:crew
+  triage: [2026-11-03T22:37:30+0100] absorbed paused (agent dead, already reported once, idle 658s): fmlab:crew
+  triage: [2026-11-03T22:37:34+0100] absorbed stale (paused, awaiting external, age 663s): fmlab:crew
+  triage: [2026-11-03T22:37:41+0100] absorbed stale (paused, awaiting external, age 669s): fmlab:crew
+21:37:48Z [aeba996ac8b3/cd88578b dead] done
+21:37:50Z [aeba996ac8b3/cd88578b missing-window] lab up: socket=/tmp/fml.54MLNS/tmux-1001/default window=fmlab:crew agent pid=3386408 status='paused: waiting for an upstream release' (aged 600s)
+21:37:50Z [aeba996ac8b3/cd88578b missing-window] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:38:04Z [aeba996ac8b3/cd88578b missing-window] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:38:09Z [aeba996ac8b3/cd88578b missing-window] closed the crew window (session stays up)
+21:38:09Z [aeba996ac8b3/cd88578b missing-window] probe: fm_backend_agent_state tmux fmlab:crew -> missing
+21:38:09Z [aeba996ac8b3/cd88578b missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:38:15Z [aeba996ac8b3/cd88578b missing-window] round 2 (window gone, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (idle 623s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+21:38:15Z [aeba996ac8b3/cd88578b missing-window]   .dead-reported-fmlab_crew = 'missing d41d8cd98f00b204e9800998ecf8427e'
+21:38:21Z [aeba996ac8b3/cd88578b missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:38:34Z [aeba996ac8b3/cd88578b missing-window] round 3 (window gone, following due recheck): woke=0 poll-cycles=4 wake=none
+21:38:34Z [aeba996ac8b3/cd88578b missing-window]   .dead-reported-fmlab_crew = 'missing d41d8cd98f00b204e9800998ecf8427e'
+21:38:38Z [aeba996ac8b3/cd88578b missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:38:51Z [aeba996ac8b3/cd88578b missing-window] round 4 (window gone, third due recheck): woke=0 poll-cycles=4 wake=none
+21:38:51Z [aeba996ac8b3/cd88578b missing-window]   .dead-reported-fmlab_crew = 'missing d41d8cd98f00b204e9800998ecf8427e'
+  triage: [2026-11-03T22:38:26+0100] absorbed paused (agent missing, already reported once, idle 635s): fmlab:crew
+  triage: [2026-11-03T22:38:29+0100] absorbed stale (paused, awaiting external, age 639s): fmlab:crew
+  triage: [2026-11-03T22:38:32+0100] absorbed stale (paused, awaiting external, age 642s): fmlab:crew
+  triage: [2026-11-03T22:38:43+0100] absorbed paused (agent missing, already reported once, idle 653s): fmlab:crew
+  triage: [2026-11-03T22:38:46+0100] absorbed stale (paused, awaiting external, age 656s): fmlab:crew
+  triage: [2026-11-03T22:38:49+0100] absorbed stale (paused, awaiting external, age 659s): fmlab:crew
+21:38:56Z [aeba996ac8b3/cd88578b missing-window] done
+21:38:58Z [aeba996ac8b3/cd88578b server-gone] lab up: socket=/tmp/fml.U0xtsp/tmux-1001/default window=fmlab:crew agent pid=3453337 status='paused: waiting for an upstream release' (aged 600s)
+21:38:59Z [aeba996ac8b3/cd88578b server-gone] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:39:11Z [aeba996ac8b3/cd88578b server-gone] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:39:17Z [aeba996ac8b3/cd88578b server-gone] killed the whole lab tmux server (daemon restart)
+21:39:18Z [aeba996ac8b3/cd88578b server-gone] probe: fm_backend_agent_state tmux fmlab:crew -> missing
+21:39:18Z [aeba996ac8b3/cd88578b server-gone] aged recheck throttle past the 120s cadence (recheck now due)
+21:39:23Z [aeba996ac8b3/cd88578b server-gone] round 2 (server gone, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (idle 623s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+21:39:23Z [aeba996ac8b3/cd88578b server-gone]   .dead-reported-fmlab_crew = 'missing d41d8cd98f00b204e9800998ecf8427e'
+21:39:28Z [aeba996ac8b3/cd88578b server-gone] aged recheck throttle past the 120s cadence (recheck now due)
+21:39:40Z [aeba996ac8b3/cd88578b server-gone] round 3 (server gone, following due recheck): woke=0 poll-cycles=4 wake=none
+21:39:40Z [aeba996ac8b3/cd88578b server-gone]   .dead-reported-fmlab_crew = 'missing d41d8cd98f00b204e9800998ecf8427e'
+  triage: [2026-11-03T22:39:32+0100] absorbed paused (agent missing, already reported once, idle 633s): fmlab:crew
+  triage: [2026-11-03T22:39:35+0100] absorbed stale (paused, awaiting external, age 636s): fmlab:crew
+  triage: [2026-11-03T22:39:38+0100] absorbed stale (paused, awaiting external, age 640s): fmlab:crew
+21:39:45Z [aeba996ac8b3/cd88578b server-gone] done
+21:39:48Z [aeba996ac8b3/cd88578b unreadable] lab up: socket=/tmp/fml.w5AG8K/tmux-1001/default window=fmlab:crew agent pid=3485530 status='paused: waiting for an upstream release' (aged 600s)
+21:39:48Z [aeba996ac8b3/cd88578b unreadable] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:40:00Z [aeba996ac8b3/cd88578b unreadable] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:40:06Z [aeba996ac8b3/cd88578b unreadable] made the lab socket unreadable (chmod 000): tmux reads fail with Permission denied
+21:40:06Z [aeba996ac8b3/cd88578b unreadable] probe: fm_backend_agent_state tmux fmlab:crew -> unreadable
+21:40:06Z [aeba996ac8b3/cd88578b unreadable] aged recheck throttle past the 120s cadence (recheck now due)
+21:40:16Z [aeba996ac8b3/cd88578b unreadable] round 2 (socket unreadable, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (paused 626s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+21:40:40Z [aeba996ac8b3/cd88578b unreadable] round 3 (socket unreadable, inside cadence): woke=0 poll-cycles=4 wake=none
+21:40:48Z [aeba996ac8b3/cd88578b unreadable] aged recheck throttle past the 120s cadence (recheck now due)
+21:40:54Z [aeba996ac8b3/cd88578b unreadable] round 4 (socket unreadable, following due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (paused 665s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  triage: [2026-11-03T22:40:30+0100] absorbed stale (paused, awaiting external, age 643s): fmlab:crew
+  triage: [2026-11-03T22:40:34+0100] absorbed stale (paused, awaiting external, age 647s): fmlab:crew
+  triage: [2026-11-03T22:40:38+0100] absorbed stale (paused, awaiting external, age 651s): fmlab:crew
+21:41:01Z [aeba996ac8b3/cd88578b unreadable] done

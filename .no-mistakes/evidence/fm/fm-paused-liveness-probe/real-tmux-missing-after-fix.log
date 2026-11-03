@@ -1,0 +1,26 @@
+lab=/tmp/fm-lab.1Y4lm8 socket=/tmp/fml.0C5jIV/tmux-1001/fm-lab-paused-3019027 window=labfleet:fm-paused mode=missing
+real tmux inventory on the lab socket:
+  labfleet:other-window cmd=bash
+real backend agent_state for labfleet:fm-paused: missing
+--- round 1
+  watcher: exited after 5s with a wake
+  out| signal: /tmp/fm-lab.1Y4lm8/state/paused.status
+  drained| 1793741401	1	signal	paused.status	signal: /tmp/fm-lab.1Y4lm8/state/paused.status
+  drained| wake annotation: unread wake-EVENT since last drain, not current state: paused.status: working: implementing
+  drained| wake annotation: latest wake-EVENT observed at drain, not current state: paused.status: paused: waiting for an upstream release
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent
+--- round 2
+  watcher: exited after 3s with a wake
+  out| stale: labfleet:fm-paused (idle 910s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+  drained| 1793741408	2	stale	labfleet:fm-paused	stale: labfleet:fm-paused (idle 910s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+  .dead-reported marker: missing 
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a3336323931393a323032362d31312d30332032323a32393a35382e353238373338333134202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent
+--- round 3
+  watcher: no wake within 25s (absorbed); reaped
+  out| Terminated
+  .dead-reported marker: missing 
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a3336323931393a323032362d31312d30332032323a32393a35382e353238373338333134202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent

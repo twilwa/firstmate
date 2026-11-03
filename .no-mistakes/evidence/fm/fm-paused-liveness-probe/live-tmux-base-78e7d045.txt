@@ -1,0 +1,24 @@
+21:41:21Z [tmp/fm-base.PdfZD8 dead] lab up: socket=/tmp/fml.qW5CZH/tmux-1001/default window=fmlab:crew agent pid=3563482 status='paused: waiting for an upstream release' (aged 600s)
+21:41:21Z [tmp/fm-base.PdfZD8 dead] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:41:35Z [tmp/fm-base.PdfZD8 dead] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:41:43Z [tmp/fm-base.PdfZD8 dead] killed the agent process; pane now shows a bare shell
+21:41:44Z [tmp/fm-base.PdfZD8 dead] probe: fm_backend_agent_state tmux fmlab:crew -> dead
+21:41:44Z [tmp/fm-base.PdfZD8 dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:41:51Z [tmp/fm-base.PdfZD8 dead] round 2 (agent dead, next due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (paused 628s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+21:41:57Z [tmp/fm-base.PdfZD8 dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:42:08Z [tmp/fm-base.PdfZD8 dead] round 3 (agent dead, following due recheck): woke=1 poll-cycles=2 wake=stale: fmlab:crew (paused 646s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+21:42:16Z [tmp/fm-base.PdfZD8 dead] aged recheck throttle past the 120s cadence (recheck now due)
+21:42:22Z [tmp/fm-base.PdfZD8 dead] round 4 (agent dead, third due recheck): woke=1 poll-cycles=1 wake=stale: fmlab:crew (paused 660s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+21:42:27Z [tmp/fm-base.PdfZD8 dead] done
+21:42:29Z [tmp/fm-base.PdfZD8 missing-window] lab up: socket=/tmp/fml.b29Qfb/tmux-1001/default window=fmlab:crew agent pid=3621653 status='paused: waiting for an upstream release' (aged 600s)
+21:42:30Z [tmp/fm-base.PdfZD8 missing-window] probe: fm_backend_agent_state tmux fmlab:crew -> alive
+21:42:40Z [tmp/fm-base.PdfZD8 missing-window] round 1 (agent alive, first due recheck): woke=1 poll-cycles=3 wake=stale: fmlab:crew
+21:42:44Z [tmp/fm-base.PdfZD8 missing-window] closed the crew window (session stays up)
+21:42:45Z [tmp/fm-base.PdfZD8 missing-window] probe: fm_backend_agent_state tmux fmlab:crew -> missing
+21:42:45Z [tmp/fm-base.PdfZD8 missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:42:54Z [tmp/fm-base.PdfZD8 missing-window] round 2 (window gone, next due recheck): woke=0 poll-cycles=4 wake=none
+21:42:57Z [tmp/fm-base.PdfZD8 missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:43:06Z [tmp/fm-base.PdfZD8 missing-window] round 3 (window gone, following due recheck): woke=0 poll-cycles=4 wake=none
+21:43:10Z [tmp/fm-base.PdfZD8 missing-window] aged recheck throttle past the 120s cadence (recheck now due)
+21:43:19Z [tmp/fm-base.PdfZD8 missing-window] round 4 (window gone, third due recheck): woke=0 poll-cycles=4 wake=none
+21:43:23Z [tmp/fm-base.PdfZD8 missing-window] done

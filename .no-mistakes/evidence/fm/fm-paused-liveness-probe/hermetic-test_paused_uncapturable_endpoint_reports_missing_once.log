@@ -1,0 +1,2 @@
+ok - an uncapturable paused endpoint is reported missing once on tmux and herdr, and never called dead when live or unreadable
+exit=0

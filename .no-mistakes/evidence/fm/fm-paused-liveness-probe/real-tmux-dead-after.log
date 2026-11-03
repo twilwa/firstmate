@@ -1,0 +1,30 @@
+lab=/tmp/fm-lab.QshNOh socket=/tmp/fml.QgImRi/tmux-1001/fm-lab-paused-2064961 window=labfleet:fm-paused mode=dead
+real tmux inventory on the lab socket:
+  labfleet:fm-paused cmd=bash
+real backend agent_state for labfleet:fm-paused: dead
+--- round 1
+  watcher: exited after 6s with a wake
+  out| signal: /tmp/fm-lab.QshNOh/state/paused.status
+  drained| 1793740249	1	signal	paused.status	signal: /tmp/fm-lab.QshNOh/state/paused.status
+  drained| wake annotation: unread wake-EVENT since last drain, not current state: paused.status: working: implementing
+  drained| wake annotation: latest wake-EVENT observed at drain, not current state: paused.status: paused: waiting for an upstream release
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent
+--- round 2
+  watcher: exited after 5s with a wake
+  out| stale: labfleet:fm-paused (idle 913s, agent dead - stopped while paused; the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+  drained| 1793740258	2	stale	labfleet:fm-paused	stale: labfleet:fm-paused (idle 913s, agent dead - stopped while paused; the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+  .dead-reported marker: dead 095ed31e27568a4f15702e3bade26e2d
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132393530353a323032362d31312d30332032323a31303a34342e313032343636343836202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent
+--- round 3
+  watcher: no wake within 25s (absorbed); reaped
+  .dead-reported marker: dead 095ed31e27568a4f15702e3bade26e2d
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132393530353a323032362d31312d30332032323a31303a34342e313032343636343836202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent
+--- round 4
+  watcher: no wake within 25s (absorbed); reaped
+  .dead-reported marker: dead 095ed31e27568a4f15702e3bade26e2d
+  .paused-resurfaced marker: declared:r1:3632007374726f6e673a323034393a323132393530353a323032362d31312d30332032323a31303a34342e313032343636343836202b3031303000726567756c61722066696c653a38316234002d007265616461626c65007265616461626c65
+  wedge escalations file: absent

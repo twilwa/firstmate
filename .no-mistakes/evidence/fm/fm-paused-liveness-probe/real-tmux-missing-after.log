@@ -1,0 +1,24 @@
+lab=/tmp/fm-lab.P8kgrX socket=/tmp/fml.QgOrig/tmux-1001/fm-lab-paused-2152985 window=labfleet:fm-paused mode=missing
+real tmux inventory on the lab socket:
+  labfleet:other-window cmd=bash
+real backend agent_state for labfleet:fm-paused: missing
+--- round 1
+  watcher: exited after 5s with a wake
+  out| signal: /tmp/fm-lab.P8kgrX/state/paused.status
+  drained| 1793740331	1	signal	paused.status	signal: /tmp/fm-lab.P8kgrX/state/paused.status
+  drained| wake annotation: unread wake-EVENT since last drain, not current state: paused.status: working: implementing
+  drained| wake annotation: latest wake-EVENT observed at drain, not current state: paused.status: paused: waiting for an upstream release
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent
+--- round 2
+  watcher: no wake within 25s (absorbed); reaped
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent
+--- round 3
+  watcher: no wake within 25s (absorbed); reaped
+  out| Terminated
+  .dead-reported marker: <none>
+  .paused-resurfaced marker: <none>
+  wedge escalations file: absent

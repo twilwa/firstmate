@@ -1,0 +1,2 @@
+ok - a record whose endpoint is dead or missing reports itself once and is never re-escalated
+exit=0

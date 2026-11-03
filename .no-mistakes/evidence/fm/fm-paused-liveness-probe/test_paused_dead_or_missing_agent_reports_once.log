@@ -1,0 +1,2 @@
+ok - dead and missing paused agents use the existing once-per-incarnation report, never repeated wait confirmations
+exit=0
