@@ -214,7 +214,7 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # cannot determine it; the Test attestation is required there, so the step must
 # complete or be approved with a reason and is never skipped. A named selection
 # also reaches the run as its --verification-plan evidence, so the pipeline's
-# Test agent runs the focused list rather than the whole suite. The
+# Test agent runs that selection rather than the whole suite. The
 # timeout-means-needs-decision rule holds at every scope. The Firstmate figures
 # are bin/fm-test-run.sh --estimate-ms over the selections the section names.
 fm_test_scope_valid() {  # <scope>
@@ -235,12 +235,12 @@ fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
     . "$lib_dir/fm-role-lib.sh"
     fm_role_self_repo "$project" "${root:-$lib_dir/..}" || lineage=$?
     if [ "$lineage" -ne 1 ]; then
+      # shellcheck disable=SC2016 # Backticks are literal generated brief text.
       case "$scope" in
-        none) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with no local test selection.' ;;
-        full) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the full selection named by this test scope.' ;;
-        *) test_step_approve="The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the $scope selection named by this test scope."
-           # shellcheck disable=SC2016 # Backticks are literal generated brief text.
-           test_step_plan='Pass that selection to the run as its test evidence: write it to a file under your task data dir and start the run with `--verification-plan <file>`, so the Test agent runs that focused list rather than the whole suite.' ;;
+        none) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why, with no local test selection.' ;;
+        full) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why and run the full selection named by this test scope.' ;;
+        *) test_step_approve="The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with \`--reason\` stating why and run the $scope selection named by this test scope."
+           test_step_plan='Pass that selection to the run as its test evidence: write it to a file under your task data dir and start the run with `--verification-plan <file>`, so the Test agent runs that selection rather than the whole suite.' ;;
       esac
     fi
   fi
@@ -570,7 +570,7 @@ These firstmate-specific rules layer on top of that guidance:
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`$respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Decline a review finding with \`--step review --action approve\`, never \`--action skip --findings <id>\`: a named review skip marks the whole Review step skipped, and Push then refuses for lack of a review-approved head.
-- Approve a review coverage park only with a stated reason - the unverified files lie outside your own change, such as a stale base widening the diff, or after one \`complete-coverage\` round scoped to them - because a bare approve ships unreviewed code.
+- Approve a review coverage park only with a stated reason, written in a status line to firstmate before the approve - the unverified files lie outside your own change, such as a stale base widening the diff, or after one \`complete-coverage\` round scoped to them - because a bare approve ships unreviewed code.
 - Stop selecting fixes once review rounds stop converging - about 4 fix rounds on one step, or a gate finding an earlier round introduced - and report \`needs-decision\` to firstmate with the still-open findings instead of continuing to iterate.
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`$respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
