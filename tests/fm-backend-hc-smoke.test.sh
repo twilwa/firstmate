@@ -13,7 +13,7 @@
 # and generation gates, container ensure, create, submitted input, cwd
 # tracking, capture, agent state for a shell and for an agent-named process,
 # and a proven close. With a C compiler, a native fake agent additionally
-# exercises control exit/relaunch and lost-agent truth after a core restart;
+# exercises control exit/relaunch and the lost-agent refusal after a core stop;
 # it never starts an authenticated harness or spends tokens.
 #
 # Skips cleanly (exit 0, "skip: hc not found ...") when no herdr-core binary
@@ -204,43 +204,31 @@ C
   assert_equals "$(cat "$WT/draft.txt")" 'preserve unfinished work' 'relaunch preserves unfinished work'
   pass 'hc control: relaunch replaces the agent in place without changing its work'
 
-  # Stopping the core loses the agent, not merely its listener. A retained
-  # shell is reusable; a finished/missing terminal must never be rebound.
+  # Measured on hc 0.1.17 and the CI pin 0.1.14: stopping the core SIGHUPs
+  # every terminal, which finishes with reason server_stop. The adapter reads
+  # it as missing, and relaunch must refuse rather than rebind the terminal.
   "$ROOT/bin/fm-hc-lab.sh" stop "$HC_TEST_SES" || fail 'owned core stop failed'
-  restart_agent_is_gone() {
-    RESTART_STATE=$(fm_backend_agent_state hc "$T" "$LABEL")
-    [ "$RESTART_STATE" != alive ] || fail 'core restart falsely reports the lost fake agent alive'
-    case "$RESTART_STATE" in dead|missing) return 0 ;; *) return 1 ;; esac
+  stopped_terminal_finished() {
+    STOP_GET=$(fm_backend_hc_get "$T") || return 1
+    [ "$(printf '%s' "$STOP_GET" | jq -r '[.state, .reason] | @tsv')" = "finished	server_stop" ]
   }
-  wait_for 10 restart_agent_is_gone || fail "core restart agent state did not settle: $RESTART_STATE"
-  case "$RESTART_STATE" in
-    dead)
-      # A restarted shell does not inherit the previous shell's exports.
-      fm_backend_hc_send_text_line "$T" "export PATH='$TMP_ROOT/agent-bin':\$PATH HOME='$TMP_ROOT/user-home'" "$LABEL" \
-        || fail 'restarted shell could not receive the private fake-agent environment'
-      control relaunch --note 'continue after the owned core restart' \
-        || fail 'restarted dead shell refused in-place relaunch'
-      wait_for 10 is_alive || fail 'restart relaunch did not start the replacement agent'
-      ;;
-    missing)
-      if control relaunch > "$TMP_ROOT/restart-relaunch.out" 2>&1; then
-        fail 'restart relaunch rebound a missing or finished terminal'
-      fi
-      assert_grep 'hc absence cannot be proven' "$TMP_ROOT/restart-relaunch.out" 'missing restart terminal requires absence proof'
-      assert_equals "$(fm_backend_agent_state hc "$T" "$LABEL")" missing 'refused restart relaunch leaves the terminal missing'
-      ;;
-    *) fail "core restart must lose the fake agent: expected dead or missing, got '$RESTART_STATE'" ;;
-  esac
+  wait_for 10 stopped_terminal_finished || fail "core stop did not finish the terminal with reason server_stop: ${STOP_GET:-}"
+  assert_equals "$(fm_backend_agent_state hc "$T" "$LABEL")" missing 'core stop leaves the lost agent missing'
+  if control relaunch --note 'continue after the owned core stop' > "$TMP_ROOT/stop-relaunch.out" 2>&1; then
+    fail 'relaunch rebound a terminal finished by core stop'
+  fi
   for launchdir in "/tmp/fm-$ID"+*; do
     [ ! -d "$launchdir" ] || FM_TEST_CLEANUP_DIRS+=("$launchdir")
   done
-  assert_grep "^window=$T$" "$FM_HOME_DIR/state/$ID.meta" 'restart recovery retains recorded endpoint'
-  assert_grep "^hc_terminal=$ADDR$" "$FM_HOME_DIR/state/$ID.meta" 'restart recovery retains recorded terminal identity'
-  assert_equals "$(git -C "$WT" rev-parse HEAD)" "$HEAD_BEFORE" 'restart recovery preserves branch HEAD'
-  assert_equals "$(cat "$WT/draft.txt")" 'preserve unfinished work' 'restart recovery preserves unfinished work'
-  pass "hc core restart: lost agent is $RESTART_STATE and relaunch respects terminal identity"
+  assert_grep 'hc absence cannot be proven' "$TMP_ROOT/stop-relaunch.out" 'core-stopped terminal requires absence proof'
+  assert_equals "$(fm_backend_agent_state hc "$T" "$LABEL")" missing 'refused relaunch leaves the terminal missing'
+  assert_grep "window=$T" "$FM_HOME_DIR/state/$ID.meta" 'refused relaunch retains recorded endpoint'
+  assert_grep "hc_terminal=$ADDR" "$FM_HOME_DIR/state/$ID.meta" 'refused relaunch retains recorded terminal identity'
+  assert_equals "$(git -C "$WT" rev-parse HEAD)" "$HEAD_BEFORE" 'refused relaunch preserves branch HEAD'
+  assert_equals "$(cat "$WT/draft.txt")" 'preserve unfinished work' 'refused relaunch preserves unfinished work'
+  pass 'hc core stop: terminal finishes with server_stop, reads missing, and relaunch refuses without rebinding'
 
-  fm_backend_kill hc "$T" '' "$LABEL" || fail 'replacement terminal close failed'
+  fm_backend_kill hc "$T" '' "$LABEL" || fail 'terminal close failed'
   assert_equals "$(fm_backend_agent_state hc "$T")" missing 'terminal kill is missing, not dead'
   pass 'hc control: killed terminal reports missing'
 fi

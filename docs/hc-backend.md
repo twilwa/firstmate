@@ -114,7 +114,7 @@ An input, capture, or close that carries the task label refuses a terminal whose
   When that process is a launcher, the adapter also reads the rest of its process group from `ps`, which works only for terminals on the local machine.
   An unreadable group cannot prove the agent stopped.
 - `exit` and `relaunch` operate in the recorded live terminal, preserving its identity and unfinished work.
-  A core restart does not preserve its agents: kept terminals restart as shells, not the previous agent.
+  A core stop does not preserve its agents: on hc 0.1.17 and the CI pin 0.1.14 it SIGHUPs every terminal, which finishes with reason `server_stop` and reads `missing`, so relaunch refuses without rebinding it.
   A positively dead shell can be relaunched in place; missing or finished terminals cannot be rebound, and an unreadable core or ambiguous process also refuses lifecycle input.
 - hc's composer capture is plain text, with no cursor or input-content proof.
   A Devin placeholder that could also be typed text stays `unknown`, so exit and relaunch refuse rather than concatenate an exit command onto a possible draft.
@@ -130,7 +130,7 @@ An input, capture, or close that carries the task label refuses a terminal whose
 
 `tests/fm-backend-hc.test.sh` pins the adapter against a fake `hc`; `tests/fm-control-hc.test.sh` covers lifecycle control and its safety refusals using the same fixture.
 `tests/fm-backend-hc-liveness-live-e2e.test.sh` is the default-on live guard: it launches every installed harness bare in a private core and requires `alive`.
-`tests/fm-backend-hc-smoke.test.sh` drives the real binary in an isolated lab, including native fake-agent exit/relaunch and core-restart loss/recovery when `cc` is installed; [`bin/fm-hc-lab.sh`](../bin/fm-hc-lab.sh) owns the isolation and metadata-tripwire contract, and [`tests/hc-test-safety.sh`](../tests/hc-test-safety.sh) owns guarded test teardown.
+`tests/fm-backend-hc-smoke.test.sh` drives the real binary in an isolated lab, including native fake-agent exit/relaunch and the refused relaunch after a core stop when `cc` is installed; [`bin/fm-hc-lab.sh`](../bin/fm-hc-lab.sh) owns the isolation and metadata-tripwire contract, and [`tests/hc-test-safety.sh`](../tests/hc-test-safety.sh) owns guarded test teardown.
 `tests/fm-backend-hc-appdetect-smoke.test.sh` runs a real `bin/fm-spawn.sh` spawn in the same kind of lab for the app-terminal and explicit cases, and checks that a live app window never selects hc for a marker-less process and starts nothing for a session with no running core.
 The smokes skip when no resolved Core binary or `jq` is available; provisioning and teardown failures fail the test.
 For CI coverage, see [`configuration.md`](configuration.md#runtime-backend-configbackend--fm_backend); the workflow requires `jq` and rejects the `hc not found` skip.
