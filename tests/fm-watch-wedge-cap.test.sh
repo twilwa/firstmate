@@ -341,16 +341,30 @@ test_wedge_cap_fires_permanently_wedged_at_threshold() {
   unset FM_FAKE_CREW_STATE
   hold_capped_polls "$dir" '' 1 500 2 || fail "default cap re-woke an unchanged pane"
   ack_stopped_cycle "$state" || fail "capped polls ack failed"
-  # Change the actual captured pane, not its stored hash. Even an over-age busy
-  # turn must be able to raise a fresh alert after a real change.
+  # An over-age busy turn whose capture changes only in its ticking footer has
+  # made no progress, so each new capture hash must leave the cap standing.
   printf 'harness=pi\n' >> "$state/wedge-cap-fires.meta"
   gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" wedge-cap-fires)
   "$ROOT/bin/fm-busy-event.sh" apply "$state" wedge-cap-fires busy --gen "$gen" --source pi-ext --event agent-start >/dev/null
   touch -t 200001010000 "$state/wedge-cap-fires.meta"
-  printf 'changed busy pane\n' > "$capture_file"
+  printf 'idle wedged content\nworking 61s\n' > "$capture_file"
+  hold_capped_polls "$dir" '' 1 500 2 'FM_BUSY_TURN_MAX_SECS=1' \
+    || fail "a footer tick on an over-age busy turn released the cap: $(cat "$out")"
+  printf 'idle wedged content\nworking 62s\n' > "$capture_file"
+  hold_capped_polls "$dir" '' 1 500 2 'FM_BUSY_TURN_MAX_SECS=1' \
+    || fail "a second footer tick on an over-age busy turn released the cap: $(cat "$out")"
+  [ -e "$state/.wedge-permanent-$key" ] || fail "footer-only churn dropped the window-scoped cap marker"
+  # Recorded native-harness progress is real progress: it ends the episode, and
+  # once the turn crosses the bound again the ladder restarts at one.
+  "$ROOT/bin/fm-busy-event.sh" progress "$state" wedge-cap-fires --gen "$gen" \
+    || fail "recording busy progress failed"
+  hold_capped_polls "$dir" '' 1 500 1 'FM_BUSY_TURN_MAX_SECS=600' \
+    || fail "a busy turn with fresh progress woke: $(cat "$out")"
+  [ ! -e "$state/.wedge-permanent-$key" ] || fail "real busy progress did not release the cap marker"
+  touch -t 200001010000 "$state/wedge-cap-fires.progress"
   poll_wedge_round "$dir" '' 'FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=1'
-  grep -F 'possible wedge, escalation 1' "$out" >/dev/null || fail "changed pane inherited the cap: $(cat "$out")"
-  pass "default cap delivers first/deep alerts, silences unchanged panes, and releases on a changed busy pane"
+  grep -F 'possible wedge, escalation 1' "$out" >/dev/null || fail "released cap did not restart the ladder: $(cat "$out")"
+  pass "default cap delivers first/deep alerts, holds through footer churn, and releases on real progress"
 }
 
 # 3. After the cap fires, subsequent polls on the SAME hash are silent

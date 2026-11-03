@@ -43,9 +43,10 @@
 #                          explicit 0 disables the cap. At the bound it adds a
 #                          "PERMANENTLY-WEDGED" clause and is the last wedge
 #                          escalation for that WINDOW while its cap marker
-#                          stands: until the actual captured pane changes, the
-#                          next episode-ending reset, FM_CAP_HORIZON_SECS elapses,
-#                          or the operator removes it (wedge_timer_check owns it).
+#                          stands: until the next episode-ending reset (a busy
+#                          turn's ticking footer is not one), FM_CAP_HORIZON_SECS
+#                          elapses, or the operator removes it
+#                          (wedge_timer_check owns it).
 #                          When the pane shows the Claude background-task
 #                          exit picker, that same parenthetical ends with
 #                          "blocked-on-prompt:" and the picker's name, after the
@@ -1312,7 +1313,7 @@ _wedge_cap_int() {
 # Default 3 preserves the first alert and demand-deep-inspection, then bounds
 # repeated unchanged-pane wakes. Explicit 0 opts out. Past the bound the wake
 # is published once and the cap silences the WINDOW until FM_CAP_HORIZON_SECS
-# elapses, its pane changes, the crew resumes, or the operator removes it.
+# elapses, the episode ends, or the operator removes it.
 FM_WEDGE_MAX_ESCALATIONS=${FM_WEDGE_MAX_ESCALATIONS:-3}
 _wedge_cap_int FM_WEDGE_MAX_ESCALATIONS "$FM_WEDGE_MAX_ESCALATIONS" 3 0
 # Cap marker lifetime: how long the window-scoped cap marker silences the wedge
@@ -1330,9 +1331,9 @@ _wedge_cap_int FM_ROLLBACK_SENTINEL_TTL_SECS "$FM_ROLLBACK_SENTINEL_TTL_SECS" 36
 # window - the window-scoped cap marker, the terminal-row episode marker, and the
 # rollback-failure sentinel. Episode-ending routes call through wedge_episode_end
 # below so a crew that resumes and wedges again does not inherit a silent window.
-# The cap-fire route keeps its freshly published ceiling standing. An actual
-# captured-pane change and the away-posture first sight release the markers
-# without necessarily ending the episode.
+# The cap-fire route keeps its freshly published ceiling standing. The
+# away-posture first sight is the one caller that releases the markers without
+# ending the episode, and says so at its own call site.
 # _wedge_cap_markers_clear <window-key>
 _wedge_cap_markers_clear() {
   local key=$1
@@ -2268,10 +2269,10 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         # Cap-fire block: when FM_WEDGE_MAX_ESCALATIONS is configured above 0
         # and the per-window escalation counter has reached the bound, emit
         # ONE terminal wake (PERMANENTLY-WEDGED) and write the WINDOW-scoped
-        # cap marker so subsequent polls on unchanged output short-circuit.
-        # An actual captured-pane change releases it before this check. The
-        # terminal wake carries the evidence the replaced escalation would have
-        # carried, since unchanged output stays quiet for the marker's lifetime.
+        # cap marker so subsequent polls short-circuit until an episode-ending
+        # reset releases it; an over-age busy turn's changing output is not one.
+        # The terminal wake carries the evidence the replaced escalation would
+        # have carried, since it is the only one published while the marker stands.
         # Every cap-state write on this route - the escalation count above, the
         # cap marker, and the escalation-counter reset the fire ends its episode
         # with - takes that one three-tier defence, so a state dir that refuses
@@ -4634,9 +4635,6 @@ EOF
         fi
       fi
     else
-      # A cap suppresses repeated observations, not a changed pane. Release it
-      # even for a busy turn past its bound, which otherwise keeps its episode.
-      _wedge_cap_markers_clear "$key"
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1

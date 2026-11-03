@@ -70,7 +70,7 @@ Only a pane that every check above lets escalate reaches the opt-in operator gua
 The ladder defaults to three consecutive escalations per worker window.
 `FM_WEDGE_MAX_ESCALATIONS=0` explicitly restores the uncapped ladder.
 At the ceiling, a single terminal `PERMANENTLY-WEDGED` wake carries the evidence of the escalation it replaces, including `demand-deep-inspection` once its threshold is reached, and writes `state/.wedge-permanent-<key>` to silence repeats on unchanged output.
-An actual captured-pane change releases the markers, including for an over-age busy turn.
+Real progress or a state change releases the markers: a completed turn, native-harness or model progress, a declared wait, or a pane leaving the stale path; an over-age busy turn's ticking footer alone does not.
 `FM_CAP_HORIZON_SECS` also bounds the silence.
 Episode-ending resets drop the timer and, when the cap is enabled, its escalation count so a fresh episode starts at one.
 [`configuration.md`](configuration.md#environment-variables) owns the exact release boundaries.

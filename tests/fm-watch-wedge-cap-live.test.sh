@@ -15,8 +15,8 @@
 # unattended supervisor spends re-notifying about exactly that pane.
 #
 # It demonstrates all three facts in one run, against the SAME workload:
-#   0. the UNCEILED baseline - with FM_WEDGE_MAX_ESCALATIONS at its default of
-#      0, a wedged pane escalates on every threshold forever. This is the
+#   0. the UNCEILED baseline - with FM_WEDGE_MAX_ESCALATIONS explicitly set to
+#      0, the opt-out, a wedged pane escalates on every threshold forever. This is the
 #      behaviour the cap exists to bound, and it is what the incident that
 #      motivated the cap actually looked like; the incident therefore
 #      motivates the ceiling, and is not itself evidence the ceiling engaged.
@@ -219,7 +219,7 @@ touch -d '5 seconds ago' "$STATE/$TASK.meta" 2>/dev/null \
 # watcher_cycle <label>: one real watcher cycle against the lab home, run with
 # the cap bound in $MAX and the tmux socket pointed at the lab. Records its exit
 # status and the reason line it printed, then drains and acknowledges what it
-# queued. Set MAX=0 for the unceiled baseline arm, which is the shipped default.
+# queued. Set MAX=0 for the unceiled baseline arm, the explicit opt-out.
 cycle=0
 CYCLE_WOKE=0
 CYCLE_REASON=''
@@ -311,13 +311,13 @@ assert_derived_key_matches_watcher() {
     || fail "the watcher named this window's pane-hash markers under a key this run did not derive (key=$KEY), so the seeded first sight was orphaned and the two arms are no longer comparable"
 }
 
-# --- Part 0: the UNCEILED baseline, at the shipped default -------------------
+# --- Part 0: the UNCEILED baseline, at the explicit opt-out -----------------
 # This arm exists so the ceiled arm has something to be compared against. With
-# the cap at its default of 0 the watcher escalates the same wedged pane on
+# the cap explicitly set to 0 the watcher escalates the same wedged pane on
 # every threshold, indefinitely. That train is the behaviour the cap bounds and
 # the shape the motivating incident took; the incident motivates the ceiling
 # and is NOT evidence that the ceiling engaged.
-say "part 0: UNCEILED baseline at the shipped default FM_WEDGE_MAX_ESCALATIONS=0"
+say "part 0: UNCEILED baseline at the explicit opt-out FM_WEDGE_MAX_ESCALATIONS=0"
 reset_lab_state
 MAX=0
 cycle=0
@@ -330,7 +330,7 @@ while [ "$i" -lt 5 ]; do
   unceiled=$((unceiled + 1))
   if [ "$i" -eq 1 ]; then assert_derived_key_matches_watcher; fi
 done
-say "UNCEILED: $unceiled consecutive wakes from one wedged pane with the cap at its default, and nothing bounds the next one"
+say "UNCEILED: $unceiled consecutive wakes from one wedged pane with the cap explicitly off, and nothing bounds the next one"
 [ "$unceiled" -ge 4 ] \
   || fail "the unceiled baseline produced only $unceiled wakes; too few to show the train"
 
@@ -379,7 +379,7 @@ say "ceiled: $silenced further polls produced no wake at all (over ${silence_ela
   || fail "the silence probes ran ${silence_elapsed}s, past the ${HORIZON_SECS}s horizon, so they proved nothing about the cap"
 
 # The comparison, stated in the transcript itself rather than left to the reader.
-say "COMPARISON: same pane, same watcher, same thresholds - $unceiled wakes unceiled at the default versus $silenced silent polls ceiled at $MAX, with one terminal PERMANENTLY-WEDGED wake instead of a train"
+say "COMPARISON: same pane, same watcher, same thresholds - $unceiled wakes unceiled at the opt-out versus $silenced silent polls ceiled at $MAX, with one terminal PERMANENTLY-WEDGED wake instead of a train"
 
 # --- Part 2: the cap releases itself after the horizon ----------------------
 say "part 2: wait out FM_CAP_HORIZON_SECS and confirm the cap releases itself"
@@ -405,9 +405,9 @@ say "post-horizon the pane is audible again with no operator action: cycle 1 wok
 markers_after=$(find "$STATE" -maxdepth 1 -name '.wedge-permanent-*' | wc -l | tr -d ' ')
 say "cap markers on disk after the horizon: $markers_after"
 
-say "SUMMARY: unceiled $unceiled consecutive wakes at the default; ceiled $terminal_fired terminal wake then $silenced silent polls at FM_WEDGE_MAX_ESCALATIONS=$MAX; audible again after the ${HORIZON_SECS}s horizon with no operator action"
+say "SUMMARY: unceiled $unceiled consecutive wakes at the opt-out; ceiled $terminal_fired terminal wake then $silenced silent polls at FM_WEDGE_MAX_ESCALATIONS=$MAX; audible again after the ${HORIZON_SECS}s horizon with no operator action"
 say "wedge-cap live run complete"
-pass "the same wedged worker escalates without bound at the default and is capped and then released at FM_WEDGE_MAX_ESCALATIONS=$MAX"
+pass "the same wedged worker escalates without bound at the opt-out and is capped and then released at FM_WEDGE_MAX_ESCALATIONS=$MAX"
 
 # Reprint the whole transcript as one self-contained block before cleanup, so
 # the run's own output ends with the citable evidence rather than a pointer to
