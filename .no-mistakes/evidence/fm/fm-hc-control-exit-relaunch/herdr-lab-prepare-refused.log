@@ -1,0 +1,6 @@
+$ bin/fm-herdr-lab.sh prepare fm-lab-devinhc-<pid>  (via tests/herdr-test-safety.sh fm_herdr_lab_prepare)
+fm-herdr-lab: fleet-state tripwire requires exactly one running default session
+$ herdr session list --json --session fm-lab-probe-x | jq ...
+{"name":"default","default":true,"running":false}
+{"name":"firstmate","default":false,"running":true}
+{"name":"wS0","default":false,"running":true}

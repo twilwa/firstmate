@@ -1,0 +1,7 @@
+1..4
+ok - hc: control exit proves stopped without killing the terminal; send acceptance alone cannot prove it
+ok - hc: relaunch reuses endpoint and work
+ok - hc: missing, finished, and unreadable refuse rebind
+ok - hc: pending, unknown, ambiguous, unreadable, and foreign refuse before input
+FM_TEST_COMPLETE
+rc=0

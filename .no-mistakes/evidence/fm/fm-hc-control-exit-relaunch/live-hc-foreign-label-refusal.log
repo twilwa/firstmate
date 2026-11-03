@@ -1,0 +1,14 @@
+## foreign task foreignhc-4134317 meta points at fm-hclab-livedevin-4022816-920:t2, whose hc label is fm-claudehc-4092141 (dead shell)
+window=fm-hclab-livedevin-4022816-920:t2
+endpoint_task_id=foreignhc-4134317
+hc_session=fm-hclab-livedevin-4022816-920
+hc_terminal=t2
+## agent_state with foreign label fm-foreignhc-4134317: unreadable  | with owner label: dead
+## $ bin/fm-control.sh foreignhc-4134317 relaunch --note x
+error: task foreignhc-4134317's endpoint reads 'unreadable' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+error: relaunch of foreignhc-4134317 failed while stopping the old agent and its state is 'unreadable', so it was not proven stopped; its original instructions were restored and the durable record was retained for recovery
+rc=1
+## $ bin/fm-control.sh foreignhc-4134317 exit
+error: task foreignhc-4134317's endpoint reads 'unreadable' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+rc=1
+## after: fm-hclab-livedevin-4022816-920:t2 fg=bash agent_state(owner)=dead

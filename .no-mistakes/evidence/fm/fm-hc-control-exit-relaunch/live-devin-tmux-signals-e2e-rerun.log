@@ -1,0 +1,4 @@
+ok - devin 3000.11.234 (92c83011d113): spawn brief, model, autonomy, trust, identity and native Stop
+ok - devin 3000.11.234 (92c83011d113): no Claude Code hook ran and the worker commit carries no attribution
+not ok - devin 3000.11.234 (92c83011d113): idle composer was pending
+rc=1

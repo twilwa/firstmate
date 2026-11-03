@@ -1,0 +1,31 @@
+hc 0.1.17
+cc: cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+lab core session fm-hclab-smoke-3972631-23900 ready (server pid 3972780)
+ok - hc smoke: create_task started fm-hclab-smoke-3972631-23900:t1
+ok - hc smoke: current_path follows the shell's cwd
+ok - hc smoke: send_text_line ran the command and capture shows its output
+ok - hc smoke: send_text_submit delivers through send --wait (verdict unknown)
+ok - hc smoke: agent_state reads dead for a shell and alive for an agent-named foreground
+ok - hc smoke: kill closes and removes the terminal
+stopped hc-control-3972552-16749 harness=claude backend=hc endpoint=fm-hclab-smoke-3972631-23900:t2 worktree=/tmp/fm-backend-hc-smoke.ckAvxI/wt
+ok - hc control: normal agent exit leaves a dead shell in the same terminal
+warning: /tmp/fm-backend-hc-smoke.ckAvxI/home/data/hc-control-3972552-16749/launch-brief.md records no ship branch; defaulting to legacy branch fm/hc-control-3972552-16749
+warning: /tmp/fm-backend-hc-smoke.ckAvxI/home/data/hc-control-3972552-16749/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+mise by @jdx – installing 1 tool
+mise █████████████░░░ 0/1 · 3.0s
+  node@24.22.2  extracting  3.0s
+mise node@24.22.2 v24.22.2
+mise node@24.22.2 11.19.1
+mise ✓ node@24.22.2  5.1s  node-v24.22.2-linux-x64.tar.gz
+mise ████████████████ 1/1 · installed 1 tool in 5.1s
+relaunched hc-control-3972552-16749 harness=claude from=claude model=default effort=default backend=hc endpoint=fm-hclab-smoke-3972631-23900:t2 worktree=/tmp/fm-backend-hc-smoke.ckAvxI/wt
+ok - hc control: relaunch replaces the agent in place without changing its work
+{"stopped":true}
+ok - hc core stop: terminal finishes with server_stop, reads missing, and relaunch refuses without rebinding
+ok - hc control: killed terminal reports missing
+FM_TEST_COMPLETE
+
+real	0m33.937s
+user	0m5.613s
+sys	0m15.220s
+rc=0
