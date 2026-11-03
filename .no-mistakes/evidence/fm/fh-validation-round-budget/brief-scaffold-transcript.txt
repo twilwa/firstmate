@@ -1,0 +1,35 @@
+$ FM_HOME=$LAB bin/fm-brief.sh fm-focused firstmate --mode no-mistakes --tests focused --project /tmp/fm-lab.DQguqB/projects/firstmate --upstream-consent github.com/example/firstmate-fixture
+exit=0
+--- data/fm-focused/brief.md: Test-step + verification-plan lines
+14:The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why and run the focused selection named by this test scope.
+15:Pass that selection to the run as its test evidence: write it to a file under your task data dir and start the run with `--verification-plan <file>`, so the Test agent runs that selection rather than the whole suite.
+16:If the Test step times out, report needs-decision; never choose fix.
+$ FM_HOME=$LAB bin/fm-brief.sh fm-safe-suite firstmate --mode no-mistakes --tests safe-suite --project /tmp/fm-lab.DQguqB/projects/firstmate --upstream-consent github.com/example/firstmate-fixture
+exit=0
+--- data/fm-safe-suite/brief.md: Test-step + verification-plan lines
+15:The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why and run the safe-suite selection named by this test scope.
+16:Pass that selection to the run as its test evidence: write it to a file under your task data dir and start the run with `--verification-plan <file>`, so the Test agent runs that selection rather than the whole suite.
+17:If the Test step times out, report needs-decision; never choose fix.
+$ FM_HOME=$LAB bin/fm-brief.sh fm-none firstmate --mode no-mistakes --tests none --project /tmp/fm-lab.DQguqB/projects/firstmate --upstream-consent github.com/example/firstmate-fixture
+exit=0
+--- data/fm-none/brief.md: Test-step + verification-plan lines
+13:The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why, with no local test selection.
+15:If the Test step times out, report needs-decision; never choose fix.
+$ FM_HOME=$LAB bin/fm-brief.sh fm-full firstmate --mode no-mistakes --tests full --project /tmp/fm-lab.DQguqB/projects/firstmate --upstream-consent github.com/example/firstmate-fixture
+exit=0
+--- data/fm-full/brief.md: Test-step + verification-plan lines
+14:The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with `--reason` stating why and run the full selection named by this test scope.
+15:If the Test step times out, report needs-decision; never choose fix.
+$ FM_HOME=$LAB bin/fm-brief.sh unrel-focused sample --mode no-mistakes --tests focused --project /tmp/fm-lab.DQguqB/projects/unrelated
+exit=0
+--- data/unrel-focused/brief.md: Test-step + verification-plan lines
+14:When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.
+15:If the Test step times out, report needs-decision; never choose fix.
+
+=== gate rules in a no-mistakes ship DOD (fm-focused) ===
+137:Before starting a run, fetch the base branch and rebase onto it when it has moved since your worktree was cut, resolving any conflicts yourself: a run submitted on a stale base leaves the merge-conflict repair to the pipeline's CI step.
+148:These firstmate-specific rules layer on top of that guidance:
+152:- Decline a review finding with `--step review --action approve`, never `--action skip --findings <id>`: a named review skip marks the whole Review step skipped, and Push then refuses for lack of a review-approved head.
+153:  Approve declines only when every open finding is declined; when you decline some findings while fixing others, name each decline in `--ignore <id>` on the same `--action fix`, because an approve drops the fixes you selected.
+154:- Approve a review coverage park only with a stated reason, written in a status line to firstmate before the approve - the unverified files lie outside your own change, such as a stale base widening the diff, or after one `complete-coverage` round scoped to them - because a bare approve ships unreviewed code.
+155:- Stop selecting fixes once review rounds stop converging - about 4 fix rounds on one step, or a gate finding an earlier round introduced - and report `needs-decision` to firstmate with the still-open findings instead of continuing to iterate.

@@ -1,0 +1,83 @@
+== real no-mistakes binary on PATH, cwd outside any repo ==
+$ fm-nm-respond.sh --action skip --step review --findings r1,r2
+fm-nm-respond: a review skip marks the whole Review step skipped, so Push refuses: decline alongside fixes with --action fix --ignore, decline every open finding with --action approve, or pass --whole-step to skip the whole step
+  exit=1
+
+== recording stand-in for the external no-mistakes binary ==
+$ fm-nm-respond.sh --action skip --step review --findings r1,r2   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+fm-nm-respond: a review skip marks the whole Review step skipped, so Push refuses: decline alongside fixes with --action fix --ignore, decline every open finding with --action approve, or pass --whole-step to skip the whole step
+  exit=1
+$ fm-nm-respond.sh --action skip --findings r1   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+fm-nm-respond: a review skip marks the whole Review step skipped, so Push refuses: decline alongside fixes with --action fix --ignore, decline every open finding with --action approve, or pass --whole-step to skip the whole step
+  exit=1
+$ fm-nm-respond.sh --action=SKIP --step=Review --findings=r1   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+fm-nm-respond: a review skip marks the whole Review step skipped, so Push refuses: decline alongside fixes with --action fix --ignore, decline every open finding with --action approve, or pass --whole-step to skip the whole step
+  exit=1
+$ fm-nm-respond.sh --action skip --findings r1   (awaiting gate: unreadable)
+fm-nm-respond: cannot read axi status; refusing skip
+  exit=1
+$ fm-nm-respond.sh --action skip --step review --whole-step   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+  [forwarded to no-mistakes axi respond] --action skip --step review
+  exit=0
+$ fm-nm-respond.sh --action fix --step review --findings r1 --ignore r2   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+  [forwarded to no-mistakes axi respond] --action fix --step review --findings r1 --ignore r2
+  exit=0
+$ fm-nm-respond.sh --action approve --step review   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+  [forwarded to no-mistakes axi respond] --action approve --step review
+  exit=0
+$ fm-nm-respond.sh --action skip --step test   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+  [forwarded to no-mistakes axi respond] --action skip --step test
+  exit=0
+$ fm-nm-respond.sh --action skip   (awaiting gate: gate:
+  step: test
+  status: awaiting_approval)
+  [forwarded to no-mistakes axi respond] --action skip
+  exit=0
+$ fm-nm-respond.sh --action approve --step test --reason focused list ran in CI   (awaiting gate: gate:
+  step: test
+  status: awaiting_approval)
+  [forwarded to no-mistakes axi respond] --action approve --step test --reason focused list ran in CI
+  exit=0
+$ fm-nm-respond.sh --action approve --step review --yes   (awaiting gate: gate:
+  step: review
+  status: awaiting_approval
+  findings[2]{id,severity,file,action,description}:
+    r1,error,a.sh,auto-fix,"one"
+    r2,warning,b.sh,ask-user,"two")
+fm-nm-respond: --yes and -y are forbidden for every action
+  exit=1

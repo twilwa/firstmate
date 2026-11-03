@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Test-only fake: never exec the real binary.
+fm-nm-respond: PASS
