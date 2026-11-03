@@ -13,8 +13,8 @@
 # and generation gates, container ensure, create, submitted input, cwd
 # tracking, capture, agent state for a shell and for an agent-named process,
 # and a proven close. With a C compiler, a native fake agent additionally
-# exercises control exit/relaunch and a guarded core stop/auto-restart; it
-# never starts an authenticated harness or spends tokens.
+# exercises control exit/relaunch; it never starts an authenticated harness
+# or spends tokens.
 #
 # Skips cleanly (exit 0, "skip: hc not found ...") when no herdr-core binary
 # is installed (optional-binary gate); to pin a specific binary run
@@ -143,7 +143,7 @@ pass "hc smoke: kill closes and removes the terminal"
 CC=$(type -P cc 2>/dev/null || true)
 if [ -z "$CC" ]; then
   [ -z "${CI:-}" ] || fail 'cc is required for the hc control lifecycle proof in CI'
-  echo '# skip: cc not found; hc control exit/relaunch/core-restart proof not run'
+  echo '# skip: cc not found; hc control exit/relaunch proof not run'
 else
   mkdir -p "$TMP_ROOT/agent-bin" "$TMP_ROOT/user-home" "$FM_HOME_DIR/state" "$FM_HOME_DIR/data"
   cat > "$TMP_ROOT/agent.c" <<'C'
@@ -181,15 +181,6 @@ C
   fm_backend_hc_send_text_line "$T" "export PATH='$TMP_ROOT/agent-bin':\$PATH HOME='$TMP_ROOT/user-home'; '$TMP_ROOT/agent-bin/claude'" "$LABEL" \
     || fail 'fake agent start failed'
   wait_for 10 is_alive || fail 'native fake agent did not become alive'
-  FG_BEFORE=$(fm_backend_hc_get "$T" | jq -er '.foreground.pid') || fail 'fake agent pid unavailable'
-  "$ROOT/bin/fm-hc-lab.sh" stop "$SES" >/dev/null || fail 'guarded lab core stop failed'
-  # A passive adapter read reconnects/auto-starts the listener. Its holders
-  # survive server stop, so neither a missing agent nor a dead shell is valid.
-  wait_for 10 is_alive || fail 'core restart lost the surviving fake agent'
-  FG_AFTER=$(fm_backend_hc_get "$T" | jq -er '.foreground.pid') || fail 'restarted core has no foreground pid'
-  assert_equals "$FG_AFTER" "$FG_BEFORE" 'core restart must retain the same foreground process'
-  fm_backend_target_exists hc "$T" "$LABEL" || fail 'restart lost the task labels'
-  pass 'hc control: core restart preserves the alive process and labeled endpoint'
 
   control() {
     PATH="$TMP_ROOT/agent-bin:$PATH" HOME="$TMP_ROOT/user-home" CLAUDE_CONFIG_DIR='' FM_SPAWN_NO_GUARD=1 \

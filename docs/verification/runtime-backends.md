@@ -3632,7 +3632,7 @@ FM_TEST_COMPLETE
 ```
 
 The adapter regression also verifies that a stale foreground PID reads `unreadable`, never `dead`, a native group leader overrides a stale shell name, and control checks task ownership before accepting a stopped shell.
-`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, terminal kill, and listener stop/restart with its surviving foreground PID unchanged.
+`tests/fm-backend-hc-smoke.test.sh` is the real-core refresh entry point for normal native fake-agent exit, replacement in the same terminal, and terminal kill.
 Those additional control cases require `cc` in CI; the portable fake-CLI result above does not stand in for that real-core run.
 
 The Devin 3000.11.234 SWE-2 High regression uses the four-row styled excerpt in `tests/fixtures/devin-3000.11.234/idle.ansi`, captured read-only on 2026-11-02.
