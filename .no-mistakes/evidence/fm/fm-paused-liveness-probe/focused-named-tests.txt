@@ -1,0 +1,18 @@
+== test_identical_dead_display_of_a_successor_still_reports
+ok - a successor's byte-identical dead display reports in full, and the same incarnation still absorbs
+exit=0
+== test_live_and_unproven_endpoints_still_wedge_escalate
+ok - a live wedged agent, an unattributable one, and an unreadable endpoint escalate unchanged
+exit=0
+== test_paused_alive_or_unreadable_keeps_recheck_cadence
+ok - alive and unreadable paused rechecks keep the original wait confirmation and cadence, with one due probe
+exit=0
+== test_paused_dead_or_missing_agent_reports_once
+ok - dead and missing paused agents use the existing once-per-incarnation report, never repeated wait confirmations
+exit=0
+== test_paused_uncapturable_endpoint_reports_missing_once
+ok - an uncapturable paused endpoint is reported missing once on tmux and herdr, and never called dead when live or unreadable
+exit=0
+== test_paused_unreadable_probe_keeps_reported_death
+ok - an unreadable paused probe preserves report-once handling for the same dead incarnation
+exit=0

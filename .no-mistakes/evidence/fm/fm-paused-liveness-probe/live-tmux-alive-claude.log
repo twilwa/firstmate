@@ -1,0 +1,22 @@
+== setup: real tmux window lab:fm-wedge running 'cd /tmp/fmlt-driver/claudecwd && exec claude'; pane_current_command=claude
+== seeded stale death marker: dead old-incarnation
+  [warm1] watcher exited(0) after 6s; stdout:
+    | signal: /tmp/fm-lab.WwbqtT/state/wedge.status
+    dead-reported marker: dead old-incarnation
+    drained: 1793747511	1	signal	wedge.status	signal: /tmp/fm-lab.WwbqtT/state/wedge.status
+    drained: wake annotation: latest wake-EVENT observed at drain, not current state: wedge.status: paused: waiting for an upstream release
+  [warm2] watcher exited(0) after 10s; stdout:
+    | stale: lab:fm-wedge
+    dead-reported marker: dead old-incarnation
+    drained: 1793747527	2	stale	lab:fm-wedge	stale: lab:fm-wedge
+  [warm3] watcher absorbed-no-wake after 25s; stdout:
+    dead-reported marker: dead old-incarnation
+  [due1] watcher exited(0) after 6s; stdout:
+    | stale: lab:fm-wedge (paused 504s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+    dead-reported marker: <none>
+    drained: 1793747567	3	stale	lab:fm-wedge	stale: lab:fm-wedge (paused 504s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+  [due2] watcher exited(0) after 4s; stdout:
+    | stale: lab:fm-wedge (paused 503s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+    dead-reported marker: <none>
+    drained: 1793747578	4	stale	lab:fm-wedge	stale: lab:fm-wedge (paused 503s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+== stale wakes in queue file for lab:fm-wedge: 0

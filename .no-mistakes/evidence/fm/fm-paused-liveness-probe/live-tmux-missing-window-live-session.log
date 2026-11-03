@@ -1,0 +1,18 @@
+== setup: real tmux window lab:fm-wedge running 'bash'; pane_current_command=bash
+  [warm1] watcher exited(0) after 6s; stdout:
+    | signal: /tmp/fm-lab.Vr4YFp/state/wedge.status
+    dead-reported marker: <none>
+    drained: 1793747511	1	signal	wedge.status	signal: /tmp/fm-lab.Vr4YFp/state/wedge.status
+    drained: wake annotation: latest wake-EVENT observed at drain, not current state: wedge.status: paused: waiting for an upstream release
+  [warm2] watcher exited(0) after 5s; stdout:
+    | stale: lab:fm-wedge (idle 514s, agent dead - stopped while paused; the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+    dead-reported marker: dead incarnation-one
+    drained: 1793747522	2	stale	lab:fm-wedge	stale: lab:fm-wedge (idle 514s, agent dead - stopped while paused; the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+== killed window lab:fm-wedge (session inventory now: other )
+  [due1] watcher exited(0) after 4s; stdout:
+    | stale: lab:fm-wedge (idle 502s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+    dead-reported marker: missing incarnation-one
+    drained: 1793747530	3	stale	lab:fm-wedge	stale: lab:fm-wedge (idle 502s, agent missing - stopped while paused; the recorded endpoint is gone, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+  [due2] watcher absorbed-no-wake after 25s; stdout:
+    dead-reported marker: missing incarnation-one
+== stale wakes in queue file for lab:fm-wedge: 0
