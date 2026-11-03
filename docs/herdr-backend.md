@@ -649,7 +649,7 @@ Workspace and tab ids support verification and cleanup but are not inferred from
 ### Named server and session routing
 
 The adapter starts and polls a named server before workspace, tab, pane, or agent calls.
-Every Herdr invocation goes through `fm_backend_herdr_cli`, which sets the environment and passes an explicit trailing `--session <name>`.
+Every Herdr invocation sets the environment and passes an explicit trailing `--session <name>`; all but the detached server launch go through `fm_backend_herdr_cli`.
 An environment variable alone is not reliable when another Herdr server is running.
 
 When the selected named server is not running, the adapter launches it without these inherited values:
@@ -659,6 +659,7 @@ When the selected named server is not running, the adapter launches it without t
 - The supervision-model override.
 
 Herdr passes its server startup environment to every later pane, so retaining those values could misroute panes for another Firstmate home or harness.
+The detached launch `exec`s Herdr in place of its subshell, so the server never holds the caller's output descriptors open; an SSH command such as `fm-remote-doctor.sh --fix` therefore returns while the server keeps running (`tests/fm-backend-herdr-server-eof.test.sh`).
 An already-running server is reused without restart or environment changes.
 Explicit named-session routing and unrelated launch environment remain intact.
 
