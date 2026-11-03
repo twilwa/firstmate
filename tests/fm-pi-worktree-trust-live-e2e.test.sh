@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Token-free Pi worker trust guard: process-local approval at a fresh task cwd.
-# Uses a private tmux server and PI_CODING_AGENT_DIR, never accepts a dialog or
-# submits a model prompt. HOME stays intact so tool-manager launchers still
-# resolve; all Pi settings, auth and extensions are isolated in the lab.
+# Uses a private tmux server, never accepts a dialog or submits a model prompt.
+# The tmux server and every Pi invocation run with lab HOME and XDG_CONFIG_HOME,
+# and Pi with a lab PI_CODING_AGENT_DIR; the operator's real Pi trust.json and
+# settings.json must be byte-identical afterwards. A tool-manager shim needs the
+# operator HOME to resolve, so the concrete Pi binary is resolved first.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -21,8 +23,18 @@ cleanup() {
 trap cleanup EXIT
 
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-pi-worktree-trust.XXXXXX") || fail "mktemp failed"
+REAL_PI_DIR=${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}
+mkdir -p "$LAB/real-before" || fail "could not create real Pi snapshot directory"
+for f in trust.json settings.json; do
+  [ ! -e "$REAL_PI_DIR/$f" ] || cp -p "$REAL_PI_DIR/$f" "$LAB/real-before/$f" \
+    || fail "could not snapshot $REAL_PI_DIR/$f"
+done
+ISO_HOME="$LAB/home"
+ISO_XDG="$LAB/xdg-config"
+mkdir -p "$ISO_HOME" "$ISO_XDG" || fail "could not create isolated HOME"
 # Keep exited sessions inspectable, using no operator tmux configuration.
-"$REAL_TMUX" -L "$SOCKET" -f /dev/null new-session -d -s anchor -- sleep 240 \
+env HOME="$ISO_HOME" XDG_CONFIG_HOME="$ISO_XDG" \
+  "$REAL_TMUX" -L "$SOCKET" -f /dev/null new-session -d -s anchor -- sleep 240 \
   || fail "could not start private tmux server"
 "$REAL_TMUX" -L "$SOCKET" set-option -g remain-on-exit on || fail "could not retain test panes"
 
@@ -40,11 +52,16 @@ capture_until() { # <session> <regex>
 $pane"
 }
 
+isolated_pi() { # <pi args>...
+  env HOME="$ISO_HOME" XDG_CONFIG_HOME="$ISO_XDG" PI_CODING_AGENT_DIR="$PI_DIR" PI_OFFLINE=1 \
+    "$PI_BIN" "$@"
+}
+
 launch() { # <session> <cwd> [approval]
   local session=$1 cwd=$2
   shift 2
   "$REAL_TMUX" -L "$SOCKET" new-session -d -s "$session" -n w -x 120 -y 40 -c "$cwd" -- \
-    env PI_CODING_AGENT_DIR="$PI_DIR" PI_OFFLINE=1 \
+    env HOME="$ISO_HOME" XDG_CONFIG_HOME="$ISO_XDG" PI_CODING_AGENT_DIR="$PI_DIR" PI_OFFLINE=1 \
     "$PI_BIN" --no-session --no-skills --no-prompt-templates "$@" \
     || fail "$HARNESS $VERSION_OUT: could not launch $session"
 }
@@ -56,22 +73,25 @@ expect_prompt() { # <session> <cwd>
 }
 
 check_harness() {
-  local PI_BIN VERSION_OUT RUN_DIR PI_DIR PARENT TASK SIBLING dir
+  local PI_BIN concrete VERSION_OUT RUN_DIR PI_DIR PARENT TASK SIBLING dir
   PI_BIN=$(type -P "$HARNESS") || { printf 'skip: live: %s absent\n' "$HARNESS"; return; }
-  AVAILABLE=$((AVAILABLE + 1))
-  VERSION_OUT=$("$PI_BIN" --version 2>&1) || fail "$HARNESS --version failed: $VERSION_OUT"
-  printf '# live %s version: %s\n' "$HARNESS" "$VERSION_OUT"
-  if ! "$PI_BIN" --help 2>&1 | grep -Eq -- '(^|[[:space:]])--approve([^[:alnum:]_-]|$)'; then
-    printf 'skip: live: %s has no --approve; spawn keeps its compatibility fallback\n' "$HARNESS"
-    return
+  if type -P mise >/dev/null 2>&1; then
+    concrete=$(mise which "$HARNESS" 2>/dev/null) && [ -x "$concrete" ] && PI_BIN=$concrete
   fi
-
+  AVAILABLE=$((AVAILABLE + 1))
   RUN_DIR="$LAB/$HARNESS"
   PI_DIR="$RUN_DIR/pi-agent"
   PARENT="$RUN_DIR/pool"
   TASK="$PARENT/task"
   SIBLING="$PARENT/sibling"
   mkdir -p "$PI_DIR" || fail "could not create isolated Pi directory"
+  VERSION_OUT=$(isolated_pi --version 2>&1) || fail "$HARNESS --version failed: $VERSION_OUT"
+  printf '# live %s version: %s\n' "$HARNESS" "$VERSION_OUT"
+  if ! isolated_pi --help 2>&1 | grep -Eq -- '(^|[[:space:]])--approve([^[:alnum:]_-]|$)'; then
+    printf 'skip: live: %s has no --approve; spawn keeps its compatibility fallback\n' "$HARNESS"
+    return
+  fi
+
   printf '{}\n' > "$PI_DIR/trust.json"
   printf '{\n  "defaultProjectTrust": "ask",\n  "lastChangelogVersion": "%s"\n}\n' \
     "$VERSION_OUT" > "$PI_DIR/settings.json"
@@ -110,6 +130,13 @@ check_harness() {
 }
 
 for HARNESS in pi pi-signed; do check_harness; done
+for f in trust.json settings.json; do
+  if [ -e "$LAB/real-before/$f" ]; then
+    cmp -s "$LAB/real-before/$f" "$REAL_PI_DIR/$f" || fail "real $REAL_PI_DIR/$f changed during the guard"
+  elif [ -e "$REAL_PI_DIR/$f" ]; then
+    fail "real $REAL_PI_DIR/$f appeared during the guard"
+  fi
+done
 if [ "$AVAILABLE" -eq 0 ]; then
   # Let the shared gate decide whether absent tools skip or fail when requested.
   fm_live_gate default-on FM_PI_WORKTREE_TRUST_LIVE pi

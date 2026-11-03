@@ -599,6 +599,7 @@ Its installed `--help`, `docs/cli.md`, and `docs/security.md` describe `--approv
 The token-free live guard confirms the fresh task directory reaches the composer; a new process at that same directory, its parent, and its sibling still prompts.
 Neither the isolated `trust.json` nor `settings.json` changes.
 No global trust setting is changed and no dialog is accepted.
+The private tmux server and every Pi invocation run under a lab `HOME` and `XDG_CONFIG_HOME`, with Pi on a lab `PI_CODING_AGENT_DIR`; the guard resolves a mise shim to its concrete binary first and finally asserts the operator's real `trust.json` and `settings.json` are byte-identical.
 
 ```sh
 FM_PI_WORKTREE_TRUST_LIVE=1 bash tests/fm-pi-worktree-trust-live-e2e.test.sh
