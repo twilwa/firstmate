@@ -390,7 +390,7 @@ fm_backend_herdr_cli() {  # <session> <herdr-subcommand-and-args...>
   # stderr is buffered (stdout streams untouched) so a protocol_mismatch
   # refusal can be recognized and retried once on a compatible client; see
   # "client selection" below. A failed command's stderr is replayed verbatim.
-  # The long-lived `server` launch is exec'd straight through: buffering its
+  # The long-lived `server` launch is passed straight through: buffering its
   # stderr would hold this call open for the server's whole lifetime.
   if [ "${1:-}" = server ]; then
     HERDR_SESSION="$session" "$client_bin" "$@" --session "$session"
@@ -1746,7 +1746,14 @@ fm_backend_herdr_server_ensure() {  # <session>
   (
     unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE \
       CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT FM_SUPERVISION_MODEL
-    fm_backend_herdr_cli "$session" server </dev/null >/dev/null 2>&1 &
+    # Exec only in the detached branch: Bash's saved redirection descriptors
+    # (including SSH channel copies on fd 10/11) then close on exec instead
+    # of keeping the caller's pipe alive for the server's lifetime.
+    client_bin=herdr
+    if [ "${FM_BACKEND_HERDR_CLIENT_SESSION:-}" = "$session" ]; then
+      client_bin=$(fm_backend_herdr_bin)
+    fi
+    HERDR_SESSION="$session" exec "$client_bin" server --session "$session" </dev/null >/dev/null 2>&1 &
   ) || return 1
   for i in $(seq 1 20); do
     running=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null | jq -r '.server.running // false' 2>/dev/null)
