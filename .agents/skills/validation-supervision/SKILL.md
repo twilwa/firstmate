@@ -23,11 +23,14 @@ Once ownership is settled, validate exactly once against that final head so no o
 
 An ask-user finding returns as `needs-decision`; firstmate loads `ask-user-authority` and either decides or escalates per that skill.
 Send the same worker one exact decision naming the decision key, step, action, affected finding IDs, instructions where needed, and exact response command, passing `--resolve-key` so the worker's open decision record closes at answer time.
-A review decision names its finding IDs one by one; a whole-step skip needs the explicit `--whole-step` flag, which [`bin/fm-nm-respond.sh`](../../../bin/fm-nm-respond.sh) enforces.
+A review fix decision names its finding IDs one by one with `--findings`, and any finding declined alongside those fixes goes in `--ignore` on the same `--action fix`; `--step review --action approve` declines only when every open finding is declined; never send a named `--action skip --findings`, which marks the whole Review step skipped; a whole-step skip needs the explicit `--whole-step` flag, which [`bin/fm-nm-respond.sh`](../../../bin/fm-nm-respond.sh) enforces.
 Require the matching `resolved` event, forbid `--yes`, and require the worker to process every synchronous return until completion or a genuinely new escalation.
 Resume fleet supervision immediately after the decision lands.
 
 Judge validation by the resolved state line from [`bin/fm-crew-state.sh`](../../../bin/fm-crew-state.sh), whose header owns outcome mappings and CI-monitor/daemon exceptions, never by shell liveness, the last status event, or a raw run record.
 Workers parked at approval or fix-review must follow the active gate help.
+The worker's generated Definition of done owns its gate rules: the fix-round budget, the coverage-park reason, the approve-not-skip decline, and the moved-base rebase before a run starts.
+When a worker stops selecting fixes on its round budget and reports the still-open findings, firstmate decides each open finding under `ask-user-authority` - direct one targeted fix for a straight in-scope defect, approve it with a reason, escalate it, or stop the run - and never hands the worker an open-ended new round of fix selection.
+A coverage-park approval follows the worker's status line stating its reason; a bare approval is steered back to the gate.
 A worker hand-editing, committing, aborting, or restarting during an active validation run duplicates pipeline ownership outside the supersession sequence above; steer it back to the gate response flow.
 The worker reports the PR when CI first becomes green rather than waiting for merge monitoring to finish.

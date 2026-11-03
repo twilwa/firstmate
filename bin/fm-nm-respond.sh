@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Guard review-step skips against leaving unnamed findings open.
+# Guard review-step skips: any skip at a review gate, named findings or not,
+# marks the whole Review step skipped, so it needs --whole-step.
 # Usage: bin/fm-nm-respond.sh [--whole-step] --action ACTION [axi respond flags]
 # --whole-step explicitly authorizes a whole review-step skip; it is removed
 # before forwarding. --yes, --yes=*, -y, and a repeated --findings are refused;
@@ -17,7 +18,6 @@ whole_step=0
 skip=0
 review=0
 step_given=0
-findings=''
 findings_given=0
 while (($#)); do
   arg=$1
@@ -43,58 +43,24 @@ while (($#)); do
   case $name in
     --action) if [ "$lower" = skip ]; then skip=1; fi ;;
     --step) step_given=1; if [ "$lower" = review ]; then review=1; fi ;;
-    --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1; findings=$value ;;
+    --findings) ((!findings_given)) || fail 'pass --findings once; axi keeps only the last value'; findings_given=1 ;;
   esac
 done
 
-if ((skip && !whole_step && (!step_given || review))); then
+if ((skip && !whole_step && !step_given)); then
   # Even with --step omitted, axi responds to the gate currently awaiting approval.
   # Read its gate before deciding whether a skip is a review-step skip.
   status=$("$nm" axi status) || fail 'cannot read axi status; refusing skip'
-  rc=0
-  missing=$(printf '%s\n' "$status" | awk -v selected="$findings" '
-    BEGIN {
-      n = split(selected, tokens, ",")
-      for (i = 1; i <= n; i++) if (tokens[i] != "") named[tokens[i]] = 1
-    }
+  gate_step=$(printf '%s\n' "$status" | awk '
     /^[^[:space:]]/ { nested = 0 }
-    /^gate:[[:space:]]*$/ { gate = 1; nested = 1; next }
-    /^gate:[[:space:]]*[^[:space:]]/ { gate = 1; scalar = 1; step = $2; next }
+    /^gate:[[:space:]]*$/ { nested = 1; next }
+    /^gate:[[:space:]]*[^[:space:]]/ { step = $2; next }
     nested && /^  step: / { step = $2; next }
-    rows && /[^[:space:]]/ {
-      row_indent = match($0, /[^ ]/) - 1
-      if (row_indent <= indent) rows = 0
-      else {
-        if (row_indent != indent + 2) next
-        id = $0
-        sub(/,.*/, "", id)
-        sub(/^[[:space:]]+/, "", id)
-        if (id == "" || id ~ /[[:space:]]/) bad = 1
-        else { seen++; if (!(id in named)) missing[++miss] = id }
-        next
-      }
-    }
-    (nested || scalar) && /^[[:space:]]*findings\[[0-9]+\]\{id,/ {
-      if (header) bad = 1
-      header = 1
-      rows = 1
-      indent = match($0, /[^ ]/) - 1
-      count = $0
-      sub(/^[[:space:]]*findings\[/, "", count)
-      sub(/\].*/, "", count)
-      next
-    }
-    (nested || scalar) && /^[[:space:]]*findings: none[[:space:]]*$/ { if (header) bad = 1; header = 1; count = 0; next }
-    END {
-      if (!gate || step == "") exit 2
-      if (tolower(step) != "review") exit 3
-      if (!header || bad || seen != count) exit 2
-      for (i = 1; i <= miss; i++) printf "%s%s", (i == 1 ? "" : ","), missing[i]
-    }
-  ') || rc=$?
-  if ((rc != 3 || review)); then
-    ((rc == 0)) || fail 'cannot read open review findings from axi status; refusing skip'
-    [ -z "$missing" ] || fail "review skip leaves unnamed open findings: $missing (name each with --findings or use --whole-step)"
-  fi
+    END { print tolower(step) }
+  ')
+  [ -n "$gate_step" ] || fail 'cannot read the awaiting gate step from axi status; refusing skip'
+  [ "$gate_step" != review ] || review=1
 fi
+((!skip || whole_step || !review)) \
+  || fail 'a review skip marks the whole Review step skipped, so Push refuses: decline alongside fixes with --action fix --ignore, decline every open finding with --action approve, or pass --whole-step to skip the whole step'
 exec "$nm" axi respond ${args[@]+"${args[@]}"}

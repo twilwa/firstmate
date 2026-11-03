@@ -569,6 +569,41 @@ test_no_mistakes_dod_green_detection() {
   pass "fm-brief.sh: no-mistakes DOD detects a green PR from the drive call, not a status poll"
 }
 
+# Fleet-health gate discipline (2026-11-03 cycle-1 review): non-converging
+# review fix rounds, named-skip declines that lost whole runs, coverage parks
+# approved without a reason, and stale-base submissions repaired in the CI
+# step all cost real runs. The rendered DOD must carry each rule.
+test_no_mistakes_dod_gate_discipline() {
+  local home id brief
+  home="$TMP_ROOT/gate-discipline-home"
+  mkdir -p "$home/data"
+  id="brief-gate-b1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "brief was not scaffolded"
+  assert_grep "rebase onto it when it has moved since your worktree was cut" "$brief" \
+    "no-mistakes DOD must require a rebase onto a moved base before the run starts"
+  assert_grep "leaves the merge-conflict repair to the pipeline's CI step" "$brief" \
+    "no-mistakes DOD must say why a stale base is rebased before submission"
+  assert_grep "Decline a review finding with \`--step review --action approve\`, never \`--action skip --findings <id>\`" "$brief" \
+    "no-mistakes DOD must decline a review finding with approve, never a named skip"
+  assert_grep "a named review skip marks the whole Review step skipped" "$brief" \
+    "no-mistakes DOD must say why a named review skip is forbidden"
+  assert_grep "name each decline in \`--ignore <id>\` on the same \`--action fix\`" "$brief" \
+    "no-mistakes DOD must decline alongside fixes with --ignore, not an approve that drops them"
+  assert_grep "Approve a review coverage park only with a stated reason" "$brief" \
+    "no-mistakes DOD must require a stated reason for a coverage-park approval"
+  assert_grep "\`complete-coverage\`" "$brief" \
+    "no-mistakes DOD must name the scoped coverage-completion mechanism"
+  assert_grep "about 4 fix rounds on one step, or a gate finding an earlier round introduced" "$brief" \
+    "no-mistakes DOD must bound non-converging review fix rounds"
+  assert_grep "report \`needs-decision\` to firstmate with the still-open findings instead of continuing to iterate" "$brief" \
+    "no-mistakes DOD must route a round-budget stop to firstmate with the open findings"
+  assert_no_grep "Two firstmate-specific rules" "$brief" \
+    "no-mistakes DOD still counts its rules as two"
+  pass "fm-brief.sh: no-mistakes DOD carries the review-round, decline, coverage, and rebase rules"
+}
+
 test_ask_user_escalation_format() {
   local home id brief mode other_id other_brief
   home="$TMP_ROOT/ask-user-home"
@@ -1799,6 +1834,7 @@ test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_no_mistakes_dod_green_detection
+test_no_mistakes_dod_gate_discipline
 test_pr_based_dod_requires_non_draft
 test_ask_user_escalation_format
 test_ship_project_memory_wording

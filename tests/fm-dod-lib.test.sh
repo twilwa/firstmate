@@ -15,11 +15,13 @@ fm_git_identity fmtest fmtest@example.invalid
 test_scope_approval_respects_project_and_scope() {
   local out
   out=$(fm_test_scope_section focused no-mistakes "$ROOT")
-  assert_contains "$out" 'approve it and run the focused selection' 'Firstmate focused scope requires Test attestation'
+  assert_contains "$out" 'Test step must complete or be approved with a reason, never skipped' 'Firstmate focused scope requires Test attestation'
+  assert_contains "$out" '--verification-plan <file>' 'Firstmate focused scope hands the run its test evidence'
   out=$(fm_test_scope_section focused no-mistakes "$TMP_ROOT")
   assert_contains "$out" 'answer with skip because fork CI runs the suite.' 'unrelated projects still rely on fork CI'
   out=$(fm_test_scope_section none no-mistakes "$ROOT")
-  assert_contains "$out" 'approve it with no local test selection; never skip it.' 'Firstmate none scope requires Test attestation'
+  assert_contains "$out" 'stating why, with no local test selection.' 'Firstmate none scope requires Test attestation'
+  assert_contains "$out" 'Test step must complete or be approved with a reason, never skipped' 'Firstmate none scope requires the never-skip Test contract'
   out=$(fm_test_scope_section none no-mistakes "$TMP_ROOT")
   assert_contains "$out" 'answer with skip because fork CI runs the suite.' 'unrelated none scope still relies on fork CI'
   out=$(fm_test_scope_section focused direct-PR "$ROOT")
@@ -37,7 +39,8 @@ test_scope_approves_unknown_lineage() {
   git -C "$project" commit -q --allow-empty -m 'unrelated history'
   git init -q "$root"
   out=$(fm_test_scope_section focused no-mistakes "$project" "$root")
-  assert_contains "$out" 'approve it and run the focused selection' 'unknown lineage must not skip Test'
+  assert_contains "$out" 'stating why and run the focused selection' 'unknown lineage must not skip Test'
+  assert_contains "$out" '--verification-plan <file>' 'unknown lineage still hands the run its test evidence'
   pass 'unknown lineage conservatively approves Test'
 }
 

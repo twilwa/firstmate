@@ -36,6 +36,7 @@ It stops at the finding, routes the decision to firstmate, and applies only the 
 
 ## Captain-facing escalation
 
+Escalate at once: a product or policy question that needs the captain leaves its run parked and its lane waiting, so holding it is pure delay, and the task stays held for the captain's answer.
 State all five of these elements in one concise, evidence-first escalation:
 
 1. The original requirement or accepted task criterion.
