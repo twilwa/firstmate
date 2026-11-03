@@ -132,7 +132,9 @@ test_firstmate_focused_step_runs_selection() {
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests focused --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
     || fail 'firstmate focused brief failed'
   brief="$HOME_ROOT/data/$id/brief.md"
-  assert_grep 'When the no-mistakes Test step asks for approval, approve it and run the focused selection named by this test scope; never skip it.' "$brief" 'firstmate focused brief did not require Test approval'
+  assert_grep 'The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the focused selection named by this test scope.' "$brief" 'firstmate focused brief did not state the complete-or-approved Test contract'
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep 'start the run with `--verification-plan <file>`, so the Test agent runs that focused list rather than the whole suite.' "$brief" 'firstmate focused brief did not pass its selection as run test evidence'
   assert_no_grep 'answer with skip because fork CI runs the suite' "$brief" 'firstmate focused brief still skips Test'
   assert_grep 'If the Test step times out, report needs-decision; never choose fix.' "$brief" 'firstmate focused brief lost timeout rule'
   pass 'firstmate focused Test runs rather than skipping'
@@ -141,10 +143,28 @@ test_firstmate_focused_step_runs_selection() {
   FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests none --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
     || fail 'firstmate none brief failed'
   brief="$HOME_ROOT/data/$id/brief.md"
-  assert_grep 'When the no-mistakes Test step asks for approval, approve it with no local test selection; never skip it.' "$brief" 'firstmate none brief did not require Test approval'
+  assert_grep 'The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with no local test selection.' "$brief" 'firstmate none brief did not state the complete-or-approved Test contract'
   assert_grep 'Permits: no local test runs; still write any regression test the task requires, and CI runs it.' "$brief" 'firstmate none brief lost its no-local-runs permission'
   assert_no_grep 'answer with skip because fork CI runs the suite' "$brief" 'firstmate none brief still skips Test'
+  assert_no_grep 'verification-plan' "$brief" 'firstmate none brief gained a selection it does not have'
   pass 'firstmate none Test approves with no local selection'
+
+  id='brief-scope-firstmate-safe-suite'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests safe-suite --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
+    || fail 'firstmate safe-suite brief failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the safe-suite selection named by this test scope.' "$brief" 'firstmate safe-suite brief did not state the complete-or-approved Test contract'
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep 'start the run with `--verification-plan <file>`' "$brief" 'firstmate safe-suite brief did not pass its selection as run test evidence'
+  pass 'firstmate safe-suite Test approves and passes its selection as evidence'
+
+  id='brief-scope-firstmate-full'
+  FM_HOME="$HOME_ROOT" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes --tests full --project "$project" --upstream-consent "$target" >/dev/null 2>&1 \
+    || fail 'firstmate full brief failed'
+  brief="$HOME_ROOT/data/$id/brief.md"
+  assert_grep 'The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the full selection named by this test scope.' "$brief" 'firstmate full brief did not state the complete-or-approved Test contract'
+  assert_no_grep 'verification-plan' "$brief" 'firstmate full brief gained a focused evidence plan for the whole suite'
+  pass 'firstmate full Test approves without a focused evidence plan'
 
   mkdir -p "$TMP_ROOT/unrelated-project"
   git -C "$TMP_ROOT/unrelated-project" init -q
@@ -152,6 +172,7 @@ test_firstmate_focused_step_runs_selection() {
     || fail 'unrelated focused brief failed'
   brief="$HOME_ROOT/data/brief-scope-unrelated-focused/brief.md"
   assert_grep 'When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.' "$brief" 'unrelated project lost original Test skip instruction'
+  assert_no_grep 'verification-plan' "$brief" 'unrelated focused brief gained firstmate-only run test evidence'
   pass 'unrelated focused Test keeps fork CI skip guidance'
 }
 

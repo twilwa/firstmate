@@ -211,7 +211,10 @@ fm_forge_valid_for_mode() {  # <forge> <mode> <caller>
 # suite to run. The optional project directory selects Test approval at every
 # scope, with no local selection at none, when fm_role_self_repo recognizes it
 # as Firstmate lineage of the code root (default: this library's checkout) or
-# cannot determine it; the Test attestation is required there. The
+# cannot determine it; the Test attestation is required there, so the step must
+# complete or be approved with a reason and is never skipped. A named selection
+# also reaches the run as its --verification-plan evidence, so the pipeline's
+# Test agent runs the focused list rather than the whole suite. The
 # timeout-means-needs-decision rule holds at every scope. The Firstmate figures
 # are bin/fm-test-run.sh --estimate-ms over the selections the section names.
 fm_test_scope_valid() {  # <scope>
@@ -224,7 +227,7 @@ fm_test_scope_valid() {  # <scope>
 
 fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
   local scope=$1 flow=$2 project=${3:-} root=${4:-} lineage=0
-  local lib_dir estimate_ms no_figure test_step_approve=
+  local lib_dir estimate_ms no_figure test_step_approve='' test_step_plan=''
   local test_step_skip='When the no-mistakes Test step asks for approval, answer with skip because fork CI runs the suite.'
   lib_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   if [ "$flow" = no-mistakes ] && [ -n "$project" ]; then
@@ -233,8 +236,11 @@ fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
     fm_role_self_repo "$project" "${root:-$lib_dir/..}" || lineage=$?
     if [ "$lineage" -ne 1 ]; then
       case "$scope" in
-        none) test_step_approve='When the no-mistakes Test step asks for approval, approve it with no local test selection; never skip it.' ;;
-        *) test_step_approve="When the no-mistakes Test step asks for approval, approve it and run the $scope selection named by this test scope; never skip it." ;;
+        none) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it with no local test selection.' ;;
+        full) test_step_approve='The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the full selection named by this test scope.' ;;
+        *) test_step_approve="The no-mistakes Test step must complete or be approved with a reason, never skipped: when it asks for approval, approve it and run the $scope selection named by this test scope."
+           # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+           test_step_plan='Pass that selection to the run as its test evidence: write it to a file under your task data dir and start the run with `--verification-plan <file>`, so the Test agent runs that focused list rather than the whole suite.' ;;
       esac
     fi
   fi
@@ -261,6 +267,7 @@ fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
         'Expected duration: no measured figure exists for a focused selection; record your own estimate in your first status line before running anything.'
       if [ "$flow" = no-mistakes ]; then
         printf '%s\n' "${test_step_approve:-$test_step_skip}"
+        [ -z "$test_step_plan" ] || printf '%s\n' "$test_step_plan"
       fi
       ;;
     safe-suite)
@@ -270,6 +277,7 @@ fm_test_scope_section() {  # <scope> <flow> [project-dir] [code-root]
         "Expected duration: about $(((estimate_ms + 59999) / 60000)) minutes run serially in the Firstmate repo, from bin/fm-test-run.sh's measured duration hints; $no_figure" \
         "Exclusion manifest: in the Firstmate repo, run \`xargs bin/fm-test-run.sh --all < tests/safe-suite-exclusions.txt\`."
       [ -z "$test_step_approve" ] || printf '%s\n' "$test_step_approve"
+      [ -z "$test_step_plan" ] || printf '%s\n' "$test_step_plan"
       ;;
     full)
       estimate_ms=$("$lib_dir/fm-test-run.sh" --estimate-ms --all) || return 1
@@ -510,7 +518,7 @@ EOF
 }
 
 # The forge-independent middle of the no-mistakes contract: how a worker drives
-# the pipeline, what `--intent` may carry, and the two firstmate-specific rules.
+# the pipeline, what `--intent` may carry, and the firstmate-specific rules.
 # Written once; only the two sentences about a green PR depend on the forge,
 # because on gerrit, and under pr=manual (the `no-ci` argument), the ci step is
 # skipped and the drive call never reports a green PR.
@@ -551,15 +559,19 @@ The \`--intent\` string you pass must be self-sufficient: that string plus the c
 When the captain's intent refers to a report, decision, or PR ("do items 1, 2, 3, and 7 of the report"), write the substance of the referenced items into \`--intent\` in the captain's terms, not only the pointer; that substance is the captain's ask by reference, while Firstmate's build instructions and your own decisions still stay out.
 This replaces the no-mistakes skill's advice to enrich \`--intent\` with decisions and tradeoffs; that advice does not apply to Firstmate-dispatched work.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
+Before starting a run, fetch the base branch and rebase onto it when it has moved since your worktree was cut, resolving any conflicts yourself: a run submitted on a stale base leaves the merge-conflict repair to the pipeline's CI step.
 
 $drive_block
 A killed or timed-out call is never evidence the daemon died: the daemon accepts your response immediately and runs the round in the background, so the call was only ever waiting for a read while the run kept working.
 Reattach and keep going rather than reporting the pipeline blocked; rule 7 owns the checks that decide when a pipeline block is real.
 
-Two firstmate-specific rules layer on top of that guidance:
+These firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: escalate to firstmate using rule 6's ask-user format and stop.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`$respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+- Decline a review finding with \`--step review --action approve\`, never \`--action skip --findings <id>\`: a named review skip marks the whole Review step skipped, and Push then refuses for lack of a review-approved head.
+- Approve a review coverage park only with a stated reason - the unverified files lie outside your own change, such as a stale base widening the diff, or after one \`complete-coverage\` round scoped to them - because a bare approve ships unreviewed code.
+- Stop selecting fixes once review rounds stop converging - about 4 fix rounds on one step, or a gate finding an earlier round introduced - and report \`needs-decision\` to firstmate with the still-open findings instead of continuing to iterate.
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`$respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
   Ask-user gates must return to firstmate as \`needs-decision\`; the worker never answers its own finding.

@@ -29,5 +29,8 @@ Resume fleet supervision immediately after the decision lands.
 
 Judge validation by the resolved state line from [`bin/fm-crew-state.sh`](../../../bin/fm-crew-state.sh), whose header owns outcome mappings and CI-monitor/daemon exceptions, never by shell liveness, the last status event, or a raw run record.
 Workers parked at approval or fix-review must follow the active gate help.
+The worker's generated Definition of done owns its gate rules: the fix-round budget, the coverage-park reason, the approve-not-skip decline, and the moved-base rebase before a run starts.
+When a worker stops selecting fixes on its round budget and reports the still-open findings, firstmate takes over: decide or escalate each under `ask-user-authority`, or stop the run - never steer it back into more fix rounds.
+A coverage-park approval carries the worker's stated reason; a bare approval is steered back to the gate.
 A worker hand-editing, committing, aborting, or restarting during an active validation run duplicates pipeline ownership outside the supersession sequence above; steer it back to the gate response flow.
 The worker reports the PR when CI first becomes green rather than waiting for merge monitoring to finish.
