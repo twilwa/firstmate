@@ -570,6 +570,7 @@ These firstmate-specific rules layer on top of that guidance:
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
   When the decision comes back, feed it to the gate with \`$respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Decline a review finding with \`--step review --action approve\`, never \`--action skip --findings <id>\`: a named review skip marks the whole Review step skipped, and Push then refuses for lack of a review-approved head.
+  Approve declines only when every open finding is declined; when you decline some findings while fixing others, name each decline in \`--ignore <id>\` on the same \`--action fix\`, because an approve drops the fixes you selected.
 - Approve a review coverage park only with a stated reason, written in a status line to firstmate before the approve - the unverified files lie outside your own change, such as a stale base widening the diff, or after one \`complete-coverage\` round scoped to them - because a bare approve ships unreviewed code.
 - Stop selecting fixes once review rounds stop converging - about 4 fix rounds on one step, or a gate finding an earlier round introduced - and report \`needs-decision\` to firstmate with the still-open findings instead of continuing to iterate.
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`$respond\`. It is banned fleet-wide.

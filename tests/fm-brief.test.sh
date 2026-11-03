@@ -589,6 +589,8 @@ test_no_mistakes_dod_gate_discipline() {
     "no-mistakes DOD must decline a review finding with approve, never a named skip"
   assert_grep "a named review skip marks the whole Review step skipped" "$brief" \
     "no-mistakes DOD must say why a named review skip is forbidden"
+  assert_grep "name each decline in \`--ignore <id>\` on the same \`--action fix\`" "$brief" \
+    "no-mistakes DOD must decline alongside fixes with --ignore, not an approve that drops them"
   assert_grep "Approve a review coverage park only with a stated reason" "$brief" \
     "no-mistakes DOD must require a stated reason for a coverage-park approval"
   assert_grep "\`complete-coverage\`" "$brief" \

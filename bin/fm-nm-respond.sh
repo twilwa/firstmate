@@ -94,7 +94,7 @@ if ((skip && !whole_step && (!step_given || review))); then
   ') || rc=$?
   if ((rc != 3 || review)); then
     ((rc == 0)) || fail 'cannot read open review findings from axi status; refusing skip'
-    [ -z "$missing" ] || fail "review skip leaves unnamed open findings: $missing (name each with --findings, decline with --action approve, or use --whole-step)"
+    [ -z "$missing" ] || fail "review skip leaves unnamed open findings: $missing (decline alongside fixes with --action fix --ignore, decline all with --action approve, or use --whole-step)"
   fi
 fi
 exec "$nm" axi respond ${args[@]+"${args[@]}"}
