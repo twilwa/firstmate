@@ -1539,13 +1539,19 @@ _wedge_cap_rollback() {
 # <min-age> replaces the cadence as the absorb-age gate for one call (0 lets a
 # declared `until` time that has just passed re-surface at once), while the
 # throttle keeps the cadence between repeats.
-resurface_absorbed() {  # <window> <throttle-marker> <age> <reason> [scope] [min-age]
-  local win=$1 throttle=$2 age=$3 reason=$4 scope=${5-} min_age=${6:-$PAUSE_RESURFACE_SECS}
+resurface_absorbed_due() {  # <throttle-marker> <age> [scope] [min-age]
+  local throttle=$1 age=$2 scope=${3-} min_age=${4:-$PAUSE_RESURFACE_SECS}
   if [ -z "$scope" ] || [ ! -e "$throttle" ] \
     || [ "$(cat "$throttle" 2>/dev/null || true)" = "$scope" ]; then
-    [ "$age" -ge "$min_age" ] || return 0
-    [ "$(age_of "$throttle")" -ge "$PAUSE_RESURFACE_SECS" ] || return 0   # 999999 when no prior re-surface
+    [ "$age" -ge "$min_age" ] || return 1
+    [ "$(age_of "$throttle")" -ge "$PAUSE_RESURFACE_SECS" ] || return 1   # 999999 when no prior re-surface
   fi
+  return 0
+}
+
+resurface_absorbed() {  # <window> <throttle-marker> <age> <reason> [scope] [min-age]
+  local win=$1 throttle=$2 age=$3 reason=$4 scope=${5-} min_age=${6:-$PAUSE_RESURFACE_SECS}
+  resurface_absorbed_due "$throttle" "$age" "$scope" "$min_age" || return 0
   fm_wake_append stale "$win" "$reason" || exit 1
   if [ -n "$scope" ]; then printf '%s' "$scope" > "$throttle"; else date +%s > "$throttle"; fi
   wake "$reason"
@@ -1906,8 +1912,9 @@ wedge_defer_validating() {  # <window> <since-file> <triage-label> <idle-age> <t
 # display stays absorbed. Under one unchanged incarnation a dead pane's static
 # display absorbs on every threshold either way.
 # Returns 0 when it has handled the window, 1 to escalate on the unchanged path.
-wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-hash> <task>
-  local win=$1 since_file=$2 label=$3 age=$4 hash=$5 task=$6 key marker agent_state detail reason gen id
+wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-hash> <task> [since-scope]
+  local win=$1 since_file=$2 label=$3 age=$4 hash=$5 task=$6 key marker agent_state detail reason gen id since_value
+  local since_scope=${7-}
   key=$(window_key "$win")
   marker="$STATE/.dead-reported-$key"
   agent_state=$(fm_backend_agent_state "$(window_backend "$win")" "$win" 2>/dev/null) || agent_state=unreadable
@@ -1916,17 +1923,19 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
     missing) detail='the recorded endpoint is gone' ;;
     *) rm -f "$marker"; return 1 ;;
   esac
-  # Re-arm the idle timer on BOTH paths below, so the backend probe above stays on
-  # its once-per-STALE_ESCALATE_SECS budget instead of running on every poll.
-  date +%s > "$since_file"
+  # Advance the caller's cadence on both handled paths. Paused rechecks retain
+  # their declaration scope; wedge callers retain the numeric idle timer.
+  since_value=${since_scope:-$(date +%s)}
   id=$hash
   if gen=$(fm_busy_current_gen "$STATE" "$task"); then
     id=$gen
   fi
   if [ "$(cat "$marker" 2>/dev/null || true)" = "$agent_state $id" ]; then
+    printf '%s\n' "$since_value" > "$since_file"
     triage_log "absorbed $label (agent $agent_state, already reported once, idle ${age}s): $win"
     return 0
   fi
+  [ "$label" != paused ] || detail="stopped while paused; $detail"
   reason="stale: $win (idle ${age}s, agent $agent_state - $detail, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)"
   # Append before the marker, for the reason stale_wait_record gives: a marker
   # written ahead of a failed append outlives it, and the next sighting would then
@@ -1934,6 +1943,7 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
   # rather than deliver it once.
   fm_wake_append stale "$win" "$reason" || exit 1
   printf '%s %s' "$agent_state" "$id" > "$marker"
+  printf '%s\n' "$since_value" > "$since_file"
   clear_write_tracking "$key"
   wake "$reason"
 }
@@ -2498,6 +2508,13 @@ handle_paused_stale() {  # <window> <task> <hash>
   else
     detail="paused, awaiting external"
     reason="paused ${age}s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds"
+  fi
+  # Spend one existing backend probe only when this pause's recheck is due.
+  # Unknown/unreadable results fall through to the unchanged wait confirmation;
+  # confident death uses the wedge ladder's report-once record instead.
+  if ! status_is_captain_held "$last" \
+    && resurface_absorbed_due "$STATE/.paused-resurfaced-$key" "$age" "$declaration" "$min_age"; then
+    wedge_dead_record "$win" "$STATE/.paused-resurfaced-$key" paused "$age" "$h" "$task" "$declaration" && return 0
   fi
   resurface_absorbed "$win" "$STATE/.paused-resurfaced-$key" "$age" "stale: $win ($reason)" "$declaration" "$min_age"
   triage_log "absorbed stale ($detail, age ${age}s): $win"
