@@ -1,0 +1,25 @@
+base server pid=1330007 (12s into the SSH call)
+    PID    PPID COMMAND         COMMAND
+1330007 1330005 herdr           herdr server --session fm-remote
+parent:
+    PID    PPID COMMAND         COMMAND
+1330005    1064 bash            bash /tmp/nm-sshlab.h2FOfB/ensure-driver.sh /tmp/nm-sshlab.h2FOfB/base fm-remote
+parent (backgrounded subshell) fds:
+0 -> /dev/null
+1 -> /dev/null
+10 -> pipe:[716003219]
+11 -> pipe:[716005050]
+2 -> /dev/null
+server fds 0-2:
+/proc/1330007/fd/0 -> /dev/null
+/proc/1330007/fd/1 -> /dev/null
+/proc/1330007/fd/2 -> /dev/null
+--- live process tree under the lab sshd listener (pid 1211372) during the hang:
+    PID    PPID STAT COMMAND
+1329968 1329959 Ss   bash /tmp/nm-sshlab.h2FOfB/ensure-driver.sh /tmp/nm-sshlab.h2FOfB/base fm-remote
+1330005    1064 S    bash /tmp/nm-sshlab.h2FOfB/ensure-driver.sh /tmp/nm-sshlab.h2FOfB/base fm-remote
+1330007 1330005 Sl    \_ herdr server --session fm-remote
+sshd,1211372
+  `-sshd,1329909
+      `-sshd,1329959
+          `-bash,1329968 /tmp/nm-sshlab.h2FOfB/ensure-driver.sh /tmp/nm-sshlab.h2FOfB/base fm-remote

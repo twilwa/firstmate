@@ -1,0 +1,5 @@
+# selected client <lab>/selbin/herdr, session fm-sel, over SSH
+type -P herdr on PATH: none
+substitution_result=ensured
+ssh_exit=0 ssh_wall_seconds=0.35
+server pid=1513848 exe=<lab>/selbin/herdr args=<lab>/selbin/herdr server --session fm-sel 

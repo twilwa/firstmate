@@ -1,0 +1,35 @@
+# readiness-probe shape: out=$(ssh <host> fm-remote-doctor.sh --fix --backend herdr </dev/null 2>&1)  [tree=worktree@3cf66338, HOME=<disposable>]
+probe_exit=1 (124 = timeout) probe_wall_seconds=3.34
+--- captured doctor output:
+mode=fix
+path=/home/firstmate/.local/bin:/usr/local/bin:/usr/bin:/bin
+entrypoint=no
+platform=linux
+note: not launched through the fixed remote entrypoint; the reported PATH is this caller environment.
+fix remote-job-worker=applied: installed or reloaded dev.firstmate.remote-job
+fix herdr-server=applied: started the herdr server for session fm-remote
+required git=/usr/bin/git
+required jq=/usr/bin/jq
+required herdr=MISSING
+required tasks-axi=MISSING
+required treehouse=MISSING
+required harness=MISSING
+optional tmux=/usr/bin/tmux
+optional no-mistakes=/home/firstmate/.local/bin/no-mistakes
+optional gh=/home/firstmate/.local/bin/gh
+check herdr=ok: /home/firstmate/.local/bin/herdr
+check gui-session=skip: no Aqua login session applies on linux
+check remote-job-worker=ok: the Linux remote job worker is running
+check remote-job-worker-loaded=skip: Aqua launch agents do not apply on linux
+check remote-job-probe=ok: the remote job worker completed the required-tool probe
+check launchagent=skip: launch agents apply only on darwin
+check launchagent-scope=skip: launch agents apply only on darwin
+check launchagent-loaded=skip: launch agents apply only on darwin
+check herdr-server=ok: session fm-remote is running
+check entrypoint-link=skip: this run did not come through the fixed remote entrypoint
+error: required tools do not resolve on the remote runtime PATH: herdr tasks-axi treehouse harness
+fix: install each one where it resolves on the path reported above, or put a wrapper script for it in <lab>/dhome-target/.local/bin, which is always on that PATH.
+fix: tools in an unselected nvm version or outside the discovered asdf or mise paths need an absolute wrapper; see docs/remote-secondmates.md for the wrapper recipe.
+error: this host is not ready for a remote second mate
+--- fm-remote server state after the probe returned:
+{"running":true,"socket":"<lab>/dhome-target/.config/herdr/sessions/fm-remote/herdr.sock"}

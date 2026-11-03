@@ -1,0 +1,30 @@
+target server pid=1318943
+    PID    PPID COMMAND         COMMAND
+1318943    1064 herdr           herdr server --session fm-remote
+parent:
+    PID COMMAND         COMMAND
+   1064 systemd         /usr/lib/systemd/systemd --user
+server fds:
+total 0 total 0
+0 -> /dev/null
+1 -> /dev/null
+10 -> socket:[716000266]
+11 -> socket:[716000265]
+12 -> socket:[716000271]
+16 -> /run/systemd/inhibit/85.ref
+2 -> /dev/null
+21 -> socket:[716000268]
+3 -> /tmp/nm-sshlab.h2FOfB/hhome-target/.config/herdr/sessions/fm-remote/herdr-server.log
+4 -> socket:[716000262]
+6 -> anon_inode:[eventpoll]
+7 -> anon_inode:[eventfd]
+8 -> anon_inode:[eventpoll]
+9 -> socket:[716000265]
+--- unix sockets held by the target server (ss -xap), showing fds 9-12 are herdr's own listening/API sockets, not an sshd channel:
+u_str ESTAB  0      0                                                                                          * 716000265 * 716000266 users:(("herdr",pid=1318943,fd=11),("herdr",pid=1318943,fd=9))                                           
+u_str ESTAB  0      0                                                                                          * 716000271 * 715996433 users:(("herdr",pid=1318943,fd=12))                                                                      
+u_str ESTAB  0      0                                                                                          * 716000266 * 716000265 users:(("herdr",pid=1318943,fd=10))                                                                      
+u_str LISTEN 0      4096          /tmp/nm-sshlab.h2FOfB/hhome-target/.config/herdr/sessions/fm-remote/herdr.sock 716000262 * 0         users:(("herdr",pid=1318943,fd=4))                                                                       
+u_str LISTEN 0      4096   /tmp/nm-sshlab.h2FOfB/hhome-target/.config/herdr/sessions/fm-remote/herdr-client.sock 716000268 * 0         users:(("herdr",pid=1318943,fd=21))                                                                      
+--- children of the lab sshd listener (pid 1211372) after the target run (empty = no session left open):
+(none)

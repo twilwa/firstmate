@@ -1,0 +1,2 @@
+$ timeout 30 ssh 127.0.0.1 'remote-env.sh <tmp-home-base> ensure-driver.sh <base tree @c5a44aad> fm-remote'
+ssh_exit=124 (124 = killed by timeout) ssh_wall_seconds=30.01

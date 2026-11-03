@@ -1,0 +1,31 @@
+# readiness-probe shape: out=$(ssh <host> fm-remote-doctor.sh --fix --backend herdr </dev/null 2>&1)  [tree=base@c5a44aad, HOME=<disposable>]
+probe_exit=124 (124 = timeout) probe_wall_seconds=60.01
+--- captured doctor output before timeout:
+mode=fix
+path=/home/firstmate/.local/bin:/usr/local/bin:/usr/bin:/bin
+entrypoint=no
+platform=linux
+note: not launched through the fixed remote entrypoint; the reported PATH is this caller environment.
+fix remote-job-worker=applied: installed or reloaded dev.firstmate.remote-job
+fix herdr-server=applied: started the herdr server for session fm-remote
+required git=/usr/bin/git
+required jq=/usr/bin/jq
+required herdr=/home/firstmate/.local/bin/herdr
+required tasks-axi=/home/firstmate/.local/bin/tasks-axi
+required treehouse=/home/firstmate/.local/bin/treehouse
+required harness=claude:/home/firstmate/.local/bin/claude
+optional tmux=/usr/bin/tmux
+optional no-mistakes=/home/firstmate/.local/bin/no-mistakes
+optional gh=/home/firstmate/.local/bin/gh
+check herdr=ok: /home/firstmate/.local/bin/herdr
+check gui-session=skip: no Aqua login session applies on linux
+check remote-job-worker=ok: the Linux remote job worker is running
+check remote-job-worker-loaded=skip: Aqua launch agents do not apply on linux
+check remote-job-probe=fixable: the remote job worker returned an invalid required-tool probe result
+check launchagent=skip: launch agents apply only on darwin
+check launchagent-scope=skip: launch agents apply only on darwin
+check launchagent-loaded=skip: launch agents apply only on darwin
+check herdr-server=ok: session fm-remote is running
+check entrypoint-link=skip: this run did not come through the fixed remote entrypoint
+action: remote-job-probe: rerun this command with --fix to restart the worker
+error: this host is not ready for a remote second mate; unresolved: remote-job-probe

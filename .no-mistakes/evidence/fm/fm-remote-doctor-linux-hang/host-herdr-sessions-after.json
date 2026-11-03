@@ -1,0 +1,25 @@
+{
+  "sessions": [
+    {
+      "default": true,
+      "name": "default",
+      "running": false,
+      "session_dir": "/home/firstmate/.config/herdr",
+      "socket_path": "/home/firstmate/.config/herdr/herdr.sock"
+    },
+    {
+      "default": false,
+      "name": "firstmate",
+      "running": true,
+      "session_dir": "/home/firstmate/.config/herdr/sessions/firstmate",
+      "socket_path": "/home/firstmate/.config/herdr/sessions/firstmate/herdr.sock"
+    },
+    {
+      "default": false,
+      "name": "wS0",
+      "running": true,
+      "session_dir": "/home/firstmate/.config/herdr/sessions/wS0",
+      "socket_path": "/home/firstmate/.config/herdr/sessions/wS0/herdr.sock"
+    }
+  ]
+}

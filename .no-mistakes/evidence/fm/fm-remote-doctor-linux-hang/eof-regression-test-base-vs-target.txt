@@ -1,0 +1,11 @@
+$ bash tests/fm-backend-herdr-server-eof.test.sh   # in base tree c5a44aad (new test copied in)
+#!/usr/bin/bash
+set -eu
+FAIL: server-ensure caller did not reach EOF within five seconds
+exit=1
+
+$ bash tests/fm-backend-herdr-server-eof.test.sh   # in worktree 3cf66338
+#!/usr/bin/bash
+set -eu
+PASS: caller reaches EOF while detached server remains running
+exit=0

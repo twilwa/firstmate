@@ -1,0 +1,5 @@
+$ timeout 45 ssh 127.0.0.1 'remote-env.sh <tmp-home-target> ensure-driver.sh <worktree@3cf66338> fm-remote'
+tree=/home/firstmate/.no-mistakes/worktrees/8be14fbb8fb5/01M6FEB7PHEKNZB5EYYJZ63XGX session=fm-remote substitution_result=ensured substitution_seconds=0.07
+ssh_exit=0 ssh_wall_seconds=0.34
+--- server status after the SSH session ended (isolated HOME):
+{"running":true,"socket":"/tmp/nm-sshlab.h2FOfB/hhome-target/.config/herdr/sessions/fm-remote/herdr.sock"}
