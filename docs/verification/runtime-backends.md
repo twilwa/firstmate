@@ -3367,20 +3367,22 @@ systemd-run --user --scope -p TasksMax=512 -p MemoryMax=2G \
 Observed output:
 
 ```text
-ok - real Pi 1.4.0 success: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 73ms
-ok - real Pi 1.4.0 error: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 81ms
-ok - real Pi 1.4.0 abort: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 93ms
+ok - real Pi 1.4.0 success: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 42ms
+ok - real Pi 1.4.0 manual-idle: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 65ms; compaction-to-idle 2069ms
+ok - real Pi 1.4.0 error: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 68ms
+ok - real Pi 1.4.0 abort: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 71ms
 ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories
-ok - real Pi 1.4.0 post-settlement compaction, continuation, error and abort with isolated configuration
+ok - real Pi 1.4.0 post-settlement compaction, continuation, idle success, error and abort with isolated configuration
 ```
 
 The guard loads the generated worker extension before a probe that calls `ctx.compact()` from `agent_settled`, reproducing compaction after the worker already published idle.
 A localhost OpenAI-compatible transport holds the real summarizer request open.
 The record reads busy before the request starts and remains busy while it is held.
-Successful compaction keeps busy until resumed work settles.
+Successful compaction keeps busy until resumed work settles; the record still reads `event=agent-settled` 2.5 s later.
+A real RPC `compact` on a settled worker with no resumption reads busy at `session_compact` and returns to idle with `event=compaction-done-idle` about 2 s later.
+`session_compact` publishes nothing immediately: one 2 s recheck publishes idle only if no `agent_start` followed the compaction's start and `ctx.isIdle()` is true.
 Failed and aborted compactions publish idle when `ctx.isIdle()` is true.
-The portable adapter guard also rejects a before-compaction return value and checks that failure during continuing work does not publish idle.
-There is no `session_compact` idle handler.
+The portable adapter guard also rejects a before-compaction return value and checks that failure or success during continuing or resumed work does not publish idle.
 
 Real `context` events open distinct stream requests; assistant `message_update` snapshots retain the guarded `text/text`, `thinking/thinking`, and `toolCall/arguments` shapes and advance progress.
 Assistant completion and tool execution clear the foreground stream marker.
@@ -3393,7 +3395,7 @@ The driver excludes ambient provider credentials and uses only its localhost tra
 Fixture tmux does not start a real server.
 It checks hashes of real agent configuration/auth files and the extension directory before and after the run.
 No deferred `agent_settled` recheck was added.
-The observed 73-93 ms idle-to-busy interval ended before the held summarizer request; this test found no consequential idle classification that would justify a 250 ms timer.
+The observed 42-71 ms idle-to-busy interval ended before the held summarizer request; this test found no consequential idle classification that would justify a 250 ms timer.
 
 ## Native Codex through Pi
 

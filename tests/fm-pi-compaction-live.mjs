@@ -84,7 +84,7 @@ export default function (pi) {
   }
   pi.on("agent_settled", (_event, ctx) => {
     log("agent_settled", ctx);
-    if (compacted) return;
+    if (compacted || ${JSON.stringify(mode)} === "manual-idle") return;
     compacted = true;
     ctx.compact({
       onComplete: () => {
@@ -96,7 +96,7 @@ export default function (pi) {
   });
 }
 `);
-  let calls = 0, held, stderr = "";
+  let calls = 0, held, settleDelay, stderr = "";
   const requests = [], errors = [];
   const chunk = (res, delta, finish = null) => res.write("data: " + JSON.stringify({
     id: "fixture", object: "chat.completion.chunk", created: 1, model: "probe",
@@ -150,6 +150,11 @@ export default function (pi) {
   const send = (type, extra = {}) => child.stdin.write(JSON.stringify({ type, ...extra }) + "\n");
   try {
     send("prompt", { message: "Exercise a harmless tool, then summarize. ".repeat(200) });
+    if (mode === "manual-idle") {
+      // Operator /compact on a settled worker, with nothing resuming afterwards.
+      await until(() => seen("agent_settled").length, "worker settlement");
+      send("compact");
+    }
     await until(() => held, "real compaction provider request");
     assert.equal(errors.length, 0, String(errors));
     assert.ok(seen("session_before_compact").length, "real compaction before event absent");
@@ -182,6 +187,17 @@ export default function (pi) {
       assert.match(seen("session_compact")[0].busy, /state=busy source=pi-ext/, "success prematurely published idle");
       assert.match(seen("compact_callback")[0].busy, /state=busy source=pi-ext/, "caller resumed from idle");
       assert.equal(seen("agent_start").length, 2, "successful compaction did not resume real agent work");
+      await delay(2500);
+      assert.match(busy(), /state=idle source=pi-ext event=agent-settled /, "compaction recheck overrode resumed work");
+    } else if (mode === "manual-idle") {
+      await until(() => seen("session_compact").length, "successful compaction");
+      const done = seen("session_compact")[0];
+      assert.match(done.busy, /state=busy source=pi-ext/, "success published idle before a caller could resume");
+      await until(() => /state=idle/.test(busy()), "idle after successful compaction with no resumption");
+      settleDelay = Date.now() - done.at;
+      assert.ok(settleDelay >= 1500, "successful compaction settled without waiting for a resumption: " + settleDelay + "ms");
+      assert.match(busy(), /state=idle source=pi-ext event=compaction-done-idle /);
+      assert.equal(seen("agent_start").length, 1, "fixture unexpectedly resumed agent work");
     } else {
       await until(() => seen("session_compact_failed").length, "terminal compaction failure");
       const failed = seen("session_compact_failed")[0];
@@ -191,7 +207,8 @@ export default function (pi) {
     }
     assert.match(busy(), /state=idle source=pi-ext/);
     assert.equal(errors.length, 0, String(errors));
-    console.log("ok - real Pi 1.4.0 " + mode + ": stream snapshots, post-settlement busy and terminal outcome; idle-to-busy " + (before.at - settled.at) + "ms");
+    console.log("ok - real Pi 1.4.0 " + mode + ": stream snapshots, post-settlement busy and terminal outcome; idle-to-busy " + (before.at - settled.at) + "ms"
+      + (settleDelay === undefined ? "" : "; compaction-to-idle " + settleDelay + "ms"));
   } finally {
     // Only this child; never signal a shared tmux server or a sibling worker.
     if (child.exitCode === null) child.kill("SIGTERM");
@@ -204,7 +221,7 @@ export default function (pi) {
   }
 }
 try {
-  for (const mode of ["success", "error", "abort"]) await run(mode);
+  for (const mode of ["success", "manual-idle", "error", "abort"]) await run(mode);
 } finally {
   assert.deepEqual(realConfiguration(), original, "real ~/.pi/agent configuration/auth/extensions changed");
   console.log("ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories");

@@ -46,4 +46,4 @@ done
   COMPACT_ROOT="$TMP_ROOT" COMPACT_STATE="$home/state" COMPACT_CWD="$wt" \
   COMPACT_EXTENSION="$home/state/compact.pi-ext.ts" \
   "$NODE_EXECUTABLE" "$ROOT/tests/fm-pi-compaction-live.mjs" || fail "real Pi compaction guard failed"
-pass "real Pi 1.4.0 post-settlement compaction, continuation, error and abort with isolated configuration"
+pass "real Pi 1.4.0 post-settlement compaction, continuation, idle success, error and abort with isolated configuration"

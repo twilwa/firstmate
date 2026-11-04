@@ -6856,7 +6856,8 @@ EOF
 // that raced another extension's fresh run keeps state busy via isIdle().
 // Extension-triggered compaction can start after settlement: its before hook
 // restores busy; failure clears it only if idle. Successful compaction is NOT
-// settlement, because the caller may still resume the run.
+// immediate settlement, because the caller may still resume the run: one
+// recheck 2 s later clears busy only if no run started and Pi is idle.
 // "turn_end" fires at every inner turn boundary (one LLM response plus its
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
@@ -6876,6 +6877,9 @@ const busyEvent = (state: string, event: string) =>
   });
 export default function (pi: any) {
   let checkedExclusions = false;
+  let agentStarts = 0;
+  let compactionStarts = 0;
+  let compactionRecheck: Promise<void> = Promise.resolve();
   let request = 0;
   let activeRequest = 0;
   let lastStreamProgress = -Infinity;
@@ -6934,6 +6938,8 @@ export default function (pi: any) {
     pi.on("tool_execution_start", closeStream);
   }
   pi.on("agent_start", async () => {
+    agentStarts += 1;
+    await compactionRecheck;
     await busyEvent("busy", "agent-start");
     // Verify only this worker's registry, never connect servers from Firstmate.
     // Check before actions so the warning cannot supersede this turn's terminal status.
@@ -6950,7 +6956,16 @@ export default function (pi: any) {
   });
   pi.on("session_before_compact", async () => {
     // Observe only: a result object would cancel or replace compaction.
+    compactionStarts = agentStarts;
     await busyEvent("busy", "session-before-compact");
+  });
+  pi.on("session_compact", (_event: any, ctx: any) => {
+    const starts = compactionStarts;
+    setTimeout(() => {
+      let idle = false;
+      try { idle = agentStarts === starts && ctx.isIdle(); } catch { return; }
+      if (idle) compactionRecheck = busyEvent("idle", "compaction-done-idle");
+    }, 2000);
   });
   pi.on("session_compact_failed", async (_event: any, ctx: any) => {
     if (ctx.isIdle()) await busyEvent("idle", "session-compact-failed");

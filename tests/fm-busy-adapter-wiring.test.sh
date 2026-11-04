@@ -59,7 +59,7 @@ import { pathToFileURL } from "node:url";
 const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
 const handlers = {};
 mod.default({ on: (name, fn) => { handlers[name] = fn; }, events: { on: (name, fn) => { handlers[name] = fn; } } });
-const ctx = { isIdle: () => !["settle-continuing", "compact-failed-continuing"].includes(process.env.MODE) };
+const ctx = { isIdle: () => !["settle-continuing", "compact-complete-continuing", "compact-failed-continuing"].includes(process.env.MODE) };
 switch (process.env.MODE) {
   case "agent-start": await handlers["agent_start"]({}, ctx); break;
   case "settle-idle": await handlers["agent_settled"]({}, ctx); break;
@@ -73,7 +73,13 @@ switch (process.env.MODE) {
     if (result !== undefined) throw new Error("busy observer must not cancel or replace compaction");
     break;
   }
-  case "compact-complete": await handlers["session_compact"]?.({}, ctx); break;
+  case "compact-complete-idle":
+  case "compact-complete-continuing":
+  case "compact-complete-resumed":
+    await handlers["session_before_compact"]({}, ctx);
+    await handlers["session_compact"]({}, ctx);
+    if (process.env.MODE === "compact-complete-resumed") await handlers["agent_start"]({}, ctx);
+    break;
   case "compact-failed-idle":
   case "compact-failed-continuing": await handlers["session_compact_failed"]({}, ctx); break;
   case "turn-end": await handlers["turn_end"]({}, ctx); break;
@@ -245,15 +251,19 @@ test_pi_extension_compaction_lifecycle() {
   out=$(classify pi "$id" "$state")
   [ "$out" = "busy pi-ext" ] || fail "compaction after settlement must restore busy: $out"
 
-  for mode in compact-complete compact-failed-continuing; do
+  for mode in compact-complete-resumed compact-complete-continuing compact-failed-continuing; do
     out=$(drive_pi_ext "$ext" "$mode") || fail "$mode drive failed: $out"
     out=$(classify pi "$id" "$state")
     [ "$out" = "busy pi-ext" ] || fail "$mode must leave a continuing worker busy: $out"
   done
+  out=$(drive_pi_ext "$ext" compact-complete-idle) || fail "idle compaction drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "idle pi-ext" ] || fail "successful compaction with no follow-up must return to idle: $out"
+  out=$(drive_pi_ext "$ext" compact-start) || fail "second compaction start failed: $out"
   out=$(drive_pi_ext "$ext" compact-failed-idle) || fail "failed compaction drive failed: $out"
   out=$(classify pi "$id" "$state")
   [ "$out" = "idle pi-ext" ] || fail "failed compaction in an idle session must clear busy: $out"
-  pass "Pi compaction restores busy after settlement, never settles on success, and clears failure only when idle"
+  pass "Pi compaction restores busy after settlement, settles success only when no run follows, and clears failure only when idle"
 }
 
 test_pi_extension_serializes_settle_before_next_start() {
