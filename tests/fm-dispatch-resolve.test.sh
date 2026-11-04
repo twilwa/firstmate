@@ -407,58 +407,6 @@ reset_log
   assert_contains "$out" '  status: clear' 'Muse quota ranks the candidate'
   assert_contains "$out" "  profile: --harness 'muse' --model 'default'" 'Muse is selected'
 ) || fail 'Muse provider ID regression'
-(
-  jq '.rules[3].use = [{harness:"pi", model:"openai-codex/gpt-5.6-sol", provider:"openai-codex"},
-    {harness:"claude", model:"sonnet"}]' "$BASE_RULES" > "$RULES"
-  write_response "$RESPONSE" rule_4 0.9
-  reset_log
-  TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
-  expect_code 0 "$code" 'unsupported provider ID returns a typed error'
-  assert_contains "$out" '  status: error' 'wrong ID is not disclosed uncertainty'
-  assert_contains "$out" 'profile pi:openai-codex/gpt-5.6-sol: provider openai-codex is not a published quota-axi provider ID; use one quota-axi --json lists' 'error identifies the profile and ID'
-  assert_not_contains "$out" '  profile:' 'wrong ID cannot silently select another profile'
-) || fail 'unknown provider ID regression'
-(
-  jq '.rules[0].floor.provider = "openai-codex"' "$BASE_RULES" > "$RULES"
-  write_response "$RESPONSE" rule_1 0.97
-  reset_log
-  TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
-  expect_code 0 "$code" 'unsupported rule floor provider ID returns a typed error'
-  assert_contains "$out" '  status: error' 'wrong floor ID is not an unverifiable floor'
-  assert_contains "$out" 'rule rule_1 floor: provider openai-codex is not a published quota-axi provider ID; use one quota-axi --json lists' 'error identifies the rule floor and ID'
-  assert_not_contains "$out" 'unverifiable' 'wrong floor ID is not reported as missing quota evidence'
-  assert_not_contains "$out" '  profile:' 'wrong floor ID cannot authorize a profile'
-) || fail 'unknown rule floor provider ID regression'
-(
-  jq '.preferred_provider = "openai-codex"' "$BASE_RULES" > "$RULES"
-  write_response "$RESPONSE" rule_4 0.9
-  reset_log
-  TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
-  expect_code 0 "$code" 'unsupported preferred_provider ID returns a typed error'
-  assert_contains "$out" '  status: error' 'wrong preference ID is not silently ignored'
-  assert_contains "$out" 'preferred_provider: provider openai-codex is not a published quota-axi provider ID; use one quota-axi --json lists' 'error identifies the preference and ID'
-  assert_not_contains "$out" 'not in matched profiles' 'wrong preference ID is not treated as an unmatched family'
-  assert_not_contains "$out" '  profile:' 'wrong preference ID cannot silently select a profile'
-) || fail 'unknown preferred_provider ID regression'
-(
-  jq '.providers += [{provider:"openrouter", notSetUp:true, state:{status:"auth_required"},
-    quotaSemantics:{status:"unknown", effectiveAvailability:[]}}]' "$QUOTA" > "$TMP_ROOT/not-set-up-quota.json"
-  jq '.rules[3].use = [{harness:"pi", model:"openrouter/some-model", provider:"openrouter"},
-    {harness:"claude", model:"sonnet"}]' "$BASE_RULES" > "$RULES"
-  write_response "$RESPONSE" rule_4 0.9
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/not-set-up-quota.json" run code out err "$BRIEF"
-  expect_code 0 "$code" 'a published provider that is not set up resolves'
-  assert_contains "$out" '  status: clear' 'a not-set-up published provider is not a configuration error'
-  assert_contains "$out" 'candidate: pi:openrouter/some-model  provider=openrouter  -> eligible, unranked: provider openrouter unmeasured (unknown): disclosed uncertainty' 'a not-set-up published provider stays disclosed uncertainty'
-  assert_contains "$out" "  profile: --harness 'claude' --model 'sonnet'" 'the measured candidate still ranks'
-  jq '.rules[0].floor.provider = "openrouter"' "$BASE_RULES" > "$RULES"
-  write_response "$RESPONSE" rule_1 0.97
-  reset_log
-  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/not-set-up-quota.json" run code out err "$BRIEF"
-  assert_contains "$out" '  status: escalate' 'a not-set-up published floor provider escalates'
-  assert_contains "$out" '  reason: rule rule_1 floor openrouter/model:fable is unverifiable' 'a not-set-up floor provider is unverifiable, not misconfigured'
-) || fail 'not-set-up published provider regression'
 for harness in pi codex; do
   (
     jq --arg harness "$harness" '.rules[3].use = [

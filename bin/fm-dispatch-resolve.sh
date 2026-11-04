@@ -104,7 +104,7 @@
 #   clear     -> pass the profile line to fm-spawn.sh unless you state a reason to override
 #   ambiguous -> confidence below the floor; decide as today from the probabilities
 #   escalate  -> the rule requires captain approval, no candidate is rankable, or a genuine tie
-#   error     -> API, network, response, quota-axi, unpublished provider ID, or declared credential source failure; decide as today
+#   error     -> API, network, response, quota-axi, or declared credential source failure; decide as today
 #   Every outcome exits 0 so an intake is never blocked by this tool.
 #   A keyed run that prints the block above appends one best-effort resolution
 #   receipt to dispatch-receipts.jsonl in the state directory
@@ -834,7 +834,9 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     elif $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
     elif prov($p; $lane) == null then
       {profile: $c, provider: $p, eligible: true, unranked: true,
-       reason: "provider \($p) has no quota row for account \(if $lane == "" then "default" else $lane end)"}
+       reason: (if any($q.providers[]; .provider == $p)
+                then "provider \($p) has no quota row for account \(if $lane == "" then "default" else $lane end)"
+                else "provider \($p) not in the quota snapshot" end)}
     else
       (applicable($p; $lane; ($c.model // ""); ($c.quota_scope // null))) as $rows |
       (evidence($rows)) as $bounds |
@@ -920,14 +922,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   }
   + (if $fb.to then {fallback: "\($choice) (\(when_of($choice))) probability \($fb.p) clears its floor \($fb.to_floor); \($picked) probability \($a.probabilities[$picked]) is below its floor \($picked_floor)"} else {} end)
   as $ev |
-  (if $sq then [] else
-     ([$answer_use[], $sel.use[]?] | unique | map({who: "profile \(.harness):\(.model // "default")", p: provider_of(.)}))
-     + [{who: "rule \($choice) floor", p: $rule.floor.provider}, {who: "preferred_provider", p: $cfg.preferred_provider}]
-   end
-   | map(select(.p != null) | .p as $p | select(any($q.providers[]; .provider == $p) | not) |
-     "\(.who): provider \(.p) is not a published quota-axi provider ID; use one quota-axi --json lists")) as $provider_errors |
   if $sel.invalid then $ev + {status: "error", reason: $sel.invalid}
-  elif ($provider_errors | length) > 0 then $ev + {status: "error", reason: ($provider_errors | join("; "))}
   elif $fb.below and $fb.global then
     $ev + {status: "ambiguous", reason: "confidence \($a.confidence) below floor \($floor)", candidates: ($answer_use | map(evaluate(.)))}
   elif $fb.below and ($fb.to | not) then

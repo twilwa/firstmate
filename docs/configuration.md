@@ -1855,19 +1855,14 @@ Set it high when a wrong pick is costly and low when the rule is a safe runner-u
 
 - A rule `floor` names the quota-axi `provider` and `scope` whose `effectivePercentRemaining` must be at least `min_percent` for the rule's profiles to apply.
 - A provider-only rule floor on an expanded provider binds to its `default` account row.
-- A floor provider ID that quota-axi does not publish is a configuration error, as described under "Provider identifiers and mappings" below.
-- An absent or unknown row, or a published provider that is unmeasured or not set up in this home, makes the floor unverifiable and escalates without authorizing default routing.
+- An absent or unknown row or unmeasured provider makes the floor unverifiable and escalates without authorizing default routing.
 - A known percentage below the floor makes the tool resolve among `default` profiles instead.
 
 **Provider identifiers and mappings**
 
 A profile `provider` optionally names the quota-axi provider family whose rows apply to that profile; when present, profile and rule-floor provider IDs must match the strict whole-string pattern `^[a-z0-9]+(-[a-z0-9]+)*\z`.
 Use the provider ID published by `quota-axi --json`, not a harness's model prefix: for example, `provider: "codex"` for Pi's `openai-codex/...` models.
-Aliases such as `openai-codex` are not normalized.
-quota-axi `--json` lists every provider it supports in `providers[]`, marking ones this home has not set up with `notSetUp: true`, so that list is the published provider catalog.
-Outside shared-quota mode, a provider ID absent from that catalog, such as a typo or an alias, produces a configuration error naming where it was declared and the ID.
-This covers a matched or fallback profile's declared or mapped provider, which would otherwise be left unranked; the selected rule's floor provider, which would otherwise escalate as unverifiable; and `preferred_provider`, which would otherwise be silently ignored.
-A published provider that is not set up, unmeasured, or lacks the candidate's account row remains eligible with disclosed uncertainty.
+Aliases such as `openai-codex` are not normalized, so a profile declaring one matches no quota row and stays eligible but unranked.
 Bootstrap's resolver-only validation gate is described under "Validation and diagnostics" below.
 
 Typed resolution additively recognizes `gemini` because `harness-adapters` verifies it for crewmate and scout dispatch.
@@ -2001,7 +1996,6 @@ It never introduces candidates outside the matched rule or its existing default 
 The [shared quota library](../bin/fm-quota-axi-lib.sh) accepts schema 5 and schema 6 and implements the [account-matching contract](../.agents/skills/quota-array-dispatch/SKILL.md#1-eligibility).
 
 - An expanded provider with no matching account row leaves the candidate eligible but unranked.
-- A surface quota-axi does not model has no published provider ID, so a typed-resolution profile declaring one is a configuration error rather than disclosed uncertainty.
 - Known applicable rows from a provider with partial quota semantics remain rankable; rows whose own status is not known remain unrankable.
 
 **Confidence and fallback rules**
@@ -2029,7 +2023,7 @@ No qualifying option, or two equally probable qualifying options, produces `ambi
 | `clear` | A `profile:` line ready for `fm-spawn.sh`. |
 | `ambiguous` | Confidence below the floor with no runner-up taken. |
 | `escalate` | An approval-gated rule, unverifiable rule floor, nothing rankable, or a genuine tie. |
-| `error` | API, network, malformed response metadata, rendering, quota-axi failure, a provider ID quota-axi does not publish, or a declared credential source that cannot supply its key. |
+| `error` | API, network, malformed response metadata, rendering, quota-axi failure, or a declared credential source that cannot supply its key. |
 
 Every result above exits 0.
 
