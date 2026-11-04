@@ -107,6 +107,9 @@
 # `forge=external` project reports yolo=off the same way, because firstmate can
 # neither observe nor perform the review tool's approval or merge.
 #
+# --registered prints yes for an exact registry entry, no for an absent entry
+# or registry. It queries membership only, not the entry's delivery posture.
+#
 # --raw prints the registered mode annotation unmapped, so a caller that must
 # tell a conditional policy apart from a flat mode sees "no-mistakes-prod-only"
 # itself. Not combined with --branch-prefix, which has no conditional-policy leg.
@@ -129,7 +132,7 @@
 # to the forge binding, so it prints even when the forge token is malformed;
 # every path that reads the forge binding (default, --forge, and spawn's
 # forge-agreement check) still refuses.
-# Usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--pr] <project-name>
+# Usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--pr|--registered] <project-name>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -141,15 +144,18 @@ RAW=0
 BRANCH_PREFIX_QUERY=0
 WANT_FORGE=0
 WANT_PR=0
+WANT_REGISTERED=0
 case "${1:-}" in
   --raw) RAW=1; shift ;;
   --branch-prefix) BRANCH_PREFIX_QUERY=1; shift ;;
   --forge) WANT_FORGE=1; shift ;;
   --pr) WANT_PR=1; shift ;;
+  --registered) WANT_REGISTERED=1; shift ;;
 esac
-NAME=${1:?usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--pr] <project-name>}
+NAME=${1:?usage: fm-project-mode.sh [--raw|--branch-prefix|--forge|--pr|--registered] <project-name>}
 
 if [ ! -f "$REG" ]; then
+  if [ "$WANT_REGISTERED" -eq 1 ]; then echo no; exit 0; fi
   echo "warn: no registry at $REG; defaulting $NAME to no-mistakes off" >&2
   if [ "$BRANCH_PREFIX_QUERY" -eq 1 ]; then
     echo "fm/"
@@ -221,6 +227,11 @@ parsed=$(awk -v n="$NAME" '
     print "posture", mode, yolo, forge, pr, branch; exit
   }
 ' "$REG")
+
+if [ "$WANT_REGISTERED" -eq 1 ]; then
+  if [ -n "$parsed" ]; then echo yes; else echo no; fi
+  exit 0
+fi
 
 if [ -z "$parsed" ]; then
   echo "warn: project \"$NAME\" not in registry; defaulting to no-mistakes off" >&2
