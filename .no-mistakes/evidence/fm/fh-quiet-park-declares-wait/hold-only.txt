@@ -1,0 +1,22 @@
+02:40:38Z [ok] $ fm-captain-hold.sh hold t1-decision-posture --reason 'captain must pick the posture'
+t1-decision-posture
+02:40:41Z [ok] hold exit=0
+02:40:41Z [ok] $ fm-send.sh t1 --resolve-key posture --park 'Stay parked until the landing batch merges'
+02:40:51Z [ok] fm-send exit=0
+02:40:51Z [ok] status:
+working: waiting on the captain
+paused [at=1793760045]: supervisor parked: Stay parked until the landing batch merges
+status_is_paused: yes (paused [at=1793760045]: supervisor parked: Stay parked until the landing batch merges)
+02:40:51Z [ro] $ fm-captain-hold.sh hold t1-decision-posture --reason 'captain must pick the posture'
+t1-decision-posture
+02:40:54Z [ro] hold exit=0
+02:40:54Z [ro] $ fm-send.sh t1 --resolve-key posture --park 'Stay parked until the landing batch merges'
+/tmp/fm-lab.UlP24S/data/err:{run-worktree}/bin/fm-wake-lib.sh: line 3147: /tmp/fm-lab.UlP24S/state/t1.status: Permission denied
+/tmp/fm-lab.UlP24S/data/err:error: the answer was delivered to lab:w1, but the declared parked wait could not be appended to /tmp/fm-lab.UlP24S/state/t1.status. Close it manually with: printf '%s
+/tmp/fm-lab.UlP24S/data/err:' paused:\ supervisor\ parked:\ Stay\ parked\ until\ the\ landing\ batch\ merges >> /tmp/fm-lab.UlP24S/state/t1.status - do not resend the answer.
+02:40:57Z [ro] fm-send exit=1
+02:40:57Z [ro] status:
+working: waiting on the captain
+status_is_paused: NO
+02:40:57Z [ro] printed recovery exit=0
+after recovery status_is_paused: yes (paused: supervisor parked: Stay parked until the landing batch merges)

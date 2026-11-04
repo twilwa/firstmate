@@ -1,0 +1,32 @@
+02:39:44Z $ fm-send.sh t1 --park 'Stay parked until the batch lands'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.P8kC9m
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: --park requires --resolve-key; nothing was sent
+02:39:48Z exit=1 unchanged=yes (status=4240835454 53 inbox= pane=434154684 2)
+02:39:48Z status now: needs-decision [key=posture]: resume or stay parked?|
+02:39:48Z $ fm-send.sh t1 --resolve-key posture --park --park 'Stay parked until the batch lands'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.P8kC9m
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: duplicate --park; nothing was sent
+02:39:51Z exit=1 unchanged=yes (status=4240835454 53 inbox= pane=561374105 4)
+02:39:51Z status now: needs-decision [key=posture]: resume or stay parked?|
+02:39:51Z $ chmod 0400 t1.status; fm-send.sh t1 --resolve-key posture --park 'Stay parked until the batch lands'
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+{run-worktree}/bin/fm-wake-lib.sh: line 3147: /tmp/fm-lab.P8kC9m/state/t1.status: Permission denied
+error: the answer was delivered to lab:w1, but the close for decision key(s) 'posture' and the declared parked wait could not be appended to /tmp/fm-lab.P8kC9m/state/t1.status. Close it manually with: printf '%s
+' resolved\ \[key=posture\]:\ answered:\ Stay\ parked\ until\ the\ batch\ lands paused:\ supervisor\ parked:\ Stay\ parked\ until\ the\ batch\ lands >> /tmp/fm-lab.P8kC9m/state/t1.status - do not resend the answer.
+02:39:53Z exit=1 inbox=001.msg,handled,
+02:39:53Z running printed recovery command
+02:39:53Z recovery exit=0
+02:39:53Z status after recovery:
+needs-decision [key=posture]: resume or stay parked?
+resolved [key=posture]: answered: Stay parked until the batch lands
+paused: supervisor parked: Stay parked until the batch lands
+declared wait line: paused: supervisor parked: Stay parked until the batch lands
+status_is_paused: yes

@@ -1,0 +1,63 @@
+02:36:00Z [park] lab=/tmp/fm-lab.rS4wYN socket=/tmp/fml.CwLQNx/tmux-1001/default window=lab:w1 FM_CLASSIFY_PAUSED_VERB=''
+02:36:00Z [park] $ fm-send.sh t1 --resolve-key posture --park 'Stay parked until the CI push lease frees; do not push before then'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.rS4wYN
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+02:36:08Z [park] fm-send exit=0
+02:36:08Z [park] --- state/t1.status after send ---
+working: implementing
+needs-decision [key=posture]: CI push lease held by another lane - resume or stay parked?
+resolved [key=posture] [at=1793759764]: answered: Stay parked until the CI push lease frees; do not push before then
+paused [at=1793759764]: supervisor parked: Stay parked until the CI push lease frees; do not push before then
+02:36:08Z [park] --- inbox ---
+001.msg
+handled
+schema=fm-task-inbox.v1
+at=2026-11-04T02:36:04Z
+body-terminator=1
+--
+Stay parked until the CI push lease frees; do not push before then
+02:36:08Z [park] --- pane after send ---
+claude> working (elapsed 00:00:01)
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+02:36:08Z [park] --- fm-crew-state.sh t1 ---
+state: working · source: pane · harness busy (fm-spawn)
+02:36:08Z [park] --- fm-wake-drain (open decisions?) ---
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+02:36:48Z [park] watcher cycle 1 -> exit=alive reason=<none: absorbed, kept polling>
+02:37:31Z [park] watcher cycle 2 -> exit=alive reason=<none: absorbed, kept polling>
+02:37:43Z [park] watcher cycle 3 -> exit=0 reason=stale: lab:w1 (unread firstmate instruction: stuck-busy after 2 consecutive busy-deferred due doorbells; /tmp/fm-lab.rS4wYN/state/t1.inbox/001.msg stays unhandled and no doorbell was typed; inspect the worker)
+02:38:27Z [park] watcher cycle 4 -> exit=alive reason=<none: absorbed, kept polling>
+02:39:11Z [park] watcher cycle 5 -> exit=alive reason=<none: absorbed, kept polling>
+02:39:19Z [park] --- watcher triage log (absorb/defer lines) ---
+[2026-11-04T03:37:52+0100] absorbed stale (paused, awaiting external, age 108s): lab:w1
+[2026-11-04T03:37:55+0100] absorbed stale (paused, awaiting external, age 111s): lab:w1
+[2026-11-04T03:37:58+0100] absorbed stale (paused, awaiting external, age 114s): lab:w1
+[2026-11-04T03:38:01+0100] absorbed stale (paused, awaiting external, age 117s): lab:w1
+[2026-11-04T03:38:04+0100] absorbed stale (paused, awaiting external, age 120s): lab:w1
+[2026-11-04T03:38:07+0100] absorbed stale (paused, awaiting external, age 123s): lab:w1
+[2026-11-04T03:38:10+0100] absorbed stale (paused, awaiting external, age 125s): lab:w1
+[2026-11-04T03:38:12+0100] absorbed stale (paused, awaiting external, age 128s): lab:w1
+[2026-11-04T03:38:15+0100] absorbed stale (paused, awaiting external, age 131s): lab:w1
+[2026-11-04T03:38:18+0100] absorbed stale (paused, awaiting external, age 134s): lab:w1
+[2026-11-04T03:38:21+0100] absorbed stale (paused, awaiting external, age 137s): lab:w1
+[2026-11-04T03:38:24+0100] absorbed stale (paused, awaiting external, age 140s): lab:w1
+[2026-11-04T03:38:26+0100] absorbed stale (paused, awaiting external, age 142s): lab:w1
+[2026-11-04T03:38:36+0100] absorbed stale (paused, awaiting external, age 152s): lab:w1
+[2026-11-04T03:38:38+0100] absorbed stale (paused, awaiting external, age 154s): lab:w1
+[2026-11-04T03:38:41+0100] absorbed stale (paused, awaiting external, age 157s): lab:w1
+[2026-11-04T03:38:44+0100] absorbed stale (paused, awaiting external, age 160s): lab:w1
+[2026-11-04T03:38:47+0100] absorbed stale (paused, awaiting external, age 162s): lab:w1
+[2026-11-04T03:38:49+0100] absorbed stale (paused, awaiting external, age 165s): lab:w1
+[2026-11-04T03:38:52+0100] absorbed stale (paused, awaiting external, age 168s): lab:w1
+[2026-11-04T03:38:55+0100] absorbed stale (paused, awaiting external, age 170s): lab:w1
+[2026-11-04T03:38:57+0100] absorbed stale (paused, awaiting external, age 173s): lab:w1
+[2026-11-04T03:39:00+0100] absorbed stale (paused, awaiting external, age 176s): lab:w1
+[2026-11-04T03:39:03+0100] absorbed stale (paused, awaiting external, age 179s): lab:w1
+[2026-11-04T03:39:07+0100] absorbed stale (paused, awaiting external, age 182s): lab:w1
+02:39:19Z [park] RESULT arm=park fm-send-exit=0 wakes=1/5

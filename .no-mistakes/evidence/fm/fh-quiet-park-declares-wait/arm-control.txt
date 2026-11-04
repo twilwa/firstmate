@@ -1,0 +1,37 @@
+02:32:05Z [control] lab=/tmp/fm-lab.gQh1uZ socket=/tmp/fml.fvpH7Y/tmux-1001/default window=lab:w1 FM_CLASSIFY_PAUSED_VERB=''
+02:32:05Z [control] $ fm-send.sh t1 --resolve-key posture 'Stay parked until the CI push lease frees; do not push before then'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.gQh1uZ
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+02:32:13Z [control] fm-send exit=0
+02:32:13Z [control] --- state/t1.status after send ---
+working: implementing
+needs-decision [key=posture]: CI push lease held by another lane - resume or stay parked?
+resolved [key=posture] [at=1793759529]: answered: Stay parked until the CI push lease frees; do not push before then
+02:32:13Z [control] --- inbox ---
+001.msg
+handled
+schema=fm-task-inbox.v1
+at=2026-11-04T02:32:09Z
+body-terminator=1
+--
+Stay parked until the CI push lease frees; do not push before then
+02:32:13Z [control] --- pane after send ---
+claude> working (elapsed 00:00:01)
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+02:32:13Z [control] --- fm-crew-state.sh t1 ---
+state: working · source: pane · harness busy (fm-spawn)
+02:32:13Z [control] --- fm-wake-drain (open decisions?) ---
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+02:32:25Z [control] watcher cycle 1 -> exit=0 reason=stale: lab:w1 (idle 2s, possible wedge, escalation 1)
+02:32:37Z [control] watcher cycle 2 -> exit=0 reason=stale: lab:w1 (idle 2s, possible wedge, escalation 2)
+02:32:50Z [control] watcher cycle 3 -> exit=0 reason=stale: lab:w1 (idle 3s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+02:33:03Z [control] watcher cycle 4 -> exit=0 reason=stale: lab:w1 (idle 2s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+02:33:15Z [control] watcher cycle 5 -> exit=0 reason=stale: lab:w1 (idle 2s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+02:33:21Z [control] --- watcher triage log (absorb/defer lines) ---
+02:33:21Z [control] RESULT arm=control fm-send-exit=0 wakes=5/5
