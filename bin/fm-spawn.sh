@@ -6842,7 +6842,7 @@ EOF
       if fm_busy_pi_stream_version_supported "$pi_stream_version"; then
         pi_stream_monitoring=true
       else
-        echo "warning: $HARNESS model-stream observation unavailable for version ${pi_stream_version:-unknown}; verified version: 1.2.0; existing busy bound remains active" >&2
+        echo "warning: $HARNESS model-stream observation unavailable for version ${pi_stream_version:-unknown}; verified versions: 1.2.0, 1.4.0; existing busy bound remains active" >&2
       fi
     fi
     cat >"$STATE/$ID.pi-ext.ts" <<EOF
@@ -6854,6 +6854,9 @@ EOF
 // continue automatically - auto-retries, auto-compaction retries, tool
 // loops, and queued continuations all keep the run un-settled, and a settle
 // that raced another extension's fresh run keeps state busy via isIdle().
+// Extension-triggered compaction can start after settlement: its before hook
+// restores busy; failure clears it only if idle. Successful compaction is NOT
+// settlement, because the caller may still resume the run.
 // "turn_end" fires at every inner turn boundary (one LLM response plus its
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
@@ -6944,6 +6947,13 @@ export default function (pi: any) {
       }
       checkedExclusions = true;
     }
+  });
+  pi.on("session_before_compact", async () => {
+    // Observe only: a result object would cancel or replace compaction.
+    await busyEvent("busy", "session-before-compact");
+  });
+  pi.on("session_compact_failed", async (_event: any, ctx: any) => {
+    if (ctx.isIdle()) await busyEvent("idle", "session-compact-failed");
   });
   pi.on("agent_settled", async (_event: any, ctx: any) => {
     if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
