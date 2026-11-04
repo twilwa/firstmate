@@ -1,0 +1,5 @@
+ADVERSARIAL busy record 2.6s after session_compact, resumed run still in flight: v1 gen=g1793755985.1402704.26415 seq=5 state=busy source=pi-ext event=agent-start ts=1793755992
+ok - real Pi 1.4.0 success: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 69ms
+ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories
+ok - real Pi 1.4.0 post-settlement compaction, continuation, idle success, error and abort with isolated configuration
+exit=0

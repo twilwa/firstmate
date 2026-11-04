@@ -1,0 +1,13 @@
+FM_TEST_BEGIN 2026-11-04T01:31:31Z tests/fm-pi-compaction-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+ok - real Pi 1.4.0 success: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 56ms
+ok - real Pi 1.4.0 manual-idle: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 47ms; compaction-to-idle 2046ms
+ok - real Pi 1.4.0 error: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 50ms
+ok - real Pi 1.4.0 abort: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 46ms
+ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories
+ok - real Pi 1.4.0 post-settlement compaction, continuation, idle success, error and abort with isolated configuration
+FM_TEST_END 2026-11-04T01:31:57Z tests/fm-pi-compaction-live-e2e.test.sh exit=0 duration_ms=25706 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=25851
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=25706 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-pi-compaction-live-e2e.test.sh duration_ms=25706
+FM_TEST_LISTENERS found=0
+exit=0

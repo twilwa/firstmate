@@ -1,0 +1,36 @@
+diff --git a/tests/fm-pi-compaction-live.mjs b/tests/fm-pi-compaction-live.mjs
+index a38c286..611d31e 100644
+--- a/tests/fm-pi-compaction-live.mjs
++++ b/tests/fm-pi-compaction-live.mjs
+@@ -113,6 +113,7 @@ export default function (pi) {
+       // Two foreground requests (tool then completion); the third is the real
+       // compaction summarizer. Hold its HTTP response until the parent checks.
+       if (calls === 3) { held = res; return; }
++      if (calls === 4) { await delay(4500); }
+       res.writeHead(200, { "content-type": "text/event-stream" });
+       if (calls === 1) {
+         chunk(res, { role: "assistant", reasoning_content: "checking" });
+@@ -183,6 +184,14 @@ export default function (pi) {
+     else if (mode === "error") { held.writeHead(400, { "content-type": "application/json" }); held.end('{"error":{"message":"fixture compaction failure"}}'); }
+     else { held.writeHead(200, { "content-type": "text/event-stream" }); chunk(held, { role: "assistant", content: "## Summary\nHarmless probe completed; resume the task." }); finish(held); }
+     if (mode === "success") {
++      await until(() => seen("session_compact").length, "successful compaction");
++      const doneAt = seen("session_compact")[0].at;
++      await until(() => seen("agent_start").length === 2, "resumed agent start");
++      while (Date.now() < doneAt + 2600) await delay(20);
++      assert.equal(seen("agent_settled").length, 1, "resumed run settled before the recheck window (variant invalid)");
++      const mid = busy();
++      console.log("ADVERSARIAL busy record 2.6s after session_compact, resumed run still in flight: " + mid.trim());
++      assert.match(mid, /state=busy source=pi-ext/, "2s recheck cleared busy during an in-flight resumed run");
+       await until(() => seen("agent_settled").length === 2, "resumed agent settlement");
+       assert.match(seen("session_compact")[0].busy, /state=busy source=pi-ext/, "success prematurely published idle");
+       assert.match(seen("compact_callback")[0].busy, /state=busy source=pi-ext/, "caller resumed from idle");
+@@ -221,7 +230,7 @@ export default function (pi) {
+   }
+ }
+ try {
+-  for (const mode of ["success", "manual-idle", "error", "abort"]) await run(mode);
++  for (const mode of ["success"]) await run(mode);
+ } finally {
+   assert.deepEqual(realConfiguration(), original, "real ~/.pi/agent configuration/auth/extensions changed");
+   console.log("ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories");

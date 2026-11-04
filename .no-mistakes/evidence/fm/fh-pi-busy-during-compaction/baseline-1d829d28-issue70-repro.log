@@ -1,0 +1,19 @@
+ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: compaction inherited settled idle
+    at run (file:///tmp/fm-nm-adv.SNWafh/base/tests/fm-pi-compaction-live.mjs:161:12)
+    at async file:///tmp/fm-nm-adv.SNWafh/base/tests/fm-pi-compaction-live.mjs:224:68 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'v1 gen=g1793755961.1379464.24031 seq=3 state=idle source=pi-ext event=agent-settled ts=1793755966\n',
+  expected: /state=busy source=pi-ext/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v24.22.2
+not ok - real Pi compaction guard failed
+exit=1
