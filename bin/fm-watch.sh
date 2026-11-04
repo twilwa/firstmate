@@ -1335,9 +1335,9 @@ _wedge_cap_markers_clear() {
 
 # End ordinary wedge bookkeeping. A standing cap survives these resets until
 # wedge_cap_progress_check observes a structural event. keep-count=1 retains
-# main's first-sight escalation counter in both capped and uncapped settings;
+# the first-sight escalation counter whether or not the cap is enabled;
 # those rounds must still reach the inspection threshold and cap. Other
-# uncapped resets retain main's count-reset behavior.
+# resets drop the count.
 # keep-cap=1 is the cap-fire route: its timer ends but the just-written markers
 # survive. Non-zero reports a failed reset to callers that undo an absorb.
 # structural=1 is reserved for validated native-stream episode changes.
@@ -1415,7 +1415,7 @@ wedge_cap_progress_check() {  # <window-key> <task>
 
 wedge_cap_eligible() {  # <task>
   [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] || return 1
-  # A supervisor-owned blocker must keep main's escalation/deferral behavior,
+  # A supervisor-owned blocker must keep the uncapped escalation/deferral behavior,
   # including reserved keys that status_worker_wait_verb deliberately excludes.
   case "$(status_line_verb "$(last_status_line "$STATE/$1.status")")" in
     blocked|needs-decision) return 1 ;;
@@ -1879,7 +1879,7 @@ wedge_defer_validating() {  # <window> <since-file> <triage-label> <idle-age> <t
 # agent here to BE wedged? A wedge is something stuck that might recover, so
 # re-alarming it earns its cost; an agent that is gone never moves again, its pane
 # never churns, the idle timer never resets, and the escalate path below clears its
-# own timer and re-arms; FM_WEDGE_MAX_ESCALATIONS now bounds that ladder by default.
+# own timer and re-arms; FM_WEDGE_MAX_ESCALATIONS bounds that ladder by default.
 # docs/architecture.md owns that contract and why only these two verdicts license
 # it; what the code needs stated here is the rest.
 #
@@ -2202,7 +2202,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
       fm_epoch_seconds_to age
       age=$(( age - since ))
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
-        # A fired cap survives pane/footer changes. Main's declared waits and
+        # A fired cap survives pane/footer changes. Declared waits and
         # supervisor-owned decisions defer first. Otherwise the capped window
         # still probes for a dead record once per STALE_ESCALATE_SECS; the
         # once-only death marker and timer re-arm bound both reports and reads.
