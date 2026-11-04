@@ -1415,12 +1415,9 @@ wedge_cap_progress_check() {  # <window-key> <task>
 
 wedge_cap_eligible() {  # <task>
   [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] || return 1
-  # A supervisor-owned blocker must keep the uncapped escalation/deferral behavior,
-  # including reserved keys that status_worker_wait_verb deliberately excludes.
-  case "$(status_line_verb "$(last_status_line "$STATE/$1.status")")" in
-    blocked|needs-decision) return 1 ;;
-  esac
-  return 0
+  # Open blockers keep the uncapped escalation/deferral behavior even after
+  # unrelated events, including supervisor-owned keys excluded by worker waits.
+  [ -z "$(status_open_decisions "$STATE/$1.status")" ]
 }
 
 # _wedge_cap_terminal_append: publish one terminal PERMANENTLY-WEDGED row per
@@ -2131,7 +2128,7 @@ wedge_write_escalation_count() {  # <window> <window-key> <escalation-file> <sin
 # that wake and its count instead of surfacing an obsolete observation.
 wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash> [dialog-name] [stream snapshot]
   local win=$1 since_file=$2 label=$3 escalation_file=$4 task=$5 hash=$6 dialog=${7-} since age n prev reason evidence guard guard_note
-  local stream_snapshot=${8:-} stream_ts stream_detail='' append_status
+  local stream_snapshot=${8:-} stream_ts stream_detail='' append_status capped=0
   local _wkey _wrollback_sentinel _wrb_ts _wrb_cap_reason _wrb_cap_status _wrb_rm_status
   local _wrb_since _wrb_now _wrb_age _wrb_cap_ts _wrb_gate
   _wkey=$(window_key "$win")
@@ -2202,18 +2199,22 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
       fm_epoch_seconds_to age
       age=$(( age - since ))
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
-        # A fired cap survives pane/footer changes. Declared waits and
-        # supervisor-owned decisions defer first. Otherwise the capped window
-        # still probes for a dead record once per STALE_ESCALATE_SECS; the
-        # once-only death marker and timer re-arm bound both reports and reads.
-        # Explicit 0 ignores cap markers left by an earlier enabled run.
+        # A fired cap survives pane/footer changes, but must probe for death
+        # before any wait can defer it. Live capped lanes retain wait rechecks
+        # and re-arm the timer so probes remain cadence-bound. Explicit 0
+        # ignores cap markers left by an earlier enabled run.
+        if wedge_cap_eligible "$task" && _wedge_cap_marker_stands "$_wkey"; then
+          capped=1
+          if wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task"; then
+            return 0
+          fi
+        fi
         if evidence=$(wedge_wait_evidence "$task") &&
            wedge_defer_wait "$win" "$since_file" "$label" "$age" "$evidence"; then
           return 0
         fi
-        if wedge_cap_eligible "$task" && _wedge_cap_marker_stands "$_wkey"; then
-          wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task" \
-            || { fm_epoch_seconds_to _wrb_now; printf '%s\n' "$_wrb_now" > "$since_file"; }
+        if [ "$capped" -eq 1 ]; then
+          fm_epoch_seconds_to _wrb_now; printf '%s\n' "$_wrb_now" > "$since_file"
           return 0
         fi
         if crew_worktree_written_since "$task" "$STATE" "$since_file"; then

@@ -1374,6 +1374,58 @@ test_wedge_cap_reports_gone_endpoint_while_capped() {
   pass "a capped window still reports its gone endpoint exactly once across repeated polls"
 }
 
+# Backlog waits on capped lanes must not take precedence over death reporting.
+test_wedge_cap_reports_gone_endpoint_while_capped_and_held() {
+  local dir state task window key gone round
+  if ! type -P tasks-axi >/dev/null; then
+    echo 'skip: tasks-axi not found (capped backlog-held endpoint)'
+    return 0
+  fi
+  task=wedge-cap-held-gone-endpoint
+  dir=$(make_case "$task"); state="$dir/state"
+  window="test:fm-$task"; key="test_fm-$task"
+  printf 'idle wedged content' > "$dir/pane.txt"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/$task.meta"
+  printf 'working: still wedged\n' > "$state/$task.status"
+  mark_status_seen "$state" "$state/$task.status"
+  hash_text 'idle wedged content' > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  prime_and_ack "$dir" 1
+  poll_wedge_round "$dir" 1 'FM_FAKE_TMUX_CURRENT_COMMAND=grok'
+  grep -F PERMANENTLY-WEDGED "$dir/watch.out" >/dev/null \
+    || fail "the cap did not fire before the hold: $(cat "$dir/watch.out")"
+
+  # A backlog-only hold must not disguise agent death behind wait deferral.
+  # Use the public hold command without changing the worker's authored status.
+  mkdir -p "$dir/data" "$dir/config"
+  fm_test_tasks_toml "$dir/.tasks.toml"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$dir/data/backlog.md"
+  (cd "$dir" && tasks-axi add "$task" 'waiting for a decision' --file data/backlog.md) >/dev/null 2>&1 \
+    || fail 'could not add the held endpoint fixture task'
+  FM_HOME="$dir" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$dir/data" \
+    FM_CONFIG_OVERRIDE="$dir/config" "$ROOT/bin/fm-captain-hold.sh" hold "$task" \
+    --reason 'awaiting a decision' >/dev/null 2>&1 \
+    || fail 'could not hold the capped endpoint fixture task'
+
+  gone='FM_FAKE_TMUX_CURRENT_COMMAND=bash FM_FAKE_TMUX_WINDOWS=someone-elses-window'
+  FM_HOME="$dir" FM_DATA_OVERRIDE="$dir/data" FM_CONFIG_OVERRIDE="$dir/config" \
+    poll_capped_wedge_round "$dir" 1 "$gone" exit \
+    || fail "the capped held lane never reported its gone endpoint: $(cat "$dir/watch.out")"
+  grep -F 'agent missing' "$dir/watch.out" >/dev/null \
+    || fail "the hold hid the capped lane's gone endpoint: $(cat "$dir/watch.out")"
+  for round in 1 2; do
+    FM_HOME="$dir" FM_DATA_OVERRIDE="$dir/data" FM_CONFIG_OVERRIDE="$dir/config" \
+      poll_capped_wedge_round "$dir" 1 "$gone" absorb \
+      || fail "capped held poll $round surfaced another wake: $(cat "$dir/watch.out")"
+    grep -E 'agent missing|PERMANENTLY-WEDGED|possible wedge' "$dir/watch.out" >/dev/null \
+      && fail "capped held poll $round repeated a death or wedge alert: $(cat "$dir/watch.out")"
+  done
+  [ "$(queued_wakes_carrying "$state" "$window" 'agent missing')" -eq 1 ] \
+    || fail 'a capped held lane must report its gone endpoint exactly once'
+  unset FM_FAKE_CREW_STATE
+  pass 'a backlog hold never hides a capped lane dying, and its death is reported exactly once'
+}
+
 # 13. The duplicate suppression for the terminal wake is episode-scoped, not
 # window-scoped. The cap markers are released on every legitimate episode-ending
 # reset, so a terminal wake left queued and UNACKNOWLEDGED by an earlier episode
@@ -2006,6 +2058,34 @@ test_wedge_cap_releases_on_structural_events() {
   pass 'busy sequence, inbox acknowledgement, turn event and native progress release the cap'
 }
 
+test_wedge_cap_open_blocker_survives_unrelated_note() {
+  local variant dir state task key line n
+  for variant in worker supervisor; do
+    task="wedge-cap-open-blocker-$variant"
+    dir=$(make_case "$task"); state="$dir/state"; key="test_fm-$task"
+    case "$variant" in
+      worker) line='blocked [key=staging-access]: need staging access' ;;
+      supervisor) line='blocked [key=remote-reply-continuity-mate1]: the remote reply mirror stopped' ;;
+    esac
+    printf 'unresolved access blocker' > "$dir/pane.txt"
+    printf 'window=test:fm-%s\nkind=ship\n' "$task" > "$state/$task.meta"
+    printf '%s\n' "$line" 'note: checking unrelated logs' > "$state/$task.status"
+    mark_status_seen "$state" "$state/$task.status"
+    hash_text 'unresolved access blocker' > "$state/.hash-$key"
+    printf '1\n' > "$state/.count-$key"
+    prime_and_ack "$dir" 3
+    for n in 1 2 3 4; do
+      poll_wedge_round "$dir" 3 ''
+      grep -F "possible wedge, escalation $n" "$dir/watch.out" >/dev/null \
+        || fail "$variant open blocker lost escalation $n after an unrelated note: $(cat "$dir/watch.out")"
+      grep -F PERMANENTLY-WEDGED "$dir/watch.out" >/dev/null \
+        && fail "$variant open blocker was capped after an unrelated note"
+    done
+  done
+  unset FM_FAKE_CREW_STATE
+  pass 'an unrelated note never hides an open worker or supervisor blocker from the escalation ladder'
+}
+
 test_wedge_cap_preserves_blocker_escalations() {
   local variant dir state task key line n
   for variant in worker supervisor; do
@@ -2040,6 +2120,7 @@ if [ -n "${FM_TEST_ONLY:-}" ]; then
 fi
 
 fm_test_run \
+  test_wedge_cap_open_blocker_survives_unrelated_note \
   test_wedge_cap_releases_on_structural_events \
   test_wedge_cap_preserves_blocker_escalations \
   test_wedge_cap_footer_ticks_are_not_recovery \
@@ -2060,6 +2141,7 @@ fm_test_run \
   test_wedge_cap_publishes_one_terminal_wake_under_persistent_marker_failure \
   test_wedge_cap_releases_after_declared_wait \
   test_wedge_cap_reports_gone_endpoint_while_capped \
+  test_wedge_cap_reports_gone_endpoint_while_capped_and_held \
   test_wedge_cap_new_episode_publishes_its_own_terminal_wake \
   test_wedge_cap_probe_keeps_its_cadence_while_capped \
   test_wedge_cap_unwritable_terminal_marker_does_not_flood \
