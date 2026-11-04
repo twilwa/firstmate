@@ -1855,7 +1855,8 @@ Set it high when a wrong pick is costly and low when the rule is a safe runner-u
 
 - A rule `floor` names the quota-axi `provider` and `scope` whose `effectivePercentRemaining` must be at least `min_percent` for the rule's profiles to apply.
 - A provider-only rule floor on an expanded provider binds to its `default` account row.
-- An absent or unknown row or unmeasured provider makes the floor unverifiable and escalates without authorizing default routing.
+- A floor provider absent from the quota-axi snapshot's provider set is a configuration error, as described under "Provider identifiers and mappings" below.
+- An absent or unknown row on a present provider, or an unmeasured provider, makes the floor unverifiable and escalates without authorizing default routing.
 - A known percentage below the floor makes the tool resolve among `default` profiles instead.
 
 **Provider identifiers and mappings**
@@ -1863,7 +1864,8 @@ Set it high when a wrong pick is costly and low when the rule is a safe runner-u
 A profile `provider` optionally names the quota-axi provider family whose rows apply to that profile; when present, profile and rule-floor provider IDs must match the strict whole-string pattern `^[a-z0-9]+(-[a-z0-9]+)*\z`.
 Use the provider ID published by `quota-axi --json`, not a harness's model prefix: for example, `provider: "codex"` for Pi's `openai-codex/...` models.
 Aliases such as `openai-codex` are not normalized.
-Outside shared-quota mode, a matched or fallback profile whose declared or mapped provider ID is absent from the snapshot's provider set produces a configuration error naming that profile and ID, rather than leaving it unranked.
+Outside shared-quota mode, a provider ID absent from the snapshot's provider set produces a configuration error naming where it was declared and the ID.
+This covers a matched or fallback profile's declared or mapped provider, which would otherwise be left unranked; the selected rule's floor provider, which would otherwise escalate as unverifiable; and `preferred_provider`, which would otherwise be silently ignored.
 A provider that is present but unmeasured (or lacks the candidate's account row) remains eligible with disclosed uncertainty.
 Bootstrap's resolver-only validation gate is described under "Validation and diagnostics" below.
 
@@ -1900,7 +1902,7 @@ This single-provider table is separate from the frozen legacy mapping used by `f
   For T3 Code, follow the [catalog validation contract](t3code-backend.md#provider-instances-and-models).
 - Bootstrap reports unsupported harness/model/effort combinations as a `CREW_DISPATCH` diagnostic when they are visible in the file.
 
-See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a starting point to copy into local `config/crew-dispatch.json`; its Pi default declares the `claude` provider required for typed resolution of that Anthropic model.
+See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a starting point to copy into local `config/crew-dispatch.json`; its Pi defaults declare the providers typed resolution requires: `codex`, the published quota-axi ID for the `openai-codex/...` model, and `claude` for the Anthropic model.
 
 **Validation and diagnostics**
 
@@ -2025,7 +2027,7 @@ No qualifying option, or two equally probable qualifying options, produces `ambi
 | `clear` | A `profile:` line ready for `fm-spawn.sh`. |
 | `ambiguous` | Confidence below the floor with no runner-up taken. |
 | `escalate` | An approval-gated rule, unverifiable rule floor, nothing rankable, or a genuine tie. |
-| `error` | API, network, malformed response metadata, rendering, quota-axi failure, or a declared credential source that cannot supply its key. |
+| `error` | API, network, malformed response metadata, rendering, quota-axi failure, a provider ID absent from the quota-axi snapshot, or a declared credential source that cannot supply its key. |
 
 Every result above exits 0.
 

@@ -20,7 +20,7 @@
     }
   ],
   "default": [
-    { "harness": "codex", "model": "gpt-5.5", "effort": "medium", "provider": "codex" },
+    { "harness": "pi", "model": "openai-codex/gpt-5.5", "effort": "medium", "provider": "codex" },
     { "harness": "pi", "model": "anthropic/claude-opus-5-5", "effort": "medium", "provider": "claude" }
   ]
 }

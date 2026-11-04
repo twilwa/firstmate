@@ -418,6 +418,28 @@ reset_log
   assert_contains "$out" 'profile pi:openai-codex/gpt-5.6-sol: provider openai-codex is absent from the quota-axi snapshot; use a published quota-axi provider ID' 'error identifies the profile and ID'
   assert_not_contains "$out" '  profile:' 'wrong ID cannot silently select another profile'
 ) || fail 'unknown provider ID regression'
+(
+  jq '.rules[0].floor.provider = "openai-codex"' "$BASE_RULES" > "$RULES"
+  write_response "$RESPONSE" rule_1 0.97
+  reset_log
+  TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+  expect_code 0 "$code" 'unsupported rule floor provider ID returns a typed error'
+  assert_contains "$out" '  status: error' 'wrong floor ID is not an unverifiable floor'
+  assert_contains "$out" 'rule rule_1 floor: provider openai-codex is absent from the quota-axi snapshot; use a published quota-axi provider ID' 'error identifies the rule floor and ID'
+  assert_not_contains "$out" 'unverifiable' 'wrong floor ID is not reported as missing quota evidence'
+  assert_not_contains "$out" '  profile:' 'wrong floor ID cannot authorize a profile'
+) || fail 'unknown rule floor provider ID regression'
+(
+  jq '.preferred_provider = "openai-codex"' "$BASE_RULES" > "$RULES"
+  write_response "$RESPONSE" rule_4 0.9
+  reset_log
+  TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+  expect_code 0 "$code" 'unsupported preferred_provider ID returns a typed error'
+  assert_contains "$out" '  status: error' 'wrong preference ID is not silently ignored'
+  assert_contains "$out" 'preferred_provider: provider openai-codex is absent from the quota-axi snapshot; use a published quota-axi provider ID' 'error identifies the preference and ID'
+  assert_not_contains "$out" 'not in matched profiles' 'wrong preference ID is not treated as an unmatched family'
+  assert_not_contains "$out" '  profile:' 'wrong preference ID cannot silently select a profile'
+) || fail 'unknown preferred_provider ID regression'
 for harness in pi codex; do
   (
     jq --arg harness "$harness" '.rules[3].use = [
@@ -1445,6 +1467,7 @@ reset_log
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" '  status: clear' "the documented example passes opted-in resolution"
 assert_contains "$out" 'candidate: pi:anthropic/claude-opus-5-5  provider=claude' "the documented Pi default uses its declared Claude provider"
+assert_contains "$out" 'candidate: pi:openai-codex/gpt-5.5  provider=codex  scope=all_models' "the documented Pi OpenAI default ranks against the published codex ID"
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 cp "$BASE_RULES" "$RULES"
 pass "no-rule fallback, Agy, Gemini, and documented configurations resolve"
