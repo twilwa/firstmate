@@ -1,0 +1,91 @@
+2026-11-04T07:01:20Z wedge-cap live run starting
+2026-11-04T07:01:20Z cap=FM_WEDGE_MAX_ESCALATIONS= horizon=FM_CAP_HORIZON_SECS=1s stale=FM_STALE_ESCALATE_SECS=2s
+2026-11-04T07:01:20Z tmux tmux 3.4, watcher 01M6JKRQ3GDMX3VWH8Y2P2HVK9/bin/fm-watch.sh at 901db563
+2026-11-04T07:01:20Z lab home: /tmp/fm-watch-wedge-cap-live.GOCCsK/lab-home
+2026-11-04T07:01:20Z lab tmux server up on /tmp/fml.v3jDur/tmux-1001/default with window wedged-lab:wedged
+2026-11-04T07:01:20Z wedged worker recorded as wedged-worker (key=wedged-lab_wedged); its pane holds a live process that has made no progress
+2026-11-04T07:01:20Z part 0: UNCEILED baseline with explicit FM_WEDGE_MAX_ESCALATIONS=0
+2026-11-04T07:01:24Z unceiled escalation 1 -> exit=0 woke=1 reason=signal: /tmp/fm-watch-wedge-cap-live.GOCCsK/lab-home/state/wedged-worker.status
+2026-11-04T07:01:28Z pane-hash markers the watcher wrote under a key other than wedged-lab_wedged: 0
+2026-11-04T07:01:34Z unceiled escalation 2 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+2026-11-04T07:01:43Z unceiled escalation 3 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+2026-11-04T07:01:52Z unceiled escalation 4 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+2026-11-04T07:02:01Z unceiled escalation 5 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+2026-11-04T07:02:04Z UNCEILED: 5 consecutive wakes from one wedged pane with its cap explicitly disabled
+2026-11-04T07:02:04Z part 1: the SAME workload with FM_WEDGE_MAX_ESCALATIONS UNSET (default cap)
+2026-11-04T07:02:10Z ceiled cycle 1 (first sight: absorbed) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+2026-11-04T07:02:20Z ceiled cycle 2 (escalation 1) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+2026-11-04T07:02:29Z ceiled cycle 3 (escalation 2) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+2026-11-04T07:02:59Z ceiled cycle 4 (escalation : cap threshold) -> exit=alive woke=0 reason=none
+2026-11-04T07:03:02Z ceiled cycles that printed PERMANENTLY-WEDGED: 1 (cap bound is )
+2026-11-04T07:03:02Z cap markers on disk: 1
+2026-11-04T07:03:02Z part 1b: the cap must silence the still-wedged pane
+2026-11-04T07:03:29Z silence probe 1 -> exit=alive woke=0 reason=none
+2026-11-04T07:03:59Z silence probe 2 -> exit=alive woke=0 reason=none
+2026-11-04T07:04:02Z ceiled: 2 further polls produced no wake over 60s, beyond the ignored legacy 1s horizon
+2026-11-04T07:04:02Z COMPARISON: same pane, same watcher, same thresholds - 5 wakes with the cap disabled versus 2 silent polls capped at , with one terminal PERMANENTLY-WEDGED wake
+2026-11-04T07:04:02Z ambient FM_WEDGE_MAX_ESCALATIONS=<unset>; lab config files: 
+2026-11-04T07:04:02Z part D1: repaint the capped pane's footer (no dialog, no structural event)
+2026-11-04T07:04:03Z pane now: claude> working (elapsed 00:00:09)|
+2026-11-04T07:04:30Z footer-repaint probe -> exit=alive woke=0 reason=none
+2026-11-04T07:04:32Z footer repaint: no wake, cap marker still stands
+2026-11-04T07:04:32Z part D2: the capped pane opens the Claude background-task exit picker
+2026-11-04T07:04:33Z pane now: Background work is running|❯ 1. Exit and stop tasks|The following will stop when you exit:|shell · sleep 300|  2. Move to background and exit|  3. Stay|Enter to confirm · Esc to cancel|
+2026-11-04T07:04:40Z new-dialog probe -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 1, blocked-on-prompt: Claude background-task exit picker)
+2026-11-04T07:04:43Z triage log release line: [2026-11-04T08:04:36+0100] wedge cap released: wedged-lab:wedged shows a new blocking prompt (Claude background-task exit picker)
+2026-11-04T07:04:49Z dialog follow-up probe (informational) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 2, blocked-on-prompt: Claude background-task exit picker)
+2026-11-04T07:04:52Z cap marker after dialog: absent
+2026-11-04T07:04:52Z SUMMARY: explicit 0 -> 5 wakes; default (unset) -> PERMANENTLY-WEDGED at escalation 3, 2 silent polls, footer repaint silent, new blocking prompt woke once naming it
+ok - default cap of three engages live; footer repaint stays capped; a new blocking prompt releases
+2026-11-04T07:04:52Z ----- transcript begin -----
+2026-11-04T07:01:20Z wedge-cap live run starting
+2026-11-04T07:01:20Z cap=FM_WEDGE_MAX_ESCALATIONS= horizon=FM_CAP_HORIZON_SECS=1s stale=FM_STALE_ESCALATE_SECS=2s
+2026-11-04T07:01:20Z tmux tmux 3.4, watcher 01M6JKRQ3GDMX3VWH8Y2P2HVK9/bin/fm-watch.sh at 901db563
+2026-11-04T07:01:20Z lab home: /tmp/fm-watch-wedge-cap-live.GOCCsK/lab-home
+2026-11-04T07:01:20Z lab tmux server up on /tmp/fml.v3jDur/tmux-1001/default with window wedged-lab:wedged
+2026-11-04T07:01:20Z wedged worker recorded as wedged-worker (key=wedged-lab_wedged); its pane holds a live process that has made no progress
+2026-11-04T07:01:20Z part 0: UNCEILED baseline with explicit FM_WEDGE_MAX_ESCALATIONS=0
+2026-11-04T07:01:24Z unceiled escalation 1 -> exit=0 woke=1 reason=signal: /tmp/fm-watch-wedge-cap-live.GOCCsK/lab-home/state/wedged-worker.status
+signal: /tmp/fm-watch-wedge-cap-live.GOCCsK/lab-home/state/wedged-worker.status
+2026-11-04T07:01:28Z pane-hash markers the watcher wrote under a key other than wedged-lab_wedged: 0
+2026-11-04T07:01:34Z unceiled escalation 2 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+2026-11-04T07:01:43Z unceiled escalation 3 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+2026-11-04T07:01:52Z unceiled escalation 4 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+2026-11-04T07:02:01Z unceiled escalation 5 -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+2026-11-04T07:02:04Z UNCEILED: 5 consecutive wakes from one wedged pane with its cap explicitly disabled
+2026-11-04T07:02:04Z part 1: the SAME workload with FM_WEDGE_MAX_ESCALATIONS UNSET (default cap)
+2026-11-04T07:02:10Z ceiled cycle 1 (first sight: absorbed) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 1)
+2026-11-04T07:02:20Z ceiled cycle 2 (escalation 1) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+stale: wedged-lab:wedged (idle 3s, possible wedge, escalation 2)
+2026-11-04T07:02:29Z ceiled cycle 3 (escalation 2) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+2026-11-04T07:02:59Z ceiled cycle 4 (escalation : cap threshold) -> exit=alive woke=0 reason=none
+2026-11-04T07:03:02Z ceiled cycles that printed PERMANENTLY-WEDGED: 1 (cap bound is )
+2026-11-04T07:03:02Z cap markers on disk: 1
+2026-11-04T07:03:02Z part 1b: the cap must silence the still-wedged pane
+2026-11-04T07:03:29Z silence probe 1 -> exit=alive woke=0 reason=none
+2026-11-04T07:03:59Z silence probe 2 -> exit=alive woke=0 reason=none
+2026-11-04T07:04:02Z ceiled: 2 further polls produced no wake over 60s, beyond the ignored legacy 1s horizon
+2026-11-04T07:04:02Z COMPARISON: same pane, same watcher, same thresholds - 5 wakes with the cap disabled versus 2 silent polls capped at , with one terminal PERMANENTLY-WEDGED wake
+2026-11-04T07:04:02Z ambient FM_WEDGE_MAX_ESCALATIONS=<unset>; lab config files: 
+2026-11-04T07:04:02Z part D1: repaint the capped pane's footer (no dialog, no structural event)
+2026-11-04T07:04:03Z pane now: claude> working (elapsed 00:00:09)|
+2026-11-04T07:04:30Z footer-repaint probe -> exit=alive woke=0 reason=none
+2026-11-04T07:04:32Z footer repaint: no wake, cap marker still stands
+2026-11-04T07:04:32Z part D2: the capped pane opens the Claude background-task exit picker
+2026-11-04T07:04:33Z pane now: Background work is running|❯ 1. Exit and stop tasks|The following will stop when you exit:|shell · sleep 300|  2. Move to background and exit|  3. Stay|Enter to confirm · Esc to cancel|
+2026-11-04T07:04:40Z new-dialog probe -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 1, blocked-on-prompt: Claude background-task exit picker)
+stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 1, blocked-on-prompt: Claude background-task exit picker)
+2026-11-04T07:04:43Z triage log release line: [2026-11-04T08:04:36+0100] wedge cap released: wedged-lab:wedged shows a new blocking prompt (Claude background-task exit picker)
+2026-11-04T07:04:49Z dialog follow-up probe (informational) -> exit=0 woke=1 reason=stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 2, blocked-on-prompt: Claude background-task exit picker)
+stale: wedged-lab:wedged (idle 2s, possible wedge, escalation 2, blocked-on-prompt: Claude background-task exit picker)
+2026-11-04T07:04:52Z cap marker after dialog: absent
+2026-11-04T07:04:52Z SUMMARY: explicit 0 -> 5 wakes; default (unset) -> PERMANENTLY-WEDGED at escalation 3, 2 silent polls, footer repaint silent, new blocking prompt woke once naming it
+2026-11-04T07:04:52Z ----- transcript begin -----
+2026-11-04T07:04:52Z ----- transcript end -----
+exit=0

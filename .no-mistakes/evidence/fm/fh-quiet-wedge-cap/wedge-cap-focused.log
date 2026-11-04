@@ -1,0 +1,10 @@
+1..7
+ok - the default cap delivers three alerts, with PERMANENTLY-WEDGED on the third
+ok - footer ticks and elapsed time alone never release a fired cap
+ok - busy sequence, inbox acknowledgement, turn event and native progress release the cap
+ok - worker and supervisor-owned blockers retain main escalation behavior beyond the default cap
+ok - operator rm of the cap marker lifts the cap and the next wedge re-accumulates from 1
+ok - a capped window still reports its gone endpoint exactly once across repeated polls
+ok - a blocking prompt that appears on a capped lane escalates exactly once
+FM_TEST_COMPLETE
+exit=0

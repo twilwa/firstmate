@@ -1,0 +1,5 @@
+1..2
+ok - consecutive wedge escalations on the same pane accumulate and demand deep inspection at the threshold
+ok - repeated busy turn-age escalations reuse the existing escalation counter and demand deep inspection at the threshold
+FM_TEST_COMPLETE
+exit=0
