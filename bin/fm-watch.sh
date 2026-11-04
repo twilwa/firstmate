@@ -1373,7 +1373,7 @@ _wedge_cap_markers_clear() {
 # upstream dropped the wedge timer (or re-armed it) and left the count
 # standing, so a pane that surfaced there and wedged again resumed the ladder
 # where it had left off. The count is cap state, so at those sites it still
-# resets under a configured cap: an episode boundary includes the count
+# resets under an enabled cap: an episode boundary includes the count
 # restart, and that is what lets a re-wedged window escalate from 1 again past
 # a released marker. With the cap explicitly set to 0 the counter is left exactly
 # as the pre-cap watcher left it, so an opted-out home keeps the old ladder
@@ -2043,7 +2043,7 @@ wedge_defer_guard() {  # <window> <since-file> <triage-label> <idle-age> <guard-
 # wrapper's stderr rather than leaking past it. With the cap OFF there is no
 # ceiling to enforce, so the count stays a reporting aid and the failure is
 # logged alone: the next poll restarts this window's count at 1, which is the
-# schedule an unconfigured home has always had.
+# schedule the uncapped ladder has always had.
 # With the cap ON that same failure is fatal to the ceiling rather than to the
 # watcher: the count the cap would have stopped at was never recorded, so every
 # later poll reads 1 again and republishes an escalation - the unbounded train
@@ -2134,7 +2134,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
   # wedge-event instead of a wake-queue flood under persistent fs failure.
   # Read only where the cap is enabled: with FM_WEDGE_MAX_ESCALATIONS explicitly
   # set to 0 neither this sentinel nor the cap marker below is ever written, so
-  # a leftover from an earlier configured run must not keep silencing a window
+  # a leftover from an earlier capped run must not keep silencing a window
   # whose operator has turned the cap back off.
   _wrollback_sentinel="$STATE/.wedge-rollback-failed-$_wkey"
   if [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] && [ -e "$_wrollback_sentinel" ]; then
@@ -2209,8 +2209,8 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         # across the whole horizon instead of paying a backend read per poll.
         # Every deferral and the cap fire itself stay behind this check, so no
         # re-surface wake or duplicate terminal row can slip through the cap.
-        # The marker is read only where the cap is configured, so a leftover from
-        # an earlier configured run cannot silence a window once the cap is off.
+        # The marker is read only where the cap is enabled, so a leftover from
+        # an earlier capped run cannot silence a window once the cap is off.
         if [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] && _wedge_cap_marker_stands "$_wkey"; then
           wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task" \
             || { fm_epoch_seconds_to _wrb_now; printf '%s\n' "$_wrb_now" > "$since_file"; }
@@ -2965,7 +2965,7 @@ surface_nonterminal_stale() {  # <window> <hash> [dialog-name]
   fi
   printf '%s' "$h" > "$STATE/.stale-$key"
   # First-sight surface: the pre-cap watcher kept the escalation counter here,
-  # so the count resets only under a configured cap (keep-count contract).
+  # so the count resets only under an enabled cap (keep-count contract).
   wedge_episode_end "$key" 0 1
   clear_write_tracking "$key"
   if [ "$declared" -eq 0 ]; then
