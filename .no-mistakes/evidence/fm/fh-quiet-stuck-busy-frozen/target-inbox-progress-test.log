@@ -1,0 +1,9 @@
+1..6
+ok - advancing Pi progress prevents stuck-busy; two frozen rounds then escalate once
+ok - frozen Pi progress escalates at two rounds despite real pane churn
+ok - a frozen Pi worker receiving new steers every round escalates at two rounds exactly once
+ok - failed (including partial output) and empty captures still spend the existing busy budget despite progress
+ok - a failed capture between advancing observations counts once without erasing the progress baseline
+ok - non-Pi busy deferrals retain the original threshold despite progress and pane churn
+FM_TEST_COMPLETE
+exit=0

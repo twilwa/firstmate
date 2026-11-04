@@ -1,0 +1,32 @@
+1..3
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+~/.no-mistakes/evidence/01M6KCXFFWJ1JT3KT4HBF4G258/traced-driver-target.sh: line 214: /tmp/fm-watch-inbox-progress.19bNzV/advancing/state/.wake-queue: No such file or directory
+  poll busy-state=[001.msg 1 2577005af63443ce4d924e16b280ae90] wake-queue-lines=0
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+  poll busy-state=[001.msg 0 fa65dd5281a7d2cf8510e97e4b204f04] wake-queue-lines=0
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+  poll busy-state=[001.msg 0 069bf31603fac92674bd037089b1057c] wake-queue-lines=0
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+  poll busy-state=[001.msg 0 73e5cd0e594cd987d00a907822d36eb3] wake-queue-lines=0
+  poll busy-state=[001.msg 1 73e5cd0e594cd987d00a907822d36eb3] wake-queue-lines=0
+  poll busy-state=[001.msg 2 73e5cd0e594cd987d00a907822d36eb3] wake-queue-lines=1
+  poll busy-state=[001.msg 2 73e5cd0e594cd987d00a907822d36eb3] wake-queue-lines=1
+ok - advancing Pi progress prevents stuck-busy; two frozen rounds then escalate once
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+~/.no-mistakes/evidence/01M6KCXFFWJ1JT3KT4HBF4G258/traced-driver-target.sh: line 214: /tmp/fm-watch-inbox-progress.19bNzV/frozen/state/.wake-queue: No such file or directory
+  poll busy-state=[001.msg 1 1700cbe6097e7e994cfc2a12b25049be] wake-queue-lines=0
+  poll busy-state=[001.msg 2 1700cbe6097e7e994cfc2a12b25049be] wake-queue-lines=1
+ok - frozen Pi progress escalates at two rounds despite real pane churn
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+~/.no-mistakes/evidence/01M6KCXFFWJ1JT3KT4HBF4G258/traced-driver-target.sh: line 214: /tmp/fm-watch-inbox-progress.19bNzV/capture-between/state/.wake-queue: No such file or directory
+  poll busy-state=[001.msg 1 fcc23bd683b3fbc52d6f8d3eb2ec0174] wake-queue-lines=0
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+  poll busy-state=[001.msg 0 8adfd89997e4eadae892f3e95d9e0eb2] wake-queue-lines=0
+  poll (capture=missing) busy-state=[001.msg 1 8adfd89997e4eadae892f3e95d9e0eb2] wake-queue-lines=0
+  -> Pi progress hook fired (fm-busy-event.sh progress)
+  poll busy-state=[001.msg 0 988a652877e896a23a23f12d2b9bef60] wake-queue-lines=0
+  poll busy-state=[001.msg 1 988a652877e896a23a23f12d2b9bef60] wake-queue-lines=0
+  poll busy-state=[001.msg 2 988a652877e896a23a23f12d2b9bef60] wake-queue-lines=1
+ok - a failed capture between advancing observations counts once without erasing the progress baseline
+FM_TEST_COMPLETE
+exit=0
