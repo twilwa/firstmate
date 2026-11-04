@@ -394,6 +394,33 @@ done
 cp "$BASE_RULES" "$RULES"
 reset_log
 
+# --- provider IDs join quota-axi's published families ----------------------
+(
+  jq '.rules[3].use = [{harness:"muse", model:"default"}]' "$BASE_RULES" > "$RULES"
+  jq '.providers += [{provider:"muse", quotaSemantics:{status:"known", effectiveAvailability:[
+    {scope:"all_models", status:"known", effectivePercentRemaining:80,
+     runway:{status:"through_reset"}, selection:{spendPriority:0.7}}]}}]' "$QUOTA" > "$TMP_ROOT/muse-quota.json"
+  write_response "$RESPONSE" rule_4 0.9
+  reset_log
+  TYPESAFE_API_KEY=$KEY QUOTA_AXI_FIXTURE="$TMP_ROOT/muse-quota.json" run code out err "$BRIEF"
+  expect_code 0 "$code" 'Muse resolves against the published provider ID'
+  assert_contains "$out" '  status: clear' 'Muse quota ranks the candidate'
+  assert_contains "$out" "  profile: --harness 'muse' --model 'default'" 'Muse is selected'
+) || fail 'Muse provider ID regression'
+for harness in pi codex; do
+  (
+    jq --arg harness "$harness" '.rules[3].use = [
+      {harness:$harness, model:"openai-codex/gpt-5.6-sol", provider:"codex"}]' "$BASE_RULES" > "$RULES"
+    write_response "$RESPONSE" rule_4 0.9
+    reset_log
+    TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+    expect_code 0 "$code" 'published codex ID resolves'
+    assert_contains "$out" '  status: clear' 'codex ID ranks against codex quota'
+    assert_contains "$out" "  profile: --harness '$harness' --model 'openai-codex/gpt-5.6-sol'" 'model prefix does not override the provider ID'
+  ) || fail "$harness codex provider ID regression"
+done
+cp "$BASE_RULES" "$RULES"
+
 # --- absent key: off, silent on stdout, no network, no quota read -----------
 reset_log
 # The preferred-provider cases above resolved with keys and wrote receipts.
@@ -1407,6 +1434,7 @@ reset_log
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 assert_contains "$out" '  status: clear' "the documented example passes opted-in resolution"
 assert_contains "$out" 'candidate: pi:anthropic/claude-opus-5-5  provider=claude' "the documented Pi default uses its declared Claude provider"
+assert_contains "$out" 'candidate: pi:openai-codex/gpt-5.5  provider=codex  scope=all_models' "the documented Pi OpenAI default ranks against the published codex ID"
 assert_not_contains "$err" 'malformed rules file' "the documented example reaches resolution"
 cp "$BASE_RULES" "$RULES"
 pass "no-rule fallback, Agy, Gemini, and documented configurations resolve"
