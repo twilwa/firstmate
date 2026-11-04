@@ -611,14 +611,15 @@ clear_pause_tracking() {  # <window> <state>
   # releasing a window's wedge timer and escalation count releases them with it,
   # which is what bin/fm-watch.sh's wedge_episode_end does on the routes that
   # end an episode there. A marker missing from either list outlives a release
-  # the other already made, and a cap marker that does outlives its window for
-  # the whole horizon.
+  # the other already made, and a cap marker that does keeps its window silent
+  # until structural worker progress.
   rm -f "$state/.subsuper-paused-$key" "$state/.subsuper-pause-until-due-$key" "$state/.subsuper-stale-$key" \
     "$state/.subsuper-dialog-$key" \
     "$state/.subsuper-reported-stale-$key" \
     "$state/.paused-$watcher_key" "$state/.paused-rechecked-$watcher_key" "$state/.paused-resurfaced-$watcher_key" \
     "$state/.stale-$watcher_key" "$state/.stale-since-$watcher_key" "$state/.wedge-escalations-$watcher_key" \
     "$state/.wedge-permanent-$watcher_key" \
+    "$state/.wedge-progress-$watcher_key" \
     "$state/.wedge-terminal-queued-$watcher_key" \
     "$state/.wedge-rollback-failed-$watcher_key" \
     "$state/.writing-since-$watcher_key" "$state/.writing-resurfaced-$watcher_key" \
