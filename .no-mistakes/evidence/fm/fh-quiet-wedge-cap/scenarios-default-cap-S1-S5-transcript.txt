@@ -1,0 +1,84 @@
+08:50:41Z lab home /tmp/fm-default-cap-scen.NK68Gl/lab-home; FM_WEDGE_MAX_ESCALATIONS is UNSET
+08:50:41Z === S1: parked lane (working: waiting on CI push lease, no paused:), cap UNSET
+08:50:45Z [S1] cycle 1 woke=1 reason=signal: /tmp/fm-default-cap-scen.NK68Gl/lab-home/state/parked-worker.status
+08:50:55Z [S1] cycle 2 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 1)
+08:51:04Z [S1] cycle 3 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 2)
+08:51:13Z [S1] cycle 4 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+08:51:15Z S1 escalation numbers seen: 1 2 3; terminal wakes=1
+08:51:15Z CHECK PASS: S1 exactly one PERMANENTLY-WEDGED wake under the unset default
+08:51:15Z CHECK PASS: S1 terminal wake is escalation 3 (default ceiling)
+08:51:15Z CHECK PASS: S1 cap marker written
+08:51:16Z CHECK PASS: S1 first alert reached supervisor (escalation 1 wake published)
+08:51:43Z [S1 silence probe 1] cycle 5 woke=0 reason=none
+08:51:45Z CHECK PASS: S1 probe 1 silent while pane unchanged
+08:52:12Z [S1 silence probe 2] cycle 6 woke=0 reason=none
+08:52:15Z CHECK PASS: S1 probe 2 silent while pane unchanged
+08:52:42Z [S1 silence probe 3] cycle 7 woke=0 reason=none
+08:52:45Z CHECK PASS: S1 probe 3 silent while pane unchanged
+08:52:45Z === S2: repaint the pane footer while capped
+08:52:45Z pane tail now: footer repaint 1793782365537654784
+08:53:12Z [S2 repaint probe 1] cycle 8 woke=0 reason=none
+08:53:15Z CHECK PASS: S2 repaint 1 produced no wake
+08:53:16Z pane tail now: footer repaint 1793782395693274154
+08:53:43Z [S2 repaint probe 2] cycle 9 woke=0 reason=none
+08:53:45Z CHECK PASS: S2 repaint 2 produced no wake
+08:53:46Z pane tail now: footer repaint 1793782425715325982
+08:54:13Z [S2 repaint probe 3] cycle 10 woke=0 reason=none
+08:54:15Z CHECK PASS: S2 repaint 3 produced no wake
+08:54:15Z CHECK PASS: S2 cap marker still stands after repaints
+08:54:15Z === S3: Claude background-task exit picker appears on the capped pane
+  pane| Background work is running
+  pane| 
+  pane| ❯ 1. Exit and stop tasks
+  pane|   2. Keep tasks running
+  pane| 
+  pane| Enter to confirm · Esc to cancel
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+08:54:22Z [S3 post-dialog 1] cycle 11 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 1, blocked-on-prompt: Claude background-task exit picker)
+08:54:25Z CHECK PASS: S3 cap released by new blocking prompt
+08:54:25Z CHECK PASS: S3 a wake surfaced naming the prompt (blocked-on-prompt)
+08:54:25Z === S4: blocked: lane under the default cap
+08:54:30Z [S4 blocked 1] cycle 12 woke=1 reason=signal: /tmp/fm-default-cap-scen.NK68Gl/lab-home/state/parked-worker.status
+08:54:40Z [S4 blocked 2] cycle 13 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 1)
+08:54:49Z [S4 blocked 3] cycle 14 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 2)
+08:54:58Z [S4 blocked 4] cycle 15 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+08:55:07Z [S4 blocked 5] cycle 16 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+08:55:15Z [S4 blocked 6] cycle 17 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+08:55:25Z [S4 blocked 7] cycle 18 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 6, demand-deep-inspection: same pane has wedge-escalated 6 times in a row - do not re-absorb on the run-step/pane state alone)
+08:55:27Z S4 escalation numbers seen: 1 2 3 4 5 6; terminal wakes=0
+08:55:27Z CHECK PASS: S4 blocked lane never capped
+08:55:27Z CHECK PASS: S4 blocked lane escalated past 3 (uncapped)
+08:55:27Z CHECK PASS: S4 no cap marker on blocked lane
+08:55:27Z === S5: agent process exits while capped
+08:55:32Z [S5] cycle 19 woke=1 reason=signal: /tmp/fm-default-cap-scen.NK68Gl/lab-home/state/parked-worker.status
+08:55:41Z [S5] cycle 20 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 1)
+08:55:49Z [S5] cycle 21 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 2)
+08:55:58Z [S5] cycle 22 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+08:56:00Z CHECK PASS: S5 capped again before kill
+08:56:28Z [S5 capped silence] cycle 23 woke=0 reason=none
+08:56:30Z CHECK PASS: S5 capped and silent while agent alive
+08:56:31Z pane_dead=1 cmd=wedged-claude
+08:56:58Z [S5 after-death 1] cycle 24 woke=0 reason=none
+08:57:27Z [S5 after-death 2] cycle 25 woke=0 reason=none
+08:57:57Z [S5 after-death 3] cycle 26 woke=0 reason=none
+08:58:27Z [S5 after-death 4] cycle 27 woke=0 reason=none
+08:58:30Z CHECK FAIL: S5 dead agent reported exactly once while capped
+08:58:30Z SCENARIOS DONE fails=1
+exit=1

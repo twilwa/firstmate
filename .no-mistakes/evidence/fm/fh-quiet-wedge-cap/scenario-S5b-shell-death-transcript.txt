@@ -1,0 +1,19 @@
+08:59:25Z lab home /tmp/fm-default-cap-scen.7mNH1G/lab-home; FM_WEDGE_MAX_ESCALATIONS is UNSET
+08:59:26Z === S5b: shell-hosted agent exits back to its shell prompt while capped
+08:59:28Z agent pid 1449551; backend verdict before kill: ambiguous
+08:59:32Z [S5] cycle 1 woke=1 reason=signal: /tmp/fm-default-cap-scen.7mNH1G/lab-home/state/parked-worker.status
+08:59:42Z [S5] cycle 2 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 1)
+08:59:50Z [S5] cycle 3 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 2)
+08:59:59Z [S5] cycle 4 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+09:00:02Z CHECK PASS: S5 capped again before kill
+09:00:29Z [S5 capped silence] cycle 5 woke=0 reason=none
+09:00:32Z CHECK PASS: S5 capped and silent while agent alive
+09:00:33Z backend verdict after kill: dead
+09:00:33Z pane_dead=0 cmd=bash
+09:00:36Z [S5 after-death 1] cycle 6 woke=1 reason=stale: lab:wedged (idle 8s, agent dead - the endpoint is still there with no agent running in it, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup)
+09:01:07Z [S5 after-death 2] cycle 7 woke=0 reason=none
+09:01:37Z [S5 after-death 3] cycle 8 woke=0 reason=none
+09:02:06Z [S5 after-death 4] cycle 9 woke=0 reason=none
+09:02:09Z CHECK PASS: S5 dead agent reported exactly once while capped
+09:02:09Z SCENARIOS DONE fails=0
+exit=0

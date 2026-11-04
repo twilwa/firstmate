@@ -1,0 +1,62 @@
+08:44:04Z lab home /tmp/fm-default-cap-scen.ijqDM4/lab-home; FM_WEDGE_MAX_ESCALATIONS is UNSET
+08:44:04Z === S1: parked lane (working: waiting on CI push lease, no paused:), cap UNSET
+08:44:08Z [S1] cycle 1 woke=1 reason=signal: /tmp/fm-default-cap-scen.ijqDM4/lab-home/state/parked-worker.status
+08:44:18Z [S1] cycle 2 woke=1 reason=stale: lab:wedged (idle 3s, possible wedge, escalation 1)
+08:44:27Z [S1] cycle 3 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 2)
+08:44:35Z [S1] cycle 4 woke=1 reason=stale: lab:wedged (idle 2s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone), PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=3 reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>
+08:44:38Z S1 escalation numbers seen: 1 2 3; terminal wakes=1
+08:44:38Z CHECK PASS: S1 exactly one PERMANENTLY-WEDGED wake under the unset default
+08:44:38Z CHECK PASS: S1 terminal wake is escalation 3 (default ceiling)
+08:44:38Z CHECK PASS: S1 cap marker written
+08:44:38Z CHECK PASS: S1 first alert reached supervisor (escalation 1 wake published)
+08:45:05Z [S1 silence probe 1] cycle 5 woke=0 reason=none
+08:45:08Z CHECK PASS: S1 probe 1 silent while pane unchanged
+08:45:35Z [S1 silence probe 2] cycle 6 woke=0 reason=none
+08:45:38Z CHECK PASS: S1 probe 2 silent while pane unchanged
+08:46:05Z [S1 silence probe 3] cycle 7 woke=0 reason=none
+08:46:07Z CHECK PASS: S1 probe 3 silent while pane unchanged
+08:46:07Z === S2: repaint the pane footer while capped
+08:46:08Z pane tail now: claude> working (elapsed 00:00:01)
+08:46:35Z [S2 repaint probe 1] cycle 8 woke=0 reason=none
+08:46:38Z CHECK PASS: S2 repaint 1 produced no wake
+08:46:38Z pane tail now: claude> working (elapsed 00:00:01)
+08:47:05Z [S2 repaint probe 2] cycle 9 woke=0 reason=none
+08:47:08Z CHECK PASS: S2 repaint 2 produced no wake
+08:47:08Z pane tail now: claude> working (elapsed 00:00:01)
+08:47:35Z [S2 repaint probe 3] cycle 10 woke=0 reason=none
+08:47:38Z CHECK PASS: S2 repaint 3 produced no wake
+08:47:38Z CHECK PASS: S2 cap marker still stands after repaints
+08:47:38Z === S3: Claude background-task exit picker appears on the capped pane
+  pane| claude> working (elapsed 00:00:01)
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+  pane| 
+08:48:05Z [S3 post-dialog 1] cycle 11 woke=0 reason=none
+08:48:35Z [S3 post-dialog 2] cycle 12 woke=0 reason=none
+08:49:05Z [S3 post-dialog 3] cycle 13 woke=0 reason=none
+08:49:35Z [S3 post-dialog 4] cycle 14 woke=0 reason=none
+08:50:05Z [S3 post-dialog 5] cycle 15 woke=0 reason=none
+08:50:07Z CHECK FAIL: S3 cap released by new blocking prompt
+08:50:07Z CHECK FAIL: S3 a wake surfaced naming the prompt (blocked-on-prompt)
+08:50:07Z === S4: blocked: lane under the default cap
+08:50:12Z [S4 blocked 1] cycle 16 woke=1 reason=signal: /tmp/fm-default-cap-scen.ijqDM4/lab-home/state/parked-worker.status
