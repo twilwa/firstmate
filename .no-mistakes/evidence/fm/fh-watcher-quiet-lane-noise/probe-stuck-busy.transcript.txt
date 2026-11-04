@@ -1,0 +1,20 @@
+2026-11-04T00:12:54Z probe: stuck-busy vs ticking footer and recorded progress at 7a391f60; lab /tmp/fm-lab-busy.V6HBGZ/lab-home; pane lab:pi (live pi process, recorded busy turn gen=g1793751173.1149224.9200)
+2026-11-04T00:12:54Z enqueue a steer with the real fm-send.sh
+2026-11-04T00:13:01Z fm-send exit=0 output: fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab-busy.V6HBGZ/lab-home ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ●  WATCHER DOWN - SUPERVISION IS OFF ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s). ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair. ●  This is a supervision warning only; the requested message WILL still be sent. ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn. ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 
+2026-11-04T00:13:01Z pane agent state (tmux backend): alive
+2026-11-04T00:13:01Z pane lines other than agent output after fm-send: [inbox, read and act on each in numeric order, then mv each into its handled/. ]
+2026-11-04T00:13:01Z ARM A: footer ticks, no recorded busy progress
+2026-11-04T00:13:10Z   (status-signal wake skipped: signal: /tmp/fm-lab-busy.V6HBGZ/lab-home/state/t1.status)
+2026-11-04T00:13:21Z   watcher woke after 7s; reason=stale: lab:pi (unread firstmate instruction: stuck-busy after 2 consecutive busy-deferred due doorbells without recorded busy progress; /tmp/fm-lab-busy.V6HBGZ/lab-home/state/t1.inbox/001.msg stays unhandled and no doorbell was typed; inspect the worker)
+2026-11-04T00:13:21Z   .busy-state: 001.msg 2 /tmp/fm-lab-busy.V6HBGZ/lab-home/state/t1.meta 1793751173
+2026-11-04T00:13:21Z   pane lines other than agent output: [inbox, read and act on each in numeric order, then mv each into its handled/. ]
+2026-11-04T00:13:21Z   arm A verdict: PASS
+2026-11-04T00:13:21Z ARM B: recorded busy progress every second (fm-busy-event.sh progress)
+2026-11-04T00:13:57Z   watcher still polling at the 32s bound; reason=none
+2026-11-04T00:13:57Z   .busy-state: 001.msg 1 /tmp/fm-lab-busy.V6HBGZ/lab-home/state/t1.progress 1793751235
+2026-11-04T00:13:57Z   progress advancing: PASS (no stuck-busy wake)
+2026-11-04T00:13:57Z   progress stopped; watching for escalation
+2026-11-04T00:14:11Z   watcher woke after 9s; reason=stale: lab:pi (unread firstmate instruction: stuck-busy after 2 consecutive busy-deferred due doorbells without recorded busy progress; /tmp/fm-lab-busy.V6HBGZ/lab-home/state/t1.inbox/001.msg stays unhandled and no doorbell was typed; inspect the worker)
+2026-11-04T00:14:11Z   progress stopped: PASS (stuck-busy escalates)
+2026-11-04T00:14:11Z   pane lines other than agent output: [inbox, read and act on each in numeric order, then mv each into its handled/. ]
+2026-11-04T00:14:11Z RESULT PASS

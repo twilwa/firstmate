@@ -1,0 +1,18 @@
+2026-11-03T23:58:55Z probe: stuck-busy vs ticking footer and recorded progress at 7a391f60; lab /tmp/fm-lab-busy.6n1ASV/lab-home; pane lab:pi (live pi process, recorded busy turn gen=g1793750335.582720.6684)
+2026-11-03T23:58:55Z enqueue a steer with the real fm-send.sh
+2026-11-03T23:59:03Z fm-send exit=0 output: fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab-busy.6n1ASV/lab-home ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ●  WATCHER DOWN - SUPERVISION IS OFF ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s). ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair. ●  This is a supervision warning only; the requested message WILL still be sent. ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn. ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 
+2026-11-03T23:59:03Z pane lines other than agent output after fm-send: []
+2026-11-03T23:59:03Z ARM A: footer ticks, no recorded busy progress
+2026-11-03T23:59:11Z   watcher woke after 5s; reason=signal: /tmp/fm-lab-busy.6n1ASV/lab-home/state/t1.status
+2026-11-03T23:59:11Z   .busy-state: 
+2026-11-03T23:59:11Z   pane lines other than agent output: []
+2026-11-03T23:59:11Z   arm A verdict: FAIL
+2026-11-03T23:59:11Z ARM B: recorded busy progress every second (fm-busy-event.sh progress)
+2026-11-03T23:59:47Z   watcher still polling at the 32s bound; reason=none
+2026-11-03T23:59:47Z   .busy-state: 001.msg 1 /tmp/fm-lab-busy.6n1ASV/lab-home/state/t1.progress 1793750385
+2026-11-03T23:59:47Z   progress advancing: PASS (no stuck-busy wake)
+2026-11-03T23:59:47Z   progress stopped; watching for escalation
+2026-11-03T23:59:58Z   watcher woke after 8s; reason=stale: lab:pi (unread firstmate instruction: /tmp/fm-lab-busy.6n1ASV/lab-home/state/t1.inbox/001.msg is unhandled and the worker's agent has exited or its endpoint is missing, so the doorbell was not typed; recover the worker)
+2026-11-03T23:59:58Z   progress stopped: FAIL
+2026-11-03T23:59:58Z   pane lines other than agent output: []
+2026-11-03T23:59:58Z RESULT FAIL

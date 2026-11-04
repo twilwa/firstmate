@@ -1,0 +1,61 @@
+## lab home: /tmp/fm-lab.Wncj39  tmux socket dir: /tmp/fml.POEia3
+## status before:
+working: waiting on CI push lease
+needs-decision [key=posture]: resume or stay parked?
+
+## adversarial: --park without --resolve-key
+$ fm-send.sh t1 --park Stay parked until the push lease frees
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.Wncj39
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: --park requires --resolve-key; nothing was sent
+rc=1
+
+## adversarial: duplicate --park
+$ fm-send.sh t1 --resolve-key posture --park --park x
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.Wncj39
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: duplicate --park; nothing was sent
+rc=1
+## status unchanged after refusals:
+working: waiting on CI push lease
+needs-decision [key=posture]: resume or stay parked?
+ls: cannot access '/tmp/fm-lab.Wncj39/state/t1.inbox': No such file or directory
+
+## park answer
+$ fm-send.sh t1 --resolve-key posture --park Stay parked until the push lease frees
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.Wncj39
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: doorbell not typed because the agent in sess:fm-t1 has exited; the steer is durably recorded at /tmp/fm-lab.Wncj39/state/t1.inbox/001.msg for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane
+rc=0
+## status after:
+working: waiting on CI push lease
+needs-decision [key=posture]: resume or stay parked?
+resolved [key=posture] [at=1793746874]: answered: Stay parked until the push lease frees
+paused [at=1793746874]: supervisor parked: Stay parked until the push lease frees
+## inbox record:
+001.msg
+handled
+schema=fm-task-inbox.v1
+at=2026-11-03T23:01:14Z
+body-terminator=1
+--
+Stay parked until the push lease frees
+## real pane capture (doorbell):
+bash-5.2$
+## wake-drain OPEN DECISIONS check:
+(no OPEN DECISIONS section)
+
+## ordinary keyed answer without --park (control)
+$ fm-send.sh t1 --resolve-key k2 continue
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.Wncj39
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: doorbell not typed because the agent in sess:fm-t1 has exited; the steer is durably recorded at /tmp/fm-lab.Wncj39/state/t1.inbox/002.msg for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane
+rc=0
+needs-decision [key=k2]: proceed?
+resolved [key=k2] [at=1793746881]: answered: continue

@@ -1,0 +1,4 @@
+ok - explicit-zero wedge ladder is observably identical to upstream main across the busy ladder and the first-sight surface, and still reaches the demand-deep-inspection prompt
+ok - empty, negative, non-numeric, and out-of-range caps use the bounded default and reset at a new episode
+ok - the harness really delivers FM_WEDGE_MAX_ESCALATIONS to the watcher: a configured cap of 2 fires PERMANENTLY-WEDGED at count 2 and leaves its marker standing, while explicit 0 preserves the legacy ladder
+exit=0 elapsed=165s

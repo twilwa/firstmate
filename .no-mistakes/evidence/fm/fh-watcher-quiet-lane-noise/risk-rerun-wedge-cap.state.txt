@@ -1,0 +1,4 @@
+Shared multi-agent host: 12 CPUs, load average ~18, ~36 GB memory available, swap 586 MB of 8 GB used. Other agents' tests and pipelines are running in their own systemd user scopes.
+Proposed command (run alone, no parallel lanes, from an isolated git worktree at the pipeline head):
+  systemd-run --user --scope -p TasksMax=512 -p MemoryMax=2G -p MemorySwapMax=0 -p RuntimeMaxSec=1800 bash tests/fm-watch-wedge-cap.test.sh
+The script is a hermetic shell test of the firstmate watcher (bin/fm-watch.sh). It builds temporary FM_HOME directories under TMPDIR, stubs tmux with a fake binary on PATH (no real tmux server, no real agent panes, no network), runs the watcher in short poll loops, and removes its temp dirs on exit. Earlier on this host the same script passed 23/23 under RuntimeMaxSec=1500 with the same bounds; at a 900 s deadline it reached 20 cases. It does not touch the live fleet home, the default tmux server, credentials, or the shared daemon.

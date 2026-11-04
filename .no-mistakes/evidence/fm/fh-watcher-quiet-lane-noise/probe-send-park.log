@@ -1,0 +1,33 @@
+2026-11-03T23:58:44Z probe: fm-send --park at 7a391f60; lab home /tmp/fm-lab-park.46O2ZI/lab-home; worker pane lab:worker (cat)
+2026-11-03T23:58:44Z case 1: fm-send t1 --resolve-key posture --park 'continue, parked until the CI push lease is granted'
+2026-11-03T23:58:52Z exit=0; output:
+    | fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab-park.46O2ZI/lab-home
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the requested message WILL still be sent.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-11-03T23:58:52Z t1.status after:
+    | working: waiting on CI push lease
+    | needs-decision [key=posture]: resume or stay parked?
+    | resolved [key=posture] [at=1793750328]: answered: continue, parked until the CI push lease is granted
+    | paused [at=1793750328]: supervisor parked: continue, parked until the CI push lease is granted
+2026-11-03T23:58:52Z t1 inbox:
+    | 001.msg
+    | handled
+2026-11-03T23:58:53Z worker pane after doorbell:
+    | : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in
+    | numeric order, then mv each into its handled/.
+    | : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in
+    | numeric order, then mv each into its handled/.
+2026-11-03T23:58:53Z case 1 verdict: PASS
+2026-11-03T23:58:53Z case 2 (adversarial): fm-send t2 --park 'continue, parked' (no --resolve-key)
+2026-11-03T23:58:55Z exit=1; output:
+    | fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab-park.46O2ZI/lab-home
+    | WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+    | error: --park requires --resolve-key; nothing was sent
+2026-11-03T23:58:55Z t2.status unchanged: yes; t2 inbox messages: 0
+2026-11-03T23:58:55Z case 2 verdict: PASS
+exit=0 elapsed=11s

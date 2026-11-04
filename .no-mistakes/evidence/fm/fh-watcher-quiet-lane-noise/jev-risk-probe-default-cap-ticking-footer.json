@@ -1,0 +1,21 @@
+{
+  "command": "ask",
+  "model": "typesafe/jev-1.14-20261014",
+  "provider": "openrouter",
+  "answers": {
+    "risk": {
+      "type": "choice",
+      "choice": "risky",
+      "probabilities": {
+        "safe": 0.45,
+        "risky": 0.47,
+        "uncertain": 0.08
+      },
+      "confidence": 0.2
+    }
+  },
+  "usage": {
+    "input_tokens": 2298,
+    "output_tokens": 42
+  }
+}

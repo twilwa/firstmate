@@ -1,0 +1,6 @@
+$ diff tests/fm-watch-wedge-cap-live.test.sh tests/.nm-live-default.test.sh   # the only change in the transient variant
+232c232
+<     FM_WEDGE_MAX_ESCALATIONS="$MAX" \
+---
+>     FM_WEDGE_MAX_ESCALATIONS="$( [ "$MAX" = 0 ] && echo 0 )" \
+# FM_WEDGE_MAX_ESCALATIONS=${FM_WEDGE_MAX_ESCALATIONS:-3} in bin/fm-watch.sh treats empty as unset, so the ceiled arm takes the shipped default.

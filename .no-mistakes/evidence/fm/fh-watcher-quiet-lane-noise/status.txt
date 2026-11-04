@@ -1,0 +1,1 @@
+wedge-cap: STOPPED at forced return 2026-11-04T00:36:07+01:00 after 2/23 ok, 0 fail; task-inbox, send-resolve-key not run

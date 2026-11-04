@@ -1,0 +1,3 @@
+ok - FM_WEDGE_MAX_ESCALATIONS=0 keeps the cap inert and never writes a cap marker
+ok - default cap delivers first/deep alerts, holds through footer churn, and releases on real progress
+EXIT=143 elapsed=150s

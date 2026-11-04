@@ -1,0 +1,6 @@
+00:58:55 probe-send-park exit=0 elapsed=11s
+00:59:58 probe-stuck-busy exit=1 elapsed=63s
+01:02:43 parity exit=0 elapsed=165s
+01:08:47 resolve-key exit=0 elapsed=364s
+01:12:50 task-inbox exit=0 elapsed=243s
+01:12:50 DONE
