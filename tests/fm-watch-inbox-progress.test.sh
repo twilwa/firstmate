@@ -146,6 +146,21 @@ test_frozen_pi_ignores_footer_churn() {
   pass "frozen Pi progress escalates at two rounds despite real pane churn"
 }
 
+test_frozen_pi_ignores_new_steers() {
+  local poll
+  new_case frozen-new-steers pi
+  advance_progress
+  for poll in 1 2 3; do
+    FM_STATE_OVERRIDE="$CASE_HOME/state" bash -c '
+      . "$1/bin/fm-task-inbox-lib.sh"
+      fm_task_inbox_write "$2/state" t1 "$3"
+    ' _ "$ROOT" "$CASE_HOME" "additional steer $poll" > /dev/null || fail "new steer write failed"
+    round
+    if [ "$poll" -eq 1 ]; then quiet; else escalated; fi
+  done
+  pass "a frozen Pi worker receiving new steers every round escalates at two rounds exactly once"
+}
+
 test_missing_capture_counts() {
   local fault
   for fault in missing empty partial; do
@@ -194,4 +209,5 @@ test_non_pi_unchanged() {
 }
 
 fm_test_run test_advancing_pi_progress test_frozen_pi_ignores_footer_churn \
-  test_missing_capture_counts test_failed_capture_keeps_progress_baseline test_non_pi_unchanged
+  test_frozen_pi_ignores_new_steers test_missing_capture_counts \
+  test_failed_capture_keeps_progress_baseline test_non_pi_unchanged

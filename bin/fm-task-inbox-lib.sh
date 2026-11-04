@@ -59,8 +59,9 @@
 # FM_TASK_INBOX_BUSY_MAX. A caller supplying structural progress resets the count
 # when that observation advances; absent observations count unconditionally and
 # keep the stored baseline for the next supplied observation.
-# fm-watch supplies its existing wedge_progress_snapshot for pi/pi-signed only
-# with a successful nonempty capture; missing/failed captures and other harnesses
+# fm-watch supplies its existing wedge_progress_snapshot, excluding pending
+# inbox arrivals, for pi/pi-signed only with a successful nonempty capture;
+# missing/failed captures and other harnesses
 # therefore keep the original counting. The first observation counts as before.
 # At that bound the same escalation path surfaces a stuck-busy reason without
 # submission. An allowed due check or acknowledgement resets this budget.

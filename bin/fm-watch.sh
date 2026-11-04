@@ -661,7 +661,7 @@ inbox_steer_check() {  # <window> <task>
     # Reuse the wedge cap's structural observation, never rendered pane churn.
     # Failed/empty captures and harnesses without Pi's hook keep counting as before.
     case "$(window_harness "$w")" in
-      pi|pi-signed) [ -z "$tail40" ] || progress=$(wedge_progress_snapshot "$task") ;;
+      pi|pi-signed) [ -z "$tail40" ] || progress=$(wedge_progress_snapshot "$task" --exclude-pending-inbox) ;;
     esac
     if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec" "$progress"); then
       [ -f "$rec" ] || return 0
@@ -1379,7 +1379,8 @@ _wedge_cap_marker_stands() {
 # inbox delivery/acknowledgement, turn completion and the native progress hook.
 # File signatures use the same public marker contract as the signal scanner;
 # inbox membership excludes the watcher's own retry/doorbell bookkeeping.
-wedge_progress_snapshot() {  # <task>
+# Busy deferrals exclude pending arrivals, which are not worker progress.
+wedge_progress_snapshot() {  # <task> [--exclude-pending-inbox]
   local task=$1 f harness
   harness=$(fm_meta_get "$STATE/$task.meta" harness)
   {
@@ -1391,7 +1392,10 @@ wedge_progress_snapshot() {  # <task>
       printf '\n%s:' "$f"
       fm_wake_signal_sig "$f" || true
     done
-    printf '\n%s\n' "$STATE/$task.inbox/"*.msg "$STATE/$task.inbox/handled/"*.msg
+    if [ "${2:-}" != --exclude-pending-inbox ]; then
+      printf '\n%s\n' "$STATE/$task.inbox/"*.msg
+    fi
+    printf '\n%s\n' "$STATE/$task.inbox/handled/"*.msg
   } | hash_pane
 }
 
