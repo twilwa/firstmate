@@ -1427,7 +1427,8 @@ wedge_cap_eligible() {  # <task>
 # back, so the cap re-accumulates and re-fires every cycle, and without this
 # predicate each of those cycles would append its own terminal row.
 # The suppression is episode-scoped, not window-scoped: the cap markers are
-# released on every legitimate episode-ending reset, so an unacknowledged row
+# released when the capped episode ends (structural worker progress, a new
+# blocking prompt, or operator removal), so an unacknowledged row
 # from an earlier episode must not silence the next episode's row. The episode
 # marker .wedge-terminal-queued-<key> records which episode published the row
 # and is cleared with the rest of the cap state; the durable queue stays the
@@ -2051,7 +2052,7 @@ wedge_defer_guard() {  # <window> <since-file> <triage-label> <idle-age> <guard-
 # wrapper's stderr rather than leaking past it. With the cap OFF there is no
 # ceiling to enforce, so the count stays a reporting aid and the failure is
 # logged alone: the next poll restarts this window's count at 1, which is the
-# schedule an unconfigured home has always had.
+# uncapped ladder's schedule.
 # With the cap ON that same failure is fatal to the ceiling rather than to the
 # watcher: the count the cap would have stopped at was never recorded, so every
 # later poll reads 1 again and republishes an escalation - the unbounded train
@@ -2599,7 +2600,8 @@ clear_pause_state() {  # <window-key>
 }
 
 # The hash-scoped half of clear_pause_tracking: the stale suppressor, its wedge
-# timer, escalation count, and any cap markers that episode fired, and both
+# timer and escalation count (kept while a fired cap stands; see
+# wedge_episode_end), and both
 # deferral chains the timer can take - the write- and validating-deferral
 # chains and the wait-deferral throttle.
 # Split out so a caller
