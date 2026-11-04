@@ -115,9 +115,8 @@ escalated() {
 }
 
 test_advancing_pi_progress() {
-  local n
   new_case advancing pi
-  for n in 1 2 3 4; do
+  for _ in 1 2 3 4; do
     advance_progress
     round
     quiet
