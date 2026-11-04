@@ -161,6 +161,27 @@ test_missing_capture_counts() {
   pass "failed (including partial output) and empty captures still spend the existing busy budget despite progress"
 }
 
+test_failed_capture_keeps_progress_baseline() {
+  new_case capture-between pi
+  advance_progress
+  round
+  quiet
+  advance_progress
+  round
+  quiet
+  # One failed capture spends one poll but must not erase the stored baseline.
+  round missing
+  quiet
+  advance_progress
+  round
+  quiet
+  round
+  quiet
+  round
+  escalated
+  pass "a failed capture between advancing observations counts once without erasing the progress baseline"
+}
+
 test_non_pi_unchanged() {
   new_case non-pi claude
   advance_progress
@@ -174,4 +195,4 @@ test_non_pi_unchanged() {
 }
 
 fm_test_run test_advancing_pi_progress test_frozen_pi_ignores_footer_churn \
-  test_missing_capture_counts test_non_pi_unchanged
+  test_missing_capture_counts test_failed_capture_keeps_progress_baseline test_non_pi_unchanged

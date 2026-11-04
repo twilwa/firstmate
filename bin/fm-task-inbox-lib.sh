@@ -57,7 +57,8 @@
 # caller owns the busy and recovery-grade endpoint checks: due actions deferred
 # by the caller's delivery guard consume a separate durable consecutive-poll budget,
 # FM_TASK_INBOX_BUSY_MAX. A caller supplying structural progress resets the count
-# when that observation advances; absent observations retain unconditional counting.
+# when that observation advances; absent observations count unconditionally and
+# keep the stored baseline for the next supplied observation.
 # fm-watch supplies its existing wedge_progress_snapshot for pi/pi-signed only
 # with a successful nonempty capture; missing/failed captures and other harnesses
 # therefore keep the original counting. The first observation counts as before.
@@ -154,6 +155,7 @@ fm_task_inbox_record_busy() {  # <state-dir> <task-id> <record-path> [structural
   else
     count=$((count + 1))
   fi
+  progress=${progress:-${previous_progress:-}}
   [ -z "$progress" ] || progress=$'\t'"$progress"
   if ! { printf '%s\t%s%s\n' "$base" "$count" "$progress" > "$dir/.busy-state"; } 2>/dev/null; then
     [ -f "$3" ] || { printf '0'; return 0; }
