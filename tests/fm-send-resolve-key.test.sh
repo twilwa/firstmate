@@ -121,6 +121,89 @@ drain_out() {  # <home>
   FM_STATE_OVERRIDE="$1/state" "$DRAIN" 2>/dev/null
 }
 
+# declared_paused_wait <status-file>: 0 when the watcher's own declared-wait
+# reader (fm-classify-lib.sh) holds the file in a paused wait under the
+# caller's FM_CLASSIFY_PAUSED_VERB, the consumer the wedge ladder defers to.
+declared_paused_wait() {
+  bash -c '. "$1/bin/fm-classify-lib.sh"; line=$(status_declared_wait_line "$2"); status_is_paused "$line"' _ "$ROOT" "$1"
+}
+
+test_park_answer_declares_the_wait() {
+  local dir fb log home out rc verb
+  for verb in '' awaiting; do
+    dir="$TMP_ROOT/park-answer-${verb:-default}"; mkdir -p "$dir"
+    fb=$(make_stubs "$dir"); log="$dir/send.log"
+    home=$(setup_home "park-answer-${verb:-default}")
+    fm_write_meta "$home/state/t1.meta" "window=sess:fm-t1" "kind=ship"
+    printf 'needs-decision [key=posture]: resume or stay parked?\n' > "$home/state/t1.status"
+    FM_CLASSIFY_PAUSED_VERB=$verb run_send "$fb" "$home" "$log" t1 --resolve-key posture --park 'Stay parked until the upstream check finishes'; rc=$?
+    expect_code 0 "$rc" "a supervisor park answer should succeed (verb '${verb:-default}')"
+    FM_CLASSIFY_PAUSED_VERB=$verb declared_paused_wait "$home/state/t1.status" \
+      || fail "a park answer left no declared wait under verb '${verb:-default}': $(cat "$home/state/t1.status")"
+    grep -F 'Stay parked until the upstream check finishes' "$home/state/t1.inbox/001.msg" >/dev/null \
+      || fail "the park answer was not durably delivered"
+    out=$(FM_CLASSIFY_PAUSED_VERB=$verb drain_out "$home")
+    assert_not_contains "$out" 'OPEN DECISIONS' "the parked answer left its decision open"
+  done
+  pass "fm-send --park: a supervisor answer closes its decision and declares the wait in the configured verb at durable delivery"
+}
+
+test_park_failed_append_names_the_wait() {
+  local dir fb log home err rc diagnostic manual
+  dir="$TMP_ROOT/park-manual"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"; err="$dir/send.err"
+  home=$(setup_home park-manual)
+  fm_write_meta "$home/state/t1.meta" "window=sess:fm-t1" "kind=ship"
+  printf 'needs-decision [key=posture]: resume or stay parked?\n' > "$home/state/t1.status"
+  chmod 0400 "$home/state/t1.status"
+  env PATH="$fb:$PATH" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" t1 --resolve-key posture --park 'Stay parked until the upstream check finishes' >/dev/null 2>"$err"; rc=$?
+  chmod 0600 "$home/state/t1.status"
+  [ "$rc" -ne 0 ] || fail "a delivered park with a failed append should fail loudly"
+  diagnostic=$(cat "$err")
+  assert_contains "$diagnostic" "the declared parked wait" "the failure should name the declared wait it could not record"
+  manual=${diagnostic#*Close it manually with: }
+  manual=${manual% - do not resend the answer.}
+  bash -c "$manual" || fail "the generated manual command should execute successfully"
+  declared_paused_wait "$home/state/t1.status" \
+    || fail "the generated manual command did not declare the wait: $(cat "$home/state/t1.status")"
+  pass "fm-send --park: a failed append names the declared wait and its recovery command records it"
+}
+
+test_park_answer_delivery_boundaries() {
+  local dir fb log home mode rc send_fail args
+  for mode in ring-failure enqueue-failure missing-key duplicate; do
+    dir="$TMP_ROOT/park-$mode"; mkdir -p "$dir"
+    fb=$(make_stubs "$dir"); log="$dir/send.log"
+    home=$(setup_home "park-$mode")
+    fm_write_meta "$home/state/t1.meta" "window=sess:fm-t1" "kind=ship"
+    printf 'needs-decision [key=posture]: resume or stay parked?\n' > "$home/state/t1.status"
+    args=(t1 --resolve-key posture --park)
+    send_fail=0
+    case "$mode" in
+      ring-failure) send_fail=1 ;;
+      enqueue-failure) : > "$home/state/t1.inbox" ;;
+      missing-key) args=(t1 --park) ;;
+      duplicate) args+=(--park) ;;
+    esac
+    FM_FAKE_TMUX_SEND_FAIL=$send_fail run_send "$fb" "$home" "$log" "${args[@]}" 'Stay parked until the upstream check finishes' >/dev/null; rc=$?
+    if [ "$mode" = ring-failure ]; then
+      expect_code 0 "$rc" "a failed doorbell must not undo a durably delivered park"
+      declared_paused_wait "$home/state/t1.status" \
+        || fail "a failed doorbell lost the declared wait"
+      [ -f "$home/state/t1.inbox/001.msg" ] || fail "park answer lost at failed doorbell"
+    else
+      [ "$rc" -ne 0 ] || fail "$mode: invalid or undelivered park succeeded"
+      grep -E '^(resolved|paused)' "$home/state/t1.status" >/dev/null \
+        && fail "$mode: invalid or undelivered park changed the decision/wait"
+      [ ! -s "$log" ] || fail "$mode: invalid or undelivered park typed into the pane"
+      [ ! -f "$home/state/t1.inbox/001.msg" ] || fail "$mode: refused park was enqueued"
+    fi
+  done
+  pass "fm-send --park: waits follow durable delivery, survive failed ringing, and reject invalid flags"
+}
+
 test_answer_send_closes_open_decision() {
   local dir fb log home rc out
   dir="$TMP_ROOT/closes"; mkdir -p "$dir"
@@ -141,6 +224,8 @@ test_answer_send_closes_open_decision() {
   assert_contains "$(cat "$log")" "Firstmate instruction waiting" "the doorbell should be rung for the answer"
   sed -E 's/ \[at=[0-9]+\]//' "$home/state/t1.status" | grep -qF 'resolved [key=api-shape]: answered: go with REST' \
     || fail "fm-send did not append the closing resolved line:"$'\n'"$(cat "$home/state/t1.status")"
+  grep -E '^paused( \[at=[0-9]+\])?:' "$home/state/t1.status" >/dev/null \
+    && fail "a plain --resolve-key answer declared a parked wait:"$'\n'"$(cat "$home/state/t1.status")"
   # The drain folded the worker's `working:` line but never listed it, so the
   # close must leave the file for the watcher instead of marking it seen.
   if FM_STATE_OVERRIDE="$home/state" bash -c '
@@ -1224,6 +1309,9 @@ test_refusal_keyed_resend_keeps_the_accepted_keys() {
   pass "fm-send --resolve-key: a refused key's keyed resend keeps every accepted key in order"
 }
 
+test_park_answer_declares_the_wait
+test_park_answer_delivery_boundaries
+test_park_failed_append_names_the_wait
 test_answer_send_closes_open_decision
 test_answer_close_is_self_announced
 test_separate_resolve_key_answers_do_not_rewake

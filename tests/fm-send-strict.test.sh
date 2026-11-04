@@ -118,6 +118,7 @@ test_help_prints_usage() {
   expect_code 0 "$rc" "fm-send --help without FM_HOME should print usage and exit 0"
   assert_contains "$(cat "$out")" "Usage: fm-send.sh <target>" "--help should print the header usage line"
   assert_contains "$(cat "$out")" "--resolve-key" "--help should print the header contract"
+  assert_contains "$(cat "$out")" "--park" "--help should print the park flag contract"
   [ ! -s "$err" ] || fail "fm-send --help wrote to stderr: $(cat "$err")"
   FM_HOME="$home" "$SEND" --help >"$out" 2>"$err"; rc=$?
   expect_code 0 "$rc" "fm-send --help with FM_HOME should not treat the flag as a target"
@@ -269,7 +270,7 @@ test_unknown_flag_is_refused_before_anything_is_recorded() {
   [ "$rc" -ne 0 ] || fail "an unrecognised flag was accepted instead of refused"
   assert_contains "$(cat "$err")" "unknown flag '--not-a-real-flag'" \
     "the refusal should name the offending token"
-  assert_contains "$(cat "$err")" "--resolve-key, --defer-until, --fire-and-forget, and --key" \
+  assert_contains "$(cat "$err")" "--resolve-key, --park, --defer-until, --fire-and-forget, and --key" \
     "the refusal should name the flags fm-send actually accepts"
   [ ! -e "$home/state/lane-uf.inbox" ] \
     || fail "the refused flag still created a steering record"$'\n'"$(ls -R "$home/state/lane-uf.inbox")"
