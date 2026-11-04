@@ -161,10 +161,13 @@
 #
 # Parking answers: add --park to --resolve-key when the answer deliberately
 # leaves the task waiting. The answer must name what clears the wait. At the
-# same delivery boundary as the close, append a self-announced `paused:` line
-# with the answer, after the resolved lines, so the declared-pause cadence owns
-# the wait even before the worker reads it. No prose heuristic infers parking;
-# ordinary answers continue normally. --park without --resolve-key is refused.
+# same delivery boundary as the close, append a self-announced declared-wait
+# line carrying the answer, after the resolved lines, so the declared-pause
+# cadence owns the wait even before the worker reads it. Its verb is the
+# configured paused verb that bin/fm-classify-lib.sh owns (`paused:` unless
+# FM_CLASSIFY_PAUSED_VERB overrides it), so every declared-wait reader agrees.
+# No prose heuristic infers parking; ordinary answers continue normally.
+# --park without --resolve-key is refused.
 #
 # Decision closure (answerer-closes): pass --resolve-key <key> (repeatable,
 # before the message) when this send answers an open keyed needs-decision: or
