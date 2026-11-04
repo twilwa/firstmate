@@ -28,7 +28,7 @@
 #   <task>.inbox/.seq.lock     serializes sequence allocation across writers
 #                              (the session and the away daemon)
 #   <task>.inbox/.ring-state   watcher re-ring ladder: "<msg>\t<count>\t<epoch>"
-#   <task>.inbox/.busy-state   consecutive busy deferrals: "<msg>\t<count>"
+#   <task>.inbox/.busy-state   frozen busy deferrals: "<msg>\t<count>[\t<progress>]"
 #   <task>.inbox/.escalated    oldest-message name already surfaced as stale,
 #                              so later polls suppress another escalation
 #   <task>.inbox/.retry-ring   name of a fire-and-forget record still owed its
@@ -56,9 +56,14 @@
 # FM_TASK_INBOX_RING_MAX attempts without an acknowledgement it escalates. The
 # caller owns the busy and recovery-grade endpoint checks: due actions deferred
 # by the caller's delivery guard consume a separate durable consecutive-poll budget,
-# FM_TASK_INBOX_BUSY_MAX. At that bound the same escalation path surfaces a
-# stuck-busy reason without submission. An allowed due check or acknowledgement
-# resets this budget. fm-busy-lib.sh owns the backend-specific delivery guard.
+# FM_TASK_INBOX_BUSY_MAX. A caller supplying structural progress resets the count
+# when that observation advances; absent observations retain unconditional counting.
+# fm-watch supplies its existing wedge_progress_snapshot for pi/pi-signed only
+# with a successful nonempty capture; missing/failed captures and other harnesses
+# therefore keep the original counting. The first observation counts as before.
+# At that bound the same escalation path surfaces a stuck-busy reason without
+# submission. An allowed due check or acknowledgement resets this budget.
+# fm-busy-lib.sh owns the backend-specific delivery guard.
 # Fire-and-forget retries remain outside escalation. A positively
 # dead or missing endpoint skips delivery and the ladder and escalates directly.
 # This library owns the schedule, durable budgets, and escalation marker.
@@ -92,7 +97,7 @@
 # Tunables (env):
 #   FM_TASK_INBOX_GRACE_SECS   default 90; delivery-attempt grace and spacing
 #   FM_TASK_INBOX_RING_MAX     default 3; delivery attempts before escalation
-#   FM_TASK_INBOX_BUSY_MAX     default 2; consecutive busy-deferred due polls before escalation
+#   FM_TASK_INBOX_BUSY_MAX     default 2; consecutive frozen busy-deferred due polls before escalation
 
 _FM_TASK_INBOX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Both dependencies are canonical lint roots in their own right. Keep them as
@@ -133,16 +138,24 @@ fm_task_inbox_busy_max() {
 
 # Persist before returning the new count, so a fresh watcher continues the same
 # bounded wait. A removed or acknowledged record is a quiet no-op.
-fm_task_inbox_record_busy() {  # <state-dir> <task-id> <record-path>
-  local dir base previous count
+fm_task_inbox_record_busy() {  # <state-dir> <task-id> <record-path> [structural-progress]
+  local dir base previous count progress=${4:-} previous_progress
   dir=$(fm_task_inbox_dir "$1" "$2")
   base=${3##*/}
-  { IFS=$(printf '\t') read -r previous count < "$dir/.busy-state"; } 2>/dev/null || true
-  [ "${previous:-}" = "$base" ] || count=0
+  { IFS=$(printf '\t') read -r previous count previous_progress < "$dir/.busy-state"; } 2>/dev/null || true
+  if [ "${previous:-}" != "$base" ]; then
+    count=0
+    previous_progress=
+  fi
   case "${count:-}" in ''|*[!0-9]*) count=0 ;; esac
   [ -f "$3" ] || { printf '0'; return 0; }
-  count=$((count + 1))
-  if ! { printf '%s\t%s\n' "$base" "$count" > "$dir/.busy-state"; } 2>/dev/null; then
+  if [ -n "$progress" ] && [ -n "${previous_progress:-}" ] && [ "$progress" != "$previous_progress" ]; then
+    count=0
+  else
+    count=$((count + 1))
+  fi
+  [ -z "$progress" ] || progress=$'\t'"$progress"
+  if ! { printf '%s\t%s%s\n' "$base" "$count" "$progress" > "$dir/.busy-state"; } 2>/dev/null; then
     [ -f "$3" ] || { printf '0'; return 0; }
     return 1
   fi
