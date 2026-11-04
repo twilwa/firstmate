@@ -937,16 +937,18 @@ fi
 # or a worker line the fold read but never listed, leave the watcher's wake
 # path untouched.
 fm_send_close_resolved_keys() { # <answer-text>
-  local note=$1 k close_note append_rc still manual_close_cmd close_lines=() i=0
+  local note=$1 k close_note append_rc still manual_close_cmd close_lines=() i=0 what=
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     close_note=$(fm_send_resolve_close_note "$k" "$note")
     fm_cap_line_var "resolved [key=$k]: $close_note" "$RESOLVE_CLOSE_MAX"
     close_lines+=("$FM_LINE_CAP_LINE")
   done
+  [ -z "$RESOLVE_STATUS_KEYS" ] || what="the close for decision key(s) '$RESOLVE_STATUS_KEYS'"
   if [ "$RESOLVE_PARK" = 1 ]; then
-    fm_cap_line_var "paused: supervisor parked: $note" "$RESOLVE_CLOSE_MAX"
+    fm_cap_line_var "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}: supervisor parked: $note" "$RESOLVE_CLOSE_MAX"
     close_lines+=("$FM_LINE_CAP_LINE")
+    what="${what:+$what and }the declared parked wait"
   fi
   [ "${#close_lines[@]}" -gt 0 ] || return 0
   append_rc=0
@@ -954,7 +956,7 @@ fm_send_close_resolved_keys() { # <answer-text>
   if [ "$append_rc" -eq 2 ]; then
     printf -v manual_close_cmd ' %q' "${close_lines[@]}"
     printf -v manual_close_cmd "printf '%%s\\n'%s >> %q" "$manual_close_cmd" "$RESOLVE_STATUS_FILE"
-    echo "error: the answer was delivered to $T, but the close for decision key(s) '$RESOLVE_STATUS_KEYS' could not be appended to $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
+    echo "error: the answer was delivered to $T, but $what could not be appended to $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
     return 1
   fi
   still=$(status_open_decisions "$RESOLVE_STATUS_FILE")
