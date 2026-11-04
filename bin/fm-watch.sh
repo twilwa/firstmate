@@ -39,13 +39,11 @@
 #                          also carries a "demand-deep-inspection" marker so the
 #                          wake payload itself, not just repetition, forces a
 #                          closer look instead of another routine supervision
-#                          resume. Where FM_WEDGE_MAX_ESCALATIONS is set above 0,
-#                          the escalation at that count carries an extra
-#                          "PERMANENTLY-WEDGED" clause and is the last wedge
-#                          escalation for that WINDOW while its cap marker
-#                          stands: until the next episode-ending reset,
-#                          FM_CAP_HORIZON_SECS elapses, or the operator removes
-#                          the marker (wedge_timer_check owns that opt-in).
+#                          resume. FM_WEDGE_MAX_ESCALATIONS defaults to 3;
+#                          explicit 0 disables it. At the ceiling one
+#                          "PERMANENTLY-WEDGED" alert silences the unchanged
+#                          window until structural worker progress or operator
+#                          removal, never pane/footer repainting or elapsed time.
 #                          When the pane shows the Claude background-task
 #                          exit picker, that same parenthetical ends with
 #                          "blocked-on-prompt:" and the picker's name, after the
@@ -1278,9 +1276,9 @@ FM_WEDGE_GUARD_DEFER_MAX=${FM_WEDGE_GUARD_DEFER_MAX:-3}
 # bash's `test` cannot compare a decimal integer outside its own range: the
 # comparison ERRORS and is read as false, so an operator value such as
 # 99999999999999999999 would silently disable the very ceiling it is meant to
-# bound, and would make the cap marker and the rollback sentinel expire at
-# once. The same value inside an arithmetic expansion wraps around silently
-# instead of erroring, so a count read back from the state dir would come out
+# bound, and would make the rollback sentinel expire at once. The same value
+# inside an arithmetic expansion wraps around silently instead of erroring,
+# so a count read back from the state dir would come out
 # negative. The accepted range is therefore bounded HERE, at the one place
 # each value is read, and everything outside it - a non-digit, a value bash
 # cannot compare, or a value below the setting's minimum - takes the caller's
@@ -1308,18 +1306,12 @@ _wedge_cap_int() {
 
 # Upper bound on consecutive wedge escalations for a single (window) before a
 # PERMANENTLY-WEDGED wake is emitted and the window-scoped cap marker is written.
-# Disabled by default (0): the unconfigured path keeps the existing
-# escalates-every-STALE_ESCALATE_SECS behavior, so this never changes anything
-# unless the captain sets it. Past the bound the wake is published once and the
-# cap marker silences further wakes for this WINDOW until FM_CAP_HORIZON_SECS
-# elapses, the crew resumes (the marker is per-window wedge bookkeeping and is
-# cleared with the rest of it), or the operator manually removes it.
-FM_WEDGE_MAX_ESCALATIONS=${FM_WEDGE_MAX_ESCALATIONS:-0}
-_wedge_cap_int FM_WEDGE_MAX_ESCALATIONS "$FM_WEDGE_MAX_ESCALATIONS" 0 0
-# Cap marker lifetime: how long the window-scoped cap marker silences the wedge
-# path after a cap fire. Re-fires after this horizon elapses.
-FM_CAP_HORIZON_SECS=${FM_CAP_HORIZON_SECS:-86400}
-_wedge_cap_int FM_CAP_HORIZON_SECS "$FM_CAP_HORIZON_SECS" 86400 1
+# Default 3; explicit 0 disables the bound. The first alert always reaches the
+# supervisor. At the bound one terminal wake silences further wedge alerts for
+# this window until structural worker progress or operator removal. Pane/footer
+# repainting and elapsed time alone never release the cap.
+FM_WEDGE_MAX_ESCALATIONS=${FM_WEDGE_MAX_ESCALATIONS:-3}
+_wedge_cap_int FM_WEDGE_MAX_ESCALATIONS "$FM_WEDGE_MAX_ESCALATIONS" 3 0
 # How long a rollback-failure sentinel silences the wedge path before the
 # sentinel expires and a normal re-escalation is allowed again. A value of 0
 # would let the wedge re-fire immediately under persistent fs failure, which
@@ -1327,77 +1319,39 @@ _wedge_cap_int FM_CAP_HORIZON_SECS "$FM_CAP_HORIZON_SECS" 86400 1
 FM_ROLLBACK_SENTINEL_TTL_SECS=${FM_ROLLBACK_SENTINEL_TTL_SECS:-3600}
 _wedge_cap_int FM_ROLLBACK_SENTINEL_TTL_SECS "$FM_ROLLBACK_SENTINEL_TTL_SECS" 3600 1
 
-# _wedge_cap_markers_clear: drop every cap marker a fired cap wrote for one
-# window - the window-scoped cap marker, the terminal-row episode marker, and the
-# rollback-failure sentinel. Owned by wedge_episode_end below, the one call that
-# ends a wedge episode, so a crew that resumes and wedges again escalates from
-# scratch rather than inheriting a window an earlier episode left silent. The
-# cap-fire route is the one caller that keeps these markers instead of calling it
-# here: they are the ceiling it has just published, so the episode it ends must
-# leave them standing. The away-posture first sight is the one caller that
-# releases them WITHOUT ending an episode, and says so at its own call site.
+# Drop one window's cap, structural observation, terminal-row marker and
+# rollback sentinel. A fired cap releases only through wedge_cap_progress_check
+# or operator removal; ordinary episode resets preserve it.
 # _wedge_cap_markers_clear <window-key>
 _wedge_cap_markers_clear() {
   local key=$1
   rm -f "$STATE/.wedge-permanent-$key" \
     "$STATE/.wedge-terminal-queued-$key" \
+    "$STATE/.wedge-progress-$key" \
     "$STATE/.wedge-rollback-failed-$key"
 }
 
-# wedge_episode_end: THE choke point for ENDING a wedge episode.
-#
-# .stale-since-<key> is the marker that defines one, and the boundary where a
-# window stops counting as wedged is where the cap that episode fired has to go,
-# so every route that ends an episode calls this: a pane that leaves the stale
-# path, a declared wait and its lift, a first-sight absorb, a surface, and the
-# turn-end churn absorb. The cap release is then structural rather than a list of
-# sites to keep in step - a new episode-ending route is one call, and it cannot
-# drop the episode marker without dropping the cap with it.
-#
-# One first-sight route is not an episode end: the away-posture branch, where the
-# away daemon owns the one-shot per stale hash. It classifies a fresh render
-# without arming or dropping any wedge timer - the first poll after the
-# away-posture record goes picks the episode it was already in back up on that
-# hash - so it releases the cap markers alone, through
-# _wedge_cap_markers_clear. Dropping the timer and count there would leave a hash
-# the daemon already surfaced with no wedge timer behind it at all.
-#
-# Non-zero when a reset could not be written, so a caller that has to undo an
-# absorb of its own on a failed reset (signal_turnend_panes_churned) can see it.
-#
-# The ladder's own timer reset inside wedge_timer_check is deliberately NOT an
-# episode end and keeps its own removal of the marker: that pane is still wedged,
-# and its escalation count must keep climbing.
-#
-# keep-count=1 marks a call site whose pre-cap shape kept the escalation
-# counter instead of resetting it - the first-sight stale SURFACES, where
-# upstream dropped the wedge timer (or re-armed it) and left the count
-# standing, so a pane that surfaced there and wedged again resumed the ladder
-# where it had left off. The count is cap state, so at those sites it still
-# resets under a configured cap: an episode boundary includes the count
-# restart, and that is what lets a re-wedged window escalate from 1 again past
-# a released marker. With the cap at its default 0 the counter is left exactly
-# as the pre-cap watcher left it, so a home that has not configured anything
-# keeps today's ladder unchanged - a stuck pane still reaches the
-# demand-deep-inspection prompt on the same rung it always did.
-#
-# The other episode-ending routes are NOT keep-count sites: the pre-cap
-# watcher reset the count there too (the declared-wait absorb, the turn-end
-# churn absorb, the busy-pane and hash-change resets, and the provably-working
-# absorb, whose clear_pause_tracking removed it), so those keep resetting it
-# in both postures.
-#
-# keep-cap=1 is the cap-fire route itself. It ends the episode and resets the
-# escalation count itself, but the cap markers it has just written are the whole
-# point of that route and outlive the episode they silenced - that is what holds
-# the window quiet until the horizon, a recovery, or the operator intervenes.
-# wedge_episode_end <window-key> [keep-cap] [keep-count]
+# End ordinary wedge bookkeeping. A standing cap survives these resets until
+# wedge_cap_progress_check observes a structural event. keep-count=1 retains
+# main's first-sight escalation counter in both capped and uncapped settings;
+# those rounds must still reach the inspection threshold and cap. Other
+# uncapped resets retain main's count-reset behavior.
+# keep-cap=1 is the cap-fire route: its timer ends but the just-written markers
+# survive. Non-zero reports a failed reset to callers that undo an absorb.
+# structural=1 is reserved for validated native-stream episode changes.
+# wedge_episode_end <window-key> [keep-cap] [keep-count] [structural]
 wedge_episode_end() {
-  local key=$1 keep_cap=${2:-0} keep_count=${3:-0} status=0
+  local key=$1 keep_cap=${2:-0} keep_count=${3:-0} structural=${4:-0} status=0
+  # A repaint or busy glyph is not progress. Only the structural observation
+  # below may release a standing cap; ordinary hash resets leave it intact.
+  if [ "$keep_cap" != 1 ] && [ "$structural" != 1 ] && [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] \
+    && _wedge_cap_marker_stands "$key"; then
+    return 0
+  fi
   if [ "$keep_cap" = 1 ]; then
     rm -f "$STATE/.stale-since-$key" || status=1
   else
-    if [ "$keep_count" = 1 ] && [ "$FM_WEDGE_MAX_ESCALATIONS" -eq 0 ]; then
+    if [ "$keep_count" = 1 ]; then
       rm -f "$STATE/.stale-since-$key" || status=1
     else
       rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key" || status=1
@@ -1407,22 +1361,64 @@ wedge_episode_end() {
   return "$status"
 }
 
-# _wedge_cap_marker_stands: 0 while the cap marker a fired cap wrote for this
-# WINDOW is still inside FM_CAP_HORIZON_SECS, 1 once it is absent or expired.
-# The cap is window-scoped by design, so this one marker is the whole ceiling:
-# a pane that rebuilds its escalation counter on a fresh hash is silenced by
-# the same marker a static one is, which is the loop this cap exists to stop.
-# An expired marker is deliberately left on disk for the cap-fire path to
-# overwrite; it simply no longer silences anything, which is what lets a fresh
-# wedge re-fire past the horizon.
+# A regular window-scoped marker silences every hash until structural progress.
+# A directory is a write failure, not a successfully recorded cap.
 # _wedge_cap_marker_stands <window-key>
 _wedge_cap_marker_stands() {
-  local _wkey=$1 _now _ts
-  [ -e "$STATE/.wedge-permanent-$_wkey" ] || return 1
-  fm_epoch_seconds_to _now
-  _ts=$(cat "$STATE/.wedge-permanent-$_wkey" 2>/dev/null || true)
-  _wedge_cap_int _ts "$_ts" 0 0
-  [ $(( _now - _ts )) -lt "$FM_CAP_HORIZON_SECS" ]
+  [ -f "$STATE/.wedge-permanent-$1" ]
+}
+
+# Structural progress only: lifecycle generation/sequence, authored status,
+# inbox delivery/acknowledgement, turn completion and the native progress hook.
+# File signatures use the same public marker contract as the signal scanner;
+# inbox membership excludes the watcher's own retry/doorbell bookkeeping.
+wedge_progress_snapshot() {  # <task>
+  local task=$1 f harness
+  harness=$(fm_meta_get "$STATE/$task.meta" harness)
+  {
+    fm_busy_current_gen "$STATE" "$task" || true
+    fm_busy_record_read "$STATE" "$task" || true
+    fm_busy_stream_read "$STATE" "$task" "$harness" || true
+    fm_busy_model_progress_ts "$STATE" "$task" "$harness" || true
+    for f in "$STATE/$task.status" "$STATE/$task.turn-ended" "$STATE/$task.progress"; do
+      printf '\n%s:' "$f"
+      fm_wake_signal_sig "$f" || true
+    done
+    printf '\n%s\n' "$STATE/$task.inbox/"*.msg "$STATE/$task.inbox/handled/"*.msg
+  } | hash_pane
+}
+
+wedge_cap_progress_check() {  # <window-key> <task>
+  local key=$1 task=$2 snapshot previous stream_previous stream_current harness
+  [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] && _wedge_cap_marker_stands "$key" || return 0
+  snapshot=$(wedge_progress_snapshot "$task")
+  previous=$(cat "$STATE/.wedge-progress-$key" 2>/dev/null || true)
+  if [ -z "$previous" ]; then
+    # Preserve existing native-stream episode evidence across an upgrade.
+    # Otherwise a legacy marker establishes a baseline, not a recovery.
+    stream_previous=$(cat "$STATE/.model-stream-episode-$key" 2>/dev/null || true)
+    harness=$(fm_meta_get "$STATE/$task.meta" harness)
+    stream_current=$(fm_busy_stream_read "$STATE" "$task" "$harness" || true)
+    if [ -z "$stream_previous" ] || [ "$stream_previous" = "$stream_current" ]; then
+      printf '%s' "$snapshot" > "$STATE/.wedge-progress-$key"
+      return 0
+    fi
+  fi
+  if [ "$snapshot" != "$previous" ]; then
+    _wedge_cap_markers_clear "$key"
+    wedge_episode_end "$key"
+    clear_write_tracking "$key"
+  fi
+}
+
+wedge_cap_eligible() {  # <task>
+  [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] || return 1
+  # A supervisor-owned blocker must keep main's escalation/deferral behavior,
+  # including reserved keys that status_worker_wait_verb deliberately excludes.
+  case "$(status_line_verb "$(last_status_line "$STATE/$1.status")")" in
+    blocked|needs-decision) return 1 ;;
+  esac
+  return 0
 }
 
 # _wedge_cap_terminal_append: publish one terminal PERMANENTLY-WEDGED row per
@@ -1881,7 +1877,7 @@ wedge_defer_validating() {  # <window> <since-file> <triage-label> <idle-age> <t
 # agent here to BE wedged? A wedge is something stuck that might recover, so
 # re-alarming it earns its cost; an agent that is gone never moves again, its pane
 # never churns, the idle timer never resets, and the escalate path below clears its
-# own timer and re-arms with nothing bounding the count by default (FM_WEDGE_MAX_ESCALATIONS is the opt-in ceiling).
+# own timer and re-arms; FM_WEDGE_MAX_ESCALATIONS now bounds that ladder by default.
 # docs/architecture.md owns that contract and why only these two verdicts license
 # it; what the code needs stated here is the rest.
 #
@@ -2146,7 +2142,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
   # no wake, no marker write - so the operator observes one failure per
   # wedge-event instead of a wake-queue flood under persistent fs failure.
   # Read only where the cap is configured: with FM_WEDGE_MAX_ESCALATIONS at its
-  # default 0 neither this sentinel nor the cap marker below is ever written, so
+  # explicit 0 neither this sentinel nor the cap marker below is written, so
   # a leftover from an earlier configured run must not keep silencing a window
   # whose operator has turned the cap back off.
   _wrollback_sentinel="$STATE/.wedge-rollback-failed-$_wkey"
@@ -2204,33 +2200,18 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
       fm_epoch_seconds_to age
       age=$(( age - since ))
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
-        # The cap marker a fired cap wrote for this WINDOW silences further
-        # wedge escalations within FM_CAP_HORIZON_SECS, so a hash-churning busy
-        # pane cannot rebuild the escalation counter on a fresh hash and re-fire
-        # PERMANENTLY-WEDGED every FM_WEDGE_MAX_ESCALATIONS polls. Honored until
-        # the horizon elapses; after that the marker is stale and a new wedge
-        # re-fires.
-        # The dead-record probe is consulted BEFORE the silence, because a
-        # ceiling on escalations is not a ceiling on detecting a dead worker:
-        # an agent that exits while its pane keeps rendering the identical frame
-        # would otherwise never be reported again for the rest of the horizon.
-        # The probe bounds itself through .dead-reported-<key> and re-arms the
-        # idle timer on the death it reports, so a death is still delivered
-        # exactly once rather than once per poll, and the caller re-arms that
-        # timer on its not-dead outcome because no escalation follows here to
-        # clear it: the probe keeps its once-per-STALE_ESCALATE_SECS cadence
-        # across the whole horizon instead of paying a backend read per poll.
-        # Every deferral and the cap fire itself stay behind this check, so no
-        # re-surface wake or duplicate terminal row can slip through the cap.
-        # The marker is read only where the cap is configured, so a leftover from
-        # an earlier configured run cannot silence a window once the cap is off.
-        if [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] && _wedge_cap_marker_stands "$_wkey"; then
-          wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task" \
-            || { fm_epoch_seconds_to _wrb_now; printf '%s\n' "$_wrb_now" > "$since_file"; }
-          return 0
-        fi
+        # A fired cap survives pane/footer changes. Main's declared waits and
+        # supervisor-owned decisions defer first. Otherwise the capped window
+        # still probes for a dead record once per STALE_ESCALATE_SECS; the
+        # once-only death marker and timer re-arm bound both reports and reads.
+        # Explicit 0 ignores cap markers left by an earlier enabled run.
         if evidence=$(wedge_wait_evidence "$task") &&
            wedge_defer_wait "$win" "$since_file" "$label" "$age" "$evidence"; then
+          return 0
+        fi
+        if wedge_cap_eligible "$task" && _wedge_cap_marker_stands "$_wkey"; then
+          wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task" \
+            || { fm_epoch_seconds_to _wrb_now; printf '%s\n' "$_wrb_now" > "$since_file"; }
           return 0
         fi
         if crew_worktree_written_since "$task" "$STATE" "$since_file"; then
@@ -2257,7 +2238,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           # Deferral and endpoint reads can outlive a request. Revalidate after
           # those reads, immediately before this observation authorizes a wake.
           if ! busy_stream_snapshot_current "$task" "$stream_snapshot"; then
-            wedge_episode_end "$_wkey"
+            wedge_episode_end "$_wkey" 0 0 1
             rm -f "$STATE/.model-stream-episode-$_wkey"
             clear_write_tracking "$_wkey"
             return 0
@@ -2286,7 +2267,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         # cap marker so subsequent polls for this window short-circuit on the
         # marker check whatever hash they render. The terminal wake carries the
         # same evidence the escalation it replaces would have carried, because
-        # it is the only one this window publishes for the rest of the horizon.
+        # it is the last wedge alert until structural worker progress.
         # Every cap-state write on this route - the escalation count above, the
         # cap marker, and the escalation-counter reset the fire ends its episode
         # with - takes that one three-tier defence, so a state dir that refuses
@@ -2294,8 +2275,8 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         # the cap state back rather than amplify a single write failure into a
         # queue flood, and where the rollback itself fails write a transient
         # sentinel so the next polls stay silent for FM_ROLLBACK_SENTINEL_TTL_SECS.
-        if [ "$FM_WEDGE_MAX_ESCALATIONS" -gt 0 ] && [ "$n" -ge "$FM_WEDGE_MAX_ESCALATIONS" ]; then
-          _wrb_cap_reason="$reason, PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=$FM_WEDGE_MAX_ESCALATIONS reached - no further wedge escalations for this WINDOW while its cap marker stands: until FM_CAP_HORIZON_SECS elapses, the crew resumes, or the operator manually removes STATE/.wedge-permanent-<key>"
+        if wedge_cap_eligible "$task" && [ "$n" -ge "$FM_WEDGE_MAX_ESCALATIONS" ]; then
+          _wrb_cap_reason="$reason, PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=$FM_WEDGE_MAX_ESCALATIONS reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress or the operator manually removes STATE/.wedge-permanent-<key>"
           _wrb_cap_reason=$(stale_reason_naming_dialog "$_wrb_cap_reason" "$dialog")
           _wrb_cap_status=0
           if [ -n "$stream_snapshot" ]; then
@@ -2307,7 +2288,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
             # The snapshot changed under the lock wait, so this terminal wake
             # belongs to an observation that no longer stands: discard it and
             # its count exactly like a rejected escalation append.
-            wedge_episode_end "$_wkey"
+            wedge_episode_end "$_wkey" 0 0 1
             rm -f "$STATE/.model-stream-episode-$_wkey"
             clear_write_tracking "$_wkey"
             return 0
@@ -2325,7 +2306,8 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           # append was published; commit it before the cap marker supersedes it.
           [ -z "$stream_snapshot" ] || wedge_write_escalation_count "$win" "$_wkey" "$escalation_file" "$since_file" "$n"
           fm_epoch_seconds_to _wrb_cap_ts
-          if ! { printf '%s\n' "$_wrb_cap_ts" > "$STATE/.wedge-permanent-$_wkey"; } 2>/dev/null; then
+          if ! { wedge_progress_snapshot "$task" > "$STATE/.wedge-progress-$_wkey" \
+            && printf '%s\n' "$_wrb_cap_ts" > "$STATE/.wedge-permanent-$_wkey"; } 2>/dev/null; then
             _wrb_rm_status=0
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" || _wrb_rm_status=$?
             case "$_wrb_rm_status" in
@@ -2336,21 +2318,18 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           fi
           wedge_episode_end "$_wkey" 1
           clear_write_tracking "$_wkey"
-          # The reset is cap state like the count write above it, and the one
-          # whose failure the horizon would otherwise hide: it is what lets the
-          # count climb a fresh 1..N once the cap marker expires, so a state dir
-          # that refuses it leaves the counter saturated at the bound and the
-          # first post-horizon threshold would re-fire this terminal silence
-          # instead of escalating. The cycle ends in every failure tier, so the
-          # capped wake never goes out inline off a reset that failed; the durable
+          # Reset the consumed count before a later structural release starts
+          # a fresh 1..N ladder. A failed reset must not leave it saturated.
+          # Every failure tier ends the cycle, so the capped wake never goes
+          # out inline off a reset that failed; the durable
           # terminal row this fire already queued stands for the drain.
           if ! { : > "$escalation_file"; } 2>/dev/null; then
             _wrb_rm_status=0
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" || _wrb_rm_status=$?
             case "$_wrb_rm_status" in
-              2) triage_log "wedge escalation-counter reset FAILED AND rollback AND sentinel write ALL FAILED on $win - the counter stays saturated once the marker's horizon elapses; operator MUST intervene"; exit 1 ;;
+              2) triage_log "wedge escalation-counter reset FAILED AND rollback AND sentinel write ALL FAILED on $win - the counter stays saturated if the cap marker is removed; operator MUST intervene"; exit 1 ;;
               1) triage_log "wedge escalation-counter reset FAILED AND rollback ALSO FAILED on $win - sentinel set (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS); no wake-amplification"; exit 1 ;;
-              *) triage_log "wedge escalation-counter reset FAILED on $win - escalation count rolled back; the cap marker stands, so this window stays silent until its horizon (FM_CAP_HORIZON_SECS) elapses or an episode-ending route releases it (an operator can delete the marker to re-engage at once)"; exit 1 ;;
+              *) triage_log "wedge escalation-counter reset FAILED on $win - escalation count rolled back; the cap marker stands, so this window stays silent until structural worker progress (an operator can delete the marker to re-engage at once)"; exit 1 ;;
             esac
           fi
           triage_log "wedge permanently capped: $win (escalation $n, max $FM_WEDGE_MAX_ESCALATIONS, hash ${hash:0:12})"
@@ -2362,7 +2341,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           append_status=0
           fm_wake_append_guarded busy_stream_snapshot_current stale "$win" "$reason" "$task" "$stream_snapshot" || append_status=$?
           if [ "$append_status" -eq 3 ]; then
-            wedge_episode_end "$_wkey"
+            wedge_episode_end "$_wkey" 0 0 1
             rm -f "$STATE/.model-stream-episode-$_wkey"
             clear_write_tracking "$_wkey"
             return 0
@@ -2595,14 +2574,14 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
   stream_episode="$STATE/.model-stream-episode-$(window_key "$win")"
   if [ -n "$stream_snapshot" ]; then
     if [ "$(cat "$stream_episode" 2>/dev/null || true)" != "$stream_snapshot" ]; then
-      wedge_episode_end "$(window_key "$win")"
+      wedge_episode_end "$(window_key "$win")" 0 0 1
       clear_write_tracking "$(window_key "$win")"
       printf '%s' "$stream_snapshot" > "$stream_episode"
     fi
     label="busy (model stream silent)"
   else
     if [ -e "$stream_episode" ]; then
-      wedge_episode_end "$(window_key "$win")"
+      wedge_episode_end "$(window_key "$win")" 0 0 1
       clear_write_tracking "$(window_key "$win")"
     fi
     rm -f "$stream_episode"
@@ -2974,7 +2953,7 @@ surface_nonterminal_stale() {  # <window> <hash> [dialog-name]
   fi
   printf '%s' "$h" > "$STATE/.stale-$key"
   # First-sight surface: the pre-cap watcher kept the escalation counter here,
-  # so the count resets only under a configured cap (keep-count contract).
+  # so keep-count retains it with the default cap as well as explicit 0.
   wedge_episode_end "$key" 0 1
   clear_write_tracking "$key"
   if [ "$declared" -eq 0 ]; then
@@ -4448,6 +4427,7 @@ EOF
     # exemption below, because a mate's steers land in an inbox too.
     [ -z "$task" ] || inbox_steer_check "$w" "$task"
     key=$(window_key "$w")
+    wedge_cap_progress_check "$key" "$task"
     last=$(status_declared_wait_line "$STATE/$task.status")
     if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
       clear_pause_tracking "$key"
@@ -4496,6 +4476,13 @@ EOF
     # content cannot suppress stale detection. Read once per window per poll and
     # reused below so a busy verdict is consistent within one cycle.
     if window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
+    # A capped window still receives dead-agent probes on the ladder's cadence,
+    # even if its footer keeps repainting and never becomes stably stale.
+    if _wedge_cap_marker_stands "$key" && wedge_cap_eligible "$task"; then
+      wedge_timer_check "$w" "$ssf" capped "$ewf" "$task" "$h" "$dialog"
+      watch_step_done "report:$task"
+      continue
+    fi
     if [ "$h" = "$prev" ]; then
       n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
       echo "$n" > "$cf"
@@ -4518,7 +4505,6 @@ EOF
             stale_reason=$(stale_reason_naming_dialog "stale: $w" "$dialog")
             fm_wake_append stale "$w" "$stale_reason" || exit 1
             printf '%s' "$h" > "$sf"
-            _wedge_cap_markers_clear "$key"
             wake "$stale_reason"
           fi
         elif stale_is_terminal "$w" "$STATE"; then
@@ -4583,14 +4569,8 @@ EOF
             # the cap fire ends the episode and so drops this wedge timer, but
             # it keeps the window silent, so the marker it left standing is the
             # record that this hash is still the ladder's. Re-entering through it
-            # is what keeps the dead-record probe consulted for the rest of the
-            # horizon, on this route as on the three that reach the ladder
-            # unconditionally. The gate asks whether that marker is there, not
-            # how old it is: the horizon belongs to the ladder, which reads the
-            # marker itself, so an elapsed horizon hands the window back to the
-            # ordinary escalation ladder through this same gate. The cap being
-            # configured is what keeps a leftover marker from holding a window
-            # here once the operator has turned the cap back off.
+            # keeps dead-record detection alive while the cap stands. Elapsed
+            # time never releases it; explicit 0 ignores a leftover marker.
             wedge_timer_check "$w" "$ssf" "stale (overridden terminal status)" "$ewf" "$task" "$h" "$dialog"
           fi
           # else: already surfaced as genuinely terminal on a prior poll of

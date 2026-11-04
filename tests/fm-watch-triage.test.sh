@@ -2501,6 +2501,8 @@ wedge_guard_calls() {  # <case-dir>
 WEDGE_GUARD_CRITICAL='printf "%s\n" "{\"name\":\"ticket\",\"status\":\"CRITICAL\",\"recommendation\":\"ticket 7 is held by a live job\"}"'
 
 test_wedge_guards_absent_config_keeps_the_unchanged_ladder() {
+  # Isolate guard behavior from the independent default cap.
+  local -x FM_WEDGE_MAX_ESCALATIONS=0
   local dir state fakebin out capture window key n guard
   local working='state: working · source: run-step · ci running'
   window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
@@ -2898,7 +2900,11 @@ test_wedge_escalation_marks_demand_deep_inspection_after_threshold() {
     ack_stopped_cycle "$state" || fail "could not acknowledge wedge escalation round $n"
     n=$((n + 1))
   done
-  [ "$(cat "$state/.wedge-escalations-$key" 2>/dev/null || echo 0)" = 3 ] || fail "escalation counter did not persist across consecutive rounds"
+  # Reasons above must reach 1, 2, then 3; the default cap consumes the final
+  # counter only after publishing that third escalation.
+  grep -F 'PERMANENTLY-WEDGED' "$out" >/dev/null || fail "third escalation did not fire the default cap"
+  [ -f "$state/.wedge-permanent-$key" ] && [ ! -s "$state/.wedge-escalations-$key" ] \
+    || fail "default cap did not consume the completed escalation count"
   unset FM_FAKE_CREW_STATE
   pass "consecutive wedge escalations on the same pane accumulate and demand deep inspection at the threshold"
 }
@@ -3373,7 +3379,9 @@ test_busy_pane_repeated_escalation_reaches_demand_deep_inspection() {
     ack_stopped_cycle "$state" || fail "could not acknowledge busy turn-age escalation round $n"
     n=$((n + 1))
   done
-  [ "$(cat "$state/.wedge-escalations-$key" 2>/dev/null || echo 0)" = 3 ] || fail "busy turn-age escalation counter did not persist across consecutive rounds"
+  grep -F 'PERMANENTLY-WEDGED' "$out" >/dev/null || fail "third busy escalation did not fire the default cap"
+  [ -f "$state/.wedge-permanent-$key" ] && [ ! -s "$state/.wedge-escalations-$key" ] \
+    || fail "default busy cap did not consume the completed escalation count"
   pass "repeated busy turn-age escalations reuse the existing escalation counter and demand deep inspection at the threshold"
 }
 
@@ -5171,6 +5179,8 @@ test_exit_picker_stale_names_the_dialog() {
 }
 
 test_exit_picker_wedge_keeps_climbing() {
+  # Pin the uncapped ladder; default-cap behavior has its own regressions.
+  local -x FM_WEDGE_MAX_ESCALATIONS=0
   local dir state fakebin out capture_file window key pid n
   dir=$(make_case exit-picker-wedge); state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; capture_file="$dir/pane.txt"
@@ -5296,7 +5306,8 @@ if [ -n "${FM_TEST_STOCK_BASH:-}" ]; then
   exit 0
 fi
 if [ -n "${FM_TEST_ONLY:-}" ]; then
-  "$FM_TEST_ONLY"
+  IFS=' ' read -r -a selected <<< "$FM_TEST_ONLY"
+  fm_test_run "${selected[@]}"
   exit 0
 fi
 
