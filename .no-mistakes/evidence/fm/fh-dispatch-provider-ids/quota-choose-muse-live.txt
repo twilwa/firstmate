@@ -1,0 +1,7 @@
+# bin/fm-quota-choose.sh (legacy no-key path) against real quota-axi --json output from the disposable snapshot
+== HEAD: --candidate muse:default
+muse default
+exit=0
+== BASE: --candidate muse:default
+none
+exit=1

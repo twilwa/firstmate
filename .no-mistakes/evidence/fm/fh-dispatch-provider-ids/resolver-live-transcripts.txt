@@ -1,0 +1,101 @@
+# Live resolver transcripts: real bin/fm-dispatch-resolve.sh + real curl -> localhost System One emulator (127.0.0.1:18765),
+# real quota-axi 0.1.68 answering from a disposable QUOTA_AXI_SNAPSHOT in an empty isolated HOME, disposable FM_HOME lab.
+# HEAD=37732d5e  BASE=1d829d28
+# Lab rules:
+{
+  "rules": [
+    { "when": "The task is a Muse-only lab task.", "use": [ { "harness": "muse", "model": "default" } ] },
+    { "when": "The task is a Pi OpenAI lab task with the published codex ID.", "use": [ { "harness": "pi", "model": "openai-codex/gpt-5.5", "provider": "codex" } ] },
+    { "when": "The task is a Pi OpenAI lab task with the openai-codex alias.", "use": [ { "harness": "pi", "model": "openai-codex/gpt-5.5", "provider": "openai-codex" } ] }
+  ],
+  "default": [
+    { "harness": "pi", "model": "openai-codex/gpt-5.5", "effort": "medium", "provider": "codex" },
+    { "harness": "pi", "model": "anthropic/claude-opus-5-5", "effort": "medium", "provider": "claude" }
+  ]
+}
+
+# quota-axi --json rows the resolver read (muse/codex/claude):
+{"provider":"claude","qs":"partial","av":[]}
+{"provider":"codex","qs":"known","av":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":"through_reset","sp":1.509}]}
+{"provider":"muse","qs":"known","av":[{"scope":"all_models","status":"known","effectivePercentRemaining":85,"runway":"through_reset","sp":1.9004}]}
+
+=== S1 muse — HEAD (emulator answers rule_1) ===
+dispatch-resolve:
+  status: clear
+  model: lab-emulator   latency_ms: 17   tokens: 1/1
+  rule: rule_1 (The task is a Muse-only lab task.)   confidence: 0.95
+  probabilities: rule_1=0.97 rule_2=0.01 rule_3=0.01 default=0.01
+  note: rule matched
+  candidate: muse:default  provider=muse  scope=all_models  remaining=85%  spendPriority=1.9006  runway=through_reset  -> eligible
+  profile: --harness 'muse' --model 'default'
+exit=0
+
+=== S1 muse — BASE (emulator answers rule_1) ===
+dispatch-resolve:
+  status: escalate
+  model: lab-emulator   latency_ms: 22   tokens: 1/1
+  rule: rule_1 (The task is a Muse-only lab task.)   confidence: 0.95
+  probabilities: rule_1=0.97 rule_2=0.01 rule_3=0.01 default=0.01
+  reason: no rankable eligible candidate
+  note: rule matched
+  candidate: muse:default  provider=meta  -> eligible, unranked: provider meta not in the quota snapshot: disclosed uncertainty
+exit=0
+
+=== S2 pi provider=codex — HEAD (emulator answers rule_2) ===
+dispatch-resolve:
+  status: clear
+  model: lab-emulator   latency_ms: 18   tokens: 1/1
+  rule: rule_2 (The task is a Pi OpenAI lab task with the published codex ID)   confidence: 0.95
+  probabilities: rule_1=0.01 rule_2=0.97 rule_3=0.01 default=0.01
+  note: rule matched
+  candidate: pi:openai-codex/gpt-5.5  provider=codex  scope=all_models  remaining=80%  spendPriority=1.5091  runway=through_reset  -> eligible
+  profile: --harness 'pi' --model 'openai-codex/gpt-5.5'
+exit=0
+
+=== S3 pi provider=openai-codex alias (adversarial) — HEAD (emulator answers rule_3) ===
+dispatch-resolve:
+  status: escalate
+  model: lab-emulator   latency_ms: 19   tokens: 1/1
+  rule: rule_3 (The task is a Pi OpenAI lab task with the openai-codex alias)   confidence: 0.95
+  probabilities: rule_1=0.01 rule_2=0.01 rule_3=0.97 default=0.01
+  reason: no rankable eligible candidate
+  note: rule matched
+  candidate: pi:openai-codex/gpt-5.5  provider=openai-codex  -> eligible, unranked: provider openai-codex not in the quota snapshot: disclosed uncertainty
+exit=0
+
+=== S3 pi provider=openai-codex alias (adversarial) — BASE (emulator answers rule_3) ===
+dispatch-resolve:
+  status: escalate
+  model: lab-emulator   latency_ms: 20   tokens: 1/1
+  rule: rule_3 (The task is a Pi OpenAI lab task with the openai-codex alias)   confidence: 0.95
+  probabilities: rule_1=0.01 rule_2=0.01 rule_3=0.97 default=0.01
+  reason: no rankable eligible candidate
+  note: rule matched
+  candidate: pi:openai-codex/gpt-5.5  provider=openai-codex  -> eligible, unranked: provider openai-codex not in the quota snapshot: disclosed uncertainty
+exit=0
+
+=== S4 shipped docs/examples/crew-dispatch.json default — HEAD (emulator answers default) ===
+dispatch-resolve:
+  status: clear
+  model: lab-emulator   latency_ms: 19   tokens: 1/1
+  rule: default (No listed rule applies to this task.)   confidence: 0.95
+  probabilities: rule_1=0.01 rule_2=0.01 rule_3=0.01 default=0.97
+  note: no rule matched
+  note: 1 eligible candidate(s) unranked (claude)
+  candidate: pi:openai-codex/gpt-5.5  provider=codex  scope=all_models  remaining=80%  spendPriority=1.5091  runway=through_reset  -> eligible
+  candidate: pi:anthropic/claude-opus-5-5  provider=claude  -> eligible, unranked: no applicable quota row for provider claude: disclosed uncertainty
+  profile: --harness 'pi' --model 'openai-codex/gpt-5.5' --effort 'medium'
+exit=0
+
+=== S4 base docs/examples/crew-dispatch.json default — BASE (emulator answers default) ===
+dispatch-resolve:
+  status: clear
+  model: lab-emulator   latency_ms: 17   tokens: 1/1
+  rule: default (No listed rule applies to this task.)   confidence: 0.95
+  probabilities: rule_1=0.01 rule_2=0.01 rule_3=0.01 default=0.97
+  note: no rule matched
+  note: 1 eligible candidate(s) unranked (claude)
+  candidate: codex:gpt-5.5  provider=codex  scope=all_models  remaining=80%  spendPriority=1.5091  runway=through_reset  -> eligible
+  candidate: pi:anthropic/claude-opus-5-5  provider=claude  -> eligible, unranked: no applicable quota row for provider claude: disclosed uncertainty
+  profile: --harness 'codex' --model 'gpt-5.5' --effort 'medium'
+exit=0

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 5,
+  "providers": [
+    {
+      "provider": "claude",
+      "notSetUp": true
+    },
+    {
+      "provider": "codex",
+      "notSetUp": null
+    },
+    {
+      "provider": "cursor",
+      "notSetUp": true
+    },
+    {
+      "provider": "copilot",
+      "notSetUp": true
+    },
+    {
+      "provider": "grok",
+      "notSetUp": true
+    },
+    {
+      "provider": "kimi",
+      "notSetUp": true
+    },
+    {
+      "provider": "zai",
+      "notSetUp": true
+    },
+    {
+      "provider": "agy",
+      "notSetUp": null
+    },
+    {
+      "provider": "alibaba",
+      "notSetUp": true
+    },
+    {
+      "provider": "opencode-go",
+      "notSetUp": true
+    },
+    {
+      "provider": "commandcode",
+      "notSetUp": true
+    },
+    {
+      "provider": "minimax",
+      "notSetUp": true
+    },
+    {
+      "provider": "mimo",
+      "notSetUp": true
+    },
+    {
+      "provider": "deepseek",
+      "notSetUp": true
+    },
+    {
+      "provider": "openrouter",
+      "notSetUp": true
+    },
+    {
+      "provider": "elevenlabs",
+      "notSetUp": true
+    },
+    {
+      "provider": "devin",
+      "notSetUp": true
+    },
+    {
+      "provider": "muse",
+      "notSetUp": true
+    },
+    {
+      "provider": "higgsfield",
+      "notSetUp": true
+    }
+  ]
+}
