@@ -3353,15 +3353,49 @@ No external provider, credentials, primary extension, or live fleet is used.
 The signed executable was absent and is not credited as live-verified on this version.
 The portable busy-state, adapter-wiring, and watcher-triage suites own generation/request rejection and inspection notification behavior.
 
-The unverified-version fallback was checked on 2026-10-31 with installed Pi 1.4.0 and Node v24.22.1 using the same command above.
-The guard asserted the exact spawn warning and absence of stream handlers, then exercised ordinary busy/idle behavior through the real SDK.
+### Pi 1.4.0 compaction and stream compatibility
+
+Verified on 2026-11-04 with standalone Pi 1.4.0 and Node v24.22.2 on Linux.
+The standalone distribution has no SDK `dist/`, so this opt-in guard uses the real CLI in RPC mode rather than the SDK guard above:
+
+```sh
+systemd-run --user --scope -p TasksMax=512 -p MemoryMax=2G \
+  -p MemorySwapMax=0 -p RuntimeMaxSec=900 -- env FM_PI_COMPACTION_LIVE=1 \
+  bash bin/fm-test-run.sh tests/fm-pi-compaction-live-e2e.test.sh
+```
+
 Observed output:
 
 ```text
-ok - real Pi 1.4.0 default-off worker
-# pi-signed unavailable: signed executable not exercised
-ok - real Pi 1.4.0 unverified-version warning, inert stream observation, and existing busy/idle behavior
+ok - real Pi 1.4.0 success: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 42ms
+ok - real Pi 1.4.0 manual-idle: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 65ms; compaction-to-idle 2069ms
+ok - real Pi 1.4.0 error: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 68ms
+ok - real Pi 1.4.0 abort: stream snapshots, post-settlement busy and terminal outcome; idle-to-busy 71ms
+ok - real ~/.pi/agent configuration/auth/extensions unchanged; all Pi processes used temporary HOME/agent/XDG directories
+ok - real Pi 1.4.0 post-settlement compaction, continuation, idle success, error and abort with isolated configuration
 ```
+
+The guard loads the generated worker extension before a probe that calls `ctx.compact()` from `agent_settled`, reproducing compaction after the worker already published idle.
+A localhost OpenAI-compatible transport holds the real summarizer request open.
+The record reads busy before the request starts and remains busy while it is held.
+Successful compaction keeps busy until resumed work settles; the record still reads `event=agent-settled` 2.5 s later.
+A real RPC `compact` on a settled worker with no resumption reads busy at `session_compact` and returns to idle with `event=compaction-done-idle` about 2 s later.
+`session_compact` publishes nothing immediately: one 2 s recheck publishes idle only if no `agent_start` followed the compaction's start and `ctx.isIdle()` is true.
+Failed and aborted compactions publish idle when `ctx.isIdle()` is true.
+The portable adapter guard also rejects a before-compaction return value and checks that failure or success during continuing or resumed work does not publish idle.
+
+Real `context` events open distinct stream requests; assistant `message_update` snapshots retain the guarded `text/text`, `thinking/thinking`, and `toolCall/arguments` shapes and advance progress.
+Assistant completion and tool execution clear the foreground stream marker.
+Background compaction does not open one.
+This evidence permits exactly Pi 1.4.0 alongside the previously verified 1.2.0; other releases remain unverified.
+This guard does not exercise `pi-signed` or the SDK guard's stalled-writer case.
+
+Each real Pi invocation, including `--version`, uses temporary HOME, agent, XDG configuration/data/cache/state and TMP directories.
+The driver excludes ambient provider credentials and uses only its localhost transport.
+Fixture tmux does not start a real server.
+It checks hashes of real agent configuration/auth files and the extension directory before and after the run.
+No deferred `agent_settled` recheck was added.
+The observed 42-71 ms idle-to-busy interval ended before the held summarizer request; this test found no consequential idle classification that would justify a 250 ms timer.
 
 ## Native Codex through Pi
 

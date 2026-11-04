@@ -1430,6 +1430,19 @@ test_watcher_self_evicts_on_lock_takeover() {
   pass "watcher self-evicts when the lock pid no longer names it"
 }
 
+live_descendants() {  # <pid> - prints the pid's live, non-zombie descendants
+  ps -A -o pid= -o ppid= -o stat= | awk -v root="$1" '
+    { parent[$1] = $2; state[$1] = $3 }
+    END {
+      for (p in parent) {
+        if (state[p] ~ /^Z/) continue
+        q = parent[p]
+        while ((q in parent) && q != root) q = parent[q]
+        if (q == root) print p
+      }
+    }'
+}
+
 test_watcher_exits_on_state_teardown_during_startup() {
   # A state directory torn down and recreated at the same path just after the
   # watcher claimed its lock - before the main loop - is still a teardown: the
@@ -1449,7 +1462,15 @@ test_watcher_exits_on_state_teardown_during_startup() {
     [ -e "$state/.watch.lock/watcher-path" ] && kill -STOP "$pid" 2>/dev/null && { stopped=1; break; }
   done
   [ "$stopped" -eq 1 ] || fail "watcher never finished claiming its lock: $(cat "$out")"
-  rm -rf "$state"
+  # SIGSTOP pauses only the watcher's own shell. A child it had already forked
+  # keeps running and can write into the state directory while it is removed,
+  # leaving the same directory in place instead of a recreated one.
+  end=$((SECONDS + 20))
+  while [ -n "$(live_descendants "$pid")" ]; do
+    [ "$SECONDS" -lt "$end" ] || fail "paused watcher's children never finished"
+    sleep 0.05
+  done
+  rm -rf "$state" || fail "could not tear down the state directory"
   mkdir -p "$state"
   kill -CONT "$pid" 2>/dev/null || true
   # wait_for_exit returns the watcher's own status, or TERMs a watcher that

@@ -10,7 +10,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 fm_live_gate default-on FM_PI_WORKER_STREAM_LIVE node pi jq
 
-PI_EXECUTABLE=$(command -v pi)
+PI_EXECUTABLE=$(type -P pi)
 PI_PACKAGE_DIR=$(node -e 'const fs=require("node:fs"),p=require("node:path"); console.log(p.resolve(p.dirname(fs.realpathSync(process.argv[1])),"../.."));' "$PI_EXECUTABLE")
 PI_VERSION=$(jq -r '.version' "$PI_PACKAGE_DIR/package.json") || fail "Pi package version unavailable"
 # shellcheck source=bin/fm-busy-lib.sh
@@ -68,7 +68,7 @@ SH
   out=$(ROOT="$spawn_root" FM_STREAM_SILENT_MAX_SECS="$enabled" fm_test_run_spawn "$home" "$wt" "$fakebin" stream "$project" pi --mode no-mistakes --yolo off) \
     || fail "Pi $PI_VERSION: could not generate worker extension: $out"
   if [ "$case_label" = unverified ]; then
-    printf '%s\n' "$out" | grep -Fx "warning: pi model-stream observation unavailable for version $PI_VERSION; verified version: 1.2.0; existing busy bound remains active" >/dev/null || fail "Pi $PI_VERSION: missing exact unverified-version warning"
+    printf '%s\n' "$out" | grep -Fx "warning: pi model-stream observation unavailable for version $PI_VERSION; verified versions: 1.2.0, 1.4.0; existing busy bound remains active" >/dev/null || fail "Pi $PI_VERSION: missing exact unverified-version warning"
     enabled=0
     STREAM_EXTENSION="$home/state/stream.pi-ext.ts" node --input-type=module <<'JS' || fail "Pi $PI_VERSION: unverified worker installed stream handlers"
 import assert from "node:assert/strict";
@@ -91,7 +91,7 @@ JSON
     STREAM_CWD="$wt" STREAM_ENABLED="$enabled" STREAM_FAULT_DIR="$fault_dir" \
     node "$ROOT/tests/fm-pi-worker-stream-live.mjs" || fail "Pi $PI_VERSION: real worker stream guard failed ($case_label)"
 done
-if ! command -v pi-signed >/dev/null 2>&1; then
+if ! type -P pi-signed >/dev/null 2>&1; then
   printf '# pi-signed unavailable: signed executable not exercised\n'
 fi
 if [ "$verified" = 0 ]; then

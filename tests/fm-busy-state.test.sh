@@ -467,14 +467,15 @@ test_kimi_unverified_gate() {
 
 test_pi_stream_version_floor_accepts_verified_rejects_unverified() {
   local version
-  version=1.2.0
-  fm_busy_pi_stream_version_supported "$version" \
-    || fail "Pi $version must pass the verified stream gate"
-  for version in '' 1.1.9 0.82.0 1.2 1.2.1 1.3.0 1.10.0 2.0.0 1.4.0 1.x.0 1.2.0.1 1.2.0-beta.3 1.2.0+build .1.2.0 1.2.0. 1000000000.0.0 'pi 1.4.0'; do
+  for version in 1.2.0 1.4.0; do
+    fm_busy_pi_stream_version_supported "$version" \
+      || fail "Pi $version must pass the verified stream gate"
+  done
+  for version in '' 1.1.9 0.82.0 1.2 1.2.1 1.3.0 1.4.1 1.10.0 2.0.0 1.x.0 1.2.0.1 1.2.0-beta.3 1.2.0+build 1.4.0-beta.1 1.4.0+build .1.2.0 1.2.0. 1000000000.0.0 'pi 1.4.0'; do
     fm_busy_pi_stream_version_supported "$version" \
       && fail "Pi '${version:-<empty>}' must not pass the verified stream gate"
   done
-  pass "Pi stream gate accepts only the verified release, rejects newer, older, prerelease, and malformed"
+  pass "Pi stream gate accepts only verified 1.2.0 and 1.4.0 releases, rejects unverified and malformed versions"
 }
 
 test_cursor_ignores_rendered_and_native_signals() {

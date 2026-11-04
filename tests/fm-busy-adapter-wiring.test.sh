@@ -52,15 +52,14 @@ classify() {  # <harness> <id> <state-dir>
 }
 
 # drive_pi_ext <ext-path> <mode>: load the generated Pi extension in a plain
-# Node host and fire one lifecycle handler. Modes: agent-start, settle-idle,
-# settle-continuing, turn-end.
+# Node host and fire lifecycle/compaction handlers against the real writer.
 drive_pi_ext() {
   EXT_PATH="$1" MODE="$2" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
 const handlers = {};
 mod.default({ on: (name, fn) => { handlers[name] = fn; }, events: { on: (name, fn) => { handlers[name] = fn; } } });
-const ctx = { isIdle: () => process.env.MODE !== "settle-continuing" };
+const ctx = { isIdle: () => !["settle-continuing", "compact-complete-continuing", "compact-failed-continuing"].includes(process.env.MODE) };
 switch (process.env.MODE) {
   case "agent-start": await handlers["agent_start"]({}, ctx); break;
   case "settle-idle": await handlers["agent_settled"]({}, ctx); break;
@@ -69,6 +68,20 @@ switch (process.env.MODE) {
     await handlers["agent_settled"]({}, ctx);
     await handlers["agent_start"]({}, ctx);
     break;
+  case "compact-start": {
+    const result = await handlers["session_before_compact"]({}, ctx);
+    if (result !== undefined) throw new Error("busy observer must not cancel or replace compaction");
+    break;
+  }
+  case "compact-complete-idle":
+  case "compact-complete-continuing":
+  case "compact-complete-resumed":
+    await handlers["session_before_compact"]({}, ctx);
+    await handlers["session_compact"]({}, ctx);
+    if (process.env.MODE === "compact-complete-resumed") await handlers["agent_start"]({}, ctx);
+    break;
+  case "compact-failed-idle":
+  case "compact-failed-continuing": await handlers["session_compact_failed"]({}, ctx); break;
   case "turn-end": await handlers["turn_end"]({}, ctx); break;
   case "progress": await handlers["codex-native:progress"]({ type: "commandExecution", phase: "completed" }); break;
   default: throw new Error("unknown mode " + process.env.MODE);
@@ -81,7 +94,7 @@ EOF
 
 test_pi_stream_extension_activation_and_lifecycle() {
   local rec id=stream-pi state ext out version option enabled label
-  for label in disabled zero negative malformed leading maximum overflow verified newer malformed-version older; do
+  for label in disabled zero negative malformed leading maximum overflow verified verified-1.4 newer malformed-version older; do
     version=1.2.0 option=300 enabled=1
     case "$label" in
       disabled) option='' enabled=0 ;;
@@ -91,7 +104,8 @@ test_pi_stream_extension_activation_and_lifecycle() {
       leading) option=00300 ;;
       maximum) option=999999999 ;;
       overflow) option=1000000000 enabled=0 ;;
-      newer) version=1.3.0 enabled=0 ;;
+      verified-1.4) version=1.4.0 ;;
+      newer) version=1.5.0 enabled=0 ;;
       malformed-version) version=not-a-version enabled=0 ;;
       older) version=0.82.0 enabled=0 ;;
     esac
@@ -107,7 +121,7 @@ SH
     expect_code 0 $? "stream spawn should succeed: $out"
     case "$label" in
       newer|older|malformed-version)
-        printf '%s\n' "$out" | grep -Fx "warning: pi model-stream observation unavailable for version $version; verified version: 1.2.0; existing busy bound remains active" >/dev/null || fail "missing exact version warning"
+        printf '%s\n' "$out" | grep -Fx "warning: pi model-stream observation unavailable for version $version; verified versions: 1.2.0, 1.4.0; existing busy bound remains active" >/dev/null || fail "missing exact version warning"
         ;;
     esac
     state="$HOME_DIR/state"
@@ -219,6 +233,37 @@ test_pi_extension_semantic_lifecycle() {
   out=$(classify pi "$id" "$state")
   [ "$out" = "idle pi-ext" ] || fail "the final settle must classify idle, got '$out'"
   pass "pi extension reports agent_start busy, settles idle only via ctx.isIdle(), and keeps turn_end a notification"
+}
+
+test_pi_extension_compaction_lifecycle() {
+  local rec id=busy-pi-compact out state ext mode
+  rec=$(make_spawn_case pi-compaction pi "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "pi spawn should succeed: $out"
+  state="$HOME_DIR/state"
+  ext="$state/$id.pi-ext.ts"
+
+  out=$(drive_pi_ext "$ext" settle-idle) || fail "settle drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "idle pi-ext" ] || fail "pre-compaction settle must be idle: $out"
+  out=$(drive_pi_ext "$ext" compact-start) || fail "compaction start failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "busy pi-ext" ] || fail "compaction after settlement must restore busy: $out"
+
+  for mode in compact-complete-resumed compact-complete-continuing compact-failed-continuing; do
+    out=$(drive_pi_ext "$ext" "$mode") || fail "$mode drive failed: $out"
+    out=$(classify pi "$id" "$state")
+    [ "$out" = "busy pi-ext" ] || fail "$mode must leave a continuing worker busy: $out"
+  done
+  out=$(drive_pi_ext "$ext" compact-complete-idle) || fail "idle compaction drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "idle pi-ext" ] || fail "successful compaction with no follow-up must return to idle: $out"
+  out=$(drive_pi_ext "$ext" compact-start) || fail "second compaction start failed: $out"
+  out=$(drive_pi_ext "$ext" compact-failed-idle) || fail "failed compaction drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "idle pi-ext" ] || fail "failed compaction in an idle session must clear busy: $out"
+  pass "Pi compaction restores busy after settlement, settles success only when no run follows, and clears failure only when idle"
 }
 
 test_pi_extension_serializes_settle_before_next_start() {
@@ -1126,6 +1171,7 @@ test_secondmate_codex_and_grok_do_not_arm_a_parent_turnend() {
   pass "codex and grok secondmates stay on their existing verdicts and do not emit a parent turn-end"
 }
 
+test_pi_extension_compaction_lifecycle
 test_secondmate_claude_spawn_arms_busy_for_the_stall_gate
 test_raw_secondmate_launch_writes_no_busy_wiring
 test_secondmate_claude_stop_guard_owns_the_stop_verdict
