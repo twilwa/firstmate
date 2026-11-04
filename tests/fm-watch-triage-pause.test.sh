@@ -121,7 +121,7 @@ test_nonterminal_stale_paused_absorbed_then_resurfaced() {
   pid=$!
   wait_for_exit "$pid" 100 || fail "watcher did not re-surface a declared pause past the threshold"
   grep -F "stale: $window" "$out" >/dev/null || fail "re-surface did not print a stale wake"
-  grep -F "awaiting external" "$out" >/dev/null || fail "re-surface was not labeled a paused/awaiting-external recheck"
+  grep -F "stopped while paused" "$out" >/dev/null || fail "re-surface failed to identify the dead paused agent"
   grep -F "possible wedge" "$out" >/dev/null && fail "a declared pause was mislabeled a possible wedge"
   [ -e "$state/.paused-resurfaced-$key" ] || fail "the paused re-surface throttle marker was not recorded"
   [ ! -e "$state/.stale-since-$key" ] || fail "a paused re-surface must not use the wedge timer"
@@ -261,8 +261,8 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
   [ "$wakes" -le 1 ] || fail "dead-agent declared pause flooded $wakes stale wakes across six unchanged polls"
   [ "$bare" -eq 0 ] || fail "dead-agent declared pause surfaced as $bare bare stopped-crew wakes"
-  grep -F "awaiting external" "$state/.wake-queue" >/dev/null \
-    || fail "dead-agent declared pause did not use the bounded paused recheck"
+  grep -F "stopped while paused" "$state/.wake-queue" >/dev/null \
+    || fail "dead-agent declared pause was not reported as an agent death"
 
   dir=$(make_case exited-captain-held); state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held.status"
@@ -343,7 +343,7 @@ test_absorbed_replacement_wait_does_not_inherit_the_old_throttle() {
   local spec name initial replacement expected dir state fakebin out capture_file
   local statusf window key sig back pid wakes
   for spec in \
-    'paused-replacement|paused: waiting on validation run one|paused: waiting on validation run two|awaiting external' \
+    'paused-replacement|paused: waiting on validation run one|paused: waiting on validation run two|stopped while paused' \
     'captain-held-replacement|captain-held [key=route]: awaiting the routing call|captain-held [key=release]: awaiting the release call|awaiting the captain'
   do
     name=${spec%%|*}; spec=${spec#*|}
@@ -1465,6 +1465,202 @@ test_required_captain_hold_tests_fail_without_tasks_axi() {
   pass "all four required captain-hold tests fail when tasks-axi is unavailable"
 }
 
+# Exercise the real watcher and backend classifier, not a replacement liveness
+# function. A bare shell proves death; successful inventory without the recorded
+# endpoint proves absence. Neither may keep asking whether an external wait holds.
+test_paused_dead_or_missing_agent_reports_once() {
+  local verdict dir state window key out marker before
+  window=test:fm-wedge; key=test_fm-wedge
+  for verdict in dead missing; do
+    dir=$(wedge_threshold_fixture "paused-$verdict" 'paused: waiting for an upstream release' 500)
+    state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
+    FM_TEST_PANE_COMMAND=zsh
+    FM_TEST_TMUX_WINDOWS=fm-wedge
+    [ "$verdict" != missing ] || FM_TEST_TMUX_WINDOWS=another-window
+    export FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE=240
+    printf 'incarnation-one\n' > "$state/wedge.busy-gen"
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' exit || fail "$verdict paused agent did not surface"
+    grep -F "agent $verdict" "$out" >/dev/null || fail "$verdict pause was reported as an external wait"
+    grep -F 'stopped while paused' "$out" >/dev/null || fail "$verdict report omitted the declared pause"
+    [ "$(cat "$state/.dead-reported-$key")" = "$verdict incarnation-one" ] \
+      || fail "$verdict pause did not reuse the shared incarnation record"
+    case "$(cat "$marker")" in declared:*) ;; *) fail "dead report lost the pause declaration scope" ;; esac
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] || fail "$verdict pause did not notify exactly once"
+    ack_stopped_cycle "$state" || fail "could not acknowledge the $verdict report"
+
+    # The same death stays quiet even when the next long-cadence recheck is due.
+    before=$(file_mtime "$marker")
+    set_mtime "$(( before - 500 ))" "$marker"
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' absorb || fail "$verdict death repeated at the next recheck"
+    [ "$(file_mtime "$marker")" -ge "$before" ] || fail "$verdict recheck failed to advance its cadence"
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] || fail "$verdict death enqueued another notification"
+    [ ! -e "$state/.wedge-escalations-$key" ] || fail "$verdict pause entered the wedge ladder"
+  done
+  unset FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE
+  pass "dead and missing paused agents use the existing once-per-incarnation report, never repeated wait confirmations"
+}
+
+# An unreadable due probe cannot prove that a previously reported incarnation
+# recovered. Its next confirmed death must therefore stay reported once.
+test_paused_unreadable_probe_keeps_reported_death() {
+  local dir state window key out marker
+  window=test:fm-wedge; key=test_fm-wedge
+  dir=$(wedge_threshold_fixture paused-dead-unreadable-dead 'paused: waiting for an upstream release' 500)
+  state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
+  printf 'incarnation-one\n' > "$state/wedge.busy-gen"
+  export FM_TEST_PANE_COMMAND=zsh FM_TEST_TMUX_WINDOWS=fm-wedge FM_TEST_PAUSE_RESURFACE=240
+  wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+    'state: paused · source: status-log · awaiting upstream' exit || fail "initial paused death did not surface"
+  grep -F 'agent dead' "$out" >/dev/null || fail "initial paused death was not reported: $(<"$out")"
+  [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] || fail "initial death did not notify exactly once"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the initial death"
+
+  # An unreadable capture must reach the due probe even for an ordinary worker.
+  export FM_TEST_PANE_COMMAND='' FM_FAKE_TMUX_FORBIDDEN_TARGET="$window"
+  set_mtime "$(( $(date +%s) - 500 ))" "$marker"
+  : > "$out"
+  wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+    'state: paused · source: status-log · awaiting upstream' exit || fail "unreadable due probe lost its wait confirmation"
+  grep -F 'awaiting external' "$out" >/dev/null || fail "unreadable probe did not preserve the wait confirmation"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the unreadable recheck"
+
+  unset FM_FAKE_TMUX_FORBIDDEN_TARGET
+  export FM_TEST_PANE_COMMAND=zsh
+  set_mtime "$(( $(date +%s) - 500 ))" "$marker"
+  : > "$out"
+  wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+    'state: paused · source: status-log · awaiting upstream' absorb || fail "the same death repeated after an unreadable probe"
+  [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] || fail "the same death enqueued a duplicate report"
+  unset FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE
+  pass "an unreadable paused probe preserves report-once handling for the same dead incarnation"
+}
+
+# A secondmate's pause classification deliberately does not probe liveness, so
+# this fixture isolates the probe newly spent by the due paused recheck. A live
+# due probe clears an old death marker, but an unreadable probe retains it.
+# Between due rounds the marker and notification count remain unchanged.
+test_paused_alive_or_unreadable_keeps_recheck_cadence() {
+  local verdict command dir state window key out marker dead_marker round
+  window=test:fm-wedge; key=test_fm-wedge
+  for verdict in alive unreadable; do
+    command=grok
+    [ "$verdict" != unreadable ] || command=
+    dir=$(wedge_threshold_fixture "paused-$verdict" 'paused: waiting for an upstream release' 500)
+    state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
+    dead_marker="$state/.dead-reported-$key"
+    printf 'window=%s\nkind=secondmate\nharness=grok\nbackend=tmux\n' "$window" > "$state/wedge.meta"
+    printf 'dead old-incarnation' > "$dead_marker"
+    export FM_TEST_PANE_COMMAND="$command" FM_TEST_PAUSE_RESURFACE=999
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: paused · source: status-log · awaiting upstream' absorb || fail "$verdict fresh pause was not absorbed"
+    [ -e "$dead_marker" ] || fail "$verdict pause probed before its recheck was due"
+    ack_stopped_cycle "$state" || fail "could not acknowledge the intentional $verdict test stop"
+
+    export FM_TEST_PAUSE_RESURFACE=240
+    for round in 1 2; do
+      : > "$out"
+      wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+        'state: paused · source: status-log · awaiting upstream' exit || fail "$verdict pause lost its due recheck"
+      grep -F 'awaiting external' "$out" >/dev/null || fail "$verdict round $round lost its unchanged wait confirmation"
+      grep -F 'agent dead' "$out" >/dev/null && fail "$verdict result was treated as a death"
+      if [ "$verdict" = alive ]; then
+        [ ! -e "$dead_marker" ] || fail "live due recheck did not clear the old death marker"
+      else
+        [ "$(cat "$dead_marker")" = 'dead old-incarnation' ] || fail "unreadable due recheck lost the old death marker"
+      fi
+      [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] || fail "$verdict due pause produced multiple notifications"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the $verdict recheck"
+
+      printf 'dead old-incarnation' > "$dead_marker"
+      : > "$out"
+      wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+        'state: paused · source: status-log · awaiting upstream' absorb || fail "$verdict pause repeated inside its cadence"
+      [ -e "$dead_marker" ] || fail "$verdict pause reprobed inside its cadence"
+      [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] || fail "$verdict pause repeated its notification"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the intentional $verdict test stop"
+      set_mtime "$(( $(date +%s) - 500 ))" "$marker"
+    done
+    grep -F 'agent dead' "$out" >/dev/null && fail "$verdict result was treated as a death"
+    [ ! -e "$state/.wedge-escalations-$key" ] || fail "$verdict pause entered the wedge ladder"
+  done
+  unset FM_TEST_PANE_COMMAND FM_TEST_PAUSE_RESURFACE
+  pass "alive and unreadable paused rechecks keep the original wait confirmation and cadence, with one due probe"
+}
+
+# A fake herdr whose recorded pane cannot be read. <verdict> picks what the pane
+# lookup says: missing answers pane_not_found (a pane gone in a server restart),
+# unreadable answers an unrelated error, which must never be taken for absence.
+make_uncapturable_herdr() {  # <fakebin> <missing|unreadable>
+  local code=pane_not_found
+  [ "$2" = missing ] || code=internal_error
+  cat > "$1/herdr" <<SH
+#!/usr/bin/env bash
+args=()
+while [ "\$#" -gt 0 ]; do
+  if [ "\$1" = --session ]; then shift 2; continue; fi
+  args+=("\$1"); shift
+done
+set -- "\${args[@]}"
+case "\${1:-} \${2:-}" in
+  "status --json") printf '{"client":{"version":"0.7.3","protocol":16},"server":{"running":true}}\n' ;;
+  "pane get") printf '{"error":{"code":"$code"}}\n' ;;
+  "pane read") exit 1 ;;
+esac
+exit 0
+SH
+  chmod +x "$1/herdr"
+}
+
+# The issue-67 incidents were panes that vanished in a daemon or Herdr restart,
+# so the capture the stale loop takes first fails. A declared pause must still
+# reach its due liveness probe there: a missing endpoint is reported once on
+# either backend, while a live or unreadable one keeps the paused cadence's wait
+# confirmation and is never called dead.
+test_paused_uncapturable_endpoint_reports_missing_once() {
+  local spec name backend verdict dir state window key out marker before
+  window=test:fm-wedge; key=test_fm-wedge
+  for spec in tmux:missing tmux:alive herdr:missing herdr:unreadable; do
+    backend=${spec%%:*}; verdict=${spec#*:}; name="uncapturable-$backend-$verdict"
+    dir=$(wedge_threshold_fixture "$name" 'paused: waiting for an upstream release' 500)
+    state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
+    printf 'window=%s\nkind=ship\nharness=grok\nbackend=%s\n' "$window" "$backend" > "$state/wedge.meta"
+    [ "$backend" != herdr ] || make_uncapturable_herdr "$dir/fakebin" "$verdict"
+    FM_TEST_TMUX_WINDOWS=fm-wedge
+    [ "$spec" != tmux:missing ] || FM_TEST_TMUX_WINDOWS=another-window
+    export FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE=240 FM_TEST_PANE_COMMAND=grok
+    export FM_FAKE_TMUX_FORBIDDEN_TARGET="$window" FM_BACKEND_HERDR_EVENTS_FORCE=0
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' exit || fail "$spec uncapturable pause was skipped at its due recheck"
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] || fail "$spec due recheck did not notify exactly once"
+    if [ "$verdict" = missing ]; then
+      grep -F 'agent missing' "$out" >/dev/null || fail "$spec vanished endpoint was not reported missing"
+      grep -F 'stopped while paused' "$out" >/dev/null || fail "$spec report omitted the declared pause"
+      case "$(cat "$state/.dead-reported-$key" 2>/dev/null)" in
+        'missing '*) ;; *) fail "$spec report did not use the shared report-once record" ;;
+      esac
+      ack_stopped_cycle "$state" || fail "could not acknowledge the $spec report"
+      before=$(file_mtime "$marker")
+      set_mtime "$(( before - 500 ))" "$marker"
+    else
+      grep -F 'awaiting external' "$out" >/dev/null || fail "$spec pause lost its wait confirmation"
+      grep -F 'stopped while paused' "$out" >/dev/null && fail "$spec endpoint was reported as an agent death"
+      [ ! -e "$state/.dead-reported-$key" ] || fail "$spec endpoint left a death record"
+      ack_stopped_cycle "$state" || fail "could not acknowledge the $spec recheck"
+    fi
+    # Missing: the next due recheck stays quiet. Live/unreadable: still inside
+    # the cadence, so no repeat either.
+    wedge_threshold_round "$state" "$dir/fakebin" "$out" "$dir/pane.txt" "$window" \
+      'state: stopped · source: pane · no agent' absorb || fail "$spec uncapturable pause notified again"
+    [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] || fail "$spec enqueued another notification"
+    [ ! -e "$state/.wedge-escalations-$key" ] || fail "$spec pause entered the wedge ladder"
+  done
+  unset FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS FM_TEST_PAUSE_RESURFACE \
+    FM_FAKE_TMUX_FORBIDDEN_TARGET FM_BACKEND_HERDR_EVENTS_FORCE
+  pass "an uncapturable paused endpoint is reported missing once on tmux and herdr, and never called dead when live or unreadable"
+}
+
 if [ -n "${FM_TEST_ONLY:-}" ]; then
   "$FM_TEST_ONLY"
   exit 0
@@ -1472,6 +1668,10 @@ fi
 
 fm_test_run \
   test_required_captain_hold_tests_fail_without_tasks_axi \
+  test_paused_dead_or_missing_agent_reports_once \
+  test_paused_unreadable_probe_keeps_reported_death \
+  test_paused_alive_or_unreadable_keeps_recheck_cadence \
+  test_paused_uncapturable_endpoint_reports_missing_once \
   test_nonterminal_stale_not_working_surfaced \
   test_nonterminal_stale_paused_absorbed_then_resurfaced \
   test_exited_declared_pause_is_bounded_but_live_gate_surfaces \
