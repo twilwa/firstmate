@@ -1861,13 +1861,17 @@ Set it high when a wrong pick is costly and low when the rule is a safe runner-u
 **Provider identifiers and mappings**
 
 A profile `provider` optionally names the quota-axi provider family whose rows apply to that profile; when present, profile and rule-floor provider IDs must match the strict whole-string pattern `^[a-z0-9]+(-[a-z0-9]+)*\z`.
+Use the provider ID published by `quota-axi --json`, not a harness's model prefix: for example, `provider: "codex"` for Pi's `openai-codex/...` models.
+Aliases such as `openai-codex` are not normalized.
+Outside shared-quota mode, a matched or fallback profile whose declared or mapped provider ID is absent from the snapshot's provider set produces a configuration error naming that profile and ID, rather than leaving it unranked.
+A provider that is present but unmeasured (or lacks the candidate's account row) remains eligible with disclosed uncertainty.
 Bootstrap's resolver-only validation gate is described under "Validation and diagnostics" below.
 
 Typed resolution additively recognizes `gemini` because `harness-adapters` verifies it for crewmate and scout dispatch.
 
 | Harness | Provider declaration on the opted-in resolver path |
 | --- | --- |
-| `claude`, `codex`, `grok`, `kimi`, `cursor`, `agy`, `muse` | The resolver has an authoritative single-provider mapping. |
+| `claude`, `codex`, `grok`, `kimi`, `cursor`, `agy`, `muse` | The resolver maps each to the same-named quota-axi provider ID. |
 | Every other verified harness | Must declare `provider` explicitly; this includes multi-provider `pi`, `pi-signed`, `omp`, and `opencode`, and unmapped `gemini`, `rovo`, `devin`, `commandcode`, `cortex`, and `kiro`; omission is an actionable configuration error before any request. |
 
 This single-provider table is separate from the frozen legacy mapping used by `fm-quota-choose.sh`, so additions cannot alter no-key routing.

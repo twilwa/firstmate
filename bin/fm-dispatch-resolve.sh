@@ -834,9 +834,7 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
     elif $p == null then {profile: $c, eligible: false, reason: "no provider family for harness \($c.harness); declare provider on the profile"}
     elif prov($p; $lane) == null then
       {profile: $c, provider: $p, eligible: true, unranked: true,
-       reason: (if any($q.providers[]; .provider == $p)
-                then "provider \($p) has no quota row for account \(if $lane == "" then "default" else $lane end)"
-                else "provider \($p) not in the quota snapshot" end)}
+       reason: "provider \($p) has no quota row for account \(if $lane == "" then "default" else $lane end)"}
     else
       (applicable($p; $lane; ($c.model // ""); ($c.quota_scope // null))) as $rows |
       (evidence($rows)) as $bounds |
@@ -922,7 +920,13 @@ RESULT=$(jq -n --arg floor "$CONFIDENCE_FLOOR" --argjson lat "$LAT_MS" --arg non
   }
   + (if $fb.to then {fallback: "\($choice) (\(when_of($choice))) probability \($fb.p) clears its floor \($fb.to_floor); \($picked) probability \($a.probabilities[$picked]) is below its floor \($picked_floor)"} else {} end)
   as $ev |
+  ([$answer_use[], $sel.use[]?] | unique | map(
+    . as $c | provider_of($c) as $p |
+    select(($sq | not) and $p != null and (any($q.providers[]; .provider == $p) | not)) |
+    "profile \($c.harness):\($c.model // "default"): provider \($p) is absent from the quota-axi snapshot; use a published quota-axi provider ID"
+  )) as $provider_errors |
   if $sel.invalid then $ev + {status: "error", reason: $sel.invalid}
+  elif ($provider_errors | length) > 0 then $ev + {status: "error", reason: ($provider_errors | join("; "))}
   elif $fb.below and $fb.global then
     $ev + {status: "ambiguous", reason: "confidence \($a.confidence) below floor \($floor)", candidates: ($answer_use | map(evaluate(.)))}
   elif $fb.below and ($fb.to | not) then
