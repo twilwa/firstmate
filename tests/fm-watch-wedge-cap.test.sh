@@ -1931,6 +1931,39 @@ test_wedge_cap_footer_ticks_are_not_recovery() {
   pass 'footer ticks and elapsed time alone never release a fired cap'
 }
 
+# A blocking prompt that appears after the cap fired is new actionable
+# evidence, not a repaint: the capped lane must surface it exactly once.
+test_wedge_cap_new_blocking_dialog_escalates() {
+  local dir state key window n
+  dir=$(make_case wedge-cap-dialog); state="$dir/state"; key=test_fm-wedge-cap-dialog
+  window=test:fm-wedge-cap-dialog
+  printf 'waiting on CI' > "$dir/pane.txt"
+  printf 'window=%s\nkind=ship\nharness=grok\n' "$window" > "$state/wedge-cap-dialog.meta"
+  printf 'working: waiting on CI\n' > "$state/wedge-cap-dialog.status"
+  mark_status_seen "$state" "$state/wedge-cap-dialog.status"
+  hash_text 'waiting on CI' > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  prime_and_ack "$dir" 3
+  for n in 1 2 3; do poll_wedge_round "$dir" 3 ''; done
+  grep -F PERMANENTLY-WEDGED "$dir/watch.out" >/dev/null || fail 'cap never fired'
+  printf '%s\n' \
+    'Background work is running' \
+    '❯ 1. Exit and stop tasks' \
+    'The following will stop when you exit:' \
+    'shell · sleep 300' \
+    '  2. Move to background and exit' \
+    '  3. Stay' \
+    'Enter to confirm · Esc to cancel' > "$dir/pane.txt"
+  poll_capped_wedge_round "$dir" 3 'FM_FAKE_TMUX_CURRENT_COMMAND=grok' exit \
+    || fail "a new blocking prompt on a capped lane never woke the supervisor: $(cat "$dir/watch.out")"
+  grep -F 'blocked-on-prompt: Claude background-task exit picker' "$dir/watch.out" >/dev/null \
+    || fail "the wake did not name the blocking prompt: $(cat "$dir/watch.out")"
+  [ "$(queued_wakes_carrying "$state" "$window" 'blocked-on-prompt')" -eq 1 ] \
+    || fail "expected exactly one blocked-on-prompt wake: $(cat "$state/.wake-queue")"
+  unset FM_FAKE_CREW_STATE
+  pass 'a blocking prompt that appears on a capped lane escalates exactly once'
+}
+
 # Each event is driven through the watcher's public process interface. Busy
 # sequences and native progress are authored by the real event command.
 test_wedge_cap_releases_on_structural_events() {
@@ -2010,6 +2043,7 @@ fm_test_run \
   test_wedge_cap_releases_on_structural_events \
   test_wedge_cap_preserves_blocker_escalations \
   test_wedge_cap_footer_ticks_are_not_recovery \
+  test_wedge_cap_new_blocking_dialog_escalates \
   test_wedge_cap_defaults_to_three \
   test_wedge_cap_fires_permanently_wedged_at_threshold \
   test_wedge_cap_silences_subsequent_polls_for_same_hash \

@@ -68,7 +68,7 @@ The deferral chain is aged from a per-window marker bound to that run id, so a r
 A parked gate, a terminal run, a ci monitor, a coarse ledger row, a verdict naming no run, no attributed run, and an unreadable verdict all keep the unchanged escalation schedule, reason, and `demand-deep-inspection` wording, and a home without the flag spends no read for it.
 Only a pane that every check above lets escalate reaches the opt-in operator guards: a `CRITICAL` answer defers it for at most `FM_WEDGE_GUARD_DEFER_MAX` consecutive windows, so a dead or missing endpoint is never deferred and a guard that is wrong forever cannot silence a lane; [`configuration.md`](configuration.md#wedge-evidence-guards-configwedge-evidence-guards) owns that opt-in.
 The wedge ladder now defaults to three consecutive escalations per unchanged worker window: the first alert always reaches the supervisor, and the third carries one terminal `PERMANENTLY-WEDGED` alert with the escalation's evidence.
-The window then stays silent across pane/footer repainting and elapsed time, releasing only on structural worker progress or operator removal.
+The window then stays silent across pane/footer repainting and elapsed time, releasing only on structural worker progress, a newly detected blocking prompt that differs from the one recorded at the cap fire, or operator removal.
 Blocked lanes, including supervisor-owned blockers, retain main's escalation and configured wait-deferral behavior.
 [`configuration.md`](configuration.md#environment-variables) owns the release boundary, settings, explicit uncapped override and operator reset.
 The terminal row is durable before the cap markers; the episode marker bounds duplicate terminal alerts under failed writes without suppressing a later episode's first alert.
@@ -108,7 +108,7 @@ No-verb wakes, such as `working:` notes and bare turn-ended signals, are benign 
 A home that creates `config/turnend-churn-absorb` lets each eligible bare turn-ended task that lacks either authoritative proof use a third form: pane content that changed since the previous poll, compared against the same `state/.hash-*` marker the staleness backbone records, which claims no harness semantics and needs no adapter cooperation.
 That form stays opt-in because it infers execution from rendered bytes rather than from a verdict the harness vouches for, so with the flag absent triage behaves exactly as it did before ([`configuration.md`](configuration.md) "Turn-end pane-churn absorb").
 That evidence clears the pane's prior stale classification and ordinary wedge bookkeeping, then defers such a wake rather than swallowing it.
-A fired cap survives pane churn alone and releases only on the structural progress described above.
+A fired cap survives pane churn alone and releases only on the structural progress or new blocking prompt described above.
 Without a standing cap, a crew that has stopped renders nothing further and its now-static pane surfaces through the staleness backbone within a poll or two, even if its final bytes match an earlier stale render.
 A wake naming any status file remains governed solely by the strict authoritative proof, and the pane-churn fallback is unavailable to an entire batch that references a secondmate.
 An unresolvable endpoint, an ambiguous marker key, a missing or malformed prior hash, a capture that fails or returns empty, an invalid deferral bound or deadline, or an unwritable deferral marker surfaces without clearing prior stale classification.

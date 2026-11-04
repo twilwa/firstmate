@@ -42,8 +42,9 @@
 #                          resume. FM_WEDGE_MAX_ESCALATIONS defaults to 3;
 #                          explicit 0 disables it. At the ceiling one
 #                          "PERMANENTLY-WEDGED" alert silences the unchanged
-#                          window until structural worker progress or operator
-#                          removal, never pane/footer repainting or elapsed time.
+#                          window until structural worker progress, a newly
+#                          detected blocking prompt, or operator removal, never
+#                          pane/footer repainting or elapsed time.
 #                          When the pane shows the Claude background-task
 #                          exit picker, that same parenthetical ends with
 #                          "blocked-on-prompt:" and the picker's name, after the
@@ -577,8 +578,8 @@ window_label() {
 # The ONE derivation of a window's per-window marker key: `:`, `/` and `.` become
 # `_` so a window name is usable as a filename suffix. Every per-window file the
 # watcher keeps is named by it (.hash-, .count-, .stale-, .stale-since-,
-# .wedge-escalations-, .wedge-permanent-, .wedge-terminal-queued-,
-# .wedge-rollback-failed-, .paused-*, .writing-*, .validating-*,
+# .wedge-escalations-, .wedge-permanent-, .wedge-progress-,
+# .wedge-terminal-queued-, .wedge-rollback-failed-, .paused-*, .writing-*, .validating-*,
 # .waiting-*), and live homes
 # hold those markers on disk under the current format, so the format lives here
 # alone: a second copy is how a future change to it silently orphans a window's
@@ -1308,7 +1309,8 @@ _wedge_cap_int() {
 # PERMANENTLY-WEDGED wake is emitted and the window-scoped cap marker is written.
 # Default 3; explicit 0 disables the bound. The first alert always reaches the
 # supervisor. At the bound one terminal wake silences further wedge alerts for
-# this window until structural worker progress or operator removal. Pane/footer
+# this window until structural worker progress, a blocking prompt that differs
+# from the one recorded at the cap fire, or operator removal. Pane/footer
 # repainting and elapsed time alone never release the cap.
 FM_WEDGE_MAX_ESCALATIONS=${FM_WEDGE_MAX_ESCALATIONS:-3}
 _wedge_cap_int FM_WEDGE_MAX_ESCALATIONS "$FM_WEDGE_MAX_ESCALATIONS" 3 0
@@ -2276,7 +2278,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         # queue flood, and where the rollback itself fails write a transient
         # sentinel so the next polls stay silent for FM_ROLLBACK_SENTINEL_TTL_SECS.
         if wedge_cap_eligible "$task" && [ "$n" -ge "$FM_WEDGE_MAX_ESCALATIONS" ]; then
-          _wrb_cap_reason="$reason, PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=$FM_WEDGE_MAX_ESCALATIONS reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress or the operator manually removes STATE/.wedge-permanent-<key>"
+          _wrb_cap_reason="$reason, PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=$FM_WEDGE_MAX_ESCALATIONS reached - no further wedge escalations for this WINDOW while its cap marker stands: until structural worker progress, a new blocking prompt, or the operator manually removes STATE/.wedge-permanent-<key>"
           _wrb_cap_reason=$(stale_reason_naming_dialog "$_wrb_cap_reason" "$dialog")
           _wrb_cap_status=0
           if [ -n "$stream_snapshot" ]; then
@@ -2307,7 +2309,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           [ -z "$stream_snapshot" ] || wedge_write_escalation_count "$win" "$_wkey" "$escalation_file" "$since_file" "$n"
           fm_epoch_seconds_to _wrb_cap_ts
           if ! { wedge_progress_snapshot "$task" > "$STATE/.wedge-progress-$_wkey" \
-            && printf '%s\n' "$_wrb_cap_ts" > "$STATE/.wedge-permanent-$_wkey"; } 2>/dev/null; then
+            && printf '%s\n%s\n' "$_wrb_cap_ts" "$dialog" > "$STATE/.wedge-permanent-$_wkey"; } 2>/dev/null; then
             _wrb_rm_status=0
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" || _wrb_rm_status=$?
             case "$_wrb_rm_status" in
@@ -4478,10 +4480,18 @@ EOF
     if window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
     # A capped window still receives dead-agent probes on the ladder's cadence,
     # even if its footer keeps repainting and never becomes stably stale.
+    # A blocking prompt other than the one recorded at the cap fire is new
+    # actionable evidence: it releases the cap so the ordinary path names it.
     if _wedge_cap_marker_stands "$key" && wedge_cap_eligible "$task"; then
-      wedge_timer_check "$w" "$ssf" capped "$ewf" "$task" "$h" "$dialog"
-      watch_step_done "report:$task"
-      continue
+      if [ -n "$dialog" ] && [ "$dialog" != "$(sed -n 2p "$STATE/.wedge-permanent-$key" 2>/dev/null)" ]; then
+        wedge_episode_end "$key" 0 0 1
+        clear_write_tracking "$key"
+        triage_log "wedge cap released: $w shows a new blocking prompt ($dialog)"
+      else
+        wedge_timer_check "$w" "$ssf" capped "$ewf" "$task" "$h" "$dialog"
+        watch_step_done "report:$task"
+        continue
+      fi
     fi
     if [ "$h" = "$prev" ]; then
       n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
