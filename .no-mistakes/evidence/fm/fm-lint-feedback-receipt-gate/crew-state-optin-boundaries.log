@@ -1,0 +1,38 @@
+### non-opted-in project gadget: worker pushed and reported done with no receipt
+  receipt present: no
+  => state: done · source: status-log · ready
+
+### opted-in widget, no-mistakes mode: pre-validation handoff done without receipt
+  worker HEAD: f5da3e8a84b58f5ce39ef7e219ea30ec055cca7b
+  => state: blocked · source: status-log · lint-feedback receipt missing: /tmp/fm-lab.vV51KJ/wt/widget-nm/.lint-feedback/receipt.json
+
+### same handoff after worker ran 'just lint-feedback --changed' on the committed head
+  receipt: {"schema":"lint-feedback/v1","head":"f5da3e8a84b58f5ce39ef7e219ea30ec055cca7b","dirty":false,"complete":true,"exit_status":0,"args":"--changed"}
+  => state: done · source: status-log · implementation committed
+
+### invalid opt-in list config/lint-feedback.json = {broken
+  firstmate$ bin/fm-brief.sh bad-brief widget --mode direct-PR --tests focused
+  exit=1 invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  partial brief left: no
+  firstmate$ bin/fm-crew-state.sh widget-ship   (worker has a valid receipt)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  firstmate$ bin/fm-crew-state.sh gadget-ship   (not-opted-in project)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+
+### invalid opt-in list config/lint-feedback.json = {"widget":{}}
+  firstmate$ bin/fm-brief.sh bad-brief widget --mode direct-PR --tests focused
+  exit=1 invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  partial brief left: no
+  firstmate$ bin/fm-crew-state.sh widget-ship   (worker has a valid receipt)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  firstmate$ bin/fm-crew-state.sh gadget-ship   (not-opted-in project)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+
+### invalid opt-in list config/lint-feedback.json = ["widget",1]
+  firstmate$ bin/fm-brief.sh bad-brief widget --mode direct-PR --tests focused
+  exit=1 invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  partial brief left: no
+  firstmate$ bin/fm-crew-state.sh widget-ship   (worker has a valid receipt)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json
+  firstmate$ bin/fm-crew-state.sh gadget-ship   (not-opted-in project)
+  => state: blocked · source: status-log · lint-feedback receipt cannot be verified: invalid lint-feedback opt-in list in /tmp/fm-lab.vV51KJ/config/lint-feedback.json

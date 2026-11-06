@@ -1,0 +1,9 @@
+worker handoff head A=f5da3e8a84b58f5ce39ef7e219ea30ec055cca7b ; receipt head=f5da3e8a84b58f5ce39ef7e219ea30ec055cca7b
+pipeline-pushed forge head B=cba642f1e4d0a978766fd60cb7a9203972c614de (absent from worker copy: yes)
+firstmate$ bin/fm-pr-check.sh widget-nm https://github.com/example/widget/pull/7
+exit=0
+armed: state/widget-nm.check.sh
+recorded: project=/tmp/fm-lab.vV51KJ/projects/widget pr=https://github.com/example/widget/pull/7 pr_head=cba642f1e4d0a978766fd60cb7a9203972c614de 
+worker$ echo 'done: PR https://github.com/example/widget/pull/7 checks green' >> state/widget-nm.status
+firstmate$ bin/fm-crew-state.sh widget-nm
+=> state: done · source: status-log · PR https://github.com/example/widget/pull/7 checks green

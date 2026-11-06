@@ -1,0 +1,70 @@
+### [1] worker reports done without ever running lint-feedback
+  pane| worker$ echo 'done: ready' >> /tmp/fm-lab.vV51KJ/state/widget-ship.status
+  receipt: (absent)
+  worker HEAD: e9065cf6ac7ce59443898debaaed548bc79996f0
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt missing: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [2] lint finds a diagnostic on committed work (exit_status 1)
+  pane| worker$ echo LINTBAD > c.txt && git add c.txt && git commit -qm 'add c' && git push -q origin HEAD:fm/widget-ship; just lint-feedback --changed
+  pane| diagnostic: LINTBAD marker found
+  pane| lint-feedback: head=9c1166f5b9029be4a6840fca0130012cd155060d dirty=false exit_status=1
+  pane| error: recipe `lint-feedback` failed with exit code 1
+  receipt: {"schema":"lint-feedback/v1","head":"9c1166f5b9029be4a6840fca0130012cd155060d","dirty":false,"complete":true,"exit_status":1,"args":"--changed"}
+  worker HEAD: 9c1166f5b9029be4a6840fca0130012cd155060d
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt exit_status must be 0: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [3] worker fixes in the working tree and runs lint before committing (dirty)
+  pane| worker$ echo fixed > c.txt; just lint-feedback --changed
+  pane| lint-feedback: head=9c1166f5b9029be4a6840fca0130012cd155060d dirty=true exit_status=0
+  receipt: {"schema":"lint-feedback/v1","head":"9c1166f5b9029be4a6840fca0130012cd155060d","dirty":true,"complete":true,"exit_status":0,"args":"--changed"}
+  worker HEAD: 9c1166f5b9029be4a6840fca0130012cd155060d
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt dirty must be false: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [4] worker commits the fix but does not rerun lint (stale head)
+  pane| worker$ git commit -qam 'fix c' && git push -q origin HEAD:fm/widget-ship
+  receipt: {"schema":"lint-feedback/v1","head":"9c1166f5b9029be4a6840fca0130012cd155060d","dirty":true,"complete":true,"exit_status":0,"args":"--changed"}
+  worker HEAD: f8ae6926b68243a92b149b01783d22ecdbdded4b
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt head does not match named head f8ae6926b68243a92b149b01783d22ecdbdded4b: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [5] receipt reports an incomplete run (complete=false, e.g. timeout)
+  pane| worker$ just lint-feedback --changed >/dev/null; jq -c '.complete=false' .lint-feedback/receipt.json > ../r.json && mv ../r.json .lint-feedback/receipt.json
+  receipt: {"schema":"lint-feedback/v1","head":"f8ae6926b68243a92b149b01783d22ecdbdded4b","dirty":false,"complete":false,"exit_status":0,"args":"--changed"}
+  worker HEAD: f8ae6926b68243a92b149b01783d22ecdbdded4b
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt complete must be true: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [6] malformed receipt
+  pane| worker$ printf '{broken' > .lint-feedback/receipt.json
+  receipt: {broken
+  worker HEAD: f8ae6926b68243a92b149b01783d22ecdbdded4b
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt parse error: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [7] receipt with a non-lint-feedback schema
+  pane| worker$ just lint-feedback --changed >/dev/null; jq -c '.schema="eslint/v1"' .lint-feedback/receipt.json > ../r.json && mv ../r.json .lint-feedback/receipt.json
+  receipt: {"schema":"eslint/v1","head":"f8ae6926b68243a92b149b01783d22ecdbdded4b","dirty":false,"complete":true,"exit_status":0,"args":"--changed"}
+  worker HEAD: f8ae6926b68243a92b149b01783d22ecdbdded4b
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · lint-feedback receipt schema is not lint-feedback/: /tmp/fm-lab.vV51KJ/wt/widget-ship/.lint-feedback/receipt.json
+
+### [8] worker reruns lint on the final pushed commit (clean, complete, passing)
+  pane| worker$ just lint-feedback --changed; git status --porcelain | wc -l
+  pane| lint-feedback: head=f8ae6926b68243a92b149b01783d22ecdbdded4b dirty=false exit_status=0
+  pane| 0
+  receipt: {"schema":"lint-feedback/v1","head":"f8ae6926b68243a92b149b01783d22ecdbdded4b","dirty":false,"complete":true,"exit_status":0,"args":"--changed"}
+  worker HEAD: f8ae6926b68243a92b149b01783d22ecdbdded4b
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: done · source: status-log · ready
+
+### [9] same accepted receipt but worker copy HEAD was never pushed (named-head reachability must still refuse)
+  pane| worker$ git commit -q --allow-empty -m local-only-commit && just lint-feedback --changed
+  pane| lint-feedback: head=1bfe4c543dd929c32785c8459fae5e53b9b35b81 dirty=false exit_status=0
+  receipt: {"schema":"lint-feedback/v1","head":"1bfe4c543dd929c32785c8459fae5e53b9b35b81","dirty":false,"complete":true,"exit_status":0,"args":"--changed"}
+  worker HEAD: 1bfe4c543dd929c32785c8459fae5e53b9b35b81
+  firstmate$ bin/fm-crew-state.sh widget-ship
+  => state: blocked · source: status-log · named head 1bfe4c543dd929c32785c8459fae5e53b9b35b81 is unreachable outside the worker copy
+

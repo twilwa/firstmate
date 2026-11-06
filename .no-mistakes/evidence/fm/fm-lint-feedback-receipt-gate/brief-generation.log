@@ -1,0 +1,12 @@
+$ bin/fm-brief.sh widget-ship widget --mode direct-PR --tests focused
+scaffolded: /tmp/fm-lab.vV51KJ/data/widget-ship/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+$ bin/fm-brief.sh widget-nm widget --mode no-mistakes --tests focused
+scaffolded: /tmp/fm-lab.vV51KJ/data/widget-nm/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+$ bin/fm-brief.sh gadget-ship gadget --mode direct-PR --tests focused
+scaffolded: /tmp/fm-lab.vV51KJ/data/gadget-ship/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+$ bin/fm-brief.sh widget-scout widget --scout --tests focused
+scaffolded: /tmp/fm-lab.vV51KJ/data/widget-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0

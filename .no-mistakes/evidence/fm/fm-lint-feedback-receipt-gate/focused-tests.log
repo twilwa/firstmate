@@ -1,0 +1,110 @@
+Running as unit: run-r6fb665823c6c4ea5beec4e8469be1402.scope; invocation ID: e0282c9bd7534d96aace9005fbf86bb4
+FM_TEST_BEGIN 2026-11-06T20:02:33Z tests/fm-brief.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-brief: scaffolds leave the worker role scope to the launch boundary and keep the secondmate contract
+ok - fm-brief.sh: bash -n succeeds
+/tmp/fm-test-run.b17rR6/w1/tmp/fm-brief.WJr5U5/heredoc-in-substitution.sh:2
+ok - fm-brief.sh: no heredoc is nested inside a command substitution (Bash 3.2 parse-safe)
+ok - fm-brief.sh: --help renders the complete header
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: ship and scout carry host safety without a home include
+ok - fm-brief.sh: --forge forgejo names tea in Rule 3, the direct-PR DOD, and the draft read-back, marks the delivery contract, and the closed set refuses everything else
+ok - fm-brief.sh: --forge external renders the no-push rule, the review contract, and the adapter, and refuses every impossible shape
+ok - fm-brief.sh: ship --mode is required and closed-set validated
+ok - fm-brief.sh: the explicit ship mode wins over the registered posture
+ok - fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped
+ok - fm-brief.sh: faster paths use configured authority without stacked review
+ok - fm-brief.sh: no-mistakes DOD keeps its apostrophe prose and bans --yes outright
+ok - fm-brief.sh: no-mistakes DOD detects a green PR from the drive call, not a status poll
+ok - fm-brief.sh: no-mistakes DOD carries the review-round, decline, coverage, and rebase rules
+ok - fm-brief.sh: PR-based done requires a non-draft PR; a deliberate draft declares a wait
+ok - fm-brief.sh: no-mistakes ask-user findings use one event plus a verbatim snapshot
+ok - fm-brief.sh: ship project-memory wording bounds edits to corrections of wrong information
+ok - fm-brief.sh: --herdr-lab emits the complete hard safety contract
+ok - fm-brief.sh: --herdr-lab uses its quoted Firstmate-owned helper path
+ok - fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible
+ok - fm-brief.sh: the documented {TASK} and {FIRSTMATE_SPEC} fills cannot corrupt the Herdr safety gate
+ok - fm-brief.sh: Herdr lab contract covers scouts and rejects secondmate misuse
+ok - fm-brief.sh: --no-projects scaffolds a project-less charter and guards misuse
+ok - fm-brief.sh: marked requests avoid generic acknowledgements and preserve material reporting
+ok - fm-brief.sh: relative directory inputs ignore CDPATH, render stable absolute charter paths, or fail loudly
+ok - fm-brief.sh: custom pause verb renders in every scaffold
+ok - fm-brief.sh: ship and scout scaffolds declare a validation-round pause once, then hold it
+ok - fm-brief.sh: investigation and visual-review completions load the shared decision policy
+ok - fm-brief.sh: scouts may attest only their own empty inventory through the guarded command
+ok - fm-brief: scout and secondmate code paths still scaffold well-formed briefs
+ok - fm-brief.sh: --landing-crew scaffolds the merge-queue landing contract
+ok - fm-brief.sh: --landing-crew refuses ship-only and conflicting kind flags
+ok - fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor
+ok - fm-brief: inbox listing is silent on empty/absent inbox and numerically ordered
+ok - fm-brief: workers end the turn on a decision, wait in one bounded shell command, and never poll
+ok - fm-brief: without config/wait-no-turns the brief and drive text stay as they were
+ok - fm-brief: inbox guidance explains marked synthetic terminators in every scaffold
+ok - fm-brief.sh: the home brief include lands last on ship and scout, verbatim, and fails closed
+ok - fm-brief.sh: --base-branch records the base, targets the PR at it, and is refused where no PR carries it
+ok - fm-brief.sh: --branch-prefix omitted defaults every ship mode to fm/<task-id>
+ok - fm-brief.sh: a --branch-prefix override renders identically across every generated section
+ok - fm-brief.sh: an empty --branch-prefix override resolves to a bare <task-id> branch
+ok - fm-brief.sh: --branch-prefix is refused on scout and secondmate scaffolds
+ok - fm-brief.sh: --branch-prefix value is validated against embedded spaces and a leading dash
+Switched to a new branch '$(touch${IFS}/tmp/fm-test-run.b17rR6/w1/tmp/fm-brief.WJr5U5/branch-prefix-shell-safe-marker)brief-branch-safe-g3'
+ok - fm-brief.sh: ref-format-valid shell metacharacters stay literal in generated branch commands
+ok - fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool
+FM_TEST_END 2026-11-06T20:03:25Z tests/fm-brief.test.sh exit=0 duration_ms=51993 gate_skip=false
+FM_TEST_BEGIN 2026-11-06T20:03:25Z tests/fm-dod-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Test approval respects Firstmate lineage, scope, and delivery flow
+ok - unknown lineage conservatively approves Test
+ok - scout done: is not gated
+ok - unpushed ship done: is refused
+ok - no-mistakes pre-validation done: is not gated
+ok - named head on a remote-tracking ref is accepted
+ok - a moved remote branch that lacks the named head is refused
+ok - a 40-hex token in the note is not the named head
+ok - a recorded merged PR satisfies the gate after prune
+ok - the merged-PR short-circuit applies only to the recorded PR the done line names
+ok - a forge-recorded head for the named PR is accepted without a local object
+ok - a direct-PR recorded head does not cover a later unpushed commit
+ok - CI-ready notes require checks green and an actual PR reference
+ok - no-mistakes CI-ready done: with extra text is gated
+ok - keyed and spaced ship done: lines are gated
+ok - local-only linked named branch is reachable from the project clone
+ok - local-only detached HEAD only in the disposable copy is refused
+ok - standalone local-only done: requires the named head in the project clone
+ok - non-done lines are not gated
+ok - fenced and indented Captain lines are not authorized intent
+ok - PR-based DoD draft check uses gh-axi
+ok - promotion keeps a scout's recorded base branch and refuses local-only for it
+ok - forge=external composes with direct-PR only and refuses a base branch
+ok - external rule one forbids origin and task-prefixed pushes and names only the backup copy
+ok - external DoD renders the contract, the review grammar, and the adapter, and refuses without one
+ok - external review done: accepted on a canonical URL alone without a backup; PR, non-https, query, fragment, forge, and pattern mismatches refused
+ok - external review done with a backup: refused until HEAD is under refs/remotes/backup/backup/, then accepted
+ok - worker role names the skill and its fallback skill file
+all fm-dod-lib tests passed
+FM_TEST_END 2026-11-06T20:03:39Z tests/fm-dod-lib.test.sh exit=0 duration_ms=14130 gate_skip=false
+FM_TEST_BEGIN 2026-11-06T20:03:39Z tests/fm-lint-feedback.test.sh family=unclassified expected_gate_skip=none
+1..15
+ok - an opted-in ship cannot finish without its lint-feedback receipt
+ok - an invalid JSON receipt cannot authorize completion
+ok - only a lint-feedback schema accepts the receipt without bypassing named-head preservation
+ok - head identity, not receipt mtime, controls acceptance
+ok - dirty must explicitly be false
+ok - complete must explicitly be true
+ok - exit_status must be the integer zero
+ok - opt-in affects only ship completion, including the pipeline handoff
+ok - opted-in ship instructions require the lint-feedback command and receipt
+ok - scouts and other projects are unchanged; ship repository name selects the opt-in
+ok - a scout promoted on an opted-in project is told to run lint feedback and keep its receipt
+ok - the receipt binds to the worker handoff head, not a pipeline-moved forge head
+ok - PR registration checks the worker-head receipt and skips it once the forge holds the pipeline head
+ok - crew-state refuses invalid receipts and accepts a clean matching receipt
+ok - an invalid opt-in list refuses both briefing and completion
+FM_TEST_COMPLETE
+FM_TEST_END 2026-11-06T20:03:53Z tests/fm-lint-feedback.test.sh exit=0 duration_ms=13267 gate_skip=false
+FM_TEST_SUMMARY total=3 failed=0 skipped_gate=0 duration_ms=79906
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=66123 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=13267 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-brief.test.sh duration_ms=51993
+FM_TEST_SLOWEST rank=2 script=tests/fm-dod-lib.test.sh duration_ms=14130
+FM_TEST_SLOWEST rank=3 script=tests/fm-lint-feedback.test.sh duration_ms=13267
+FM_TEST_LISTENERS found=0
+EXIT=0

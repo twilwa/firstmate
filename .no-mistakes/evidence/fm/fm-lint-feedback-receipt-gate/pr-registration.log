@@ -1,0 +1,11 @@
+### direct-PR registration on opted-in widget, pushed head 010e13351ccf741d3f99377b5ffbc2fbf600df16, no receipt
+firstmate$ bin/fm-pr-check.sh widget-pr https://github.com/example/widget/pull/4
+exit=1
+error: lint-feedback receipt missing: /tmp/fm-lab.vV51KJ/wt/widget-pr/.lint-feedback/receipt.json
+poll armed: no; pr= recorded: 0
+
+lint-feedback: head=010e13351ccf741d3f99377b5ffbc2fbf600df16 dirty=false exit_status=0
+### after worker runs just lint-feedback --changed: {"schema":"lint-feedback/v1","head":"010e13351ccf741d3f99377b5ffbc2fbf600df16","dirty":false,"complete":true,"exit_status":0,"args":"--changed"}
+exit=0
+armed: state/widget-pr.check.sh
+poll armed: yes; recorded: project=/tmp/fm-lab.vV51KJ/projects/widget pr=https://github.com/example/widget/pull/4 pr_head=010e13351ccf741d3f99377b5ffbc2fbf600df16 

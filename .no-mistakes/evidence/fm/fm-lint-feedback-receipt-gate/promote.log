@@ -1,0 +1,22 @@
+$ bin/fm-promote.sh widget-scout --mode direct-PR --yolo off
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warn: no registry at /tmp/fm-lab.vV51KJ/data/projects.md; defaulting widget to no-mistakes off
+warn: no registry at /tmp/fm-lab.vV51KJ/data/projects.md; defaulting widget to no-mistakes off
+promoted widget-scout to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-lab.vV51KJ/data/widget-scout/ship-instructions.md
+next: FM_HOME=/tmp/fm-lab.vV51KJ bin/fm-send.sh fm-widget-scout "$(cat /tmp/fm-lab.vV51KJ/data/widget-scout/ship-instructions.md)"
+exit=0
+$ bin/fm-promote.sh gadget-scout --mode direct-PR --yolo off
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warn: no registry at /tmp/fm-lab.vV51KJ/data/projects.md; defaulting gadget to no-mistakes off
+warn: no registry at /tmp/fm-lab.vV51KJ/data/projects.md; defaulting gadget to no-mistakes off
+promoted gadget-scout to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-lab.vV51KJ/data/gadget-scout/ship-instructions.md
+next: FM_HOME=/tmp/fm-lab.vV51KJ bin/fm-send.sh fm-gadget-scout "$(cat /tmp/fm-lab.vV51KJ/data/gadget-scout/ship-instructions.md)"
+exit=0
