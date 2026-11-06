@@ -900,14 +900,25 @@ fm_dod_accept_external_review_done() {  # <worktree> <project> <line> <meta>
 # The home's optional config/lint-feedback.json is a JSON array of project
 # directory basenames opted in to bbchat's fixed lint-feedback contract.
 # Nothing executes the command here; only workers run it. Empty stdout means
-# no opt-in; 1 means the opt-in file is invalid.
+# no opt-in; 1 means the opt-in configuration or a required tool is unusable.
 FM_DOD_LINT_FEEDBACK_COMMAND='just lint-feedback --changed'
 FM_DOD_LINT_FEEDBACK_RECEIPT=.lint-feedback/receipt.json
+FM_DOD_LINT_FEEDBACK_RECEIPT_MAX_BYTES=65536
 fm_dod_lint_feedback_opted_in() {  # <project-directory>
   local project=${1%/} file opted
   [ -n "$project" ] || return 0
   file="${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/lint-feedback.json"
   [ -e "$file" ] || [ -L "$file" ] || return 0
+  if ! type -P jq >/dev/null 2>&1; then
+    printf '%s\n' 'lint-feedback missing dependency: jq' >&2
+    return 1
+  fi
+  if [ -d "$project" ]; then
+    project=$(CDPATH='' cd -- "$project" && pwd -P) || {
+      printf '%s\n' "cannot resolve lint-feedback project directory: $project" >&2
+      return 1
+    }
+  fi
   if ! opted=$(jq -s --arg project "${project##*/}" '
     if length == 1 and (.[0] | type) == "array" and (.[0] | all(type == "string"))
     then .[0] | any(. == $project) else error("expected an array of project names") end
@@ -925,7 +936,7 @@ fm_dod_lint_feedback_section() {  # <project-directory>
   opted=$(fm_dod_lint_feedback_opted_in "$1") || return 1
   [ -n "$opted" ] || return 0
   # shellcheck disable=SC2016 # Backticks in rendered instructions stay literal.
-  printf '# Repository lint feedback\nRun `%s` from the repository root after each coherent edit batch and on the final commit before handoff. Read its diagnostics, fix reported problems, and leave the receipt in place at `%s` (do not commit it or fabricate it).\nCompletion requires a JSON receipt with schema starting `lint-feedback/`, head matching your own handoff commit, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; rerun after committing any fixes. CI remains the authoritative full gate.\n' \
+  printf '# Repository lint feedback\nThe required command is `%s` from the repository root after each coherent edit batch and on the final commit before handoff. Diagnostics must be read and reported problems fixed. The receipt must remain in place at `%s`; it must not be committed or fabricated.\nThe worker handoff requires a clean live worktree and a JSON receipt no larger than 64 KiB with schema starting `lint-feedback/`, head matching the live HEAD named at the worker handoff, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; any fixes require a new committed-head run. CI remains the authoritative full gate.\n' \
     "$FM_DOD_LINT_FEEDBACK_COMMAND" "$FM_DOD_LINT_FEEDBACK_RECEIPT"
 }
 
@@ -933,7 +944,7 @@ fm_dod_lint_feedback_section() {  # <project-directory>
 # passing lint-feedback run of the worker copy's HEAD, or the project is not
 # opted in. 1 with a one-line reason on stdout otherwise.
 fm_dod_lint_feedback_receipt_ok() {  # <worktree> <project>
-  local wt=$1 opted receipt receipt_json head
+  local wt=$1 opted receipt receipt_json head live_status receipt_bytes
   if ! opted=$(fm_dod_lint_feedback_opted_in "$2" 2>&1); then
     printf '%s\n' "lint-feedback receipt cannot be verified: $opted"
     return 1
@@ -942,6 +953,14 @@ fm_dod_lint_feedback_receipt_ok() {  # <worktree> <project>
   receipt="$wt/$FM_DOD_LINT_FEEDBACK_RECEIPT"
   if [ ! -f "$receipt" ]; then
     printf '%s\n' "lint-feedback receipt missing: $receipt"
+    return 1
+  fi
+  if ! receipt_bytes=$(LC_ALL=C wc -c < "$receipt" 2>/dev/null); then
+    printf '%s\n' "lint-feedback receipt size cannot be read: $receipt"
+    return 1
+  fi
+  if [ "$receipt_bytes" -gt "$FM_DOD_LINT_FEEDBACK_RECEIPT_MAX_BYTES" ]; then
+    printf '%s\n' "lint-feedback receipt exceeds $FM_DOD_LINT_FEEDBACK_RECEIPT_MAX_BYTES-byte limit: $receipt"
     return 1
   fi
   if ! receipt_json=$(jq -c -s 'if length == 1 and (.[0] | type) == "object" then .[0] else error("expected one receipt object") end' "$receipt" 2>/dev/null); then
@@ -955,6 +974,14 @@ fm_dod_lint_feedback_receipt_ok() {  # <worktree> <project>
   head=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head=
   if ! fm_pr_head_valid "$head" || ! printf '%s' "$receipt_json" | jq -e --arg head "$head" '.head == $head' >/dev/null 2>&1; then
     printf '%s\n' "lint-feedback receipt head does not match named head ${head:-(unavailable)}: $receipt"
+    return 1
+  fi
+  if ! live_status=$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null); then
+    printf '%s\n' "lint-feedback receipt live worktree cannot be verified: $wt"
+    return 1
+  fi
+  if [ -n "$live_status" ]; then
+    printf '%s\n' "lint-feedback receipt live worktree is dirty: $wt"
     return 1
   fi
   if ! printf '%s' "$receipt_json" | jq -e '.dirty == false' >/dev/null 2>&1; then

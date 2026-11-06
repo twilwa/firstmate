@@ -1628,7 +1628,9 @@ For example:
 ```
 
 An opted-in project's workers run `just lint-feedback --changed`, which writes its receipt to `.lint-feedback/receipt.json` at the repository root.
+Existing project directories are resolved to physical paths before their basenames are compared; an explicit `--project` selects the directory rather than the brief's repository-name argument.
 An invalid file stops ship brief generation, scout promotion and completion with a configuration error.
+A missing `jq` executable is reported as a dependency error, not invalid JSON.
 Remove a project's name to disable the requirement.
 With no file or no matching project, existing behavior is unchanged.
 
@@ -1639,7 +1641,9 @@ It never executes the command, and scout briefs do not include these instruction
 Each home declares its own opt-ins.
 
 The receipt binds to the worker's own handoff commit.
-Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done` requires one JSON receipt object with these fields:
+Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done` requires one JSON receipt object no larger than 64 KiB (65,536 bytes).
+Larger files are refused before JSON parsing.
+The required fields are:
 
 - `schema`: a string starting with `lint-feedback/`.
 - `head`: the full SHA of the worker copy's HEAD.
@@ -1647,6 +1651,9 @@ Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done
 - `complete`: the boolean `true`.
 - `exit_status`: the integer `0`.
 
+At the worker handoff, the live copy must also be clean: no staged, unstaged or untracked changes, and its HEAD must match the receipt's head and the named handoff commit.
+Git-ignored files, including the receipt, do not make the copy dirty.
+This live check is independent of the receipt's `dirty: false` claim.
 This covers every direct-PR and local-only `done:` and the initial no-mistakes implementation handoff.
 The later no-mistakes CI-ready or published-for-review `done:` is not re-checked, because pipeline or bot commits can move the forge head past the receipt and the repository's CI runs the command on that head.
 A missing, malformed, stale, dirty, incomplete or failing receipt refuses completion.

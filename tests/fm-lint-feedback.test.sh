@@ -14,7 +14,10 @@ WT="$TMP_ROOT/worker"
 mkdir -p "$HOME_FIXTURE/config" "$WT" "$PROJECT"
 export FM_HOME="$HOME_FIXTURE"
 git -C "$WT" init -q
-git -C "$WT" commit -q --allow-empty -m initial
+printf 'initial\n' > "$WT/tracked.txt"
+printf '.lint-feedback/\n' > "$WT/.git/info/exclude"
+git -C "$WT" add tracked.txt
+git -C "$WT" commit -q -m initial
 HEAD_SHA=$(git -C "$WT" rev-parse HEAD)
 git -C "$WT" update-ref refs/remotes/origin/main "$HEAD_SHA"
 printf '%s\n' '["widget"]' > "$HOME_FIXTURE/config/lint-feedback.json"
@@ -46,6 +49,20 @@ write_receipt() {
     | jq --arg head "$HEAD_SHA" ".head = \$head | ${1:-.}" > "$WT/.lint-feedback/receipt.json"
 }
 
+test_receipt_size_is_bounded_before_parsing() {
+  local bytes
+  write_receipt
+  bytes=$(LC_ALL=C wc -c < "$WT/.lint-feedback/receipt.json")
+  printf '%*s' "$((65536 - bytes))" '' >> "$WT/.lint-feedback/receipt.json"
+  fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready' \
+    || fail 'a valid receipt exactly at the 64 KiB limit must be accepted'
+  printf ' ' >> "$WT/.lint-feedback/receipt.json"
+  assert_receipt_refused 'exceeds 65536-byte limit'
+  printf 'invalid JSON' >> "$WT/.lint-feedback/receipt.json"
+  assert_receipt_refused 'exceeds 65536-byte limit'
+  pass 'receipt parsing accepts at most 64 KiB and refuses larger files before JSON parsing'
+}
+
 test_schema_refuses_and_valid_receipt_accepts() {
   local change reason rc
   for change in 'del(.schema)' '.schema = 1' '.schema = "other/v1"'; do
@@ -75,6 +92,33 @@ test_receipt_head_must_name_checked_commit() {
   pass 'head identity, not receipt mtime, controls acceptance'
 }
 
+test_live_worktree_must_still_match_receipt() {
+  local reason rc
+  write_receipt
+  printf 'later edit\n' >> "$WT/tracked.txt"
+  assert_receipt_refused 'live worktree is dirty'
+  git -C "$WT" add tracked.txt
+  assert_receipt_refused 'live worktree is dirty'
+  printf 'initial\n' > "$WT/tracked.txt"
+  git -C "$WT" add tracked.txt
+  printf 'new source\n' > "$WT/untracked.txt"
+  assert_receipt_refused 'live worktree is dirty'
+  rm "$WT/untracked.txt"
+  fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed' \
+    || fail 'clean live copy and matching receipt must allow the initial handoff'
+  printf 'new commit\n' >> "$WT/tracked.txt"
+  git -C "$WT" add tracked.txt
+  git -C "$WT" commit -q -m 'later fixture commit'
+  reason=$(fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed'); rc=$?
+  expect_code 1 "$rc" 'a later live HEAD must invalidate the old handoff receipt'
+  assert_contains "$reason" 'receipt head does not match named head' 'receipt must identify the live HEAD mismatch'
+  HEAD_SHA=$(git -C "$WT" rev-parse HEAD)
+  git -C "$WT" update-ref refs/remotes/origin/main "$HEAD_SHA"
+  write_receipt
+  fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready' || fail 'new matching clean head must be accepted'
+  pass 'live staged, unstaged and untracked changes or a later HEAD invalidate the handoff receipt'
+}
+
 test_dirty_receipt_refuses() {
   local change
   for change in 'del(.dirty)' '.dirty = true' '.dirty = "false"'; do
@@ -100,6 +144,29 @@ test_failing_receipt_refuses() {
     assert_receipt_refused exit_status
   done
   pass 'exit_status must be the integer zero'
+}
+
+test_missing_jq_is_a_dependency_error() {
+  local tool output rc no_jq_bin="$TMP_ROOT/no-jq-bin"
+  mkdir -p "$no_jq_bin"
+  for tool in bash git dirname sed grep head tail cut date tr mkdir basename wc sort uname cat readlink; do
+    ln -s "$(type -P "$tool")" "$no_jq_bin/$tool"
+  done
+  write_receipt
+  output=$(PATH="$no_jq_bin" "$ROOT/bin/fm-brief.sh" lint-no-jq widget --mode direct-PR --tests focused 2>&1); rc=$?
+  expect_code 1 "$rc" 'missing jq must refuse opt-in brief generation'
+  assert_contains "$output" 'missing dependency: jq' 'brief must identify the missing JSON tool'
+  assert_not_contains "$output" 'invalid lint-feedback opt-in list' 'missing jq is not malformed configuration'
+  [ ! -f "$HOME_FIXTURE/data/lint-no-jq/brief.md" ] || fail 'missing jq left a partial brief'
+  output=$(PATH="$no_jq_bin" fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready'); rc=$?
+  expect_code 1 "$rc" 'missing jq must refuse opted-in completion'
+  assert_contains "$output" 'missing dependency: jq' 'completion must identify the missing JSON tool'
+  assert_not_contains "$output" 'parse error' 'missing jq is not a malformed receipt'
+  mv "$HOME_FIXTURE/config/lint-feedback.json" "$HOME_FIXTURE/config/lint-feedback.disabled"
+  output=$(PATH="$no_jq_bin" fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed'); rc=$?
+  mv "$HOME_FIXTURE/config/lint-feedback.disabled" "$HOME_FIXTURE/config/lint-feedback.json"
+  expect_code 0 "$rc" 'absent opt-in config must not add a jq dependency'
+  pass 'missing jq is a distinct dependency refusal only when lint feedback is configured'
 }
 
 test_opt_in_only_ship_completion() {
@@ -128,8 +195,11 @@ test_ship_brief_includes_feedback_instructions() {
   assert_contains "$brief" '.lint-feedback/receipt.json' 'ship brief must name the receipt'
   assert_contains "$brief" 'after each coherent edit batch' 'ship brief must require frequent feedback'
   assert_contains "$brief" 'final commit before handoff' 'ship brief must require committed-head feedback'
-  assert_contains "$brief" 'diagnostics' 'ship brief must require reading diagnostics'
-  assert_contains "$brief" 'leave the receipt in place' 'ship brief must preserve the receipt'
+  assert_contains "$brief" "The required command is \`just lint-feedback --changed\`" 'command must be a neutral requirement, not an imperative'
+  assert_contains "$brief" 'Diagnostics must be read' 'diagnostic handling must be a neutral requirement'
+  assert_contains "$brief" 'receipt must remain in place' 'ship brief must preserve the receipt'
+  assert_not_contains "$brief" "Run \`just lint-feedback --changed\`" 'lint-feedback section must not order command execution imperatively'
+  assert_not_contains "$brief" 'rerun after committing any fixes' 'rerun condition must be a neutral requirement'
   pass 'opted-in ship instructions require the lint-feedback command and receipt'
 }
 
@@ -147,18 +217,35 @@ test_unaffected_briefs() {
   pass 'scouts and other projects are unchanged; ship repository name selects the opt-in'
 }
 
+test_brief_project_identity_and_missing_repository() {
+  local output brief relative index=0 rc
+  output=$("$ROOT/bin/fm-brief.sh" lint-missing-repo --mode direct-PR --tests focused 2>&1); rc=$?
+  expect_code 1 "$rc" 'missing repository must refuse the scaffold'
+  assert_contains "$output" 'repository name' 'missing repository must have an actionable argument error'
+  assert_not_contains "$output" 'unbound variable' 'missing repository must not expand an unset positional element'
+  [ ! -f "$HOME_FIXTURE/data/lint-missing-repo/brief.md" ] || fail 'missing repository left a partial brief'
+  for relative in . ../widget "$PROJECT/."; do
+    index=$((index + 1))
+    output=$(CDPATH='' cd -- "$PROJECT" && "$ROOT/bin/fm-brief.sh" "lint-relative-$index" repository-alias --mode direct-PR --tests focused --project "$relative" 2>&1) || fail "$output"
+    brief=$(cat "$HOME_FIXTURE/data/lint-relative-$index/brief.md")
+    assert_contains "$brief" 'just lint-feedback --changed' 'resolved directory basename, not repository argument or dot, must select the opt-in'
+  done
+  pass 'briefs resolve relative project directory identity and reject missing repository arguments before writing'
+}
+
 test_promoted_scout_includes_feedback_instructions() {
   local output instructions brief
   mkdir -p "$HOME_FIXTURE/state"
   output=$("$ROOT/bin/fm-brief.sh" lint-promote widget --scout --tests focused 2>&1) || fail "$output"
   sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' \
     "$HOME_FIXTURE/data/lint-promote/brief.md"
-  printf 'window=fm-lint-promote\nkind=scout\nworktree=%s\nproject=%s\n' "$WT" "$PROJECT" > "$HOME_FIXTURE/state/lint-promote.meta"
-  output=$("$ROOT/bin/fm-promote.sh" lint-promote --mode direct-PR --yolo off 2>&1) || fail "$output"
+  printf 'window=fm-lint-promote\nkind=scout\nworktree=%s\nproject=../widget/.\n' "$WT" > "$HOME_FIXTURE/state/lint-promote.meta"
+  output=$(CDPATH='' cd -- "$PROJECT" && "$ROOT/bin/fm-promote.sh" lint-promote --mode direct-PR --yolo off 2>&1) || fail "$output"
   instructions=$(cat "$HOME_FIXTURE/data/lint-promote/ship-instructions.md")
   brief=$(cat "$HOME_FIXTURE/data/lint-promote/brief.md")
   assert_contains "$instructions" 'just lint-feedback --changed' 'promoted ship instructions must name the lint-feedback command'
   assert_contains "$instructions" '.lint-feedback/receipt.json' 'promoted ship instructions must name the receipt'
+  assert_contains "$instructions" "The required command is \`just lint-feedback --changed\`" 'promotion must render the same neutral command requirement'
   assert_contains "$brief" 'just lint-feedback --changed' 'promoted brief must keep the lint-feedback command for a relaunch'
   pass 'a scout promoted on an opted-in project is told to run lint feedback and keep its receipt'
 }
@@ -170,11 +257,13 @@ test_pipeline_moved_head_does_not_recheck_receipt() {
   fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed' \
     || fail 'receipt for the worker handoff head must permit the pipeline handoff'
   printf 'pr=https://github.com/example/widget/pull/4\npr_head=%s\n' "$forge_head" > "$meta"
+  printf 'later pipeline residue\n' > "$WT/pipeline-residue.txt"
   fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" "$line" '' task "$meta" \
     || fail 'pipeline commits on the forge head must not refuse the CI-ready done'
   rm -f "$WT/.lint-feedback/receipt.json"
   fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" "$line" '' task "$meta" \
     || fail 'the CI-ready done is not re-checked against the receipt'
+  rm "$WT/pipeline-residue.txt"
   pass 'the receipt binds to the worker handoff head, not a pipeline-moved forge head'
 }
 
@@ -231,9 +320,11 @@ test_pr_registration_receipt_follows_worker_head() {
   [ ! -f "$HOME_FIXTURE/state/lint.check.sh" ] || fail 'refused receipt must not register a PR poll'
   write_consumer_meta no-mistakes
   write_receipt
+  printf 'later pipeline residue\n' > "$WT/pipeline-residue.txt"
   output=$(FM_TEST_FORGE_HEAD=$forge_head consumer fm-pr-check.sh lint https://github.com/example/widget/pull/4 2>&1) \
     || fail "pipeline-moved forge head refused PR registration: $output"
   assert_contains "$output" 'armed:' 'a live forge head moved by the pipeline permits PR registration'
+  rm "$WT/pipeline-residue.txt"
   pass 'PR registration checks the worker-head receipt and skips it once the forge holds the pipeline head'
 }
 
@@ -280,14 +371,18 @@ test_invalid_opt_in_list_refuses_without_partial_brief() {
 fm_test_run \
   test_missing_receipt_refuses \
   test_malformed_receipt_refuses \
+  test_receipt_size_is_bounded_before_parsing \
   test_schema_refuses_and_valid_receipt_accepts \
   test_receipt_head_must_name_checked_commit \
+  test_live_worktree_must_still_match_receipt \
   test_dirty_receipt_refuses \
   test_incomplete_receipt_refuses \
   test_failing_receipt_refuses \
+  test_missing_jq_is_a_dependency_error \
   test_opt_in_only_ship_completion \
   test_ship_brief_includes_feedback_instructions \
   test_unaffected_briefs \
+  test_brief_project_identity_and_missing_repository \
   test_promoted_scout_includes_feedback_instructions \
   test_pipeline_moved_head_does_not_recheck_receipt \
   test_pr_registration_receipt_follows_worker_head \

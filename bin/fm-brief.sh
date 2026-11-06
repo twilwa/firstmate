@@ -329,6 +329,11 @@ if [ "$LANDING_CREW" -eq 1 ]; then
   KIND=landing
 fi
 
+if [ "$KIND" != secondmate ] && [ -z "${POS[1]:-}" ]; then
+  echo "error: $KIND briefs require a task id and repository name" >&2
+  exit 1
+fi
+
 # Ship delivery mode is an explicit per-task decision (AGENTS.md section 7). A
 # missing or invalid value stops the scaffold rather than silently defaulting.
 if [ "$KIND" = ship ]; then
@@ -510,7 +515,7 @@ append_brief_include() {
 
 LINT_FEEDBACK_SECTION=
 if [ "$KIND" = ship ]; then
-  LINT_FEEDBACK_SECTION=$(fm_dod_lint_feedback_section "${PROJECT_DIR:-${POS[1]}}") || exit 1
+  LINT_FEEDBACK_SECTION=$(fm_dod_lint_feedback_section "${PROJECT_DIR:-${POS[1]:-}}") || exit 1
 fi
 
 BRIEF="$DATA/$ID/brief.md"
