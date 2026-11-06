@@ -226,6 +226,23 @@ test_brief_project_identity_and_missing_repository() {
   pass 'briefs resolve relative project directory identity and reject missing repository arguments before writing'
 }
 
+test_symlinked_project_alias_keeps_logical_identity() {
+  local alias output brief reason rc
+  mkdir -p "$TMP_ROOT/checkouts/widget-main" "$TMP_ROOT/projects"
+  alias="$TMP_ROOT/projects/widget"
+  ln -s "$TMP_ROOT/checkouts/widget-main" "$alias"
+  output=$("$ROOT/bin/fm-brief.sh" lint-alias widget --mode direct-PR --tests focused --project "$alias" 2>&1) || fail "$output"
+  brief=$(cat "$HOME_FIXTURE/data/lint-alias/brief.md")
+  assert_contains "$brief" 'just lint-feedback --changed' 'a symlinked project alias must select the opt-in by its own basename'
+  rm -f "$WT/.lint-feedback/receipt.json"
+  reason=$(fm_dod_accept_ship_done ship direct-PR "$WT" "$alias" 'done: ready'); rc=$?
+  expect_code 1 "$rc" 'completion through a symlinked project alias must still require the receipt'
+  assert_contains "$reason" 'lint-feedback receipt missing' 'completion must use the same alias basename as the brief'
+  write_receipt
+  fm_dod_accept_ship_done ship direct-PR "$WT" "$alias" 'done: ready' || fail 'a valid receipt must satisfy completion through the alias'
+  pass 'a symlinked project alias has the same opt-in identity in the brief and at completion'
+}
+
 test_promoted_scout_includes_feedback_instructions() {
   local output instructions brief
   mkdir -p "$HOME_FIXTURE/state"
@@ -376,6 +393,7 @@ fm_test_run \
   test_ship_brief_includes_feedback_instructions \
   test_unaffected_briefs \
   test_brief_project_identity_and_missing_repository \
+  test_symlinked_project_alias_keeps_logical_identity \
   test_promoted_scout_includes_feedback_instructions \
   test_pipeline_moved_head_does_not_recheck_receipt \
   test_pr_registration_receipt_follows_worker_head \

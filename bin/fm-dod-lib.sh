@@ -914,7 +914,7 @@ fm_dod_lint_feedback_opted_in() {  # <project-directory>
     return 1
   fi
   if [ -d "$project" ]; then
-    project=$(CDPATH='' cd -- "$project" && pwd -P) || {
+    project=$(CDPATH='' cd -- "$project" && pwd) || {
       printf '%s\n' "cannot resolve lint-feedback project directory: $project" >&2
       return 1
     }

@@ -1628,7 +1628,7 @@ For example:
 ```
 
 An opted-in project's workers run `just lint-feedback --changed`, which writes its receipt to `.lint-feedback/receipt.json` at the repository root.
-Existing project directories are resolved to physical paths before their basenames are compared; an explicit `--project` selects the directory rather than the brief's repository-name argument.
+Existing project directories are resolved to logical paths, without following symlinks, before their basenames are compared; an explicit `--project` selects the directory rather than the brief's repository-name argument.
 An invalid file stops ship brief generation, scout promotion and completion with a configuration error.
 A missing `jq` executable is reported as a dependency error, not invalid JSON.
 Remove a project's name to disable the requirement.
