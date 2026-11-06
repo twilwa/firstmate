@@ -39,8 +39,8 @@
 # accepted while the named head exists only in the worker's disposable copy.
 # The check tests that head, not whether some branch moved. In no-mistakes
 # mode the pre-validation `done: {summary}` is the pipeline handoff and is
-# not gated; only the later CI-ready `done: PR <url> checks green` is, or on a
-# Gerrit project the later `done: PR <change url> published for review`. The
+# not reachability-gated; only the later CI-ready `done: PR <url> checks green`
+# is, or on a Gerrit project `done: PR <change url> published for review`. The
 # named head is the worker copy's HEAD, except that a done naming the task's
 # recorded pr= passes when the forge holds that head: a forge-reported
 # pr_head= in no-mistakes mode, or a recorded merge
@@ -50,9 +50,12 @@
 # recorded pr=, which bin/fm-pr-check.sh writes only after this gate accepted it
 # at arming, and otherwise only when a live read shows the change's current
 # patch set carrying the worker copy's HEAD tree. A published-for-review report
-# whose URL is not a canonical Gerrit change is refused outright. A squash is a new commit on the
-# server's base, so the tree rather than the commit is what names the published
-# content. In no-mistakes mode that live read is preceded by
+# whose URL is not a canonical Gerrit change is refused outright. An opt-in
+# config/lint-feedback.json additionally requires a clean, complete, passing
+# receipt for the named head on every ship done:, including pre-validation.
+# A squash is a new commit on the server's base, so the tree rather than the
+# commit is what names the published content. In no-mistakes mode that live
+# read is preceded by
 # fm_dod_nm_custody_returned: a copy that publishes before recovering the
 # pipeline's fix commits agrees with its own unfixed patch set, so the copy must
 # also hold the result of a passed run. These live reads are the one check at the ready
@@ -893,6 +896,29 @@ fm_dod_accept_external_review_done() {  # <worktree> <project> <line> <meta>
   return 1
 }
 
+# The home's optional project-name -> {command, receipt} declaration. Nothing
+# executes the command here; only workers run it. Empty stdout means no opt-in.
+fm_dod_lint_feedback_config() {  # <project-directory>
+  local project=${1%/} file declaration
+  [ -n "$project" ] || return 0
+  file="${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/lint-feedback.json"
+  [ -e "$file" ] || [ -L "$file" ] || return 0
+  if ! declaration=$(jq -c -s --arg project "${project##*/}" '
+    if length != 1 or (.[0] | type) != "object" then error("expected project map")
+    elif (.[0] | has($project)) then .[0][$project] else empty end
+    | if type == "object"
+        and (.command | type == "string" and test("[^[:space:]]"))
+        and (.receipt | type == "string" and length > 0
+          and (startswith("/") | not)
+          and (split("/") | all(. != ".." and . != "." and . != "")))
+      then . else error("expected command and repository-relative receipt path") end
+  ' "$file" 2>/dev/null); then
+    printf '%s\n' "invalid lint-feedback declaration in $file" >&2
+    return 1
+  fi
+  printf '%s' "$declaration"
+}
+
 # 0 when this ship done: is one the named-head gate must accept or refuse.
 # no-mistakes pre-validation done: is the pipeline handoff and is not gated.
 # Empty mode is treated as no-mistakes, the unregistered-project default.
@@ -1090,9 +1116,64 @@ fm_dod_named_head_reachable_outside_worktree() {  # <worktree> <project> <mode> 
 # output. <state> <id> <meta> supply pr=,
 # pr_head=, and the merge-notified marker; <meta> may be a captured copy
 # (bin/fm-fleet-snapshot.sh), so the marker is read from <state>.
-fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state> <id> <meta> [meta-locked]]
+# Optional tenth argument is fm-pr-check's live forge head in no-mistakes mode:
+# that caller already proved reachability on the forge, but must still check the
+# lint receipt against that exact head before recording/arming the PR.
+fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state> <id> <meta> [meta-locked [live-forge-head]]]
   local kind=$1 mode=$2 wt=$3 project=$4 line=$5 state=${6:-} id=${7:-} meta=${8:-} url sha gerrit captured=''
+  local lint_feedback receipt receipt_json named_head
+  if [ "$kind" = ship ] && [ "$(status_line_verb "$line")" = 'done' ]; then
+    if ! lint_feedback=$(fm_dod_lint_feedback_config "$project" 2>&1); then
+      printf '%s\n' "lint-feedback receipt cannot be verified: $lint_feedback"
+      return 1
+    fi
+    if [ -n "$lint_feedback" ]; then
+      receipt="$wt/$(printf '%s' "$lint_feedback" | jq -r .receipt)"
+      if [ ! -f "$receipt" ]; then
+        printf '%s\n' "lint-feedback receipt missing: $receipt"
+        return 1
+      fi
+      if ! receipt_json=$(jq -c -s 'if length == 1 and (.[0] | type) == "object" then .[0] else error("expected one receipt object") end' "$receipt" 2>/dev/null); then
+        printf '%s\n' "lint-feedback receipt parse error: $receipt"
+        return 1
+      fi
+      if ! printf '%s' "$receipt_json" | jq -e '.schema | type == "string" and startswith("lint-feedback/")' >/dev/null 2>&1; then
+        printf '%s\n' "lint-feedback receipt schema is not lint-feedback/: $receipt"
+        return 1
+      fi
+      named_head=
+      if fm_dod_forge_head_is_named_head "$mode"; then
+        named_head=${10:-}
+        if [ -z "$named_head" ] && url=$(fm_dod_pr_url_from_done_note "$(status_line_note "$line")") \
+          && fm_dod_recorded_pr_on_forge "$state" "$id" "$meta" "$mode" "$url"; then
+          named_head=$(fm_dod_meta_value "$meta" pr_head)
+        fi
+      fi
+      if [ -z "$named_head" ]; then
+        named_head=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || named_head=
+      fi
+      if ! fm_pr_head_valid "$named_head" || ! printf '%s' "$receipt_json" | jq -e --arg head "$named_head" '.head == $head' >/dev/null 2>&1; then
+        printf '%s\n' "lint-feedback receipt head does not match named head ${named_head:-(unavailable)}: $receipt"
+        return 1
+      fi
+      if ! printf '%s' "$receipt_json" | jq -e '.dirty == false' >/dev/null 2>&1; then
+        printf '%s\n' "lint-feedback receipt dirty must be false: $receipt"
+        return 1
+      fi
+      if ! printf '%s' "$receipt_json" | jq -e '.complete == true' >/dev/null 2>&1; then
+        printf '%s\n' "lint-feedback receipt complete must be true: $receipt"
+        return 1
+      fi
+      if ! printf '%s' "$receipt_json" | jq -e '.exit_status == 0' >/dev/null 2>&1; then
+        printf '%s\n' "lint-feedback receipt exit_status must be 0: $receipt"
+        return 1
+      fi
+    fi
+  fi
   fm_dod_should_gate_ship_done "$kind" "$mode" "$line" || return 0
+  if [ -n "${10:-}" ] && fm_dod_forge_head_is_named_head "$mode"; then
+    return 0
+  fi
   if [ "$mode" = local-only ] && [ -n "$meta" ]; then
     captured=$(cat "$meta") || return 1
     if [ "$(fm_dod_meta_value "$meta" worktree)" != "$wt" ] \

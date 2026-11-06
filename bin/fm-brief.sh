@@ -508,6 +508,17 @@ append_brief_include() {
     "$BRIEF_INCLUDE_BODY" >> "$BRIEF"
 }
 
+LINT_FEEDBACK_SECTION=
+if [ "$KIND" = ship ]; then
+  LINT_FEEDBACK=$(fm_dod_lint_feedback_config "${PROJECT_DIR:-${POS[1]}}") || exit 1
+  if [ -n "$LINT_FEEDBACK" ]; then
+    # shellcheck disable=SC2016 # Backticks in rendered instructions stay literal.
+    printf -v LINT_FEEDBACK_SECTION '\n\n# Repository lint feedback\nRun `%s` from the repository root after each coherent edit batch and on the final commit before handoff. Read its diagnostics, fix reported problems, and leave the receipt in place at `%s` (do not commit it or fabricate it).\nCompletion requires a JSON receipt with schema starting `lint-feedback/`, head matching the named commit, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; rerun after committing any fixes. CI remains the authoritative full gate.' \
+      "$(printf '%s' "$LINT_FEEDBACK" | jq -r .command)" \
+      "$(printf '%s' "$LINT_FEEDBACK" | jq -r .receipt)"
+  fi
+fi
+
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
 mkdir -p "$DATA/$ID"
@@ -934,6 +945,7 @@ case "$MODE" in
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT" "$PR_TEXT") || exit 1
+DOD="$DOD$LINT_FEEDBACK_SECTION"
 TDD_RULE=$(fm_ship_tdd_rule)
 
 cat > "$BRIEF" <<EOF

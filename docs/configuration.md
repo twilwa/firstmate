@@ -1618,6 +1618,46 @@ The text is static and never executed or expanded; secondmate charters never tak
 `bin/fm-brief.sh`'s header owns the placement rule and its safety argument.
 The generated shared-host safety rules apply without this include; homes still carrying those rules here will see both copies until the home include is trimmed.
 
+## Repository lint feedback (config/lint-feedback.json)
+
+The optional, home-local `config/lint-feedback.json` maps project directory basenames to one lint-feedback command and its receipt path.
+For example:
+
+```json
+{
+  "widget": {
+    "command": "just lint-feedback --changed",
+    "receipt": ".lint-feedback/receipt.json"
+  }
+}
+```
+
+`command` must be a nonblank string.
+`receipt` must be relative to the worker's repository root, without empty, `.` or `..` path components.
+An invalid file or declaration stops ship brief generation and completion with a configuration error.
+Remove a project's entry to disable the requirement.
+With no file or no matching project, existing behavior is unchanged.
+
+`bin/fm-brief.sh` adds the command and receipt instructions to opted-in ship briefs only.
+The worker runs the command from the repository root after each coherent edit batch and on the final commit, reads and fixes diagnostics, and leaves the receipt in place.
+Firstmate only reads the declaration and receipt.
+It never executes the command, and scout briefs do not include these instructions.
+Each home declares its own opt-ins.
+
+Before accepting any ship `done:` claim, including the initial no-mistakes implementation handoff, `fm_dod_accept_ship_done` requires one JSON receipt object with these fields:
+
+- `schema`: a string starting with `lint-feedback/`.
+- `head`: the full named commit SHA, the worker's HEAD or the recorded or live forge head when no-mistakes names that head.
+- `dirty`: the boolean `false`.
+- `complete`: the boolean `true`.
+- `exit_status`: the integer `0`.
+
+A missing, malformed, stale, dirty, incomplete or failing receipt refuses completion.
+Receipt modification time is irrelevant.
+`bin/fm-crew-state.sh` reports the receipt-specific refusal, and `bin/fm-pr-check.sh` refuses PR registration even when the forge already holds the named head.
+The existing named-head requirements still apply after the receipt passes.
+The repository's full CI gate remains authoritative.
+
 ## Contained worker experiments
 
 The worker-facing risk gate and containment rule are owned by `bin/fm-brief.sh` and generated for ship, scout, and landing-crew briefs.
