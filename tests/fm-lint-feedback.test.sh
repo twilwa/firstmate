@@ -17,7 +17,7 @@ git -C "$WT" init -q
 git -C "$WT" commit -q --allow-empty -m initial
 HEAD_SHA=$(git -C "$WT" rev-parse HEAD)
 git -C "$WT" update-ref refs/remotes/origin/main "$HEAD_SHA"
-printf '%s\n' '{"widget":{"command":"just lint-feedback --changed","receipt":".lint-feedback/receipt.json"}}' > "$HOME_FIXTURE/config/lint-feedback.json"
+printf '%s\n' '["widget"]' > "$HOME_FIXTURE/config/lint-feedback.json"
 
 assert_receipt_refused() {
   local reason rc
@@ -124,7 +124,7 @@ test_ship_brief_includes_feedback_instructions() {
   local output brief
   output=$("$ROOT/bin/fm-brief.sh" lint-ship widget --mode direct-PR --tests focused --project "$PROJECT" 2>&1) || fail "$output"
   brief=$(cat "$HOME_FIXTURE/data/lint-ship/brief.md")
-  assert_contains "$brief" 'just lint-feedback --changed' 'ship brief must name the configured command'
+  assert_contains "$brief" 'just lint-feedback --changed' 'ship brief must name the lint-feedback command'
   assert_contains "$brief" '.lint-feedback/receipt.json' 'ship brief must name the receipt'
   assert_contains "$brief" 'after each coherent edit batch' 'ship brief must require frequent feedback'
   assert_contains "$brief" 'final commit before handoff' 'ship brief must require committed-head feedback'
@@ -144,24 +144,38 @@ test_unaffected_briefs() {
   output=$("$ROOT/bin/fm-brief.sh" lint-by-name widget --mode local-only --tests focused 2>&1) || fail "$output"
   brief=$(cat "$HOME_FIXTURE/data/lint-by-name/brief.md")
   assert_contains "$brief" 'just lint-feedback --changed' 'repository name selects opt-in without --project'
-  pass 'scouts and other projects are unchanged; ship repository name selects the declaration'
+  pass 'scouts and other projects are unchanged; ship repository name selects the opt-in'
 }
 
-test_receipt_matches_forge_named_head() {
-  local meta="$HOME_FIXTURE/forge.meta" reason rc forge_head=1111111111111111111111111111111111111111
-  printf 'pr=https://github.com/example/widget/pull/4\npr_head=%s\n' "$forge_head" > "$meta"
+test_promoted_scout_includes_feedback_instructions() {
+  local output instructions brief
+  mkdir -p "$HOME_FIXTURE/state"
+  output=$("$ROOT/bin/fm-brief.sh" lint-promote widget --scout --tests focused 2>&1) || fail "$output"
+  sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' \
+    "$HOME_FIXTURE/data/lint-promote/brief.md"
+  printf 'window=fm-lint-promote\nkind=scout\nworktree=%s\nproject=%s\n' "$WT" "$PROJECT" > "$HOME_FIXTURE/state/lint-promote.meta"
+  output=$("$ROOT/bin/fm-promote.sh" lint-promote --mode direct-PR --yolo off 2>&1) || fail "$output"
+  instructions=$(cat "$HOME_FIXTURE/data/lint-promote/ship-instructions.md")
+  brief=$(cat "$HOME_FIXTURE/data/lint-promote/brief.md")
+  assert_contains "$instructions" 'just lint-feedback --changed' 'promoted ship instructions must name the lint-feedback command'
+  assert_contains "$instructions" '.lint-feedback/receipt.json' 'promoted ship instructions must name the receipt'
+  assert_contains "$brief" 'just lint-feedback --changed' 'promoted brief must keep the lint-feedback command for a relaunch'
+  pass 'a scout promoted on an opted-in project is told to run lint feedback and keep its receipt'
+}
+
+test_pipeline_moved_head_does_not_recheck_receipt() {
+  local meta="$HOME_FIXTURE/forge.meta" forge_head=1111111111111111111111111111111111111111 line
+  line='done: PR https://github.com/example/widget/pull/4 checks green'
   write_receipt
-  reason=$(fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: PR https://github.com/example/widget/pull/4 checks green' '' task "$meta"); rc=$?
-  expect_code 1 "$rc" 'receipt for worker HEAD cannot stand in for forge named head'
-  assert_contains "$reason" "$forge_head" 'refusal identifies the forge named head'
-  write_receipt ".head = \"$forge_head\""
-  fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: PR https://github.com/example/widget/pull/4 checks green' '' task "$meta" || fail 'receipt for recorded forge head must pass'
-  printf 'pr=https://github.com/example/widget/pull/4\npr_head=not-a-full-sha\n' > "$meta"
-  write_receipt '.head = "not-a-full-sha"'
-  reason=$(fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: PR https://github.com/example/widget/pull/4 checks green' '' task "$meta"); rc=$?
-  expect_code 1 "$rc" 'matching malformed metadata cannot authorize a non-SHA receipt head'
-  assert_contains "$reason" 'receipt head' 'refusal identifies malformed receipt head'
-  pass 'recorded forge head, not an older worker HEAD, names the checked commit'
+  fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed' \
+    || fail 'receipt for the worker handoff head must permit the pipeline handoff'
+  printf 'pr=https://github.com/example/widget/pull/4\npr_head=%s\n' "$forge_head" > "$meta"
+  fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" "$line" '' task "$meta" \
+    || fail 'pipeline commits on the forge head must not refuse the CI-ready done'
+  rm -f "$WT/.lint-feedback/receipt.json"
+  fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" "$line" '' task "$meta" \
+    || fail 'the CI-ready done is not re-checked against the receipt'
+  pass 'the receipt binds to the worker handoff head, not a pipeline-moved forge head'
 }
 
 # Only these children see PATH stubs: none forwards to a real service or agent.
@@ -206,23 +220,21 @@ write_consumer_meta() {
   chmod 600 "$HOME_FIXTURE/state/lint.meta"
 }
 
-test_pr_registration_requires_receipt_on_forge_head_path() {
+test_pr_registration_receipt_follows_worker_head() {
   local output rc forge_head=1111111111111111111111111111111111111111
   make_consumer_tools
-  write_consumer_meta no-mistakes
+  write_consumer_meta direct-PR
   rm -f "$WT/.lint-feedback/receipt.json"
   output=$(consumer fm-pr-check.sh lint https://github.com/example/widget/pull/4 2>&1); rc=$?
-  expect_code 1 "$rc" 'live forge head cannot bypass missing receipt'
+  expect_code 1 "$rc" 'direct-PR registration cannot bypass a missing receipt'
   assert_contains "$output" 'lint-feedback receipt missing' 'PR registration must name receipt problem'
   [ ! -f "$HOME_FIXTURE/state/lint.check.sh" ] || fail 'refused receipt must not register a PR poll'
+  write_consumer_meta no-mistakes
   write_receipt
-  output=$(FM_TEST_FORGE_HEAD=$forge_head consumer fm-pr-check.sh lint https://github.com/example/widget/pull/4 2>&1); rc=$?
-  expect_code 1 "$rc" 'worker HEAD receipt cannot stand in for a different live forge head'
-  assert_contains "$output" "$forge_head" 'live named head must be identified in the refusal'
-  write_receipt ".head = \"$forge_head\""
-  output=$(FM_TEST_FORGE_HEAD=$forge_head consumer fm-pr-check.sh lint https://github.com/example/widget/pull/4 2>&1) || fail "$output"
-  assert_contains "$output" 'armed:' 'matching live forge head receipt permits PR registration'
-  pass 'PR registration checks the receipt even when a live forge head proves preservation'
+  output=$(FM_TEST_FORGE_HEAD=$forge_head consumer fm-pr-check.sh lint https://github.com/example/widget/pull/4 2>&1) \
+    || fail "pipeline-moved forge head refused PR registration: $output"
+  assert_contains "$output" 'armed:' 'a live forge head moved by the pipeline permits PR registration'
+  pass 'PR registration checks the worker-head receipt and skips it once the forge holds the pipeline head'
 }
 
 test_crew_state_requires_receipt() {
@@ -247,25 +259,22 @@ test_crew_state_requires_receipt() {
   pass 'crew-state refuses invalid receipts and accepts a clean matching receipt'
 }
 
-test_invalid_declaration_refuses_without_partial_brief() {
+test_invalid_opt_in_list_refuses_without_partial_brief() {
   local config output rc index=0
   cp "$HOME_FIXTURE/config/lint-feedback.json" "$TMP_ROOT/good-config.json"
-  for config in '{broken' '{"widget":null}' '{"widget":false}' \
-    '{"widget":{"command":" ","receipt":"receipt.json"}}' \
-    '{"widget":{"command":"just lint-feedback --changed","receipt":"../receipt.json"}}' \
-    '{"widget":{"command":"just lint-feedback --changed","receipt":"/receipt.json"}}'; do
+  for config in '{broken' '{"widget":{}}' '"widget"' '["widget",1]'; do
     index=$((index + 1))
     printf '%s\n' "$config" > "$HOME_FIXTURE/config/lint-feedback.json"
     output=$("$ROOT/bin/fm-brief.sh" "bad-lint-$index" widget --mode direct-PR --tests focused 2>&1); rc=$?
-    expect_code 1 "$rc" 'invalid declaration must refuse brief generation'
-    assert_contains "$output" 'invalid lint-feedback declaration' 'declaration error must be actionable'
-    [ ! -f "$HOME_FIXTURE/data/bad-lint-$index/brief.md" ] || fail 'invalid declaration left a partial brief'
+    expect_code 1 "$rc" 'invalid opt-in list must refuse brief generation'
+    assert_contains "$output" 'invalid lint-feedback opt-in list' 'opt-in list error must be actionable'
+    [ ! -f "$HOME_FIXTURE/data/bad-lint-$index/brief.md" ] || fail 'invalid opt-in list left a partial brief'
     output=$(fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready'); rc=$?
-    expect_code 1 "$rc" 'invalid declaration cannot disable completion checks'
-    assert_contains "$output" 'invalid lint-feedback declaration' 'completion must identify the configuration error'
+    expect_code 1 "$rc" 'invalid opt-in list cannot disable completion checks'
+    assert_contains "$output" 'invalid lint-feedback opt-in list' 'completion must identify the configuration error'
   done
   cp "$TMP_ROOT/good-config.json" "$HOME_FIXTURE/config/lint-feedback.json"
-  pass 'invalid configured opt-in refuses both briefing and completion'
+  pass 'an invalid opt-in list refuses both briefing and completion'
 }
 
 fm_test_run \
@@ -279,7 +288,8 @@ fm_test_run \
   test_opt_in_only_ship_completion \
   test_ship_brief_includes_feedback_instructions \
   test_unaffected_briefs \
-  test_receipt_matches_forge_named_head \
-  test_pr_registration_requires_receipt_on_forge_head_path \
+  test_promoted_scout_includes_feedback_instructions \
+  test_pipeline_moved_head_does_not_recheck_receipt \
+  test_pr_registration_receipt_follows_worker_head \
   test_crew_state_requires_receipt \
-  test_invalid_declaration_refuses_without_partial_brief
+  test_invalid_opt_in_list_refuses_without_partial_brief

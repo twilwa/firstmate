@@ -241,6 +241,7 @@ grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (ki
 # captain's project binding, so promotion takes it from the registry rather than
 # from a flag firstmate must remember.
 PROMOTE_PROJECT=$(sed -n 's/^project=//p' "$META" | head -n 1)
+PROMOTE_LINT_FEEDBACK_SECTION=$(fm_dod_lint_feedback_section "$PROMOTE_PROJECT") || exit 1
 TEST_SCOPE_SECTION=$(fm_test_scope_section "$TEST_SCOPE" "$MODE" "$PROMOTE_PROJECT" "$FM_ROOT")
 if [ -n "$PROMOTE_PROJECT" ]; then
   PROMOTE_PROJECT_NAME=$(basename "$PROMOTE_PROJECT")
@@ -360,6 +361,7 @@ EOF
   fm_ship_tdd_rule
   printf '\n'
   fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT" "$PR_TEXT"
+  [ -z "$PROMOTE_LINT_FEEDBACK_SECTION" ] || printf '\n%s\n' "$PROMOTE_LINT_FEEDBACK_SECTION"
 }
 mkdir -p "$DATA/$ID"
 [ ! -d "$INSTRUCTIONS" ] || { echo "error: ship instructions path is a directory: $INSTRUCTIONS" >&2; exit 1; }

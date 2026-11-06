@@ -1620,41 +1620,38 @@ The generated shared-host safety rules apply without this include; homes still c
 
 ## Repository lint feedback (config/lint-feedback.json)
 
-The optional, home-local `config/lint-feedback.json` maps project directory basenames to one lint-feedback command and its receipt path.
+The optional, home-local `config/lint-feedback.json` is a JSON array of project directory basenames that opt in to the repository lint-feedback contract.
 For example:
 
 ```json
-{
-  "widget": {
-    "command": "just lint-feedback --changed",
-    "receipt": ".lint-feedback/receipt.json"
-  }
-}
+["widget"]
 ```
 
-`command` must be a nonblank string.
-`receipt` must be relative to the worker's repository root, without empty, `.` or `..` path components.
-An invalid file or declaration stops ship brief generation and completion with a configuration error.
-Remove a project's entry to disable the requirement.
+An opted-in project's workers run `just lint-feedback --changed`, which writes its receipt to `.lint-feedback/receipt.json` at the repository root.
+An invalid file stops ship brief generation, scout promotion and completion with a configuration error.
+Remove a project's name to disable the requirement.
 With no file or no matching project, existing behavior is unchanged.
 
-`bin/fm-brief.sh` adds the command and receipt instructions to opted-in ship briefs only.
+`bin/fm-brief.sh` adds the command and receipt instructions to opted-in ship briefs, and `bin/fm-promote.sh` adds them to a promoted scout's ship instructions.
 The worker runs the command from the repository root after each coherent edit batch and on the final commit, reads and fixes diagnostics, and leaves the receipt in place.
-Firstmate only reads the declaration and receipt.
+Firstmate only reads the opt-in list and the receipt.
 It never executes the command, and scout briefs do not include these instructions.
 Each home declares its own opt-ins.
 
-Before accepting any ship `done:` claim, including the initial no-mistakes implementation handoff, `fm_dod_accept_ship_done` requires one JSON receipt object with these fields:
+The receipt binds to the worker's own handoff commit.
+Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done` requires one JSON receipt object with these fields:
 
 - `schema`: a string starting with `lint-feedback/`.
-- `head`: the full named commit SHA, the worker's HEAD or the recorded or live forge head when no-mistakes names that head.
+- `head`: the full SHA of the worker copy's HEAD.
 - `dirty`: the boolean `false`.
 - `complete`: the boolean `true`.
 - `exit_status`: the integer `0`.
 
+This covers every direct-PR and local-only `done:` and the initial no-mistakes implementation handoff.
+The later no-mistakes CI-ready or published-for-review `done:` is not re-checked, because pipeline or bot commits can move the forge head past the receipt and the repository's CI runs the command on that head.
 A missing, malformed, stale, dirty, incomplete or failing receipt refuses completion.
 Receipt modification time is irrelevant.
-`bin/fm-crew-state.sh` reports the receipt-specific refusal, and `bin/fm-pr-check.sh` refuses PR registration even when the forge already holds the named head.
+`bin/fm-crew-state.sh` reports the receipt-specific refusal, and `bin/fm-pr-check.sh` refuses a direct-PR registration without a passing receipt.
 The existing named-head requirements still apply after the receipt passes.
 The repository's full CI gate remains authoritative.
 
