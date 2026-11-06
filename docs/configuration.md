@@ -1641,7 +1641,7 @@ It never executes the command, and scout briefs do not include these instruction
 Each home declares its own opt-ins.
 
 The receipt binds to the worker's own handoff commit.
-Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done` requires one JSON receipt object no larger than 64 KiB (65,536 bytes).
+Before accepting a ship `done:` that names that commit, `fm_dod_accept_ship_done` requires one JSON receipt object no larger than 1 MiB (1,048,576 bytes).
 Larger files are refused before JSON parsing.
 The required fields are:
 
@@ -1651,9 +1651,7 @@ The required fields are:
 - `complete`: the boolean `true`.
 - `exit_status`: the integer `0`.
 
-At the worker handoff, the live copy must also be clean: no staged, unstaged or untracked changes, and its HEAD must match the receipt's head and the named handoff commit.
-Git-ignored files, including the receipt, do not make the copy dirty.
-This live check is independent of the receipt's `dirty: false` claim.
+At the worker handoff, the worker copy's live HEAD must match the receipt's head and the named handoff commit.
 This covers every direct-PR and local-only `done:` and the initial no-mistakes implementation handoff.
 The later no-mistakes CI-ready or published-for-review `done:` is not re-checked, because pipeline or bot commits can move the forge head past the receipt and the repository's CI runs the command on that head.
 A missing, malformed, stale, dirty, incomplete or failing receipt refuses completion.

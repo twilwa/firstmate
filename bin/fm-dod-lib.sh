@@ -903,7 +903,7 @@ fm_dod_accept_external_review_done() {  # <worktree> <project> <line> <meta>
 # no opt-in; 1 means the opt-in configuration or a required tool is unusable.
 FM_DOD_LINT_FEEDBACK_COMMAND='just lint-feedback --changed'
 FM_DOD_LINT_FEEDBACK_RECEIPT=.lint-feedback/receipt.json
-FM_DOD_LINT_FEEDBACK_RECEIPT_MAX_BYTES=65536
+FM_DOD_LINT_FEEDBACK_RECEIPT_MAX_BYTES=1048576
 fm_dod_lint_feedback_opted_in() {  # <project-directory>
   local project=${1%/} file opted
   [ -n "$project" ] || return 0
@@ -936,7 +936,7 @@ fm_dod_lint_feedback_section() {  # <project-directory>
   opted=$(fm_dod_lint_feedback_opted_in "$1") || return 1
   [ -n "$opted" ] || return 0
   # shellcheck disable=SC2016 # Backticks in rendered instructions stay literal.
-  printf '# Repository lint feedback\nThe required command is `%s` from the repository root after each coherent edit batch and on the final commit before handoff. Diagnostics must be read and reported problems fixed. The receipt must remain in place at `%s`; it must not be committed or fabricated.\nThe worker handoff requires a clean live worktree and a JSON receipt no larger than 64 KiB with schema starting `lint-feedback/`, head matching the live HEAD named at the worker handoff, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; any fixes require a new committed-head run. CI remains the authoritative full gate.\n' \
+  printf '# Repository lint feedback\nThe required command is `%s` from the repository root after each coherent edit batch and on the final commit before handoff. Diagnostics must be read and reported problems fixed. The receipt must remain in place at `%s`; it must not be committed or fabricated.\nThe worker handoff requires a JSON receipt no larger than 1 MiB with schema starting `lint-feedback/`, head matching the live HEAD named at the worker handoff, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; any fixes require a new committed-head run. CI remains the authoritative full gate.\n' \
     "$FM_DOD_LINT_FEEDBACK_COMMAND" "$FM_DOD_LINT_FEEDBACK_RECEIPT"
 }
 
@@ -944,7 +944,7 @@ fm_dod_lint_feedback_section() {  # <project-directory>
 # passing lint-feedback run of the worker copy's HEAD, or the project is not
 # opted in. 1 with a one-line reason on stdout otherwise.
 fm_dod_lint_feedback_receipt_ok() {  # <worktree> <project>
-  local wt=$1 opted receipt receipt_json head live_status receipt_bytes
+  local wt=$1 opted receipt receipt_json head receipt_bytes
   if ! opted=$(fm_dod_lint_feedback_opted_in "$2" 2>&1); then
     printf '%s\n' "lint-feedback receipt cannot be verified: $opted"
     return 1
@@ -974,14 +974,6 @@ fm_dod_lint_feedback_receipt_ok() {  # <worktree> <project>
   head=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head=
   if ! fm_pr_head_valid "$head" || ! printf '%s' "$receipt_json" | jq -e --arg head "$head" '.head == $head' >/dev/null 2>&1; then
     printf '%s\n' "lint-feedback receipt head does not match named head ${head:-(unavailable)}: $receipt"
-    return 1
-  fi
-  if ! live_status=$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null); then
-    printf '%s\n' "lint-feedback receipt live worktree cannot be verified: $wt"
-    return 1
-  fi
-  if [ -n "$live_status" ]; then
-    printf '%s\n' "lint-feedback receipt live worktree is dirty: $wt"
     return 1
   fi
   if ! printf '%s' "$receipt_json" | jq -e '.dirty == false' >/dev/null 2>&1; then

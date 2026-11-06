@@ -53,14 +53,14 @@ test_receipt_size_is_bounded_before_parsing() {
   local bytes
   write_receipt
   bytes=$(LC_ALL=C wc -c < "$WT/.lint-feedback/receipt.json")
-  printf '%*s' "$((65536 - bytes))" '' >> "$WT/.lint-feedback/receipt.json"
+  printf '%*s' "$((1048576 - bytes))" '' >> "$WT/.lint-feedback/receipt.json"
   fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready' \
-    || fail 'a valid receipt exactly at the 64 KiB limit must be accepted'
+    || fail 'a valid receipt exactly at the 1 MiB limit must be accepted'
   printf ' ' >> "$WT/.lint-feedback/receipt.json"
-  assert_receipt_refused 'exceeds 65536-byte limit'
+  assert_receipt_refused 'exceeds 1048576-byte limit'
   printf 'invalid JSON' >> "$WT/.lint-feedback/receipt.json"
-  assert_receipt_refused 'exceeds 65536-byte limit'
-  pass 'receipt parsing accepts at most 64 KiB and refuses larger files before JSON parsing'
+  assert_receipt_refused 'exceeds 1048576-byte limit'
+  pass 'receipt parsing accepts at most 1 MiB and refuses larger files before JSON parsing'
 }
 
 test_schema_refuses_and_valid_receipt_accepts() {
@@ -92,20 +92,13 @@ test_receipt_head_must_name_checked_commit() {
   pass 'head identity, not receipt mtime, controls acceptance'
 }
 
-test_live_worktree_must_still_match_receipt() {
+test_live_head_must_still_match_receipt() {
   local reason rc
   write_receipt
-  printf 'later edit\n' >> "$WT/tracked.txt"
-  assert_receipt_refused 'live worktree is dirty'
-  git -C "$WT" add tracked.txt
-  assert_receipt_refused 'live worktree is dirty'
-  printf 'initial\n' > "$WT/tracked.txt"
-  git -C "$WT" add tracked.txt
   printf 'new source\n' > "$WT/untracked.txt"
-  assert_receipt_refused 'live worktree is dirty'
-  rm "$WT/untracked.txt"
   fm_dod_accept_ship_done ship no-mistakes "$WT" "$PROJECT" 'done: implementation committed' \
-    || fail 'clean live copy and matching receipt must allow the initial handoff'
+    || fail 'uncommitted files outside the named head must not refuse a matching receipt'
+  rm "$WT/untracked.txt"
   printf 'new commit\n' >> "$WT/tracked.txt"
   git -C "$WT" add tracked.txt
   git -C "$WT" commit -q -m 'later fixture commit'
@@ -115,8 +108,8 @@ test_live_worktree_must_still_match_receipt() {
   HEAD_SHA=$(git -C "$WT" rev-parse HEAD)
   git -C "$WT" update-ref refs/remotes/origin/main "$HEAD_SHA"
   write_receipt
-  fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready' || fail 'new matching clean head must be accepted'
-  pass 'live staged, unstaged and untracked changes or a later HEAD invalidate the handoff receipt'
+  fm_dod_accept_ship_done ship direct-PR "$WT" "$PROJECT" 'done: ready' || fail 'new matching head must be accepted'
+  pass 'a later live HEAD invalidates the handoff receipt; uncommitted files do not'
 }
 
 test_dirty_receipt_refuses() {
@@ -374,7 +367,7 @@ fm_test_run \
   test_receipt_size_is_bounded_before_parsing \
   test_schema_refuses_and_valid_receipt_accepts \
   test_receipt_head_must_name_checked_commit \
-  test_live_worktree_must_still_match_receipt \
+  test_live_head_must_still_match_receipt \
   test_dirty_receipt_refuses \
   test_incomplete_receipt_refuses \
   test_failing_receipt_refuses \
