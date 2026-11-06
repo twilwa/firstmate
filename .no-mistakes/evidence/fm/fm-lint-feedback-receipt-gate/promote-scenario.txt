@@ -1,0 +1,20 @@
+## S4 promote a scout on opted-in bbchat to ship
+$ bin/fm-promote.sh lf-scout --mode direct-PR --yolo off
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warn: no registry at /tmp/fm-lab.i5ugeh/data/projects.md; defaulting bbchat to no-mistakes off
+warn: no registry at /tmp/fm-lab.i5ugeh/data/projects.md; defaulting bbchat to no-mistakes off
+promoted lf-scout to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-lab.i5ugeh/data/lf-scout/ship-instructions.md
+next: FM_HOME=/tmp/fm-lab.i5ugeh bin/fm-send.sh fm-lf-scout "$(cat /tmp/fm-lab.i5ugeh/data/lf-scout/ship-instructions.md)"
+[exit=0]
+--- lint section in ship-instructions.md:
+53:# Repository lint feedback
+54-The required command is `just lint-feedback --changed` from the repository root after each coherent edit batch and on the final commit before handoff. Diagnostics must be read and reported problems fixed. The receipt must remain in place at `.lint-feedback/receipt.json`; it must not be committed or fabricated.
+55-The worker handoff requires a JSON receipt no larger than 1 MiB with schema starting `lint-feedback/`, head matching the live HEAD named at the worker handoff, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; any fixes require a new committed-head run. CI remains the authoritative full gate.
+kind now: kind=ship

@@ -1,0 +1,19 @@
+worker HEAD: 8efab88c04f9538001bc36792a5fe37521a8fd47   status line: done: ready   mode=direct-PR project=bbchat (opted in)
+no receipt                                       -> state: blocked · source: status-log · lint-feedback receipt missing: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+malformed JSON                                   -> state: blocked · source: status-log · lint-feedback receipt parse error: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+schema other/v1                                  -> state: blocked · source: status-log · lint-feedback receipt schema is not lint-feedback/: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+stale head                                       -> state: blocked · source: status-log · lint-feedback receipt head does not match named head 8efab88c04f9538001bc36792a5fe37521a8fd47: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+dirty=true                                       -> state: blocked · source: status-log · lint-feedback receipt dirty must be false: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+complete=false                                   -> state: blocked · source: status-log · lint-feedback receipt complete must be true: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+exit_status=1                                    -> state: blocked · source: status-log · lint-feedback receipt exit_status must be 0: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+exit_status="0" (string)                         -> state: blocked · source: status-log · lint-feedback receipt exit_status must be 0: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+valid fields but >1 MiB                          -> state: blocked · source: status-log · lint-feedback receipt exceeds 1048576-byte limit: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+valid receipt                                    -> state: done · source: status-log · ready
+git status of worker (receipt untracked via .gitignore):
+
+-- adversarial: commit after receipt (live HEAD moves) --
+receipt for old head, HEAD advanced              -> state: blocked · source: status-log · lint-feedback receipt head does not match named head ee9862e7417810ab3f80a63553337f87f80f3b0e: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+re-run receipt on new HEAD                       -> state: done · source: status-log · ready
+
+-- non-opted-in control: remove bbchat from opt-in list --
+not opted in, no receipt                         -> state: done · source: status-log · ready

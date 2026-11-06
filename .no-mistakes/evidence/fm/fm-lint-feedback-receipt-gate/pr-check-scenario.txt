@@ -1,0 +1,11 @@
+## S7 fm-pr-check.sh direct-PR registration on opted-in bbchat (gh shimmed to fail: no forge head, no network)
+$ fm-pr-check.sh lf-ship https://github.com/example-lab/bbchat/pull/5   (no receipt)
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: lint-feedback receipt missing: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+[exit=1]
+pr= recorded in meta? 0   check registered? 0
+$ fm-pr-check.sh lf-ship https://github.com/example-lab/bbchat/pull/5   (valid receipt for HEAD 6dcee27789568c3199039a9dcf271e6ac301db92)
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+armed: state/lf-ship.check.sh
+[exit=0]
+pr= recorded in meta: pr=https://github.com/example-lab/bbchat/pull/5

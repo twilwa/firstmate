@@ -1,0 +1,7 @@
+## S6 no-mistakes mode: pre-validation handoff gated, CI-ready done on pipeline-moved head not re-checked
+pre-validation done, no receipt                              -> state: blocked · source: status-log · lint-feedback receipt missing: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+pre-validation done, dirty receipt                           -> state: blocked · source: status-log · lint-feedback receipt dirty must be false: /tmp/fm-lab.i5ugeh/wt-ship/.lint-feedback/receipt.json
+pre-validation done, valid receipt                           -> state: done · source: status-log · implementation committed
+pipeline-pushed forge head B=6dcee27789568c3199039a9dcf271e6ac301db92 (worker HEAD=ee9862e7417810ab3f80a63553337f87f80f3b0e)
+CI-ready done, forge head B, worker receipt for A            -> state: done · source: status-log · PR https://github.com/example-lab/bbchat/pull/4 checks green
+CI-ready done, forge head B, receipt removed                 -> state: done · source: status-log · PR https://github.com/example-lab/bbchat/pull/4 checks green

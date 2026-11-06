@@ -1,0 +1,38 @@
+## S1 opted-in ship brief (bbchat, direct-PR)
+$ bin/fm-brief.sh lf-ship bbchat --mode direct-PR --tests focused --project /tmp/fm-lab.i5ugeh/projects/bbchat
+scaffolded: /tmp/fm-lab.i5ugeh/data/lf-ship/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+[exit=0]
+--- rendered lint section of /tmp/fm-lab.i5ugeh/data/lf-ship/brief.md:
+124:# Repository lint feedback
+125-The required command is `just lint-feedback --changed` from the repository root after each coherent edit batch and on the final commit before handoff. Diagnostics must be read and reported problems fixed. The receipt must remain in place at `.lint-feedback/receipt.json`; it must not be committed or fabricated.
+126-The worker handoff requires a JSON receipt no larger than 1 MiB with schema starting `lint-feedback/`, head matching the live HEAD named at the worker handoff, dirty false, complete true, and exit_status 0. A missing, stale, dirty, incomplete or failing receipt refuses completion; any fixes require a new committed-head run. CI remains the authoritative full gate.
+
+## S1b opted-in ship brief no-mistakes mode by repo name only
+$ bin/fm-brief.sh lf-nm bbchat --mode no-mistakes --tests focused
+scaffolded: /tmp/fm-lab.i5ugeh/data/lf-nm/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+[exit=0]
+1
+
+## S2 non-opted-in ship brief (other)
+$ bin/fm-brief.sh lf-other other --mode direct-PR --tests focused --project /tmp/fm-lab.i5ugeh/projects/other
+scaffolded: /tmp/fm-lab.i5ugeh/data/lf-other/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+[exit=0]
+lint section count: 0
+
+## S2b scout brief on opted-in project (repo name bbchat)
+$ bin/fm-brief.sh lf-scout bbchat --scout --tests focused
+scaffolded: /tmp/fm-lab.i5ugeh/data/lf-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+[exit=0]
+lint section count: 0
+
+## S3 invalid opt-in config refuses brief with no partial output
+$ bin/fm-brief.sh lf-bad bbchat --mode direct-PR --tests focused
+invalid lint-feedback opt-in list in /tmp/fm-lab.i5ugeh/config/lint-feedback.json
+[exit=1]
+partial brief exists? no
+
+## S3b symlinked project alias keeps logical identity
+$ bin/fm-brief.sh lf-alias bbchat --mode direct-PR --tests focused --project /tmp/fm-lab.i5ugeh/projects/bbchat
+scaffolded: /tmp/fm-lab.i5ugeh/data/lf-alias/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+[exit=0]
+lint command count: 1
