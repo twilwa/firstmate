@@ -484,6 +484,12 @@ Captain rows have no Beads due semantics, so that create path waives a Beads `du
 
 Do not register a Beads `types.custom` `captain` type for this: captain is a hold kind, and the fleet Beads `due.required` policy for ordinary work stays in the federated beads config.
 
+`complete` and `verify` read closed calls through `tasks-axi show` on the configured backend and accept them only with a recorded, non-deferred answer.
+Only markdown uses the configured Done archive when the row is no longer in the active backlog.
+For legacy markdown-to-Beads migrations, the native graph scan and prefixed-id fallback apply only when `[beads].binary` is `bd`, a path ending in `/bd`, or omitted.
+That lookup reads the graph path, binary, and prefix from the backlog root's `.tasks.toml` and refuses when the graph path is missing.
+Other binaries, including `br`, use tasks-axi's identity mapping instead: slug-mapped ids need no rehoming, and a missing row triggers neither a native scan nor a prefixed-id guess.
+
 ### Automatic dispatch and completion
 
 When the automatic transition gate applies, dispatch and completion each move the work item in the same run that creates or removes its task record.
@@ -509,7 +515,7 @@ Any other configured adapter is addressed by that root alone, because `--file` w
 The gate does not apply to persistent secondmates, manual-backend homes, or markdown homes without a backlog file.
 Those retain their existing persistent-agent, manual, or ad-hoc lifecycle behavior.
 Configured non-markdown adapters remain active without that file.
-Migrated-hold resolution on a beads home reads its graph path, binary, and prefix from the root `.tasks.toml` `[beads]` section only, and refuses (rc=2) when the beads backend is selected elsewhere (a `TASKS_AXI_BACKEND` override or user-level config) with no root-level `[beads]` section.
+The legacy `bd` migrated-hold lookup has additional configuration requirements described under [Captain holds on Beads](#captain-holds-on-beads).
 
 On an automatic-backend home, missing or incompatible `tasks-axi`, an unresolvable configured data directory, or one containing a control byte fails lifecycle work before mutation.
 An unreadable backend configuration can refuse lifecycle work before the no-backlog exemption applies; repair the configuration named in the diagnostic ([backend resolution contract](../bin/fm-tasks-axi-lib.sh)).

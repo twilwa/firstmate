@@ -615,7 +615,9 @@ verify_hold_durable() {  # <task-id>
 # prepending the configured prefix to the legacy id - a name-only guess, so it
 # is accepted solely for a row still held for the captain and only when it is
 # the single such row. A markdown home keeps its legacy rows verbatim, so its
-# exact-id resolution is unchanged.
+# exact-id resolution is unchanged. This is a legacy bd migration lookup;
+# other binaries leave identity mapping to tasks-axi instead of scanning a
+# native graph or guessing prefixed ids.
 
 CAPTAIN_MIGRATION_SCAN_LOADED=0
 CAPTAIN_MIGRATION_SCAN_JSON=
@@ -717,7 +719,7 @@ captain_migration_scan_load() {  # <resolved-data-dir>
 # guess, so it only runs when no marker line matches any identity and it accepts
 # a row solely when that row is itself still held for the captain.
 resolve_migrated_entry() {  # <origin-or-empty> <entry>
-  local origin=$1 entry=$2 data root entries prefix derived show backend
+  local origin=$1 entry=$2 data root entries prefix derived show backend binary
   local candidate candidate_matches prefixed matches count prefixed_matches prefixed_count
   data=$(fm_backlog_data_absolute "$DATA") || {
     printf 'fm-captain-hold: the migrated hold of %s cannot be resolved: %s\n' \
@@ -731,6 +733,12 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   }
   backend=$(fm_tasks_axi_backend "$root") || return 2
   [ "$backend" = beads ] || return 1
+  # BEADS_DIR, array JSON, and prefixed identities belong to the old bd
+  # migration. Only that binary (including its default) can use this lookup.
+  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
+  binary=$(captain_beads_setting "$entries" binary)
+  binary=${binary:-bd}
+  [ "${binary##*/}" = bd ] || return 1
   # Every identity this entry could have been migrated under: the raw entry,
   # and - for a pre-collapse channel key - the derived legacy identity its
   # origin would have minted, because fm-hold-migration recorded the DERIVED
@@ -769,7 +777,6 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   # No marker line anywhere: a mechanical migration keeps the legacy id under
   # the configured prefix, but that name alone is evidence of nothing, so only
   # a row still held for the captain - and only one of them - is accepted.
-  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
   prefix=$(captain_beads_setting "$entries" prefix)
   [ -n "$prefix" ] || return 1
   prefixed_matches=
@@ -952,6 +959,8 @@ refuse_self_inventory() {
 
 # --- Done-archive reads on the markdown backend -----------------------------
 #
+# Closed rows on other backends remain readable through task_show; only
+# markdown retention needs this fallback after the configured row read misses.
 # Done retention moves closed markdown rows into the configured archive, which
 # tasks-axi show never reads, so an answered call a scout attested would read as
 # absent once retention ran. Only the completion gate consults the archive: an
