@@ -201,7 +201,7 @@ test_env_selected_non_bd_skips_migration_lookup() {
 test_user_config_binary_precedence() {
   local variant home binary override out status
   for variant in user-br root-bd env-bd; do
-    binary=default-bd
+    binary='default-bd'
     override=
     [ "$variant" != root-bd ] || binary=bd
     [ "$variant" != env-bd ] || override=bd
@@ -250,7 +250,7 @@ test_bd_migration_lookup_is_preserved() {
 test_bd_binary_paths_have_unambiguous_bases() {
   local variant home binary override cwd out status
   for variant in root-relative env-absolute env-relative; do
-    binary=default-bd
+    binary='default-bd'
     [ "$variant" != root-relative ] || binary=./fakebin/bd
     home=$(make_compat_home "binary-$variant" beads "$binary")
     override=
