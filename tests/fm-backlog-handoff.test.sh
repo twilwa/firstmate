@@ -1344,6 +1344,46 @@ EOF
   pass "registry entry without (home: ...) fails cleanly with has no home"
 }
 
+test_relative_data_override_does_not_move_home_relative_decoy() {
+  local caller="$TMP_ROOT/relative-data-caller" home="$TMP_ROOT/relative-data-caller/main"
+  local sub="$TMP_ROOT/relative-data-sub" out
+  setup_homes "$home" "$sub"
+  mkdir -p "$caller/records" "$home/records"
+  cp "$home/data/secondmates.md" "$caller/records/secondmates.md"
+  cat > "$caller/records/backlog.md" <<'EOF'
+## Queued
+- [ ] relative-item - selected from the caller directory (repo: alpha)
+  caller-relative body survives
+- [ ] relative-keep - stays in the caller backlog (repo: alpha)
+
+## Done
+EOF
+  cat > "$home/records/backlog.md" <<'EOF'
+## Queued
+- [ ] relative-item - unrelated home-relative decoy (repo: alpha)
+  decoy body must not move
+
+## Done
+EOF
+  cp "$home/records/backlog.md" "$TMP_ROOT/relative-data-decoy.before"
+  out=$(
+    cd "$caller" || exit 1
+    FM_HOME="$home" FM_DATA_OVERRIDE=records \
+      "$ROOT/bin/fm-backlog-handoff.sh" design relative-item 2>&1
+  ) || fail "relative data override handoff failed: $out"
+  assert_grep 'caller-relative body survives' "$sub/data/backlog.md" \
+    "handoff moved the home-relative decoy instead of the caller-relative item"
+  assert_no_grep 'decoy body must not move' "$sub/data/backlog.md" \
+    "handoff delivered an unrelated same-key item"
+  assert_no_grep 'relative-item' "$caller/records/backlog.md" \
+    "handoff left the selected item in the caller-relative source"
+  assert_grep 'relative-keep' "$caller/records/backlog.md" \
+    "handoff disturbed an unrelated caller-relative item"
+  cmp -s "$TMP_ROOT/relative-data-decoy.before" "$home/records/backlog.md" \
+    || fail "handoff changed the unrelated home-relative backlog"
+  pass "a relative data override keeps classification and mutation on the caller's backlog"
+}
+
 # A caller's working directory may hold a .tasks.toml for another backend (an
 # operator checkout keeps a beads override). The handoff names explicit markdown
 # files, so that override must not redirect the move.
@@ -1580,6 +1620,7 @@ EOF
   pass "native project config ignores unrelated TOML, and unset binaries match only each other"
 }
 
+test_relative_data_override_does_not_move_home_relative_decoy
 test_configured_backend_handoffs
 test_configured_backend_handoff_refresh_retry
 test_configured_backend_destination_settings
