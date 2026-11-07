@@ -1,0 +1,271 @@
+lab homes: /tmp/fm-lab.apRh6c /tmp/fm-lab.7ZYc0O /tmp/fm-lab.fX1Sc3
+
+==================== S1 selector routes wrapper mutation to beads (fork tasks-axi + real br) ====================
+backend = "beads"
+
+[beads]
+binary = "br"
+path = ".beads"
+prefix = "fm-lab"
+$ bin/fm-tasks-axi.sh add lab-1 'live beads row'
+ok: added lab-1 -> Queued
+task:
+  id: lab-1
+  title: live beads row
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start lab-1` to move it to in flight
+  - Run `tasks-axi block lab-1 --by <other>` to record a dependency
+exit=0
+$ bin/fm-tasks-axi.sh add lab-2 'second row'
+ok: added lab-2 -> Queued
+task:
+  id: lab-2
+  title: second row
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start lab-2` to move it to in flight
+  - Run `tasks-axi block lab-2 --by <other>` to record a dependency
+exit=0
+$ bin/fm-tasks-axi.sh start lab-1
+ok: start lab-1 -> In flight
+help[1]:
+  - Run `tasks-axi done lab-1 --pr <url>` when it ships
+exit=0
+$ bin/fm-tasks-axi.sh list
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  lab-1,in_flight,task,"-",live beads row
+  lab-2,queued,task,"-",second row
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+$ ls /tmp/fm-lab.apRh6c/.beads
+beads.db
+beads.db-fsqlite-ns-gate
+beads.db-fsqlite-ns-use
+beads.db-shm
+beads.db-wal
+beads.db-wal-cert
+beads.db-wal-cert-head
+beads.db.fsqlite-migration-state
+config.yaml
+issues.jsonl
+last-touched
+metadata.json
+$ br --db /tmp/fm-lab.apRh6c/.beads/beads.db list --json (independent oracle)
+"id":"fm-lab-lab-2-434"	"title":"second row"	"status":"open"	"external_ref":"tasks-axi:lab-2"
+"id":"fm-lab-lab-1-fiw"	"title":"live beads row"	"status":"in_progress"	"external_ref":"tasks-axi:lab-1"
+$ grep lab- /tmp/fm-lab.apRh6c/data/backlog.md (must find nothing)
+0
+## In flight
+
+## Queued
+- [ ] stale-1 - STALE-MARKDOWN-ROW
+
+## Done
+
+==================== S2 inherited TASKS_AXI_FILE dropped on beads home ====================
+$ TASKS_AXI_FILE=/tmp/fm-lab.apRh6c/data/backlog.md bin/fm-tasks-axi.sh list
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  lab-1,in_flight,task,"-",live beads row
+  lab-2,queued,task,"-",second row
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+
+==================== S3 explicit TASKS_AXI_BACKEND=markdown wins over selector ====================
+$ TASKS_AXI_BACKEND=markdown bin/fm-tasks-axi.sh list
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  stale-1,queued,task,"-",STALE-MARKDOWN-ROW
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+
+==================== S4 absent selector: markdown home unchanged (upstream tasks-axi) ====================
+$ ls /tmp/fm-lab.7ZYc0O/config
+$ bin/fm-tasks-axi.sh list
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  md-1,queued,task,"-",MARKDOWN-HOME-ROW
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+$ bin/fm-tasks-axi.sh add md-2 'added via wrapper'
+ok: added md-2 -> Queued
+task:
+  id: md-2
+  title: added via wrapper
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start md-2` to move it to in flight
+  - Run `tasks-axi block md-2 --by <other>` to record a dependency
+exit=0
+$ cat data/backlog.md
+## In flight
+
+## Queued
+- [ ] md-1 - MARKDOWN-HOME-ROW
+
+- [ ] md-2 - added via wrapper (since 2026-11-06)
+## Done
+.fm-lab-home
+config
+data
+projects
+state
+tmux
+
+==================== S5 malformed selector refuses ====================
+$ config/tasks.toml: backend = beads|  -> bin/fm-tasks-axi.sh list
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.apRh6c/config/tasks.toml
+exit=2
+$ config/tasks.toml: backend = ""|  -> bin/fm-tasks-axi.sh list
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.apRh6c/config/tasks.toml
+exit=2
+$ config/tasks.toml: backend = "beads"|backend = "markdown"|  -> bin/fm-tasks-axi.sh list
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.apRh6c/config/tasks.toml
+exit=2
+$ bad beads.path -> bin/fm-tasks-axi.sh list
+tasks-axi home selector has invalid beads.path at /tmp/fm-lab.apRh6c/config/tasks.toml
+exit=2
+$ session start with malformed selector (backlog section)
+exit=0
+Backlog unavailable: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.apRh6c/config/tasks.toml; not an empty queue.
+111:Backlog unavailable: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.apRh6c/config/tasks.toml; not an empty queue.
+uid=1001
+$ unreadable selector -> bin/fm-tasks-axi.sh list
+fm-tasks-axi: tasks-axi backend configuration cannot be read at /tmp/fm-lab.apRh6c/config/tasks.toml
+exit=2
+
+==================== S6 session start reads configured beads backend over stale mirror (fork) ====================
+exit=0
+81:a compact backlog listing (data/backlog.md or the configured adapter's queue),
+96:    data/backlog.md on a markdown home),
+111:configured beads backend
+112:compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)
+117:  lab-1,in_flight,task,"-",live beads row,none,"-","-"
+130:  lab-2,queued,task,"-",second row
+133:Full task bodies: bin/fm-tasks-axi.sh show <id> --full.
+configured beads backend
+compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)
+
+in flight:
+count: 1
+tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
+  lab-1,in_flight,task,"-",live beads row,none,"-","-"
+
+held (captain- or time-gated; an in-flight item that is also held appears in both groups):
+count: 0
+tasks: 0 held tasks in this backlog
+
+blocked queued:
+count: 0
+tasks: 0 blocked queued tasks in this backlog
+
+ready queued (dispatchable now):
+count: 1
+ready[1]{id,state,kind,repo,title}:
+  lab-2,queued,task,"-",second row
+ready_public_followups: 0 delivery-ready obligations
+(shown 1 of 1 ready queued item(s))
+Full task bodies: bin/fm-tasks-axi.sh show <id> --full.
+109-backlog
+110---------------------------------------------------------------------------------
+111:configured beads backend
+
+==================== S7 adversarial: upstream tasks-axi 0.2.6 (no beads adapter) with beads selector ====================
+$ bin/fm-tasks-axi.sh list
+error: "Unsupported backend \"beads\" — P1 ships the markdown backend only"
+code: UNSUPPORTED
+help[1]: "Set `backend = \"markdown\"` in .tasks.toml, or omit --backend"
+exit=1
+exit=0
+81:a compact backlog listing (data/backlog.md or the configured adapter's queue),
+111:Backlog unavailable (beads): error: "Unsupported backend \"beads\" — P1 ships the markdown backend only"
+114:Full task bodies: bin/fm-tasks-axi.sh show <id> --full.
+
+==================== S6b markdown home session start unchanged (upstream) ====================
+exit=0
+81:a compact backlog listing (data/backlog.md or the configured adapter's queue),
+86:data/backlog.md or state/*.status: re-reading everything defeats the entire
+96:    data/backlog.md on a markdown home),
+109:data/backlog.md
+111:compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)
+128:  md-1,queued,task,"-",MARKDOWN-HOME-ROW
+129:  md-2,queued,task,"-",added via wrapper
+132:Full task bodies remain available on demand: bin/fm-tasks-axi.sh show <id> --full when compatible tasks-axi is available, or data/backlog.md.
+
+==================== S8 bootstrap br probe ====================
+$ br --db <fresh tmp>/beads.db --version (real br accepts the probe shape?)
+br 0.7.6
+exit=0 ; created: 
+$ [binary=br, real br 0.7.6] bootstrap (detect-only)
+1:exit=0
+$ [binary=/tmp/fm-test-taxi.PlXuFQ/shim-br09/br reporting 0.9.0] bootstrap
+1:BOOTSTRAP_INFO: br 0.9.0 is untested with this backend (tested: 0.7.6)
+2:exit=0
+$ [binary=/nonexistent/br] bootstrap
+1:MISSING_MANUAL: br (instructions: https://github.com/Dicklesworthstone/beads_rust)
+2:exit=0
+$ [binary=bd] bootstrap
+1:exit=0
+$ bd shim invocations:
+(bd never invoked)
+$ [no selector, markdown home] bootstrap
+1:exit=0
+
+==================== S9 OUTDATED tasks-axi advice preserves fork ====================
+$ [tasks-axi reporting 0.0.1] bootstrap
+1:OUTDATED: tasks-axi (installed: 0.0.1; requires 0.2.6; upgrade: upgrade from the installed tasks-axi source; preserve any fork)
+2:exit=0
+
+LABS=/tmp/fm-lab.apRh6c /tmp/fm-lab.7ZYc0O /tmp/fm-lab.fX1Sc3
