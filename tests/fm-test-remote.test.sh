@@ -215,30 +215,47 @@ PY
   test ! -e "$TMP/remote/slot-0.owner"
 done
 printf 'PASS command status survives a PIDs-cap event and the typed result reports it\n'
-# Stub manager modelling systemd 253+ scopes: under the default OOMPolicy=stop,
-# one in-scope OOM kill stops the whole scope before the command can report.
+# Stub manager at a chosen systemd version (NEWS for 253: scopes gained
+# OOMPolicy). From 253, the default OOMPolicy=stop stops the whole scope after
+# one in-scope OOM kill; older managers reject OOMPolicy on scopes. The real
+# systemd-run then provides the capped scope without the modelled property.
 mkdir -p "$TMP/stub"
-REAL_SYSTEMD_RUN=$(type -P systemd-run)
+cat > "$TMP/stub/systemctl" <<EOF
+#!/usr/bin/env bash
+if [ "\$*" = '--user show --property=Version --value' ]; then
+  printf '%s (stub)\n' "\$FM_REMOTE_TEST_MANAGER_VERSION"; exit 0
+fi
+exec $(printf '%q' "$(type -P systemctl)") "\$@"
+EOF
 cat > "$TMP/stub/systemd-run" <<EOF
 #!/usr/bin/env bash
 for cap in CPUQuota= MemoryMax= MemorySwapMax=0 TasksMax= RuntimeMaxSec=; do
   case " \$* " in *" -p \$cap"*) ;; *) echo "stub systemd-run: missing \$cap" >&2; exit 1 ;; esac
 done
-case " \$* " in
-  *" -p OOMPolicy=continue "*) exec $(printf '%q' "$REAL_SYSTEMD_RUN") "\$@" ;;
-esac
-touch "\${!#}/started"
-echo 'stub systemd-run: OOM kill in scope; OOMPolicy=stop stopped it' >&2
-exit 137
+args=() oom=default
+while [ \$# -gt 0 ]; do
+  if [ "\$1" = -p ] && [ "\${2%%=*}" = OOMPolicy ]; then oom=\${2#OOMPolicy=}; shift 2; continue; fi
+  args+=("\$1"); shift
+done
+if [ "\$FM_REMOTE_TEST_MANAGER_VERSION" -lt 253 ]; then
+  [ "\$oom" = default ] || { echo 'stub systemd-run: Unknown assignment: OOMPolicy' >&2; exit 1; }
+elif [ "\$oom" != continue ]; then
+  touch "\${args[-1]}/started"
+  echo "stub systemd-run: OOM kill in scope; OOMPolicy=\$oom stopped it" >&2
+  exit 137
+fi
+exec $(printf '%q' "$(type -P systemd-run)") "\${args[@]}"
 EOF
-chmod +x "$TMP/stub/systemd-run"
-set +e
-(cd "$TMP/task" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE=oom FM_REMOTE_TEST_STUB="$TMP/stub" python3 "$ROOT/bin/fm-test-remote.py" --timeout 60 -- sh -c 'exit 3') >"$TMP/out" 2>"$TMP/err"
-actual=$?
-set -e
-test "$actual" -eq 3 || { cat "$TMP/err" >&2; echo "OOM policy stopped the scope: status 3 became $actual" >&2; exit 1; }
-test -z "$(ls -A "$TMP/remote/runs")"
-printf 'PASS scope survives an in-scope OOM kill under OOMPolicy=continue\n'
+chmod +x "$TMP/stub/systemctl" "$TMP/stub/systemd-run"
+for manager in 252 255; do
+  set +e
+  (cd "$TMP/task" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE=oom FM_REMOTE_TEST_STUB="$TMP/stub" FM_REMOTE_TEST_MANAGER_VERSION="$manager" python3 "$ROOT/bin/fm-test-remote.py" --timeout 60 -- sh -c 'exit 3') >"$TMP/out" 2>"$TMP/err"
+  actual=$?
+  set -e
+  test "$actual" -eq 3 || { cat "$TMP/err" >&2; echo "systemd $manager scope properties lost status 3 as $actual" >&2; exit 1; }
+  test -z "$(ls -A "$TMP/remote/runs")"
+done
+printf 'PASS scopes keep every cap, use OOMPolicy=continue from systemd 253 and omit it before\n'
 for failure in orphan invalid-owner; do
   if (cd "$TMP/task/sub" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE="$failure" python3 "$ROOT/bin/fm-test-remote.py" --timeout 17 -- printf '%s' 'argument with spaces; $literal') >"$TMP/out" 2>"$TMP/err"; then
     echo 'failure fixture unexpectedly succeeded' >&2; exit 1

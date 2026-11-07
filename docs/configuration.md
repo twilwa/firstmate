@@ -1670,7 +1670,7 @@ Other host services can still race for these ports, so reserve the interval oper
 
 The command's `--help` owns invocation, streaming, cancellation and exit-result mechanics.
 [`tests/fm-test-remote.test.sh`](../tests/fm-test-remote.test.sh) exercises configuration, primary-copy refusal, configured-only brief instructions, and the snapshot/transport protocol against a disposable linked task copy.
-When a local systemd user manager is reachable, its additional framed-worker regressions run a command that hits the PIDs cap in a real transient scope and check that its own exit status survives, check through a stubbed `systemd-run` that the scope requests `OOMPolicy=continue` with every cap, plus orphan reconciliation and invalid-owner refusal.
+When a local systemd user manager is reachable, its additional framed-worker regressions run a command that hits the PIDs cap in a real transient scope and check that its own exit status survives, check through a stubbed manager that scopes keep every cap and request `OOMPolicy=continue` only from systemd 253, plus orphan reconciliation and invalid-owner refusal.
 Real-host delivery evidence belongs in private task data, never in this configuration reference.
 
 ## Home brief include (config/brief-include.md)
