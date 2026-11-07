@@ -9,7 +9,7 @@
 #                 "OUTDATED: <tool> (installed: <version|unparseable>; requires <floor|capability>; upgrade: <command>)",
 #                 "PRESENTATION_UNAVAILABLE: lavish-axi (requires >=<floor>; install: <command>) - nonvisual work may proceed with plain-text decisions and reports; install or upgrade before using Lavish",
 #                 "MISSING_MANUAL: <tool> (instructions: <url>)", "NEEDS_GH_AUTH",
-#                 "UNTESTED: br (installed: <version|unknown>; tested: 0.7.6; ...)",
+#                 "BOOTSTRAP_INFO: br <version|unknown> is untested with this backend (tested: 0.7.6)",
 #                 "BACKEND_INVALID: <name> (known: <names>)",
 #                 "STARTUP_MEMORY_BUDGET: invalid config/startup-memory-budget - <reason>",
 #                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
@@ -76,7 +76,7 @@
 #          its installed source rather than replacing a fork with upstream.
 #          When the configured Beads binary is br, a bounded version probe uses
 #          --db in a fresh temporary directory. Missing br reports MISSING_MANUAL;
-#          a version other than tested 0.7.6 or failed probe reports UNTESTED.
+#          a version other than tested 0.7.6 or failed probe is a BOOTSTRAP_INFO fact.
 #          quota-axi is required for the agent-owned dispatch-profile array
 #          procedure in .agents/skills/quota-array-dispatch/SKILL.md.
 #          On a primary home, the locked mutable path materializes the visible
@@ -1546,28 +1546,22 @@ detect_beads_rust() (
   [ "$backend" = beads ] || return 0
   fm_tasks_axi_export_settings "$root" "$backend" || return
   binary=${TASKS_AXI_BEADS_BINARY:-}
-  if [ -z "$binary" ] && [ -f "$root/.tasks.toml" ]; then
-    binary=$(fm_tasks_axi_home_string "$root/.tasks.toml" beads binary) || true
-  fi
-  if [ -z "$binary" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.tasks-axi/config.toml" ]; then
-    binary=$(fm_tasks_axi_home_string "$HOME/.tasks-axi/config.toml" beads binary) || true
-  fi
   # bd and other adapters retain their own compatibility policy.
   [ "${binary##*/}" = br ] || return 0
   case "$binary" in /*) ;; */*) binary="$root/$binary" ;; esac
   if ! command -v "$binary" >/dev/null 2>&1; then
-    printf 'MISSING_MANUAL: br (selected binary: %s; instructions: https://github.com/Dicklesworthstone/beads_rust)\n' "$binary"
+    echo "MISSING_MANUAL: br (instructions: https://github.com/Dicklesworthstone/beads_rust)"
     return
   fi
   probe=$(mktemp -d "${TMPDIR:-/tmp}/fm-br-version.XXXXXX") || {
-    printf 'UNTESTED: br (cannot allocate isolated version probe; tested: %s)\n' "$tested"
+    printf 'BOOTSTRAP_INFO: br version unverified (cannot allocate isolated version probe; tested: %s)\n' "$tested"
     return
   }
   out=$(fm_run_timed 5 "$binary" --db "$probe/beads.db" --version 2>/dev/null) || out=
   rm -rf "$probe"
   version=$(printf '%s\n' "$out" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
   if [ "$version" != "$tested" ]; then
-    printf 'UNTESTED: br (installed: %s; tested: %s; verify compatibility before using this backend)\n' "${version:-unknown}" "$tested"
+    printf 'BOOTSTRAP_INFO: br %s is untested with this backend (tested: %s)\n' "${version:-unknown}" "$tested"
   fi
 )
 

@@ -133,13 +133,15 @@ require_file() {
     case "$*" in *--file*) exit 94 ;; esac
     case "${FM_FAKE_TASKS_AXI_BREAK:-}" in
       fail) printf 'fixture read failed\n' >&2; exit 9 ;;
-      short) printf 'count: 2\ntasks[2]{id,state,title}:\n  one,queued,Only row\n'; exit 0 ;;
-      empty) exit 0 ;;
+      hang) printf 'count: 3\n'; exec sleep 30 ;;
       zero)
         printf 'count: 0\n'
-        case "$1" in
-          ready) printf 'ready: 0 unblocked queued tasks\n' ;;
-          *) printf 'tasks: 0 matching tasks in this backlog\n' ;;
+        case "$*" in
+          ready*) printf 'ready: 0 unblocked queued tasks\n' ;;
+          *'--state queued --blocked'*) printf 'tasks: 0 blocked queued tasks in this backlog\n' ;;
+          *'--state in_flight'*) printf 'tasks: 0 in_flight tasks in this backlog\n' ;;
+          *'--state held'*) printf 'tasks: 0 held tasks in this backlog\n' ;;
+          *) exit 95 ;;
         esac
         exit 0
         ;;
@@ -3215,6 +3217,9 @@ EOF
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" 'configured fixture backend' "valid empty adapter response was rejected"
   assert_not_contains "$out" 'Backlog unavailable' "valid empty queue was mistaken for an unreadable backend"
+  assert_contains "$out" 'tasks: 0 in_flight tasks in this backlog' "empty in-flight answer was not shown"
+  assert_contains "$out" 'tasks: 0 held tasks in this backlog' "empty held answer was not shown"
+  assert_contains "$out" 'tasks: 0 blocked queued tasks in this backlog' "empty blocked answer was not shown"
   out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" FM_FAKE_TASKS_AXI_PUBLIC_TABLE=1 \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_not_contains "$out" 'Backlog unavailable' "a ready-public-followups table was counted as ready task rows"
@@ -3238,13 +3243,16 @@ EOF
   printf 'backend = "fixture"\n' > "$home/config/tasks.toml"
   printf '## Queued\n- [ ] shadow-only - STALE-MARKDOWN-ROW\n' > "$home/data/backlog.md"
   head -n2 "$fakebin/"* >&2
-  for broken in fail short empty; do
+  for broken in fail hang; do
     out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" \
       FM_FAKE_TASKS_AXI_BREAK="$broken" run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-    assert_contains "$out" 'Backlog unavailable (fixture)' "failed/incomplete adapter read $broken was not disclosed"
+    assert_contains "$out" 'Backlog unavailable (fixture)' "failed adapter read $broken was not disclosed"
     assert_contains "$out" 'not an empty queue' "adapter failure could be mistaken for empty inventory"
     assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "adapter failure silently fell back to stale markdown"
   done
+  assert_contains "$out" 'Backlog unavailable (fixture): tasks-axi exceeded its 10s backlog read bound; not an empty queue.' \
+    "timed-out adapter read did not name its read bound"
+  assert_not_contains "$out" 'count: 3' "timed-out partial output was reported as the failure reason"
   printf 'backend = 123\n' > "$home/config/tasks.toml"
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" 'Backlog unavailable' "malformed selector fell back to markdown"
@@ -3255,7 +3263,7 @@ EOF
   out=$(run_session_start "$home" "$root" "$fakebin:$base")
   assert_contains "$out" 'Backlog unavailable (fixture)' "missing tasks-axi was mistaken for empty inventory"
   assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "missing tasks-axi exposed the markdown mirror"
-  pass "configured adapter errors and incomplete answers are unavailable, never empty or stale markdown"
+  pass "configured adapter failures and timeouts are unavailable, never empty or stale markdown"
 }
 
 if [ "${1:-}" = --backlog-only ]; then

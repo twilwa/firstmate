@@ -1569,7 +1569,10 @@ SH
       TMPDIR="$dir/tmp" "$ROOT/bin/fm-bootstrap.sh")
     case "$version" in
       0.7.6) assert_equals '' "$out" "tested br should be silent" ;;
-      *) assert_contains "$out" 'UNTESTED: br' "untested/failed br probe was not reported" ;;
+      0.8.0) assert_equals 'BOOTSTRAP_INFO: br 0.8.0 is untested with this backend (tested: 0.7.6)' "$out" \
+        "untested br was not an informational fact" ;;
+      fail) assert_equals 'BOOTSTRAP_INFO: br unknown is untested with this backend (tested: 0.7.6)' "$out" \
+        "failed br probe was not an informational fact" ;;
     esac
   done
   assert_present "$dir/br.log" "selected br was never probed"
@@ -1578,7 +1581,8 @@ SH
   base=$(fm_test_base_path_sans "$BASE_PATH" br)
   out=$(PATH="$fakebin:$base" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" \
     FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
-  assert_contains "$out" 'MISSING_MANUAL: br' "missing selected br was not reported"
+  assert_equals 'MISSING_MANUAL: br (instructions: https://github.com/Dicklesworthstone/beads_rust)' "$out" \
+    "missing selected br did not follow the MISSING_MANUAL template"
   pass "bootstrap probes only selected br with explicit temporary db and reports missing/untested builds"
 }
 

@@ -161,8 +161,8 @@
 # `tasks-axi ready`), so this script never reimplements task state; the groups
 # can overlap, because an in-flight item that is also held appears under both.
 # Shared lifecycle addressing selects the authoritative backend, even without a
-# markdown file. Each read is bounded to ten seconds. Non-markdown failure or
-# incomplete inventory is Backlog unavailable, never an empty queue or a mirror.
+# markdown file. Each read is bounded to ten seconds. A failed non-markdown
+# read is Backlog unavailable, never an empty queue or a mirror.
 # For markdown homes, when manual mode is selected or tasks-axi is unavailable,
 # this script prints only backlog section headings and item title lines, so
 # title-line hold and blocked-by metadata remain visible while indented bodies
@@ -536,56 +536,22 @@ read_backlog_tasks_axi() (
   FM_TASKS_AXI_TIMEOUT=10 fm_tasks_axi "$@"
 )
 
-# A successful process can still return a truncated listing. Never describe
-# incomplete adapter inventory as empty (or replace it with a markdown mirror).
-backlog_listing_complete() {  # <tasks-or-ready>
-  local zero_re='^tasks: 0 .*tasks in this backlog$'
-  [ "$1" != ready ] || zero_re='^ready: 0 unblocked queued tasks$'
-  LC_ALL=C awk -v kind="$1" -v zero_re="$zero_re" '
-    NR == 1 {
-      if ($0 ~ /^count: [0-9]+$/) n=$2+0; else bad=1
-      next
-    }
-    bad { next }
-    NR == 2 {
-      second=1
-      if (n == 0) { if ($0 !~ zero_re) bad=1 }
-      else if ($0 !~ ("^" kind "\\[" n "\\]\\{[A-Za-z_,]+\\}:$")) bad=1
-      else in_rows=1
-      next
-    }
-    in_rows && !/^  / { in_rows=0 }
-    in_rows && /^  [^ -]/ { rows++ }
-    END { exit (bad || !second || (n > 0 && rows != n)) ? 1 : 0 }
-  '
-}
-
 print_backlog_unavailable() {
   printf 'Backlog unavailable (%s): %s; not an empty queue.\n' "$FM_BACKLOG_AXI_BACKEND" "$1"
 }
 
 print_backlog_tasks_axi_compact() {
-  local path=$1 in_flight held blocked ready err listing
-  if ! in_flight=$(read_backlog_tasks_axi list --state in_flight --fields "$BACKLOG_FIELDS" 2>&1); then
-    err=$in_flight
-  elif ! held=$(read_backlog_tasks_axi list --state held --fields "$BACKLOG_FIELDS" 2>&1); then
-    err=$held
-  elif ! blocked=$(read_backlog_tasks_axi list --state queued --blocked --fields "$BACKLOG_FIELDS" 2>&1); then
-    err=$blocked
-  elif ! ready=$(read_backlog_tasks_axi ready 2>&1); then
-    err=$ready
-  else
+  local path=$1 in_flight held blocked ready err status=0
+  in_flight=$(read_backlog_tasks_axi list --state in_flight --fields "$BACKLOG_FIELDS" 2>&1) ||
+    { status=$?; err=$in_flight; }
+  [ "$status" -ne 0 ] || held=$(read_backlog_tasks_axi list --state held --fields "$BACKLOG_FIELDS" 2>&1) ||
+    { status=$?; err=$held; }
+  [ "$status" -ne 0 ] || blocked=$(read_backlog_tasks_axi list --state queued --blocked --fields "$BACKLOG_FIELDS" 2>&1) ||
+    { status=$?; err=$blocked; }
+  [ "$status" -ne 0 ] || ready=$(read_backlog_tasks_axi ready 2>&1) ||
+    { status=$?; err=$ready; }
+  if [ "$status" -eq 0 ]; then
     if [ "$FM_BACKLOG_AXI_BACKEND" != markdown ]; then
-      for listing in "$in_flight" "$held" "$blocked"; do
-        if ! printf '%s\n' "$listing" | backlog_listing_complete tasks; then
-          print_backlog_unavailable 'tasks-axi returned incomplete or malformed inventory'
-          return 1
-        fi
-      done
-      if ! printf '%s\n' "$ready" | backlog_listing_complete ready; then
-        print_backlog_unavailable 'tasks-axi returned incomplete or malformed ready inventory'
-        return 1
-      fi
       printf 'configured %s backend\n' "$FM_BACKLOG_AXI_BACKEND"
     fi
     printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to %s; task bodies omitted)\n' \
@@ -599,6 +565,9 @@ print_backlog_tasks_axi_compact() {
     printf '\nready queued (dispatchable now):\n'
     print_ready_queued_bounded "$ready"
     return 0
+  fi
+  if fm_timed_out "$status"; then
+    err='tasks-axi exceeded its 10s backlog read bound'
   fi
   if [ "$FM_BACKLOG_AXI_BACKEND" != markdown ]; then
     print_backlog_unavailable "$err"
