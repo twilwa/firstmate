@@ -359,6 +359,7 @@ EOF
   fi
   printf '\n# Current ship testing rule\n'
   fm_ship_tdd_rule
+  fm_ship_remote_test_rule "$FM_HOME" "$CONFIG" "$FM_ROOT"
   printf '\n'
   fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT" "$PR_TEXT"
   [ -z "$PROMOTE_LINT_FEEDBACK_SECTION" ] || printf '\n%s\n' "$PROMOTE_LINT_FEEDBACK_SECTION"

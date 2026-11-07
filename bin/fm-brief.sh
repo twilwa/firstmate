@@ -946,6 +946,8 @@ RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH") || exi
 DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT" "$PR_TEXT") || exit 1
 [ -z "$LINT_FEEDBACK_SECTION" ] || DOD="$DOD"$'\n\n'"$LINT_FEEDBACK_SECTION"
 TDD_RULE=$(fm_ship_tdd_rule)
+REMOTE_TEST_RULE=$(fm_ship_remote_test_rule "$FM_HOME" "$CONFIG" "$FM_ROOT")
+[ -z "$REMOTE_TEST_RULE" ] || TDD_RULE="$TDD_RULE"$'\n'"$REMOTE_TEST_RULE"
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
