@@ -1,0 +1,4 @@
+# bin/fm-bootstrap.sh (detect-only) with an installed tasks-axi fork build reporting 0.2.5 (below floor 0.2.6)
+OUTDATED: tasks-axi (installed: 0.2.5; requires 0.2.6; upgrade: upgrade from the installed tasks-axi source; preserve any fork)
+NEEDS_GH_AUTH
+exit=0

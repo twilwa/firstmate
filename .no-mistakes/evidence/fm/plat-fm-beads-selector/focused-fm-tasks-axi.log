@@ -1,0 +1,5 @@
+ok - home backend selector overrides tracked defaults without changing environment precedence
+#!/usr/bin/env bash
+printf 'root=%s\nbackend=%s\nbinary=%s\npath=%s\nprefix=%s\nfile=%s\n' \
+ok - home selector settings reach wrapper and shared automatic reads without markdown overrides
+ok - malformed/unreadable home selectors stop safely and quoted workspace paths retain literal characters

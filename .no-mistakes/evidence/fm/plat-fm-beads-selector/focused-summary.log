@@ -1,0 +1,8 @@
+=== tests/fm-captain-hold-lifecycle.test.sh --selector-only
+exit=0
+=== tests/fm-tasks-axi.test.sh --selector-only
+exit=0
+=== tests/fm-session-start.test.sh --backlog-only
+exit=0
+=== tests/fm-bootstrap.test.sh --tasks-only
+exit=0

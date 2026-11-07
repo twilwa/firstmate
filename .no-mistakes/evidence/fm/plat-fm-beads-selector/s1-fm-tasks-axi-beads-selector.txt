@@ -1,0 +1,114 @@
+## lab: /tmp/fm-lab.RRc48O  (config/tasks.toml selects beads; tracked .tasks.toml says markdown; stale data/backlog.md present)
+## tasks-axi = captain fork main 1053c69 (br backend) built in a temp dir; br = real beads_rust 0.7.6
+$ cat config/tasks.toml
+# private home selector
+backend = "beads"
+
+[beads]
+binary = "br"
+path = "data/beads/.beads/beads.db" # relative to FM_HOME
+prefix = "fm"
+
+$ bin/fm-tasks-axi.sh add sel-alpha "selector alpha task"
+ok: added sel-alpha -> Queued
+task:
+  id: sel-alpha
+  title: selector alpha task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start sel-alpha` to move it to in flight
+  - Run `tasks-axi block sel-alpha --by <other>` to record a dependency
+exit=0
+
+$ bin/fm-tasks-axi.sh add sel-beta "selector beta task"
+ok: added sel-beta -> Queued
+task:
+  id: sel-beta
+  title: selector beta task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start sel-beta` to move it to in flight
+  - Run `tasks-axi block sel-beta --by <other>` to record a dependency
+exit=0
+
+$ bin/fm-tasks-axi.sh block sel-beta --by sel-alpha
+ok: block sel-beta -> blocked-by sel-alpha
+help[2]:
+  - Run `tasks-axi unblock sel-beta --by <other>` to clear it
+  - Run `tasks-axi ready` to see what is still dispatchable
+exit=0
+
+$ bin/fm-tasks-axi.sh list
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  sel-alpha,queued,task,"-",selector alpha task
+  sel-beta,queued,task,"-",selector beta task
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+
+$ bin/fm-tasks-axi.sh show sel-alpha --full
+task:
+  id: sel-alpha
+  title: selector alpha task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+exit=0
+
+# native br view of the selected disposable store (explicit --db)
+$ br --db /tmp/fm-lab.RRc48O/data/beads/.beads/beads.db list --json
+{"id":"br-sel-alpha-sel-beta-gie","title":"selector beta task","external_ref":"tasks-axi:sel-beta","status":"open"}
+{"id":"br-sel-alpha-l6g","title":"selector alpha task","external_ref":"tasks-axi:sel-alpha","status":"open"}
+
+# stale markdown file untouched:
+# Backlog
+
+## In flight
+
+## Queued
+
+- [ ] **stale-md-row** - STALE MARKDOWN ROW that must not appear on a beads home
+
+## Done

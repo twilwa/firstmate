@@ -1,0 +1,44 @@
+# markdown rows written through the real markdown backend so the stale mirror is parseable
+ok: added stale-md-row -> Queued
+task:
+$ cat data/backlog.md
+# Backlog
+
+## In flight
+## Queued
+- [ ] stale-md-row - STALE MARKDOWN ROW must not appear on a beads home (since 2026-11-06)
+## Done
+
+## P1 explicit TASKS_AXI_BACKEND=markdown outranks the beads selector
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  stale-md-row,queued,task,"-",STALE MARKDOWN ROW must not appear on a beads home
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=markdown BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.RRc48O/data/backlog.md
+
+## P0 selector (beads) governs over tracked .tasks.toml=markdown and the parseable data/backlog.md
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  sel-beta,queued,task,"-",selector beta task
+  sel-alpha,done,task,"-",selector alpha task
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+
+## P4 no selector: tracked .tasks.toml (markdown) governs
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  stale-md-row,queued,task,"-",STALE MARKDOWN ROW must not appear on a beads home
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.RRc48O/data/backlog.md

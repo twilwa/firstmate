@@ -1,0 +1,27 @@
+# bin/fm-bootstrap.sh (FM_BOOTSTRAP_DETECT_ONLY=1) on lab home /tmp/fm-lab.RRc48O, varying the selected [beads].binary
+
+## A: selected binary = br (real beads_rust 0.7.6 on PATH)
+binary = "br"
+NEEDS_GH_AUTH
+exit=0
+
+## B: selected binary = /tmp/fm-lab.RRc48O/oldbr/br (reports 0.7.5; records its argv)
+BOOTSTRAP_INFO: br 0.7.5 is untested with this backend (tested: 0.7.6)
+NEEDS_GH_AUTH
+exit=0
+-- recorded br invocations:
+br-args: --db /tmp/fm-br-version.XYuKDA/beads.db --version
+
+## C: selected binary = /tmp/fm-lab.RRc48O/missing/br (absent)
+MISSING_MANUAL: br (instructions: https://github.com/Dicklesworthstone/beads_rust)
+NEEDS_GH_AUTH
+exit=0
+
+## D: selected binary = bd (other adapter keeps its own policy; no br probe)
+NEEDS_GH_AUTH
+exit=0
+
+## E: no home selector (markdown home) - no br diagnostic
+NEEDS_GH_AUTH
+exit=0
+(probe dir removed after run if 'No such file')

@@ -1,0 +1,75 @@
+# selector precedence and failure handling via bin/fm-tasks-axi.sh list on lab home /tmp/fm-lab.RRc48O
+
+## F1 selector with [beads] table but no top-level backend
+   # private home selector
+   
+   [beads]
+   binary = "br"
+   path = "data/beads/.beads/beads.db" # relative to FM_HOME
+   prefix = "fm"
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.RRc48O/config/tasks.toml
+exit=2
+-- tasks-axi invocations: 0
+
+## F2 unreadable selector (chmod 000)
+fm-tasks-axi: tasks-axi backend configuration cannot be read at /tmp/fm-lab.RRc48O/config/tasks.toml
+exit=2
+-- tasks-axi invocations: 0
+
+## F3 selector with unquoted beads.path
+tasks-axi home selector has invalid beads.path at /tmp/fm-lab.RRc48O/config/tasks.toml
+exit=2
+-- tasks-axi invocations: 0
+
+## F4 duplicate backend key
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.RRc48O/config/tasks.toml
+exit=2
+-- tasks-axi invocations: 0
+
+## P1 explicit TASKS_AXI_BACKEND=markdown in the environment outranks the selector (reads data/backlog.md)
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+exit=0
+-- tasks-axi invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=markdown BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.RRc48O/data/backlog.md
+
+## P2 inherited TASKS_AXI_FILE=data/backlog.md with the beads selector is cleared (still the beads store)
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  sel-beta,queued,task,"-",selector beta task
+  sel-alpha,done,task,"-",selector alpha task
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+-- tasks-axi invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+
+## P3 explicit TASKS_AXI_BEADS_PREFIX=zz outranks the selector's prefix
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  sel-beta,queued,task,"-",selector beta task
+  sel-alpha,done,task,"-",selector alpha task
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+-- tasks-axi invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=zz TASKS_AXI_FILE=<unset>
+
+## P4 no selector: tracked .tasks.toml (markdown) governs, data/backlog.md is read
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+exit=0
+-- tasks-axi invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.RRc48O/data/backlog.md

@@ -1,0 +1,104 @@
+# captain-hold on lab home /tmp/fm-lab.RRc48O with config/tasks.toml selecting beads (tracked .tasks.toml says markdown)
+$ bin/fm-captain-hold.sh hold sel-alpha --reason "captain decision on selector rollout"
+sel-alpha
+exit=0
+
+$ bin/fm-tasks-axi.sh show sel-alpha --full
+task:
+  id: sel-alpha
+  title: selector alpha task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "captain decision on selector rollout"
+  hold_kind: captain
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-11-07T04:48:31Z\n"
+exit=0
+
+$ bin/fm-captain-hold.sh answer sel-alpha --decision-file decision.txt
+answered: sel-alpha
+exit=0
+
+$ bin/fm-tasks-axi.sh show sel-alpha --full
+task:
+  id: sel-alpha
+  title: selector alpha task
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "captain decision on selector rollout"
+  hold_kind: captain
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: "-"
+  closed: 2026-11-06
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: b9ae533e9fcc434c20f0daace49055ed9ec38b4b3a3cedb1500c2dec8a17dffb\nResolution mode: answered\nCaptain hold answered: 2026-11-07T04:48:31Z\n\nCaptain decision:\nShip it with the beads selector.\n"
+exit=0
+
+# native br view (explicit --db)
+{"id":"br-sel-alpha-sel-beta-gie","title":"selector beta task","external_ref":"tasks-axi:sel-beta","status":"open"}
+{"id":"br-sel-alpha-l6g","title":"selector alpha task","external_ref":"tasks-axi:sel-alpha","status":"closed"}
+
+# stale markdown untouched:
+# Backlog
+
+## In flight
+
+## Queued
+
+- [ ] **stale-md-row** - STALE MARKDOWN ROW that must not appear on a beads home
+
+## Done
+
+# tasks-axi data invocations recorded by PATH wrapper
+ugrep: warning: -A1: No such file or directory
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update sel-alpha --body-file /tmp/fm-captain-hold-stamp.C8K4HB
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: hold sel-alpha --reason fm-hold-v1:Y2FwdGFpbiBkZWNpc2lvbiBvbiBzZWxlY3RvciByb2xsb3V0 --kind captain
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update sel-alpha --body-file /tmp/fm-captain-hold-body.1sNzUk --archive-body
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: done sel-alpha
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update sel-alpha --body-file /tmp/fm-captain-hold-normalize.o24iQH
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show sel-alpha --full
+  cwd=/tmp/fm-lab.RRc48O TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.RRc48O/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>

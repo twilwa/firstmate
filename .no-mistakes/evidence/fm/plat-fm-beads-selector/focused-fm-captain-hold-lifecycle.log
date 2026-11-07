@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "/tmp/fm-captain-hold.AXsc9f/captain-stub-native-beads/home/tasks-axi-calls"
+ok - captain-hold mutations address beads through native config without a markdown override
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "/tmp/fm-captain-hold.AXsc9f/captain-stub-selector-beads/home/tasks-axi-calls"
+ok - captain-hold mutations address beads through selector config without a markdown override

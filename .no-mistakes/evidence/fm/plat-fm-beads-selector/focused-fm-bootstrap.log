@@ -1,0 +1,122 @@
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/br <==
+#!/usr/bin/env bash
+[ "$#" -eq 3 ] && [ "$1" = --db ] && [ "$3" = --version ] || exit 91
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/chrome-devtools-axi <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/gh <==
+#!/usr/bin/env bash
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/gh-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/lavish-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/no-mistakes <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/node <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/quota-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/tasks-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/tmux <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/beads-selector/fakebin/treehouse <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+ok - bootstrap probes only selected br with explicit temporary db and reports missing/untested builds
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/chrome-devtools-axi <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/gh <==
+#!/usr/bin/env bash
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/gh-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/lavish-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/no-mistakes <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/node <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/quota-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/tasks-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/tmux <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-bootstrap-tests.wqbZKJ/tasks-upgrade-source/fakebin/treehouse <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+ok - tasks-axi upgrade hint preserves the installed source rather than overwriting a fork
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+ok - bootstrap separates an absent tasks-axi from one below its floor or feature probe
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+ok - bootstrap: the tasks-axi compatibility verdict and reason travel exactly one process hop
