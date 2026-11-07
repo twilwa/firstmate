@@ -1463,8 +1463,75 @@ test_configured_backend_handoff_refresh_retry() {
   pass "a post-move Beads mirror failure refreshes on retry before waking the receiver"
 }
 
+# The fixture logs the Beads binary and working directory each native call saw.
+axi_call_saw() { # <log> <command> <json-field-fragment>
+  grep -F "\"command\": \"$2\"" "$1" 2>/dev/null | grep -F -- "$3" >/dev/null
+}
+
+test_configured_backend_destination_settings() {
+  local home sub fakebin out
+  home="$TMP_ROOT/dest-settings-main"; sub="$TMP_ROOT/dest-settings-sub"
+  setup_homes "$home" "$sub"
+  mkdir -p "$sub/config" "$sub/data"
+  printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\nbinary = "/opt/custom/br"\n' > "$sub/config/tasks.toml"
+  printf '## Queued\n- [ ] settings-item - custom destination (repo: alpha)\n  body survives\n\n## Done\n' > "$home/data/backlog.md"
+  fakebin="$home/fakebin"; mkdir -p "$fakebin"
+  printf '#!%s\n' "$(type -P python3)" > "$fakebin/tasks-axi"
+  printf 'exec(compile(open(%s).read(), %s, "exec"))\n' "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" >> "$fakebin/tasks-axi"
+  chmod +x "$fakebin/tasks-axi"
+  out=$(TASKS_AXI_BEADS_BINARY=/caller/br FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design settings-item 2>&1) || fail "custom destination handoff failed: $out"
+  assert_grep 'body survives' "$sub/data/destination.db" "custom destination missed its configured store"
+  assert_no_grep 'settings-item' "$home/data/backlog.md" "custom destination left the source item"
+  axi_call_saw "$home/axi.log" mv '"binary": "/opt/custom/br"' \
+    || fail "markdown-to-Beads mv did not use the destination home's Beads binary"
+  axi_call_saw "$home/axi.log" mv "\"cwd\": \"$(cd "$sub" && pwd -P)\"" \
+    || fail "markdown-to-Beads mv did not run with the destination home's project configuration"
+  ! axi_call_saw "$home/axi.log" mv '"binary": "/caller/br"' \
+    || fail "the caller's source override leaked into the destination move"
+
+  home="$TMP_ROOT/source-override-main"; sub="$TMP_ROOT/source-override-sub"
+  setup_homes "$home" "$sub"
+  mkdir -p "$sub/config" "$sub/data"
+  printf 'backend = "markdown"\n' > "$sub/config/tasks.toml"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$sub/data/backlog.md"
+  printf '{"override-item":{"state":"queued","title":"source override (repo: alpha)","body":["  body survives"]}}\n' > "$home/data/override.db"
+  out=$(TASKS_AXI_BACKEND=beads TASKS_AXI_BEADS_PATH="$home/data/override.db" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design override-item 2>&1) || fail "source-override handoff failed: $out"
+  assert_grep 'body survives' "$sub/data/backlog.md" "source-only override redirected the destination store"
+  assert_no_grep 'override-item' "$home/data/override.db" "source-only override left the source item"
+
+  home="$TMP_ROOT/binary-mismatch-main"; sub="$TMP_ROOT/binary-mismatch-sub"
+  setup_homes "$home" "$sub"
+  mkdir -p "$home/config" "$sub/config" "$sub/data"
+  printf 'backend = "beads"\n[beads]\npath = "data/source.db"\nbinary = "br"\n' > "$home/config/tasks.toml"
+  printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\nbinary = "/opt/other/br"\n' > "$sub/config/tasks.toml"
+  printf '{"mismatch-item":{"state":"queued","title":"binary mismatch","body":[]}}\n' > "$home/data/source.db"
+  cp "$home/data/source.db" "$home/source-before"
+  if FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design mismatch-item > "$home/mismatch.out" 2>&1; then
+    fail "Beads homes with different binaries were handed off through one binary"
+  fi
+  assert_grep 'Beads binaries' "$home/mismatch.out" "binary mismatch refusal was not explained"
+  cmp -s "$home/source-before" "$home/data/source.db" || fail "binary mismatch refusal changed the source"
+  assert_absent "$sub/data/destination.db" "binary mismatch refusal initialized the destination"
+  ! axi_call_saw "$home/axi.log" mv '' || fail "binary mismatch refusal ran a move"
+  [ "$(inbox_record_count "$home/state" design)" -eq 0 ] || fail "binary mismatch refusal woke the receiver"
+
+  printf 'backend = "beads"\n[beads]\npath = "%s"\nbinary = "br"\n' "$home/data/source.db" > "$sub/config/tasks.toml"
+  if FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design mismatch-item > "$home/alias.out" 2>&1; then
+    fail "a destination aliasing the source store was reported as delivered"
+  fi
+  assert_grep "own beads store" "$home/alias.out" "aliased store refusal was not explained"
+  cmp -s "$home/source-before" "$home/data/source.db" || fail "aliased store refusal changed the source"
+  [ "$(inbox_record_count "$home/state" design)" -eq 0 ] || fail "aliased store refusal woke the receiver"
+  pass "destination homes use their own Beads settings, ignore source overrides and refuse unsupported pairs"
+}
+
 test_configured_backend_handoffs
 test_configured_backend_handoff_refresh_retry
+test_configured_backend_destination_settings
 test_handoff_wakes_live_local_receiver
 test_cwd_tasks_toml_does_not_redirect_handoff
 test_failed_wake_retries_when_the_item_is_already_present

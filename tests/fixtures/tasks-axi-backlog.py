@@ -31,7 +31,10 @@ if backend == "beads" and not path.is_absolute():
     path = Path.cwd() / path
 if os.environ.get("FM_TEST_AXI_LOG"):
     with open(os.environ["FM_TEST_AXI_LOG"], "a") as log:
-        log.write(json.dumps({"command": command, "backend": backend, "path": str(path), "args": args}) + "\n")
+        log.write(json.dumps({
+            "command": command, "backend": backend, "path": str(path), "args": args,
+            "binary": os.environ.get("TASKS_AXI_BEADS_BINARY"), "cwd": os.getcwd(),
+        }) + "\n")
 
 
 def load(store, kind):

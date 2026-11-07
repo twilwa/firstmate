@@ -340,6 +340,22 @@ fm_tasks_axi_export_settings() {  # <tasks-axi-working-directory> <resolved-back
   [ "$backend" = markdown ] || unset TASKS_AXI_FILE
 }
 
+# Native tasks-axi precedence below the exported environment: the home's project
+# config, then the user config.
+fm_tasks_axi_store_beads_setting() { # <key> <environment-value>
+  local value=$2 config status
+  if [ -z "$value" ]; then
+    for config in "$FM_HOME/.tasks.toml" "${HOME:-}/.tasks-axi/config.toml"; do
+      [ -f "$config" ] || continue
+      status=0
+      value=$(fm_tasks_axi_home_string "$config" beads "$1") || status=$?
+      [ "$status" -ne 2 ] || return 2
+      [ -z "$value" ] || break
+    done
+  fi
+  printf '%s\n' "$value"
+}
+
 # Resolve one home's store inside a subshell: private exported settings must not
 # leak from the source into the destination (or vice versa). Markdown retains
 # Firstmate's explicit data/backlog.md address, including data overrides.
@@ -347,37 +363,33 @@ fm_tasks_axi_store_resolve() { # <home> <data> <config>
   FM_HOME=$1
   FM_CONFIG_OVERRIDE=$3
   export FM_HOME FM_CONFIG_OVERRIDE
+  FM_TASKS_AXI_STORE_BINARY=
   FM_TASKS_AXI_STORE_BACKEND=$(fm_tasks_axi_backend_resolve "$FM_HOME") || return 2
   fm_tasks_axi_export_settings "$FM_HOME" "$FM_TASKS_AXI_STORE_BACKEND" || return 2
   case "$FM_TASKS_AXI_STORE_BACKEND" in
     markdown) FM_TASKS_AXI_STORE_PATH="$2/backlog.md" ;;
     beads)
-      local path=${TASKS_AXI_BEADS_PATH:-} config status
-      if [ -z "$path" ]; then
-        for config in "$FM_HOME/.tasks.toml" "${HOME:-}/.tasks-axi/config.toml"; do
-          [ -f "$config" ] || continue
-          status=0
-          path=$(fm_tasks_axi_home_string "$config" beads path) || status=$?
-          [ "$status" -ne 2 ] || return 2
-          [ -z "$path" ] || break
-        done
-      fi
+      local path
+      path=$(fm_tasks_axi_store_beads_setting path "${TASKS_AXI_BEADS_PATH:-}") || return 2
       if [ -z "$path" ]; then
         printf 'tasks-axi beads.path is required for home %s\n' "$FM_HOME" >&2
         return 2
       fi
       case "$path" in /*) ;; *) path="$FM_HOME/$path" ;; esac
       FM_TASKS_AXI_STORE_PATH=$path
+      FM_TASKS_AXI_STORE_BINARY=$(fm_tasks_axi_store_beads_setting binary "${TASKS_AXI_BEADS_BINARY:-}") || return 2
+      FM_TASKS_AXI_STORE_BINARY=${FM_TASKS_AXI_STORE_BINARY:-br}
       ;;
     *) printf 'unsupported backlog backend: %s\n' "$FM_TASKS_AXI_STORE_BACKEND" >&2; return 2 ;;
   esac
 }
 
-fm_tasks_axi_store_address() ( # <home> <data> <config> <backend|path>
+fm_tasks_axi_store_address() ( # <home> <data> <config> <backend|path|binary>
   fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
   case "$4" in
     backend) printf '%s\n' "$FM_TASKS_AXI_STORE_BACKEND" ;;
     path) printf '%s\n' "$FM_TASKS_AXI_STORE_PATH" ;;
+    binary) printf '%s\n' "$FM_TASKS_AXI_STORE_BINARY" ;;
     *) return 2 ;;
   esac
 )

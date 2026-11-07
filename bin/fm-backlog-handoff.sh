@@ -48,7 +48,11 @@
 # re-running converges. Atomic: on any move failure nothing moves.
 # Each home resolves its own backend and settings. Moves name both stores
 # explicitly; remote transport still uses a markdown scratch outbox. A caller's
-# working directory cannot redirect either home's configured store.
+# working directory cannot redirect either home's configured store, and the
+# caller's tasks-axi environment addresses only the source home. A local
+# Beads-to-Beads move is one tasks-axi call with the source home's settings, so
+# both homes must resolve the same Beads binary; a destination store that
+# aliases the source store is refused.
 # See AGENTS.md project management and task lifecycle.
 # Remote routes use an outbox handoff: one atomic local tasks-axi mv removes the
 # selected set from the dispatchable backlog into data/handoff/<id>.outbox.md,
@@ -965,10 +969,49 @@ RAW_HOME=$(secondmate_home "$ID") || exit 1
   exit 1
 }
 SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
-SUB_BACKEND=$(fm_tasks_axi_store_address "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" backend) || exit 1
+
+# The caller's tasks-axi environment addresses the source home only.
+sub_store() ( # <store-function> [args...]
+  unset "${!TASKS_AXI_@}"
+  "$1" "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "${@:2}"
+)
+
+# A markdown source has no Beads settings to lend the destination.
+destination_store_mv() ( # <home> <data> <config> <keys...>
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || exit 2
+  shift 3
+  cd "$FM_HOME" || exit 2
+  exec tasks-axi mv "$@" --file "$MAIN_BACKLOG" --backend markdown \
+    --to "$FM_TASKS_AXI_STORE_PATH" --to-backend "$FM_TASKS_AXI_STORE_BACKEND"
+)
+
+store_database() { # <backend> <path>
+  case "$1:$2" in
+  markdown:* | *.db) printf '%s\n' "$2" ;;
+  *) printf '%s/beads.db\n' "$2" ;;
+  esac
+}
+
+SUB_BACKEND=$(sub_store fm_tasks_axi_store_address backend) || exit 1
 SUB_BACKLOG="$SUB_HOME/data/backlog.md"
 if [ "$SUB_BACKEND" != markdown ]; then
-  SUB_BACKLOG=$(fm_tasks_axi_store_address "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" path) || exit 1
+  SUB_BACKLOG=$(sub_store fm_tasks_axi_store_address path) || exit 1
+fi
+if [ "$MAIN_BACKEND" = "$SUB_BACKEND" ]; then
+  MAIN_STORE=$(store_database "$MAIN_BACKEND" "$MAIN_BACKLOG")
+  SUB_STORE=$(store_database "$SUB_BACKEND" "$SUB_BACKLOG")
+  if [ "$MAIN_STORE" = "$SUB_STORE" ] || [ "$MAIN_STORE" -ef "$SUB_STORE" ]; then
+    echo "error: secondmate $ID resolves to this home's own $SUB_BACKEND store $SUB_STORE; nothing was moved" >&2
+    exit 1
+  fi
+fi
+if [ "$MAIN_BACKEND" = beads ] && [ "$SUB_BACKEND" = beads ]; then
+  MAIN_BINARY=$(fm_tasks_axi_store_address "$FM_HOME" "$DATA" "$MAIN_CONFIG" binary) || exit 1
+  SUB_BINARY=$(sub_store fm_tasks_axi_store_address binary) || exit 1
+  if [ "$MAIN_BINARY" != "$SUB_BINARY" ]; then
+    echo "error: one tasks-axi mv cannot use both Beads binaries ($MAIN_BINARY for this home, $SUB_BINARY for secondmate $ID); nothing was moved" >&2
+    exit 1
+  fi
 fi
 if [ "$MAIN_BACKEND" = markdown ]; then
   validate_backlog_file "main backlog" "$MAIN_BACKLOG" || exit 1
@@ -980,7 +1023,7 @@ sub_key_section() {
   if [ "$SUB_BACKEND" = markdown ]; then
     fm_tasks_axi_markdown_section "$SUB_BACKLOG" "$1"
   else
-    fm_tasks_axi_store_section "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "$1"
+    sub_store fm_tasks_axi_store_section "$1"
   fi
 }
 
@@ -1042,7 +1085,7 @@ REQUESTED_BATCH=$(receiver_wake_batch_id "$@") || {
 if [ "${#TO_MOVE[@]}" -eq 0 ]; then
   # A previous move may have succeeded before its mirror refresh failed.
   if [ "$SUB_BACKEND" = beads ]; then
-    fm_tasks_axi_store_refresh "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" || exit 1
+    sub_store fm_tasks_axi_store_refresh || exit 1
   fi
   WAKE_PENDING_MARKER="$STATE/.backlog-handoff-$ID.wake-pending"
   case "$(cat "$WAKE_PENDING_MARKER" 2>/dev/null || true)" in
@@ -1106,7 +1149,7 @@ fi
 if [ "$SUB_BACKEND" = markdown ]; then
   fm_tasks_axi_markdown_init "$SUB_BACKLOG" || exit 1
 else
-  fm_tasks_axi_store_init "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" || exit 1
+  sub_store fm_tasks_axi_store_init || exit 1
 fi
 
 # Delegate the move to tasks-axi. Passing the whole in-scope set to one call is a
@@ -1114,11 +1157,16 @@ fi
 # together and, on any failure, neither backlog's content changes - the only
 # cleanup is a scaffold we just created. tasks-axi writes both its success and
 # error output to stdout, so capture it and surface it only on failure.
-DESTINATION_FLAGS=()
-if [ "$MAIN_BACKEND" != markdown ] || [ "$SUB_BACKEND" != markdown ]; then
-  DESTINATION_FLAGS=(--to-backend "$SUB_BACKEND")
-fi
-if ! MV_OUT=$(main_store_run mv "${TO_MOVE[@]}" --to "$SUB_BACKLOG" "${DESTINATION_FLAGS[@]}" 2>&1); then
+transfer_to_sub() { # <keys...>
+  if [ "$MAIN_BACKEND" = markdown ] && [ "$SUB_BACKEND" = markdown ]; then
+    main_store_run mv "$@" --to "$SUB_BACKLOG"
+  elif [ "$MAIN_BACKEND" = markdown ]; then
+    sub_store destination_store_mv "$@"
+  else
+    main_store_run mv "$@" --to "$SUB_BACKLOG" --to-backend "$SUB_BACKEND"
+  fi
+}
+if ! MV_OUT=$(transfer_to_sub "${TO_MOVE[@]}" 2>&1); then
   if [ "$SUB_CREATED" -eq 1 ]; then
     rm -f "$SUB_BACKLOG"
   fi
@@ -1133,10 +1181,10 @@ if ! MV_OUT=$(main_store_run mv "${TO_MOVE[@]}" --to "$SUB_BACKLOG" "${DESTINATI
   exit 1
 fi
 
-# mv uses source settings. Refresh a Beads destination's own configured mirror
-# through its adapter, never by writing data/backlog.md from this script.
+# Refresh a Beads destination's own configured mirror through its adapter,
+# never by writing data/backlog.md from this script.
 if [ "$SUB_BACKEND" = beads ]; then
-  fm_tasks_axi_store_refresh "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" || exit 1
+  sub_store fm_tasks_axi_store_refresh || exit 1
 fi
 
 echo "handed off ${#TO_MOVE[@]} item(s) to $ID: ${TO_MOVE[*]}"
