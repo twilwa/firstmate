@@ -16,7 +16,9 @@
 # Absent or any other value keeps the default tasks-axi backend path, falling
 # back to manual mutation when the tool is not compatible.
 # fm_tasks_axi_backend_resolve owns backend precedence: TASKS_AXI_BACKEND when
-# set, then a backend in the working root's .tasks.toml, then one in
+# set, then the home's private config/tasks.toml selector (a present but
+# unreadable or backend-less selector returns 2 rather than falling through),
+# then a backend in the working root's .tasks.toml, then one in
 # $HOME/.tasks-axi/config.toml, then markdown. Lower-priority sources are read
 # only when no earlier source supplies a backend; absent files keep that fallback.
 # A detected unreadable or nonregular configuration file, including a dangling
