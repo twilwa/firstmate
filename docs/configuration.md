@@ -1606,6 +1606,71 @@ When the file is absent, worker launches do not add a board address and retain t
 Malformed or unreadable values refuse the launch before the worker starts.
 The address selects the existing shared server; it does not authorize starting or stopping the server, and the Lavish startup crash remains a vendor-tool concern.
 
+## Remote test runner (config/remote-test.json)
+
+The optional, local, gitignored `config/remote-test.json` enables [`bin/fm-test-remote.py`](../bin/fm-test-remote.py) for workers whose heavy tests should run on a separate Linux host.
+It is absent by default and is configured independently in each home, not inherited into secondmate homes.
+The runner honors `FM_HOME`, `FM_ROOT_OVERRIDE`, and `FM_CONFIG_OVERRIDE` like other home-local commands.
+A present file adds one ship-brief instruction routing browser journeys, full server partitions, repeat loops, and tests longer than a few minutes to that runner; focused quick tests stay local.
+
+Example configuration (replace every access/path placeholder with your own):
+
+```json
+{
+  "host": "test-host.example.org",
+  "user": "test-worker",
+  "identity_file": "~/.ssh/test-worker",
+  "known_hosts_file": "~/.ssh/known_hosts",
+  "remote_root": "/home/test-worker/remote-tests",
+  "cpu_percent": 400,
+  "memory_mb": 8192,
+  "tasks_max": 512,
+  "slots": 1,
+  "timeout": 900,
+  "queue_timeout": 300,
+  "port_base": 20000,
+  "port_count": 100
+}
+```
+
+`host`, `user`, `identity_file`, `known_hosts_file`, and `remote_root` are required strings.
+The remaining fields are positive integers with the defaults shown; unknown fields, malformed values, missing local access files, and unsafe roots are errors.
+`host` is a DNS name or IPv4 address without SSH options, and `user` is a simple account name.
+The remote root must be a dedicated absolute directory owned by that account with mode `0700`; the runner creates it when absent.
+Verify and provision the host key out of band before use: connections require BatchMode, IdentitiesOnly, strict host-key checking, the configured identity and known-hosts file, and no agent or port forwarding.
+The client never accepts a new host key or modifies SSH configuration.
+
+`cpu_percent`, `memory_mb`, and `tasks_max` are the total runner budget for that root, divided evenly among `slots` (rounded down), not multiplied by concurrent runs.
+The defaults limit all its test scopes together to roughly four CPU cores and 8 GiB, with no swap.
+Choose a budget below the host's spare capacity; separate roots/accounts have separate budgets, so this is not a host-wide admission controller.
+There may be at most 32 slots, at least 1% CPU, 64 MiB and one task per slot, and every integer is bounded above by 1,000,000.
+Changing the resource or port policy while runs are active is refused; wait for them to finish before tuning it.
+Each slot uses `flock` for restoration, execution, and descendant cleanup; waiting for that mutex is bounded by `queue_timeout` seconds.
+A durable owner reservation survives supervisor loss or failed scope cleanup, and a replacement verifies the prior scope has stopped and reconciles orphaned runs before launching.
+`timeout` is the maximum scope lifetime in seconds, including restoration, enforced with `RuntimeMaxSec` and a bounded supervisor backstop.
+
+The remote account needs Python 3.12+, Git, a reachable systemd user manager, cgroup v2 with delegated CPU/memory/pids controllers, and its test toolchains already installed.
+The client needs Python 3.9+, Git and OpenSSH.
+Missing capabilities stop execution rather than running tests without caps; this command never installs toolchains, changes account/slice settings, or creates persistent units.
+Use a dedicated account with no production secrets or unrelated workloads: cgroups bound resources, not filesystem or network access by arbitrary test code.
+All runner-owned files stay under `remote_root`, including a versioned SHA-256-verified worker and private per-run directories.
+Completed, cancelled, and capped runs remove their files and kill only their own generated scope; a later invocation reaps abandoned runs after proving their supervisor no longer holds its lease.
+Do not delete an active run or its slot, owner or lease files manually.
+
+The snapshot comprises bundled HEAD history, the binary diff against HEAD, and untracked nonignored files, sent over the same SSH connection that streams test output and cancellation.
+Ignored dependencies, credentials and build artifacts are not copied; provision dependencies inside the run using existing toolchains when necessary.
+Submodules are refused, and external Git LFS objects are not transferred.
+Tests receive a fresh `HOME` and `TMPDIR`, a minimal environment without forwarded credentials, and the caller's relative working directory inside the restored tree.
+`FM_REMOTE_RUN_ID`, `FM_REMOTE_RUN_DIR`, `FM_REMOTE_SLOT`, `FM_REMOTE_PORT_MIN`, `FM_REMOTE_PORT_MAX`, and `FM_REMOTE_DB_SUFFIX` identify their isolated resources.
+Use the assigned port interval and database suffix explicitly in test configuration: the runner does not rewrite application settings or provision a database.
+Each slot receives `port_count` advisory ports starting at `port_base + slot * port_count`, checked for local conflicts before launch; the complete range must fit between 1024 and 65535.
+Other host services can still race for these ports, so reserve the interval operationally.
+
+The command's `--help` owns invocation, streaming, cancellation and exit-result mechanics.
+[`tests/fm-test-remote.test.sh`](../tests/fm-test-remote.test.sh) exercises configuration, primary-copy refusal, configured-only brief instructions, and the snapshot/transport protocol (the latter requires an existing isolated task copy).
+Its additional framed-worker regression checks orphan reconciliation and invalid-owner refusal when a local systemd user manager is reachable; it never launches an execution scope.
+Real-host delivery evidence belongs in private task data, never in this configuration reference.
+
 ## Home brief include (config/brief-include.md)
 
 The optional local, gitignored `config/brief-include.md` adds standing worker instructions to every ship, scout, and landing-crew brief.
