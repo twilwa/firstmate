@@ -181,13 +181,13 @@ test_env_selected_non_bd_skips_migration_lookup() {
       set -- TASKS_AXI_BACKEND=beads
     fi
     status=0
-    out=$(export "$@"; run_compat "$home" complete origin missing 2>&1) || status=$?
+    out=$(export "${@?}"; run_compat "$home" complete origin missing 2>&1) || status=$?
     [ ! -e "$home/native-calls" ] || fail "$variant completion attempted a native migration scan: $out"
     [ "$status" = 1 ] || fail "$variant missing completion returned $status: $out"
     assert_contains "$out" 'no captain-held task' "$variant completion must report a clean absence"
     attest_compat "$home" missing
     status=0
-    out=$(export "$@"; run_compat "$home" verify origin 2>&1) || status=$?
+    out=$(export "${@?}"; run_compat "$home" verify origin 2>&1) || status=$?
     [ ! -e "$home/native-calls" ] || fail "$variant verification attempted a native migration scan: $out"
     [ "$status" = 1 ] || fail "$variant missing verification returned $status: $out"
     ! grep -q 'show fm-missing' "$home/calls" || fail "$variant guessed a prefixed identity"
@@ -216,8 +216,8 @@ test_env_addressed_bd_lookup_uses_env_path_and_prefix() {
   compat_row "$home" fx-missing fx-missing held
   set -- TASKS_AXI_BACKEND=beads TASKS_AXI_BEADS_BINARY=bd \
     "TASKS_AXI_BEADS_PATH=$home/graph" TASKS_AXI_BEADS_PREFIX=fx
-  out=$(export "$@"; run_compat "$home" complete origin missing 2>&1) || fail "env-addressed completion: $out"
-  out=$(export "$@"; run_compat "$home" verify origin 2>&1) || fail "env-addressed verification: $out"
+  out=$(export "${@?}"; run_compat "$home" complete origin missing 2>&1) || fail "env-addressed completion: $out"
+  out=$(export "${@?}"; run_compat "$home" verify origin 2>&1) || fail "env-addressed verification: $out"
   grep -q '^bd list --all --json$' "$home/native-calls" || fail "env-addressed lookup did not scan the env graph"
   grep -q '^tasks-axi show fx-missing' "$home/calls" || fail "env-addressed lookup ignored TASKS_AXI_BEADS_PREFIX"
   ! grep -q 'show fm-missing' "$home/calls" || fail "env-addressed lookup used the root prefix"
