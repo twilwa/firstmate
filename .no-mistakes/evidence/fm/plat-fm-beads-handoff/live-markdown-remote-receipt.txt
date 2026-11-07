@@ -1,0 +1,18 @@
+== seeded secondmate home (markdown default); data/ contents before: []
+== FM_HOME=<remote-home> fm-backlog-receive.sh state/handoff/design.outbox.md 144 <sha256> 1
+received: design moved=2 already=0
+exit=0
+== data/backlog.md after receipt:
+## In flight
+
+## Queued
+- [ ] remote-item - routed over ssh (repo: alpha)
+  remote body survives
+- [ ] remote-two - second routed item (repo: alpha)
+
+## Done
+== delivered outbox removed? yes
+== idempotent retry (same delivery re-sent):
+received: design moved=0 already=2
+exit=0
+== remote-item occurrences after retry: 1

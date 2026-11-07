@@ -1,0 +1,33 @@
+== [branch 07da0a9c] FM_HOME=/tmp/fm-lab.jyyVUR/caller/main fm-backlog-handoff.sh design relative-item   (default data dir, live private-tmux receiver)
+handed off 1 item(s) to design: relative-item
+  into /tmp/fm-lab.jyyVUR/sub/data/backlog.md
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.jyyVUR/caller/main
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+exit=0
+== main data/backlog.md after:
+## Queued
+- [ ] relative-keep - stays in the caller backlog (repo: alpha)
+
+## Done
+== secondmate data/backlog.md after:
+## In flight
+
+## Queued
+- [ ] relative-item - selected from the caller directory (repo: alpha)
+  caller-relative body survives
+
+## Done
+== home-relative decoy unchanged?
+decoy byte-identical
+== receiver input:
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'design.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+== receiver pane:
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'design.i
+nbox' steering inbox, read and act on each in numeric order, then mv each into i
+ts handled/.

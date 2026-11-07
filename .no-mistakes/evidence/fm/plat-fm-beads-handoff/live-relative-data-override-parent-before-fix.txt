@@ -1,0 +1,29 @@
+== [parent 4c6e0d30 (before fix)] cd /tmp/fm-lab.OJhmbT/caller && FM_HOME=/tmp/fm-lab.OJhmbT/caller/main FM_DATA_OVERRIDE=records fm-backlog-handoff.sh design relative-item
+handed off 1 item(s) to design: relative-item
+  into /tmp/fm-lab.OJhmbT/sub/data/backlog.md
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+error: backlog delivery to secondmate design succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+exit=1
+== caller records/backlog.md after:
+## Queued
+- [ ] relative-item - selected from the caller directory (repo: alpha)
+  caller-relative body survives
+- [ ] relative-keep - stays in the caller backlog (repo: alpha)
+
+## Done
+== secondmate data/backlog.md after:
+## In flight
+
+## Queued
+- [ ] relative-item - unrelated home-relative decoy (repo: alpha)
+  decoy body must not move
+
+## Done
+== home-relative decoy unchanged?
+/tmp/fm-lab.OJhmbT/decoy.before /tmp/fm-lab.OJhmbT/caller/main/records/backlog.md differ: byte 11, line 2
+DECOY CHANGED:
+## Queued
+## Done
+== receiver input:
+== receiver pane:
+❯
