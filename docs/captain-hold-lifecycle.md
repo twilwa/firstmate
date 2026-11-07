@@ -616,7 +616,7 @@ It proves:
 - The attested id stays in `decision_keys=` for idempotent re-verification.
 
 One case in that family needs no beads install and always runs.
-It uses a stubbed tasks-axi that fails any markdown file override, and proves the captain-hold hold, answer, and close mutations reach a beads-configured home without one.
+It uses a stubbed tasks-axi that fails any markdown file override, and proves the captain-hold hold, answer, and close mutations reach a beads-configured home without one, whether the root `.tasks.toml` or the home-local `config/tasks.toml` selector picks Beads.
 
 ### Reconcile coverage
 

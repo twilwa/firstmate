@@ -35,6 +35,9 @@
 #
 # The data directory is FM_DATA_OVERRIDE, else $FM_HOME/data, else the code
 # root's data/ (FM_HOME unset keeps the single-home layout unchanged).
+# The private home config/tasks.toml overlays native backend selection and
+# exports adapter settings only to this invocation. bin/fm-tasks-axi-lib.sh owns
+# the selector schema and precedence; docs/configuration.md documents it.
 #
 # Refusals (exit 2, nothing run):
 #   - tasks-axi missing from PATH;
@@ -143,6 +146,7 @@ else
   unset TASKS_AXI_FILE
 fi
 
+fm_tasks_axi_export_settings "$FM_BACKLOG_AXI_ROOT" "$FM_BACKLOG_AXI_BACKEND" || exit 2
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"
 case "${1:-}" in
   show|view|list)

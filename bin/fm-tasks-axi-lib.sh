@@ -16,7 +16,9 @@
 # Absent or any other value keeps the default tasks-axi backend path, falling
 # back to manual mutation when the tool is not compatible.
 # fm_tasks_axi_backend_resolve owns backend precedence: TASKS_AXI_BACKEND when
-# set, then a backend in the working root's .tasks.toml, then one in
+# set, then the home's private config/tasks.toml selector (a present but
+# unreadable or backend-less selector returns 2 rather than falling through),
+# then a backend in the working root's .tasks.toml, then one in
 # $HOME/.tasks-axi/config.toml, then markdown. Lower-priority sources are read
 # only when no earlier source supplies a backend; absent files keep that fallback.
 # A detected unreadable or nonregular configuration file, including a dangling
@@ -202,14 +204,73 @@ fm_tasks_axi_backend_from_toml() {  # <toml-path>
   ' "$toml"
 }
 
-# Resolve the active tasks-axi backend with the same precedence as tasks-axi.
+# Read the home selector's string-only fields without evaluating shell text.
+# Supports literal strings and basic strings with escaped quotes/backslashes;
+# comments start after the closing quote, never inside a path.
+fm_tasks_axi_home_string() {  # <toml-path> <table-or-empty> <key>
+  LC_ALL=C awk -v wanted_table="$2" -v wanted_key="$3" '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    BEGIN { table=""; single=sprintf("%c", 39); found=0; bad=0 }
+    {
+      line=trim($0)
+      if (line == "" || line ~ /^#/) next
+      if (line ~ /^\[/) {
+        if (line !~ /^\[[^]]+\][[:space:]]*(#.*)?$/) { bad=1; exit }
+        sub(/[[:space:]]*#.*/, "", line)
+        table=trim(substr(line, 2, length(line)-2))
+        next
+      }
+      if (line !~ /^[A-Za-z0-9_-]+[[:space:]]*=/) { bad=1; exit }
+      if (table != wanted_table || line !~ ("^" wanted_key "[[:space:]]*=")) next
+      if (found++) { bad=1; exit }
+      sub(/^[^=]*=[[:space:]]*/, "", line)
+      quote=substr(line, 1, 1)
+      if (quote != "\"" && quote != single) { bad=1; exit }
+      value=""; closed=0
+      for (i=2; i<=length(line); i++) {
+        c=substr(line, i, 1)
+        if (c == quote) { closed=i; break }
+        if (quote == "\"" && c == "\\") {
+          c=substr(line, ++i, 1)
+          if (c != "\\" && c != "\"") { bad=1; exit }
+        }
+        value=value c
+      }
+      tail=trim(substr(line, closed+1))
+      if (!closed || (tail != "" && substr(tail, 1, 1) != "#") || value ~ /[[:cntrl:]]/) { bad=1; exit }
+      result=value
+    }
+    END { if (bad) exit 2; if (!found) exit 1; print result }
+  ' "$1"
+}
+
+# Firstmate's private home selector overlays the tracked tasks-axi defaults.
+fm_tasks_axi_home_config() {  # <tasks-axi-working-directory>
+  printf '%s/tasks.toml\n' "${FM_CONFIG_OVERRIDE:-${FM_HOME:-$1}/config}"
+}
+
+# Preserve tasks-axi's precedence below the explicit environment and home overlay.
 fm_tasks_axi_backend_resolve() {  # <tasks-axi-working-directory>
   local root=$1 backend
   if [ "${TASKS_AXI_BACKEND+x}" = x ]; then
     printf '%s\n' "$TASKS_AXI_BACKEND"
     return 0
   fi
-  local config="$root/.tasks.toml"
+  local config
+  config=$(fm_tasks_axi_home_config "$root")
+  if { [ -e "$config" ] || [ -L "$config" ]; }; then
+    if [ ! -f "$config" ] || [ ! -r "$config" ]; then
+      printf 'tasks-axi backend configuration cannot be read at %s\n' "$config" >&2
+      return 2
+    fi
+    if backend=$(fm_tasks_axi_home_string "$config" '' backend) && [ -n "$backend" ]; then
+      printf '%s\n' "$backend"
+      return 0
+    fi
+    printf 'tasks-axi home selector requires one nonempty quoted backend at %s\n' "$config" >&2
+    return 2
+  fi
+  config="$root/.tasks.toml"
   if { [ -d "${config%/*}" ] && [ ! -x "${config%/*}" ]; } ||
     { { [ -e "$config" ] || [ -L "$config" ]; } && { [ ! -f "$config" ] || [ ! -r "$config" ]; }; }; then
     printf 'tasks-axi backend configuration cannot be read at %s\n' "$config" >&2
@@ -236,6 +297,47 @@ fm_tasks_axi_backend_resolve() {  # <tasks-axi-working-directory>
 
 fm_tasks_axi_backend() {  # <tasks-axi-working-directory>
   fm_tasks_axi_backend_resolve "$1"
+}
+
+# Apply in the caller, not in the backend resolver's command substitution: every
+# tasks-axi invocation (including lifecycle reads/mutations) must see the same
+# private overlay. Explicit adapter environment settings retain precedence.
+fm_tasks_axi_export_settings() {  # <tasks-axi-working-directory> <resolved-backend>
+  local root=$1 backend=$2 config binary path prefix status
+  config=$(fm_tasks_axi_home_config "$root")
+  if [ -f "$config" ] && [ "$backend" = beads ]; then
+    binary=$(fm_tasks_axi_home_string "$config" beads binary); status=$?
+    if [ "$status" -eq 2 ]; then
+      printf 'tasks-axi home selector has invalid beads.binary at %s\n' "$config" >&2
+      return 2
+    fi
+    path=$(fm_tasks_axi_home_string "$config" beads path); status=$?
+    if [ "$status" -eq 2 ]; then
+      printf 'tasks-axi home selector has invalid beads.path at %s\n' "$config" >&2
+      return 2
+    fi
+    prefix=$(fm_tasks_axi_home_string "$config" beads prefix); status=$?
+    if [ "$status" -eq 2 ]; then
+      printf 'tasks-axi home selector has invalid beads.prefix at %s\n' "$config" >&2
+      return 2
+    fi
+    if [ "${TASKS_AXI_BEADS_BINARY+x}" != x ] && [ -n "$binary" ]; then
+      export TASKS_AXI_BEADS_BINARY=$binary
+    fi
+    if [ "${TASKS_AXI_BEADS_PATH+x}" != x ] && [ -n "$path" ]; then
+      case "$path" in /*) ;; *) path="${FM_HOME:-$root}/$path" ;; esac
+      export TASKS_AXI_BEADS_PATH=$path
+    fi
+    if [ "${TASKS_AXI_BEADS_PREFIX+x}" != x ] && [ -n "$prefix" ]; then
+      export TASKS_AXI_BEADS_PREFIX=$prefix
+    fi
+  fi
+  # With no private selector, leave tasks-axi's native configuration untouched.
+  if [ -f "$config" ]; then
+    export TASKS_AXI_BACKEND=$backend
+  fi
+  # --file / TASKS_AXI_FILE would silently select markdown over another backend.
+  [ "$backend" = markdown ] || unset TASKS_AXI_FILE
 }
 
 fm_backlog_backend_value() {

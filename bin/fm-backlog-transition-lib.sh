@@ -278,6 +278,7 @@ fm_backlog_tasks_axi_addressing() {  # <data-dir>
     FM_BACKLOG_TRANSITION_ERROR=$backend
     return 2
   }
+  FM_BACKLOG_AXI_BACKEND=$backend
   FM_BACKLOG_AXI_ROOT=$root
   if [ "$backend" = markdown ]; then
     FM_BACKLOG_AXI_FILE=$(fm_backlog_file "$data") || return 1
@@ -341,6 +342,7 @@ fm_tasks_axi_timeout_expired() {  # <status>
 
 fm_tasks_axi() {
   local bound=${FM_TASKS_AXI_TIMEOUT:-}
+  fm_tasks_axi_export_settings "$FM_BACKLOG_AXI_ROOT" "$FM_BACKLOG_AXI_BACKEND" || return 2
   if [ -z "$bound" ]; then
     exec tasks-axi "$@"
   fi
@@ -392,8 +394,11 @@ fm_backlog_row_show() {  # <resolved-data-dir> <id> [flag...]
     set -- "$@" --file "$FM_BACKLOG_AXI_FILE"
   fi
   # shellcheck disable=SC2016  # Expansion is deliberately deferred to the child shell.
-  out=$(fm_run_timed "$secs" bash -c 'cd "$1" 2>/dev/null || exit 1; shift; exec tasks-axi show "$@"' \
-    _ "$FM_BACKLOG_AXI_ROOT" "$id" "$@" 2>&1)
+  out=$(
+    fm_tasks_axi_export_settings "$FM_BACKLOG_AXI_ROOT" "$FM_BACKLOG_AXI_BACKEND" 2>&1 || exit 2
+    fm_run_timed "$secs" bash -c 'cd "$1" 2>/dev/null || exit 1; shift; exec tasks-axi show "$@"' \
+      _ "$FM_BACKLOG_AXI_ROOT" "$id" "$@" 2>&1
+  )
   status=$?
   # A backend that wrote a header or a progress line before wedging leaves that
   # fragment as the first output line, and every caller reads the first line as

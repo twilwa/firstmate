@@ -36,6 +36,9 @@ set -u
 # shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
 
+unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX \
+  FM_CONFIG_OVERRIDE FM_DATA_OVERRIDE FM_STATE_OVERRIDE FM_PROJECTS_OVERRIDE
+
 SESSION_START="$ROOT/bin/fm-session-start.sh"
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 TMP_ROOT=$(fm_test_tmproot fm-session-start-tests)
@@ -123,6 +126,28 @@ log=${FM_FAKE_TASKS_AXI_LOG:-}
 [ -n "$log" ] && printf '%s\n' "$*" >> "$log"
 ready_count=${FM_FAKE_TASKS_AXI_READY:-2}
 require_file() {
+  if [ -n "${FM_FAKE_TASKS_AXI_ADAPTER:-}" ]; then
+    [ "${TASKS_AXI_BACKEND:-}" = "$FM_FAKE_TASKS_AXI_ADAPTER" ] || exit 91
+    [ "$PWD" = "$FM_FAKE_TASKS_AXI_ROOT" ] || exit 92
+    [ "${TASKS_AXI_FILE+x}" != x ] || exit 93
+    case "$*" in *--file*) exit 94 ;; esac
+    case "${FM_FAKE_TASKS_AXI_BREAK:-}" in
+      fail) printf 'fixture read failed\n' >&2; exit 9 ;;
+      hang) printf 'count: 3\n'; exec sleep 30 ;;
+      zero)
+        printf 'count: 0\n'
+        case "$*" in
+          ready*) printf 'ready: 0 unblocked queued tasks\n' ;;
+          *'--state queued --blocked'*) printf 'tasks: 0 blocked queued tasks in this backlog\n' ;;
+          *'--state in_flight'*) printf 'tasks: 0 in_flight tasks in this backlog\n' ;;
+          *'--state held'*) printf 'tasks: 0 held tasks in this backlog\n' ;;
+          *) exit 95 ;;
+        esac
+        exit 0
+        ;;
+    esac
+    return 0
+  fi
   case "$*" in *'--file '*) return 0 ;; esac
   printf '%s\n' 'missing explicit backlog file' >&2
   exit 9
@@ -161,7 +186,11 @@ case "${1:-}" in
       printf '  ready-%s,queued,ship,firstmate,Ready item %s\n' "$i" "$i"
       i=$((i + 1))
     done
-    printf 'ready_public_followups: 0 delivery-ready obligations\n'
+    if [ "${FM_FAKE_TASKS_AXI_PUBLIC_TABLE:-}" = 1 ]; then
+      printf 'ready_public_followups[1]{id,title}:\n  reply-one,Public followup\n'
+    else
+      printf 'ready_public_followups: 0 delivery-ready obligations\n'
+    fi
     printf 'help[1]:\n'
     printf '%s\n' '  - Run `tasks-axi start <id>` to dispatch one of these'
     exit 0
@@ -3160,6 +3189,94 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+test_backlog_configured_adapter_without_markdown() {
+  local rec root home fakebin out shadow
+  rec=$(new_world backlog-configured)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'backend = "fixture"\n' > "$home/config/tasks.toml"
+  head -n2 "$fakebin/"* >&2
+  for shadow in absent stale; do
+    if [ "$shadow" = stale ]; then
+      printf '## Queued\n- [ ] shadow-only - STALE-MARKDOWN-ROW\n' > "$home/data/backlog.md"
+    fi
+    out=$(TASKS_AXI_FILE="$home/unrelated.md" FM_FAKE_TASKS_AXI_ADAPTER=fixture \
+      FM_FAKE_TASKS_AXI_ROOT="$home" run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+    assert_contains "$out" 'configured fixture backend' "configured adapter was not read with $shadow markdown"
+    assert_contains "$out" 'compact-startup,in_flight' "configured adapter omitted in-flight work"
+    assert_contains "$out" 'held-queued,queued' "configured adapter omitted held work"
+    assert_contains "$out" 'blocked-followup,queued' "configured adapter omitted blocked work"
+    assert_contains "$out" 'ready-2,queued' "configured adapter omitted ready work"
+    assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "stale markdown replaced the adapter inventory"
+  done
+  out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" FM_FAKE_TASKS_AXI_BREAK=zero \
+    run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" 'configured fixture backend' "valid empty adapter response was rejected"
+  assert_contains "$out" 'tasks: 0 in_flight tasks in this backlog' "empty in-flight answer was not shown"
+  assert_contains "$out" 'tasks: 0 held tasks in this backlog' "empty held answer was not shown"
+  assert_contains "$out" 'tasks: 0 blocked queued tasks in this backlog' "empty blocked answer was not shown"
+  out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" FM_FAKE_TASKS_AXI_PUBLIC_TABLE=1 \
+    run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" '(shown 2 of 2 ready queued item(s))' "a ready-public-followups table was counted as ready task rows"
+  assert_contains "$out" 'reply-one,Public followup' "public followup visibility was lost"
+  rm "$home/config/tasks.toml" "$home/data/backlog.md"
+  rmdir "$home/data"
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_not_contains "$out" 'Backlog unavailable' "absent markdown data directory changed legacy absent-file behavior"
+  pass "session-start reads configured adapters from their root without markdown files or inherited file overrides"
+}
+
+test_backlog_configured_failure_is_not_empty_or_shadow() {
+  local rec root home fakebin out broken base
+  rec=$(new_world backlog-configured-failure)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'backend = "fixture"\n' > "$home/config/tasks.toml"
+  printf '## Queued\n- [ ] shadow-only - STALE-MARKDOWN-ROW\n' > "$home/data/backlog.md"
+  head -n2 "$fakebin/"* >&2
+  for broken in fail hang; do
+    out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" \
+      FM_FAKE_TASKS_AXI_BREAK="$broken" run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+    assert_contains "$out" 'Backlog unavailable (fixture)' "failed adapter read $broken was not disclosed"
+    assert_contains "$out" 'not an empty queue' "adapter failure could be mistaken for empty inventory"
+    assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "adapter failure silently fell back to stale markdown"
+  done
+  assert_contains "$out" 'Backlog unavailable (fixture): tasks-axi exceeded its 10s backlog read bound; not an empty queue.' \
+    "timed-out adapter read did not name its read bound"
+  assert_not_contains "$out" 'count: 3' "timed-out partial output was reported as the failure reason"
+  printf 'backend = 123\n' > "$home/config/tasks.toml"
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" 'Backlog unavailable' "malformed selector fell back to markdown"
+  assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "invalid selector exposed the markdown mirror"
+  printf 'backend = "fixture"\n' > "$home/config/tasks.toml"
+  rm "$fakebin/tasks-axi"
+  base=$(fm_test_base_path_sans "$BASE_PATH" tasks-axi)
+  out=$(run_session_start "$home" "$root" "$fakebin:$base")
+  assert_contains "$out" 'Backlog unavailable (fixture)' "missing tasks-axi was mistaken for empty inventory"
+  assert_not_contains "$out" 'STALE-MARKDOWN-ROW' "missing tasks-axi exposed the markdown mirror"
+  pass "configured adapter failures and timeouts are unavailable, never empty or stale markdown"
+}
+
+if [ "${1:-}" = --backlog-only ]; then
+  test_backlog_configured_adapter_without_markdown
+  test_backlog_configured_failure_is_not_empty_or_shadow
+  test_backlog_compact_tasks_axi_omits_bodies_and_keeps_metadata
+  test_backlog_queued_bound_discloses_its_remainder
+  test_backlog_compact_manual_backend_skips_indented_bodies
+  test_backlog_compact_tasks_axi_unavailable_uses_manual_fallback
+  exit 0
+fi
+
+test_backlog_configured_adapter_without_markdown
+test_backlog_configured_failure_is_not_empty_or_shadow
 test_summary_refresh_never_blocks_the_digest
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path

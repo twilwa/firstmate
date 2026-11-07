@@ -389,8 +389,8 @@ load_decision() {  # <path>; sets DECISION_TEXT and DECISION_DIGEST
 # way bin/fm-backlog-transition-lib.sh addresses every transition, so a home
 # with a relocated data directory keeps one backlog. The explicit --file file
 # belongs to the markdown backend only; a non-markdown backend is addressed by
-# the root's own tasks-axi configuration, exactly like the transition library's
-# mutate path.
+# the resolved home settings and root's tasks-axi configuration, exactly like
+# the transition library's mutate path.
 tasks_axi() {
   local data file root backend
   data=$(fm_backlog_data_absolute "$DATA") || fail "data directory cannot be resolved: $DATA"
@@ -398,9 +398,11 @@ tasks_axi() {
   backend=$(fm_tasks_axi_backend "$root") || return 2
   if [ "$backend" = markdown ]; then
     file=$(fm_backlog_file "$data") || fail "$FM_BACKLOG_TRANSITION_ERROR"
-    (cd "$root" && tasks-axi "$@" --file "$file")
+    (fm_tasks_axi_export_settings "$root" "$backend" &&
+      cd "$root" && tasks-axi "$@" --file "$file")
   else
-    (cd "$root" && tasks-axi "$@")
+    (fm_tasks_axi_export_settings "$root" "$backend" &&
+      cd "$root" && tasks-axi "$@")
   fi
 }
 

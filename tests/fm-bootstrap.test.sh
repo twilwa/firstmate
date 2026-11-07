@@ -29,6 +29,8 @@ set -u
 
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 TMP_ROOT=$(fm_test_tmproot fm-bootstrap-tests)
+unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX \
+  FM_CONFIG_OVERRIDE FM_DATA_OVERRIDE FM_STATE_OVERRIDE FM_PROJECTS_OVERRIDE
 export FM_BACKEND_CMUX_BUNDLE_BIN="$TMP_ROOT/no-bundled-cmux"
 
 # Hermetic runtime-backend detection. These cases pin the backend per-home via
@@ -342,9 +344,9 @@ absent treehouse reports a missing tool^absent^0.2.6^1^-^grep^MISSING: treehouse
 treehouse without --lease reports an upgrade, gh auth is fine^0^0.2.6^1^-^grep^OUTDATED: treehouse (installed: 0.4.2; requires --lease support; upgrade: treehouse update)^NEEDS_GH_AUTH
 compatible tasks-axi is silent by default^1^0.2.6^1^-^empty^^
 missing tasks-axi is required by default^1^-^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
-incompatible tasks-axi reports an upgrade by default^1^0.1.0^1^-^exact^OUTDATED: tasks-axi (installed: 0.1.0; requires 0.2.6; upgrade: npm install -g tasks-axi)^
-tasks-axi without archive-body reports an upgrade by default^1^0.2.6:noarchive^1^-^exact^OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: npm install -g tasks-axi)^
-tasks-axi without multi-id mv reports an upgrade by default^1^0.2.6:nomulti^1^-^exact^OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with mv multi-ID; upgrade: npm install -g tasks-axi)^
+incompatible tasks-axi reports an upgrade by default^1^0.1.0^1^-^exact^OUTDATED: tasks-axi (installed: 0.1.0; requires 0.2.6; upgrade: upgrade from the installed tasks-axi source; preserve any fork)^
+tasks-axi without archive-body reports an upgrade by default^1^0.2.6:noarchive^1^-^exact^OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: upgrade from the installed tasks-axi source; preserve any fork)^
+tasks-axi without multi-id mv reports an upgrade by default^1^0.2.6:nomulti^1^-^exact^OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with mv multi-ID; upgrade: upgrade from the installed tasks-axi source; preserve any fork)^
 missing quota-axi is required by default^1^0.2.6^0^manual^exact^MISSING: quota-axi (install: npm install -g quota-axi)^
 outdated quota-axi reports an upgrade by default^1^0.2.6^0.1.50^manual^exact^OUTDATED: quota-axi (installed: 0.1.50; requires 0.1.51; upgrade: quota-axi update)^
 manual backlog backend still requires missing tasks-axi^1^-^1^manual^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
@@ -557,7 +559,7 @@ test_tasks_axi_min_version() {
       outdated)
         installed=${requirement%%|*}
         requires=${requirement#*|}
-        expect="OUTDATED: tasks-axi (installed: $installed; requires $requires; upgrade: npm install -g tasks-axi)"
+        expect="OUTDATED: tasks-axi (installed: $installed; requires $requires; upgrade: upgrade from the installed tasks-axi source; preserve any fork)"
         [ "$out" = "$expect" ] || fail "$label: expected '$expect', got: $out" ;;
     esac
   done <<'ROWS'
@@ -1221,7 +1223,7 @@ SH
     FM_FAKE_TASKS_AXI_LOG="$log" FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
     FM_FAKE_TASKS_AXI_VERSION=0.2.6 "$ROOT/bin/fm-bootstrap.sh")
   assert_contains "$out" \
-    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: npm install -g tasks-axi)' \
+    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: upgrade from the installed tasks-axi source; preserve any fork)' \
     "the at-floor build did not name the capability it lacks"
   [ "$(grep -c -F -- '--help' "$log")" = 2 ] \
     || fail "the requirement text repeated a capability probe: $(cat "$log")"
@@ -1244,7 +1246,7 @@ SH
     FM_FAKE_TASKS_AXI_VERSION=0.2.6 \
     FM_TASKS_AXI_COMPATIBLE=0 FM_TASKS_AXI_CHECK_REASON=update-archive-body "$ROOT/bin/fm-bootstrap.sh")
   assert_contains "$out" \
-    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: npm install -g tasks-axi)' \
+    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: upgrade from the installed tasks-axi source; preserve any fork)' \
     "the handed-in reason did not reach the requirement text"
   [ "$(grep -c -F -- '--help' "$log")" = 0 ] \
     || fail "the handed-in reason did not save the capability probes: $(cat "$log")"
@@ -1256,7 +1258,7 @@ SH
     FM_FAKE_TASKS_AXI_VERSION=0.2.6 \
     FM_TASKS_AXI_COMPATIBLE=0 FM_TASKS_AXI_CHECK_REASON=update-archive-body,mv-multi-id "$ROOT/bin/fm-bootstrap.sh")
   assert_contains "$out" \
-    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body and mv multi-ID; upgrade: npm install -g tasks-axi)' \
+    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body and mv multi-ID; upgrade: upgrade from the installed tasks-axi source; preserve any fork)' \
     "the handed-in reason did not name both capabilities"
   [ "$(grep -c -F -- '--help' "$log")" = 0 ] \
     || fail "the handed-in reason did not save the capability probes: $(cat "$log")"
@@ -1276,7 +1278,7 @@ SH
     FM_FAKE_TASKS_AXI_VERSION=0.2.6 \
     FM_TASKS_AXI_COMPATIBLE=0 FM_TASKS_AXI_CHECK_REASON=bogus "$ROOT/bin/fm-bootstrap.sh")
   assert_contains "$out" \
-    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: npm install -g tasks-axi)' \
+    'OUTDATED: tasks-axi (installed: 0.2.6; requires 0.2.6 with update --archive-body; upgrade: upgrade from the installed tasks-axi source; preserve any fork)' \
     "a malformed handoff reason suppressed the probes"
   assert_grep 'update --help' "$log" "a malformed handoff reason was trusted instead of probing"
 
@@ -1539,6 +1541,76 @@ SH
   pass "bootstrap gates resolver fields and additive harnesses on the typed key or a declared typesafe source"
 }
 
+test_beads_selector_tool_diagnostics() {
+  local dir fakebin out base version
+  dir="$TMP_ROOT/beads-selector"
+  mkdir -p "$dir/home/config" "$dir/home/data" "$dir/tmp"
+  fakebin=$(make_fake_toolchain "$dir")
+  cat > "$fakebin/br" <<'SH'
+#!/usr/bin/env bash
+[ "$#" -eq 3 ] && [ "$1" = --db ] && [ "$3" = --version ] || exit 91
+case "$2" in "$FM_FAKE_BR_TMP"/fm-br-version.*/beads.db) ;; *) exit 92 ;; esac
+printf '%s\n' "$*" >> "$FM_FAKE_BR_LOG"
+[ "${FM_FAKE_BR_VERSION:-}" != fail ] || exit 1
+printf 'br %s\n' "${FM_FAKE_BR_VERSION:-0.7.6}"
+SH
+  chmod +x "$fakebin/br"
+  head -n2 "$fakebin/"* >&2
+  printf 'backend = "fixture"\n' > "$dir/home/config/tasks.toml"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" \
+    FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+    FM_FAKE_BR_LOG="$dir/br.log" FM_FAKE_BR_TMP="$dir/tmp" TMPDIR="$dir/tmp" "$ROOT/bin/fm-bootstrap.sh")
+  assert_absent "$dir/br.log" "non-beads selector probed br"
+  printf 'backend = "beads"\n[beads]\nbinary = "br"\npath = ".beads"\n' > "$dir/home/config/tasks.toml"
+  for version in 0.7.6 0.8.0 fail; do
+    out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" \
+      FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+      FM_FAKE_BR_VERSION="$version" FM_FAKE_BR_LOG="$dir/br.log" FM_FAKE_BR_TMP="$dir/tmp" \
+      TMPDIR="$dir/tmp" "$ROOT/bin/fm-bootstrap.sh")
+    case "$version" in
+      0.7.6) assert_equals '' "$out" "tested br should be silent" ;;
+      0.8.0) assert_equals 'BOOTSTRAP_INFO: br 0.8.0 is untested with this backend (tested: 0.7.6)' "$out" \
+        "untested br was not an informational fact" ;;
+      fail) assert_equals 'BOOTSTRAP_INFO: br unknown is untested with this backend (tested: 0.7.6)' "$out" \
+        "failed br probe was not an informational fact" ;;
+    esac
+  done
+  assert_present "$dir/br.log" "selected br was never probed"
+  assert_no_grep "$dir/home/.beads" "$dir/br.log" "version probe touched the configured workspace"
+  rm "$fakebin/br"
+  base=$(fm_test_base_path_sans "$BASE_PATH" br)
+  out=$(PATH="$fakebin:$base" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" \
+    FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  assert_equals 'MISSING_MANUAL: br (instructions: https://github.com/Dicklesworthstone/beads_rust)' "$out" \
+    "missing selected br did not follow the MISSING_MANUAL template"
+  pass "bootstrap probes only selected br with explicit temporary db and reports missing/untested builds"
+}
+
+test_tasks_axi_upgrade_preserves_source() {
+  local dir fakebin out
+  dir="$TMP_ROOT/tasks-upgrade-source"
+  mkdir -p "$dir/home/config"
+  fakebin=$(make_fake_toolchain "$dir")
+  add_tasks_axi "$fakebin" 0.1.0
+  head -n2 "$fakebin/"* >&2
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" \
+    FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  assert_contains "$out" 'OUTDATED: tasks-axi' "incompatible tasks-axi was not diagnosed"
+  assert_contains "$out" 'preserve any fork' "upgrade hint did not protect the installed source"
+  assert_not_contains "$out" 'npm install -g tasks-axi' "upgrade hint would overwrite a fork with upstream"
+  pass "tasks-axi upgrade hint preserves the installed source rather than overwriting a fork"
+}
+
+if [ "${1:-}" = --tasks-only ]; then
+  test_beads_selector_tool_diagnostics
+  test_tasks_axi_upgrade_preserves_source
+  test_tasks_axi_min_version
+  test_tasks_axi_verdict_handoff_is_consumed_once
+  exit 0
+fi
+
+test_beads_selector_tool_diagnostics
+test_tasks_axi_upgrade_preserves_source
 test_bootstrap_reporting
 test_absent_tool_cases_hide_a_real_install_in_the_base_path
 test_no_mistakes_min_version

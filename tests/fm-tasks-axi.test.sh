@@ -23,7 +23,7 @@ TMP_ROOT=$(fm_test_tmproot fm-tasks-axi)
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 
 # The developer shell may pin any of these; each case states its own layout.
-unset TASKS_AXI_FILE TASKS_AXI_BACKEND FM_HOME FM_ROOT_OVERRIDE \
+unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX FM_HOME FM_ROOT_OVERRIDE \
   FM_DATA_OVERRIDE FM_STATE_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE
 
 HAVE_TASKS_AXI=0
@@ -239,6 +239,113 @@ test_wrapper_single_home() {
   pass "fm-tasks-axi.sh keeps the single-home layout addressing its own code-root backlog"
 }
 
+test_home_selector_backend_resolution() {
+  local dir out
+  dir=$(make_split selector-resolution)
+  fm_test_tasks_toml "$dir/home/.tasks.toml"
+  printf 'backend = "beads"\n[beads]\nbinary = "br"\npath = ".beads"\n' > "$dir/home/config/tasks.toml"
+  out=$(HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home")
+  assert_equals beads "$out" "the home selector must override tracked markdown defaults"
+  out=$(TASKS_AXI_BACKEND=markdown HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home")
+  assert_equals markdown "$out" "an explicit backend environment override must retain precedence"
+  rm "$dir/home/config/tasks.toml"
+  out=$(HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home")
+  assert_equals markdown "$out" "absent home selector must preserve tracked defaults"
+  pass "home backend selector overrides tracked defaults without changing environment precedence"
+}
+
+test_home_selector_exports() {
+  local dir out
+  dir=$(make_split selector-exports)
+  mkdir -p "$dir/fakebin"
+  printf 'backend = "beads"\n[beads]\nbinary = "br"\npath = ".beads"\nprefix = "fm-example"\n' > "$dir/home/config/tasks.toml"
+  cat > "$dir/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+printf 'root=%s\nbackend=%s\nbinary=%s\npath=%s\nprefix=%s\nfile=%s\n' \
+  "$PWD" "${TASKS_AXI_BACKEND:-unset}" "${TASKS_AXI_BEADS_BINARY:-unset}" \
+  "${TASKS_AXI_BEADS_PATH:-unset}" "${TASKS_AXI_BEADS_PREFIX:-unset}" "${TASKS_AXI_FILE:-unset}"
+SH
+  chmod +x "$dir/fakebin/tasks-axi"
+  head -n2 "$dir/fakebin/tasks-axi" >&2
+  out=$(PATH="$dir/fakebin:$BASE_PATH" TASKS_AXI_FILE="$dir/unrelated.md" wrapper_from_code "$dir" ready)
+  assert_contains "$out" "root=$dir/home" "wrapper used the wrong home"
+  assert_contains "$out" "backend=beads" "wrapper did not export the home backend"
+  assert_contains "$out" "binary=br" "wrapper did not export the selected beads binary"
+  assert_contains "$out" "path=$dir/home/.beads" "relative beads path was not rooted at the owning home"
+  assert_contains "$out" "prefix=fm-example" "optional beads prefix was not exported"
+  assert_contains "$out" "file=unset" "non-markdown wrapper inherited a markdown file override"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" TASKS_AXI_FILE="$dir/unrelated.md" bash -c '
+    . "$1/bin/fm-tasks-axi-lib.sh"
+    . "$1/bin/fm-backlog-transition-lib.sh"
+    fm_backlog_row_list "$2/data" --state queued
+  ' _ "$ROOT" "$dir/home")
+  assert_contains "$out" "backend=beads" "automatic backlog reads did not receive the home backend"
+  assert_contains "$out" "path=$dir/home/.beads" "automatic backlog reads did not receive the selected path"
+  assert_contains "$out" "file=unset" "automatic non-markdown reads inherited a markdown file override"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" TASKS_AXI_BEADS_BINARY=custom-br \
+    TASKS_AXI_BEADS_PATH="$dir/override.db" wrapper_from_code "$dir" ready)
+  assert_contains "$out" "binary=custom-br" "explicit binary override lost precedence"
+  assert_contains "$out" "path=$dir/override.db" "explicit path override lost precedence"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" bash -c '
+    . "$1/bin/fm-tasks-axi-lib.sh"
+    . "$1/bin/fm-backlog-transition-lib.sh"
+    fm_backlog_row_show "$2/data" example
+    fm_backlog_start "$2/data" example || exit
+  ' _ "$ROOT" "$dir/home")
+  assert_contains "$out" "path=$dir/home/.beads" "bounded row reads did not receive the selected path"
+  mkdir -p "$dir/home/relocated/data"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" FM_DATA_OVERRIDE="$dir/home/relocated/data" wrapper_from_code "$dir" ready)
+  assert_contains "$out" "backend=beads" "a relocated data directory lost the per-home selector"
+  assert_contains "$out" "path=$dir/home/.beads" "a relocated data directory changed the selector workspace root"
+  rm "$dir/home/config/tasks.toml"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" wrapper_from_code "$dir" ready)
+  assert_contains "$out" 'backend=unset' "absent selector changed native tasks-axi backend resolution"
+  assert_contains "$out" 'path=unset' "absent selector leaked adapter settings"
+  pass "home selector settings reach wrapper and shared automatic reads without markdown overrides"
+}
+
+test_home_selector_errors_and_quoted_paths() {
+  local dir out rc value
+  dir=$(make_split selector-errors)
+  fm_test_tasks_toml "$dir/home/.tasks.toml"
+  for value in 'backend = 123' 'backend = ""' 'backend = "beads" trailing' \
+    $'backend = "beads"\nbackend = "markdown"' $'backend = "beads"\n[beads' \
+    $'backend = "beads"\nnot toml'; do
+    printf '%s\n' "$value" > "$dir/home/config/tasks.toml"
+    out=$(HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home" 2>&1)
+    rc=$?
+    assert_equals 2 "$rc" "malformed selector silently selected tracked markdown"
+    assert_contains "$out" "$dir/home/config/tasks.toml" "selector error omitted the repair path"
+  done
+  rm "$dir/home/config/tasks.toml"
+  ln -s "$dir/missing" "$dir/home/config/tasks.toml"
+  out=$(HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home" 2>&1)
+  assert_equals 2 "$?" "dangling selector silently fell back"
+  rm "$dir/home/config/tasks.toml"
+  mkdir "$dir/home/config/tasks.toml"
+  out=$(HOME="$dir/user" bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_backend_resolve "$2"' _ "$ROOT" "$dir/home" 2>&1)
+  assert_equals 2 "$?" "nonregular selector silently fell back"
+  rmdir "$dir/home/config/tasks.toml"
+  printf 'backend = "beads"\n[beads]\nbinary = "br"\npath = "a # quoted workspace" # comment\n' > "$dir/home/config/tasks.toml"
+  out=$(bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_export_settings "$2" beads; printf "%s" "$TASKS_AXI_BEADS_PATH"' _ "$ROOT" "$dir/home")
+  assert_equals "$dir/home/a # quoted workspace" "$out" "quoted path lost spaces or an embedded comment character"
+  printf 'backend = "beads"\n[beads]\npath = 123\n' > "$dir/home/config/tasks.toml"
+  out=$(bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_export_settings "$2" beads' _ "$ROOT" "$dir/home" 2>&1)
+  assert_equals 2 "$?" "invalid adapter setting was silently ignored"
+  assert_contains "$out" 'invalid beads.path' "adapter configuration error did not identify the invalid field"
+  pass "malformed/unreadable home selectors stop safely and quoted workspace paths retain literal characters"
+}
+
+if [ "${1:-}" = --selector-only ]; then
+  test_home_selector_backend_resolution
+  test_home_selector_exports
+  test_home_selector_errors_and_quoted_paths
+  exit 0
+fi
+
+test_home_selector_backend_resolution
+test_home_selector_exports
+test_home_selector_errors_and_quoted_paths
 test_guard_reports_regular_code_root_backlog
 test_guard_reports_foreign_link_and_archive
 test_guard_silent_for_single_home

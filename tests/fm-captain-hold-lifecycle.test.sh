@@ -537,8 +537,11 @@ test_verify_resolves_a_pre_collapse_key_through_its_derived_marker() {
 # stubbed tasks-axi fakes the beads backend, so no bd or beads-capable install
 # is needed.
 test_captain_hold_mutations_address_the_beads_backend() {
-  local home id fb log
-  home="$TMP_ROOT/captain-stub-beads/home"
+  local home id fb log decision config_source=${1:-native}
+  # shellcheck disable=SC2034 # scopes the caller's tasks-axi settings to this case
+  local TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
+  unset TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
+  home="$TMP_ROOT/captain-stub-$config_source-beads/home"
   mkdir -p "$home/data" "$home/config" "$home/projects" "$home/state"
   cat > "$home/.tasks.toml" <<'EOF'
 backend = "beads"
@@ -548,12 +551,38 @@ path = "graph/.beads"
 binary = "bd"
 prefix = "fm"
 EOF
+  if [ "$config_source" = selector ]; then
+    fm_test_tasks_toml "$home/.tasks.toml"
+    cat > "$home/config/tasks.toml" <<'EOF'
+backend = "beads"
+[beads]
+binary = "br"
+path = "selected/.beads"
+prefix = "fm-selected"
+EOF
+    export TASKS_AXI_FILE="$home/unrelated.md"
+  fi
   id=fm-stub-held-row
   fb=$(fm_fakebin "$home")
   log="$home/tasks-axi-calls"
   cat > "$fb/tasks-axi" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "@LOG@"
+case "${1:-}:${2:-}" in
+  --version:|update:--help|mv:--help|hold:--help) ;;
+  *)
+    if [ -f "@HOME@/config/tasks.toml" ]; then
+      if [ "${TASKS_AXI_BACKEND:-}" != beads ] \
+          || [ "${TASKS_AXI_BEADS_BINARY:-}" != br ] \
+          || [ "${TASKS_AXI_BEADS_PATH:-}" != "@HOME@/selected/.beads" ] \
+          || [ "${TASKS_AXI_BEADS_PREFIX:-}" != fm-selected ] \
+          || [ "${TASKS_AXI_FILE+x}" = x ]; then
+        printf 'selected beads settings missing from %s\n' "${1:-}" >&2
+        exit 1
+      fi
+    fi
+    ;;
+esac
 case "${1:-}" in
   --version) printf '%s\n' '0.2.6' ;;
   update)
@@ -626,6 +655,7 @@ SH
   sed -i.bak "s|@HOME@|$home|g; s|@ID@|$id|g; s|@LOG@|$log|g" "$fb/tasks-axi"
   rm -f "$fb/tasks-axi.bak"
   chmod +x "$fb/tasks-axi"
+  head -n2 "$fb/tasks-axi" >&2
 
   PATH="$fb:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" \
     FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
@@ -648,7 +678,7 @@ SH
     "the captain answer close never reached the configured backend"
   assert_no_grep " --file " "$log" \
     "a captain-hold mutation passed a markdown file override to a beads home"
-  pass "captain-hold mutations address the beads backend without a markdown override"
+  pass "captain-hold mutations address beads through $config_source config without a markdown override"
 }
 
 # A Beads workspace with due.required and no types.custom captain type is the
@@ -5560,6 +5590,12 @@ EOF
   pass "an answered captain call archived to a user-configured location still satisfies the completion gate"
 }
 
+if [ "${1:-}" = --selector-only ]; then
+  test_captain_hold_mutations_address_the_beads_backend
+  test_captain_hold_mutations_address_the_beads_backend selector
+  exit 0
+fi
+
 test_hold_reason_round_trips_awkward_characters
 test_hold_origins_follow_backend_holds
 test_interrupted_origin_move_does_not_inherit_the_previous_answer
@@ -5628,6 +5664,7 @@ test_complete_accepts_a_migrated_inventory_on_beads
 test_verify_names_the_unresolvable_legacy_id_once
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker
 test_captain_hold_mutations_address_the_beads_backend
+test_captain_hold_mutations_address_the_beads_backend selector
 test_hold_creates_a_captain_row_when_beads_requires_due_without_custom_type
 test_archived_answered_hold_still_satisfies_the_gate
 test_archived_answer_in_a_user_configured_archive_satisfies_the_gate

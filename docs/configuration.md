@@ -10,7 +10,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
 | Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
-| Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
+| Backlog, preferences, and memory | [Backlog backend](#backlog-backend-configtaskstoml--taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [Codex native Stop park](#codex-native-stop-park-configcodex-stop-park), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
 | Review bots on owned GitHub pull requests | [Contribution review bots](#contribution-review-bots-configcontribution-review-bots) |
@@ -472,10 +472,43 @@ A compacted primary still picks up pending wakes and decisions from disk, becaus
 This feature does not set `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` or any other autocompact setting.
 `bin/fm-warm-compact-lib.sh` owns the guards, with coverage in [`tests/fm-warm-compact.test.sh`](../tests/fm-warm-compact.test.sh) and the opt-in live guard [`tests/fm-warm-compact-herdr-live-e2e.test.sh`](../tests/fm-warm-compact-herdr-live-e2e.test.sh).
 
-## Backlog backend (.tasks.toml / config/backlog-backend)
+## Backlog backend (config/tasks.toml / .tasks.toml / config/backlog-backend)
 
 The tracked `.tasks.toml` pins the default `tasks-axi` markdown backend to `data/backlog.md`, with `done_keep = 10` and an archive at `data/done-archive.md`.
-A home may instead select another tasks-axi adapter such as Beads through its own `.tasks.toml` or `TASKS_AXI_BACKEND`; firstmate still uses only tasks-axi verbs for routine backlog reads and mutations, and the adapter maps `start` and evidence-bearing `done` transitions to its native statuses and evidence fields.
+A home can select another tasks-axi adapter without editing that tracked file. Firstmate still uses tasks-axi verbs for routine backlog reads and mutations. The adapter maps `start` and evidence-bearing `done` transitions to its native statuses and evidence fields.
+
+### Home-local selector
+
+The optional, gitignored `config/tasks.toml` selects the adapter for one operational home. For a tasks-axi distribution with Beads Rust support:
+
+```toml
+backend = "beads"
+
+[beads]
+binary = "br"
+path = ".beads"
+prefix = "fm-home" # optional, used only when initializing a workspace
+```
+
+The selector requires a nonempty quoted root `backend`. Its optional `[beads]` string fields are `binary`, `path`, and `prefix`. Use single-quoted literal strings or double-quoted strings with escaped quotes and backslashes. Paths may contain spaces or `#`; shell variables are not expanded.
+A malformed or unreadable selector reports its path and stops the read or mutation rather than silently choosing markdown.
+
+Backend resolution follows this order:
+
+1. Explicit `TASKS_AXI_BACKEND`, including an explicitly empty value.
+2. This home's `config/tasks.toml`, or `FM_CONFIG_OVERRIDE/tasks.toml` when configured.
+3. `.tasks.toml` in the backlog's working directory.
+4. `$HOME/.tasks-axi/config.toml`.
+5. `markdown`.
+
+With no selector, Firstmate leaves tasks-axi's native configuration precedence unchanged. The wrapper, automatic lifecycle calls, and captain-hold mutations export a selector's backend as `TASKS_AXI_BACKEND` in the child process only. For Beads, `binary`, `path`, and `prefix` map to `TASKS_AXI_BEADS_BINARY`, `TASKS_AXI_BEADS_PATH`, and `TASKS_AXI_BEADS_PREFIX`. An explicit environment value wins over the corresponding selector field; unset fields retain tasks-axi's normal defaults. A relative selector `path` becomes absolute against the owning home, even when its data directory is relocated. `path` names a workspace directory, not an implicit parent-directory database search. The Rust adapter uses `<path>/beads.db`, or `path` itself when it names a `.db` file.
+
+Selecting an adapter does not install it, initialize its database, migrate rows, or change a home's handoff or captain-hold configuration. Use a tasks-axi build that supports the selected binary before switching an existing home.
+
+### Session-start reads
+
+Session start uses the configured adapter even when `data/backlog.md` is absent or contains an old mirror. Non-markdown reads run from the owning backlog root without `--file` or an inherited `TASKS_AXI_FILE`. Each read has a ten-second bound. The digest retains in-flight, held, blocked queued, and bounded ready queued groups without task bodies or Done rows.
+A missing or incompatible tasks-axi or a failed read reports `Backlog unavailable`, never an empty queue or a markdown substitute. A read that exceeds its bound names the bound rather than any partial output. Session start trusts a successful tasks-axi exit, as it does for markdown. Markdown and manual homes retain their compact title-line fallback.
 
 ### Captain holds on Beads
 
@@ -2316,7 +2349,8 @@ An absent required tool with an automated install path reports `MISSING:` with i
 
 - An absent `treehouse` reports `MISSING:` with its install command, while an installed build without `treehouse get --lease` support reports `OUTDATED:` with the `treehouse update` upgrade.
 - An absent `no-mistakes` reports `MISSING:` with its install command, while a version below 1.46.0 or an unparseable version reports `OUTDATED:` with the `no-mistakes update` upgrade.
-- An absent `tasks-axi` reports `MISSING: tasks-axi (install: npm install -g tasks-axi)` and a below-floor or feature-incompatible one reports `OUTDATED:` with its required version and any missing feature-probe capability, while retaining that same `npm install -g tasks-axi` upgrade; when `config/backlog-backend` is not `manual`, a home with a configured non-markdown adapter or a markdown backlog refuses lifecycle mutation until compatible `tasks-axi` is on `PATH`, while a manual-backend home keeps its backlog hand-edited.
+- An absent `tasks-axi` reports `MISSING: tasks-axi (install: npm install -g tasks-axi)`. A below-floor or feature-incompatible build reports `OUTDATED:` with the required version and missing capabilities. Its remediation says to upgrade from the installed source and preserve any fork, rather than reinstall upstream over it. When `config/backlog-backend` is not `manual`, a home with a configured non-markdown adapter or a markdown backlog refuses lifecycle mutation until compatible `tasks-axi` is on `PATH`. A manual home keeps its backlog hand-edited.
+- When the selected Beads binary is `br`, bootstrap checks its version with an explicit database path in a fresh temporary directory, never the configured workspace. Only the binary named by `TASKS_AXI_BEADS_BINARY` or the home selector's `beads.binary` is probed. Missing `br` reports `MISSING_MANUAL: br (instructions: <url>)`. A version other than the tested 0.7.6, or an unsuccessful five-second probe, is an informational `BOOTSTRAP_INFO` fact: no skill load is needed and dispatch proceeds. Other adapters do not trigger this probe.
 - An absent `gh-axi` reports `MISSING: gh-axi (install: npm install -g gh-axi && gh-axi setup hooks)` and an outdated one reports `OUTDATED:` with its `gh-axi update` upgrade.
 - An absent or board-incompatible `lavish-axi` reports `PRESENTATION_UNAVAILABLE` with the 0.1.77 compatibility floor, install command, and explicit text fallback; compatible versions below 0.1.80 retain legacy board replies and report an upgrade recommendation for synchronous acceptance, while [`bootstrap-diagnostics`](../.agents/skills/bootstrap-diagnostics/SKILL.md) owns diagnostic handling.
 - An absent `quota-axi` reports `MISSING: quota-axi (install: npm install -g quota-axi)` and an incompatible one reports `OUTDATED:` with its `quota-axi update` upgrade; firstmate cannot resolve a profile array without a compatible binary.
