@@ -207,18 +207,39 @@ fm_tasks_axi_backend_from_toml() {  # <toml-path>
 # Read the home selector's string-only fields without evaluating shell text.
 # Supports literal strings and basic strings with escaped quotes/backslashes;
 # comments start after the closing quote, never inside a path.
-fm_tasks_axi_home_string() {  # <toml-path> <table-or-empty> <key>
-  LC_ALL=C awk -v wanted_table="$2" -v wanted_key="$3" '
+# The private selector is strict. "native" mode reads tasks-axi's own project or
+# user TOML: unrelated syntax is skipped, while any other spelling of the wanted
+# key (dotted, quoted or inline-table) is unsupported and returns 2.
+fm_tasks_axi_home_string() {  # <toml-path> <table-or-empty> <key> [native]
+  LC_ALL=C awk -v wanted_table="$2" -v wanted_key="$3" -v native="${4:-}" '
     function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-    BEGIN { table=""; single=sprintf("%c", 39); found=0; bad=0 }
+    function bare(s) { gsub(/[[:space:]"]/, "", s); gsub(single, "", s); return s }
+    function opens(v,   d) {
+      sub(/^[^=]*=[[:space:]]*/, "", v)
+      d=substr(v, 1, 3)
+      if ((d == "\"\"\"" || d == single single single) && !index(substr(v, 4), d)) return d
+      return ""
+    }
+    BEGIN { table=""; single=sprintf("%c", 39); found=0; bad=0; open="" }
     {
       line=trim($0)
+      if (open != "") { if (index(line, open)) open=""; next }
       if (line == "" || line ~ /^#/) next
       if (line ~ /^\[/) {
-        if (line !~ /^\[[^]]+\][[:space:]]*(#.*)?$/) { bad=1; exit }
+        if (native && line ~ /^\[\[/) { table="[["; next }
+        if (line !~ /^\[[^]]+\][[:space:]]*(#.*)?$/) { if (native) next; bad=1; exit }
         sub(/[[:space:]]*#.*/, "", line)
         table=trim(substr(line, 2, length(line)-2))
+        if (native) table=bare(table)
         next
+      }
+      if (native) {
+        if (!index(line, "=")) next
+        key=line; sub(/[[:space:]]*=.*/, "", key); key=bare(key)
+        key=(table == "" ? key : table "." key)
+        simple=(table == wanted_table && line ~ ("^" wanted_key "[[:space:]]*="))
+        if ((key == wanted_table "." wanted_key && !simple) || (key == wanted_table && index(line, wanted_key))) { bad=1; exit }
+        if (!simple) { open=opens(line); next }
       }
       if (line !~ /^[A-Za-z0-9_-]+[[:space:]]*=/) { bad=1; exit }
       if (table != wanted_table || line !~ ("^" wanted_key "[[:space:]]*=")) next
@@ -348,8 +369,11 @@ fm_tasks_axi_store_beads_setting() { # <key> <environment-value>
     for config in "$FM_HOME/.tasks.toml" "${HOME:-}/.tasks-axi/config.toml"; do
       [ -f "$config" ] || continue
       status=0
-      value=$(fm_tasks_axi_home_string "$config" beads "$1") || status=$?
-      [ "$status" -ne 2 ] || return 2
+      value=$(fm_tasks_axi_home_string "$config" beads "$1" native) || status=$?
+      if [ "$status" -eq 2 ]; then
+        printf 'tasks-axi beads.%s cannot be read safely at %s\n' "$1" "$config" >&2
+        return 2
+      fi
       [ -z "$value" ] || break
     done
   fi
@@ -378,12 +402,25 @@ fm_tasks_axi_store_resolve() { # <home> <data> <config>
       case "$path" in /*) ;; *) path="$FM_HOME/$path" ;; esac
       FM_TASKS_AXI_STORE_PATH=$path
       FM_TASKS_AXI_STORE_BINARY=$(fm_tasks_axi_store_beads_setting binary "${TASKS_AXI_BEADS_BINARY:-}") || return 2
-      FM_TASKS_AXI_STORE_BINARY=${FM_TASKS_AXI_STORE_BINARY:-br}
+      case "$FM_TASKS_AXI_STORE_BINARY" in
+        /* | '') ;;
+        */*) FM_TASKS_AXI_STORE_BINARY="$FM_HOME/$FM_TASKS_AXI_STORE_BINARY" ;;
+      esac
       ;;
     *) printf 'unsupported backlog backend: %s\n' "$FM_TASKS_AXI_STORE_BACKEND" >&2; return 2 ;;
   esac
 }
 
+# Beads addresses name a workspace directory or its .db file.
+fm_tasks_axi_store_database() { # <backend> <resolved-path>
+  case "$1:$2" in
+    markdown:* | *.db) printf '%s\n' "$2" ;;
+    *) printf '%s/beads.db\n' "$2" ;;
+  esac
+}
+
+# binary is empty when no setting names one (tasks-axi's own default applies);
+# a relative path containing a slash resolves against the home it runs from.
 fm_tasks_axi_store_address() ( # <home> <data> <config> <backend|path|binary>
   fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
   case "$4" in
@@ -464,8 +501,8 @@ fm_tasks_axi_store_section() ( # <home> <data> <config> <key>
     fm_tasks_axi_markdown_section "$FM_TASKS_AXI_STORE_PATH" "$4"
     return $?
   fi
-  local database=$FM_TASKS_AXI_STORE_PATH out state
-  case "$database" in *.db) ;; *) database="$database/beads.db" ;; esac
+  local database out state
+  database=$(fm_tasks_axi_store_database "$FM_TASKS_AXI_STORE_BACKEND" "$FM_TASKS_AXI_STORE_PATH")
   [ -e "$database" ] || return 1
   if ! out=$(fm_tasks_axi_store_run "$1" "$2" "$3" show "$4" 2>&1); then
     if printf '%s\n' "$out" | grep -Eq '^ *code: NOT_FOUND$'; then return 1; fi

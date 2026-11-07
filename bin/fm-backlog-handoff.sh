@@ -51,8 +51,8 @@
 # working directory cannot redirect either home's configured store, and the
 # caller's tasks-axi environment addresses only the source home. A local
 # Beads-to-Beads move is one tasks-axi call with the source home's settings, so
-# both homes must resolve the same Beads binary; a destination store that
-# aliases the source store is refused.
+# both homes must resolve the same Beads binary (an unset binary matches only an
+# unset one); a destination store that aliases the source store is refused.
 # See AGENTS.md project management and task lifecycle.
 # Remote routes use an outbox handoff: one atomic local tasks-axi mv removes the
 # selected set from the dispatchable backlog into data/handoff/<id>.outbox.md,
@@ -985,21 +985,14 @@ destination_store_mv() ( # <home> <data> <config> <keys...>
     --to "$FM_TASKS_AXI_STORE_PATH" --to-backend "$FM_TASKS_AXI_STORE_BACKEND"
 )
 
-store_database() { # <backend> <path>
-  case "$1:$2" in
-  markdown:* | *.db) printf '%s\n' "$2" ;;
-  *) printf '%s/beads.db\n' "$2" ;;
-  esac
-}
-
 SUB_BACKEND=$(sub_store fm_tasks_axi_store_address backend) || exit 1
 SUB_BACKLOG="$SUB_HOME/data/backlog.md"
 if [ "$SUB_BACKEND" != markdown ]; then
   SUB_BACKLOG=$(sub_store fm_tasks_axi_store_address path) || exit 1
 fi
 if [ "$MAIN_BACKEND" = "$SUB_BACKEND" ]; then
-  MAIN_STORE=$(store_database "$MAIN_BACKEND" "$MAIN_BACKLOG")
-  SUB_STORE=$(store_database "$SUB_BACKEND" "$SUB_BACKLOG")
+  MAIN_STORE=$(fm_tasks_axi_store_database "$MAIN_BACKEND" "$MAIN_BACKLOG")
+  SUB_STORE=$(fm_tasks_axi_store_database "$SUB_BACKEND" "$SUB_BACKLOG")
   if [ "$MAIN_STORE" = "$SUB_STORE" ] || [ "$MAIN_STORE" -ef "$SUB_STORE" ]; then
     echo "error: secondmate $ID resolves to this home's own $SUB_BACKEND store $SUB_STORE; nothing was moved" >&2
     exit 1
@@ -1009,7 +1002,7 @@ if [ "$MAIN_BACKEND" = beads ] && [ "$SUB_BACKEND" = beads ]; then
   MAIN_BINARY=$(fm_tasks_axi_store_address "$FM_HOME" "$DATA" "$MAIN_CONFIG" binary) || exit 1
   SUB_BINARY=$(sub_store fm_tasks_axi_store_address binary) || exit 1
   if [ "$MAIN_BINARY" != "$SUB_BINARY" ]; then
-    echo "error: one tasks-axi mv cannot use both Beads binaries ($MAIN_BINARY for this home, $SUB_BINARY for secondmate $ID); nothing was moved" >&2
+    echo "error: one tasks-axi mv cannot use both Beads binaries (${MAIN_BINARY:-unset} for this home, ${SUB_BINARY:-unset} for secondmate $ID); nothing was moved" >&2
     exit 1
   fi
 fi

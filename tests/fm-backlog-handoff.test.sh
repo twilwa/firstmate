@@ -1501,22 +1501,28 @@ test_configured_backend_destination_settings() {
   assert_grep 'body survives' "$sub/data/backlog.md" "source-only override redirected the destination store"
   assert_no_grep 'override-item' "$home/data/override.db" "source-only override left the source item"
 
-  home="$TMP_ROOT/binary-mismatch-main"; sub="$TMP_ROOT/binary-mismatch-sub"
-  setup_homes "$home" "$sub"
-  mkdir -p "$home/config" "$sub/config" "$sub/data"
-  printf 'backend = "beads"\n[beads]\npath = "data/source.db"\nbinary = "br"\n' > "$home/config/tasks.toml"
-  printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\nbinary = "/opt/other/br"\n' > "$sub/config/tasks.toml"
-  printf '{"mismatch-item":{"state":"queued","title":"binary mismatch","body":[]}}\n' > "$home/data/source.db"
-  cp "$home/data/source.db" "$home/source-before"
-  if FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
-    "$ROOT/bin/fm-backlog-handoff.sh" design mismatch-item > "$home/mismatch.out" 2>&1; then
-    fail "Beads homes with different binaries were handed off through one binary"
-  fi
-  assert_grep 'Beads binaries' "$home/mismatch.out" "binary mismatch refusal was not explained"
-  cmp -s "$home/source-before" "$home/data/source.db" || fail "binary mismatch refusal changed the source"
-  assert_absent "$sub/data/destination.db" "binary mismatch refusal initialized the destination"
-  ! axi_call_saw "$home/axi.log" mv '' || fail "binary mismatch refusal ran a move"
-  [ "$(inbox_record_count "$home/state" design)" -eq 0 ] || fail "binary mismatch refusal woke the receiver"
+  local pair main_binary sub_binary
+  for pair in 'br|/opt/other/br' 'br|' 'bin/br|bin/br'; do
+    main_binary=${pair%%|*}; sub_binary=${pair#*|}
+    home="$TMP_ROOT/binary-mismatch-main"; sub="$TMP_ROOT/binary-mismatch-sub"
+    rm -rf "$home" "$sub"
+    setup_homes "$home" "$sub"
+    mkdir -p "$home/config" "$home/user-home" "$sub/config" "$sub/data"
+    printf 'backend = "beads"\n[beads]\npath = "data/source.db"\nbinary = "%s"\n' "$main_binary" > "$home/config/tasks.toml"
+    printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\n' > "$sub/config/tasks.toml"
+    [ -z "$sub_binary" ] || printf 'binary = "%s"\n' "$sub_binary" >> "$sub/config/tasks.toml"
+    printf '{"mismatch-item":{"state":"queued","title":"binary mismatch","body":[]}}\n' > "$home/data/source.db"
+    cp "$home/data/source.db" "$home/source-before"
+    if HOME="$home/user-home" FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+      "$ROOT/bin/fm-backlog-handoff.sh" design mismatch-item > "$home/mismatch.out" 2>&1; then
+      fail "Beads homes with binaries $pair were handed off through one binary"
+    fi
+    assert_grep 'Beads binaries' "$home/mismatch.out" "binary mismatch $pair refusal was not explained"
+    cmp -s "$home/source-before" "$home/data/source.db" || fail "binary mismatch $pair refusal changed the source"
+    assert_absent "$sub/data/destination.db" "binary mismatch $pair refusal initialized the destination"
+    ! axi_call_saw "$home/axi.log" mv '' || fail "binary mismatch $pair refusal ran a move"
+    [ "$(inbox_record_count "$home/state" design)" -eq 0 ] || fail "binary mismatch $pair refusal woke the receiver"
+  done
 
   printf 'backend = "beads"\n[beads]\npath = "%s"\nbinary = "br"\n' "$home/data/source.db" > "$sub/config/tasks.toml"
   if FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
@@ -1529,9 +1535,55 @@ test_configured_backend_destination_settings() {
   pass "destination homes use their own Beads settings, ignore source overrides and refuse unsupported pairs"
 }
 
+test_configured_backend_native_project_config() {
+  local home="$TMP_ROOT/native-config-main" sub="$TMP_ROOT/native-config-sub" fakebin out
+  setup_homes "$home" "$sub"
+  mkdir -p "$home/config" "$home/user-home" "$sub/config" "$sub/data"
+  printf 'backend = "beads"\n' > "$home/config/tasks.toml"
+  cat > "$home/.tasks.toml" <<'EOF'
+backend = "beads"
+[beads]
+path = "data/native.db"
+timeout = 30
+[tool]
+dotted.key = "value"
+notes = """
+[beads]
+path = "data/wrong.db"
+"""
+list = [
+  "a",
+]
+[[hooks]]
+path = "data/hook.db"
+EOF
+  printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\n' > "$sub/config/tasks.toml"
+  printf '{"native-item":{"state":"queued","title":"native config","body":["  body survives"]}}\n' > "$home/data/native.db"
+  fakebin="$home/fakebin"; mkdir -p "$fakebin"
+  printf '#!%s\n' "$(type -P python3)" > "$fakebin/tasks-axi"
+  printf 'exec(compile(open(%s).read(), %s, "exec"))\n' "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" >> "$fakebin/tasks-axi"
+  chmod +x "$fakebin/tasks-axi"
+  out=$(HOME="$home/user-home" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design native-item 2>&1) || fail "native project config handoff failed: $out"
+  assert_grep 'body survives' "$sub/data/destination.db" "native project config missed the destination store"
+  assert_no_grep 'native-item' "$home/data/native.db" "native project config left the source item"
+
+  printf '{"dotted-item":{"state":"queued","title":"dotted config","body":[]}}\n' > "$home/data/native.db"
+  printf 'backend = "beads"\nbeads.path = "data/native.db"\n' > "$home/.tasks.toml"
+  if HOME="$home/user-home" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design dotted-item > "$home/dotted.out" 2>&1; then
+    fail "an uninterpreted dotted beads.path was treated as a usable setting"
+  fi
+  assert_grep "beads.path cannot be read safely at $home/.tasks.toml" "$home/dotted.out" \
+    "an uninterpreted native beads.path was not reported with its config path"
+  assert_grep 'dotted-item' "$home/data/native.db" "a native config refusal changed the source"
+  pass "native project config ignores unrelated TOML, and unset binaries match only each other"
+}
+
 test_configured_backend_handoffs
 test_configured_backend_handoff_refresh_retry
 test_configured_backend_destination_settings
+test_configured_backend_native_project_config
 test_handoff_wakes_live_local_receiver
 test_cwd_tasks_toml_does_not_redirect_handoff
 test_failed_wake_retries_when_the_item_is_already_present
