@@ -359,14 +359,17 @@ make_fallback_bin() {  # <case-dir> <tasks-axi-stub-script>
   printf '%s\n' "$fb"
 }
 
-run_bounded_fm_tasks_axi() {  # <fallback-bin> <bound> [args...]
-  local fb=$1 bound=$2 out rc=0
-  shift 2
+run_bounded_fm_tasks_axi() {  # <case-dir> <fallback-bin> <bound> [args...]
+  local case_dir=$1 fb=$2 bound=$3 out rc=0
+  shift 3
   # The fallback shape itself: a PATH with no timeout variant on it, in force
-  # for the bounded call only. The library is sourced first under the ordinary
-  # PATH, as every real caller does.
+  # for the bounded call only. The libraries are sourced and the case's backlog
+  # addressed first under the ordinary PATH, as every real caller does.
   out=$(
+    . "$ROOT/bin/fm-tasks-axi-lib.sh"
     . "$ROOT/bin/fm-backlog-transition-lib.sh"
+    fm_backlog_tasks_axi_addressing "$(home_of "$case_dir")/data" \
+      || { printf 'addressing failed: %s\n' "${FM_BACKLOG_TRANSITION_ERROR:-}"; exit 99; }
     PATH="$fb" FM_TASKS_AXI_TIMEOUT="$bound" fm_tasks_axi "$@" 2>&1
   ) || rc=$?
   printf '%s' "$out"
@@ -379,7 +382,7 @@ test_fm_tasks_axi_fallback_bounds_the_call_without_a_timeout_binary() {
   fb=$(make_fallback_bin "$case_dir" '#!/bin/bash
 exec sleep 300')
   started=$SECONDS
-  out=$(run_bounded_fm_tasks_axi "$fb" 2 show never-answers) || rc=$?
+  out=$(run_bounded_fm_tasks_axi "$case_dir" "$fb" 2 show never-answers) || rc=$?
   [ "$rc" -eq 124 ] \
     || fail "the perl watchdog fallback did not report the call as timed out (rc=$rc, out=$out)"
   [ $((SECONDS - started)) -ge 2 ] \
@@ -395,7 +398,7 @@ test_fm_tasks_axi_fallback_passes_the_child_status_and_output_through() {
   fb=$(make_fallback_bin "$case_dir" '#!/bin/bash
 echo "stub failed"
 exit 7')
-  out=$(run_bounded_fm_tasks_axi "$fb" 5 show x) || rc=$?
+  out=$(run_bounded_fm_tasks_axi "$case_dir" "$fb" 5 show x) || rc=$?
   [ "$rc" -eq 7 ] \
     || fail "the perl watchdog fallback did not pass the child status through (rc=$rc)"
   assert_contains "$out" "stub failed" "the perl watchdog fallback lost the child's output"
@@ -409,7 +412,7 @@ test_fm_tasks_axi_fails_closed_when_nothing_can_bound_the_call() {
   mkdir -p "$fb"
   printf '#!/bin/bash\nexit 0\n' > "$fb/tasks-axi"
   chmod +x "$fb/tasks-axi"
-  out=$(run_bounded_fm_tasks_axi "$fb" 5 show x) || rc=$?
+  out=$(run_bounded_fm_tasks_axi "$case_dir" "$fb" 5 show x) || rc=$?
   [ "$rc" -eq 127 ] \
     || fail "fm_tasks_axi ran the call although nothing could bound it (rc=$rc)"
   assert_contains "$out" "cannot bound tasks-axi" \
@@ -436,7 +439,7 @@ test_fm_tasks_axi_gnu_timeout_forces_termination_of_a_sigterm_ignoring_child() {
   printf '#!/bin/bash\ntrap "" TERM\nexec sleep 300\n' > "$fb/tasks-axi"
   chmod +x "$fb/tasks-axi"
   started=$SECONDS
-  out=$(run_bounded_fm_tasks_axi "$fb" 2 show never-answers) || rc=$?
+  out=$(run_bounded_fm_tasks_axi "$case_dir" "$fb" 2 show never-answers) || rc=$?
   case $rc in
     124 | 137) ;;
     *) fail "the GNU timeout path did not report the TERM-ignoring child as timed out (rc=$rc, out=$out)" ;;
