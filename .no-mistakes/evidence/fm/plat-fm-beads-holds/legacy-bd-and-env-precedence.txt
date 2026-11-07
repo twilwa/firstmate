@@ -1,0 +1,42 @@
+### A) legacy bd home (root .tasks.toml selects beads, no binary => default bd), migrated row carries marker
+$ complete origin missing
+complete: origin captain-call inventory reviewed (missing)
+rc=0
+$ verify origin
+verified: origin captain-call inventory
+rc=0
+native:
+  bd invoked: BEADS_DIR=/tmp/fm-brcmp.eHlfGc/fm-lab.QzvxkJ/graph args=list --all --json
+  bd invoked: BEADS_DIR=/tmp/fm-brcmp.eHlfGc/fm-lab.QzvxkJ/graph args=list --all --json
+
+### B) same legacy home, but TASKS_AXI_BEADS_BINARY=br exported (env-first)
+$ TASKS_AXI_BEADS_BINARY=br complete origin missing
+fm-captain-hold: no captain-held task missing and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-brcmp.eHlfGc/fm-lab.ylyjKq/data); the nearest legacy identity origin-decision-missing also resolves to nothing
+rc=1
+native: (none)
+prefixed guess (show fm-missing): 0
+
+### C) root .tasks.toml keeps backend=markdown; beads chosen only by TASKS_AXI_BACKEND=beads, no binary anywhere
+$ TASKS_AXI_BACKEND=beads complete origin missing
+fm-captain-hold: no captain-held task missing and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-brcmp.eHlfGc/fm-lab.PLlVHf/data); the nearest legacy identity origin-decision-missing also resolves to nothing
+rc=1
+native: (none)
+
+### D) relative TASKS_AXI_BEADS_PATH is refused by name, nothing attested
+$ TASKS_AXI_BEADS_PATH=graph complete origin missing
+fm-captain-hold: TASKS_AXI_BEADS_PATH must be an absolute path (got graph), so a migrated hold cannot be found
+rc=2
+native: (none); attested: 0
+
+### E) env-addressed bd: root .tasks.toml markdown with stale [beads] path/prefix; env selects bd, absolute graph, prefix fx
+$ <env> complete origin missing
+complete: origin captain-call inventory reviewed (missing) [attested through the configured prefix: missing=fx-missing]
+rc=0
+native:
+  bd invoked: BEADS_DIR=/tmp/fm-brcmp.eHlfGc/fm-lab.xsgRGF/graph args=list --all --json
+shows: show fx-missing 
+### F) legacy bd home (root selects beads, default bd) with no [beads] path and no TASKS_AXI_BEADS_PATH
+$ complete origin missing
+fm-captain-hold: the beads backend carries no graph path in TASKS_AXI_BEADS_PATH or /tmp/fm-nopath.koSZPM/home/.tasks.toml, so a migrated hold cannot be found
+rc=2
+native: (none); attested: 0

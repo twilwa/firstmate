@@ -1,0 +1,25 @@
+### THIS CHANGE on a br home: closed calls read through tasks-axi show (slug-mapped id fm-call-a-x7k2, external_ref call-a)
+--- closed answered: complete origin call-a
+complete: origin captain-call inventory reviewed (call-a)
+rc=0
+    meta: decisions_reviewed=1 decision_keys=call-a 
+--- closed answered: verify origin
+verified: origin captain-call inventory
+rc=0
+    tasks-axi show calls: 4; --file calls: 0; native br calls: 0
+--- closed deferred: complete origin call-a
+fm-captain-hold: captain-held task call-a is neither held for the captain nor closed with a recorded captain answer
+rc=1
+    meta: 
+--- closed deferred: verify origin
+fm-captain-hold: captain-held task call-a is neither held for the captain nor closed with a recorded captain answer
+rc=1
+    tasks-axi show calls: 4; --file calls: 0; native br calls: 0
+--- closed unanswered: complete origin call-a
+fm-captain-hold: captain-held task call-a is neither held for the captain nor closed with a recorded captain answer
+rc=1
+    meta: 
+--- closed unanswered: verify origin
+fm-captain-hold: captain-held task call-a is neither held for the captain nor closed with a recorded captain answer
+rc=1
+    tasks-axi show calls: 4; --file calls: 0; native br calls: 0

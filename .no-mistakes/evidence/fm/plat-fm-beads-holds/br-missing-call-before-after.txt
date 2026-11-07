@@ -1,0 +1,25 @@
+### br home (.tasks.toml: backend=beads, [beads] binary=br, path=graph, prefix=fm); call 'missing' absent, a captain-held row fm-missing exists
+--- BASE 4ed72871: fm-captain-hold.sh complete origin missing
+fm-captain-hold: reading the beads graph at /tmp/fm-brcmp.eHlfGc/fm-lab.cDM9ad/graph failed (), so a migrated hold cannot be found
+rc=2
+native br calls:
+br invoked: BEADS_DIR=/tmp/fm-brcmp.eHlfGc/fm-lab.cDM9ad/graph args=list --all --json
+tasks-axi calls:
+  tasks-axi --version
+  tasks-axi update --help
+  tasks-axi mv --help
+  tasks-axi hold --help
+  tasks-axi show missing --full
+  tasks-axi show origin-decision-missing --full
+--- THIS CHANGE 5f06b3c3: fm-captain-hold.sh complete origin missing
+fm-captain-hold: no captain-held task missing and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-brcmp.eHlfGc/fm-lab.FibY9d/data); the nearest legacy identity origin-decision-missing also resolves to nothing
+rc=1
+native br calls:
+  (none)
+tasks-axi calls:
+  tasks-axi --version
+  tasks-axi update --help
+  tasks-axi mv --help
+  tasks-axi hold --help
+  tasks-axi show missing --full
+  tasks-axi show origin-decision-missing --full

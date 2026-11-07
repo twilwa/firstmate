@@ -1,0 +1,70 @@
+$ (cd $LAB && tasks-axi add origin-scout "scout investigating X" --start)
+ok: added origin-scout -> In flight
+task:
+  id: origin-scout
+  title: scout investigating X
+  state: in_flight
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi done origin-scout --pr <url>` when it ships
+  - Run `tasks-axi block origin-scout --by <other>` to record a dependency
+rc=0
+$ fm-captain-hold.sh hold call-a --reason "pick A or B" --title "Choose option" --origin origin-scout
+call-a
+rc=0
+$ fm-captain-hold.sh answer call-a --decision-file decision.txt
+answered: call-a
+rc=0
+$ (cd $LAB && tasks-axi prune --keep 0)   # real Done retention moves call-a into data/answered.md
+ok: prune done -> archived 1 (kept 0)
+help[1]:
+  - Run `tasks-axi list --state done` to see retained Done items
+rc=0
+$ (cd $LAB && tasks-axi show call-a)   # the active backlog no longer has it
+error: "Task \"call-a\" not found in this backlog"
+code: NOT_FOUND
+help[1]: Run `tasks-axi list` to see existing tasks
+
+$ head -3 data/answered.md
+
+## Archived 2026-11-06
+- [x] call-a - Choose option (repo: firstmate) (kind: captain) (done 2026-11-06) (hold: fm-hold-v1:cGljayBBIG9yIEI=) (hold-kind: captain)
+$ fm-captain-hold.sh complete origin-scout call-a
+complete: origin-scout captain-call inventory reviewed (call-a)
+rc=0
+$ grep decision state/origin-scout.meta
+decisions_reviewed=1
+decision_keys=call-a
+$ fm-captain-hold.sh verify origin-scout
+verified: origin-scout captain-call inventory
+rc=0
+
+### adversarial: closed without a recorded answer, and a call that does not exist
+$ (cd $LAB && tasks-axi add origin-two "second scout" --start)
+rc=0
+$ fm-captain-hold.sh hold call-b --reason "pick" --title "Unanswered" --origin origin-two
+call-b
+rc=0
+$ (cd $LAB && tasks-axi done call-b)   # closed with no captain answer
+ok: done call-b -> Done
+$ fm-captain-hold.sh complete origin-two call-b
+fm-captain-hold: captain-held task call-b is neither held for the captain nor closed with a recorded captain answer
+rc=1
+$ fm-captain-hold.sh complete origin-two ghost-call
+fm-captain-hold: no captain-held task ghost-call and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-lab.wfNwmA/data); the nearest legacy identity origin-two-decision-ghost-call also resolves to nothing
+rc=1
+$ grep -c decisions_reviewed state/origin-two.meta
+0
