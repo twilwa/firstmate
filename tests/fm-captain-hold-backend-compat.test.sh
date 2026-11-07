@@ -208,6 +208,31 @@ test_bd_migration_lookup_is_preserved() {
   pass "legacy bd migration markers still resolve with default, named, and absolute bd binaries"
 }
 
+test_env_addressed_bd_lookup_uses_env_path_and_prefix() {
+  local home out status
+  home=$(make_compat_home env-addressed beads default-bd)
+  # The root file keeps markdown and a stale graph; the selector env addresses the real one.
+  printf 'backend = "markdown"\n\n[beads]\npath = "stale"\nprefix = "fm"\n' > "$home/.tasks.toml"
+  compat_row "$home" fx-missing fx-missing held
+  set -- TASKS_AXI_BACKEND=beads TASKS_AXI_BEADS_BINARY=bd \
+    "TASKS_AXI_BEADS_PATH=$home/graph" TASKS_AXI_BEADS_PREFIX=fx
+  out=$(export "$@"; run_compat "$home" complete origin missing 2>&1) || fail "env-addressed completion: $out"
+  out=$(export "$@"; run_compat "$home" verify origin 2>&1) || fail "env-addressed verification: $out"
+  grep -q '^bd list --all --json$' "$home/native-calls" || fail "env-addressed lookup did not scan the env graph"
+  grep -q '^tasks-axi show fx-missing' "$home/calls" || fail "env-addressed lookup ignored TASKS_AXI_BEADS_PREFIX"
+  ! grep -q 'show fm-missing' "$home/calls" || fail "env-addressed lookup used the root prefix"
+
+  home=$(make_compat_home env-relative beads default-bd)
+  compat_row "$home" fm-missing fm-missing held
+  status=0
+  out=$(export TASKS_AXI_BEADS_PATH=graph; run_compat "$home" complete origin missing 2>&1) || status=$?
+  [ "$status" != 0 ] || fail "a relative TASKS_AXI_BEADS_PATH was accepted: $out"
+  assert_contains "$out" 'TASKS_AXI_BEADS_PATH must be an absolute path' 'a relative env path must be refused by name'
+  [ ! -e "$home/native-calls" ] || fail "a relative TASKS_AXI_BEADS_PATH was scanned"
+  ! grep -q '^decisions_reviewed=1$' "$home/state/origin.meta" || fail "a relative env path was attested"
+  pass "the legacy bd lookup takes its graph path and prefix from the env first and refuses a relative env path"
+}
+
 test_markdown_done_archive_is_preserved() {
   local home out
   home=$(make_compat_home archived markdown)
@@ -248,5 +273,6 @@ fm_test_run \
   test_slug_backends_do_not_rehome_missing_calls \
   test_env_selected_non_bd_skips_migration_lookup \
   test_bd_migration_lookup_is_preserved \
+  test_env_addressed_bd_lookup_uses_env_path_and_prefix \
   test_markdown_done_archive_is_preserved \
   test_show_timeout_is_not_absence

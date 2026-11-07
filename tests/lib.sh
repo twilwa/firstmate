@@ -89,7 +89,7 @@ unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH 
 # fixture addresses its own data/backlog.md through its copied .tasks.toml, an
 # explicit --file, or bin/fm-tasks-axi.sh; a case that verifies the wrapper
 # against an ambient override sets TASKS_AXI_FILE itself.
-unset TASKS_AXI_FILE TASKS_AXI_BACKEND
+unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
 
 # Clear the Rex block identity an operator's terminal exports. Run directly
 # inside a Rex block, the suite would otherwise auto-detect the rex backend

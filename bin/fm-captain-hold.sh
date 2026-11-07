@@ -651,16 +651,30 @@ captain_beads_toml_entries() {  # <toml-file>
   captain_toml_section_entries "$1" beads 'prefix|path|binary'
 }
 
-captain_beads_setting() {  # <entries-output> <setting>
+# TASKS_AXI_BEADS_<SETTING> wins over the root .tasks.toml [beads] entry. An
+# env path is never resolved against a guessed base, so it must be absolute.
+captain_beads_setting() {  # <entries-output> <binary|path|prefix>
+  local var value
+  var=TASKS_AXI_BEADS_$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')
+  value=${!var:-}
+  if [ -n "$value" ]; then
+    if [ "$2" = path ] && [ "${value#/}" = "$value" ]; then
+      printf 'fm-captain-hold: %s must be an absolute path (got %s), so a migrated hold cannot be found\n' \
+        "$var" "$(sanitize_field "$value")" >&2
+      return 2
+    fi
+    printf '%s\n' "$value"
+    return 0
+  fi
   printf '%s\n' "$1" | sed -n "s/^$2 //p" | head -1
 }
 
 # Print the bd binary the legacy migration lookup runs, or return 1 when that
-# lookup does not apply. TASKS_AXI_BEADS_BINARY wins over the root .tasks.toml
-# [beads] binary; bd is the default only when that root file selects beads.
+# lookup does not apply. bd is the default only when the root .tasks.toml
+# itself selects beads.
 captain_legacy_bd_binary() {  # <backlog-root> <beads-entries>
-  local root=$1 binary=${TASKS_AXI_BEADS_BINARY:-}
-  [ -n "$binary" ] || binary=$(captain_beads_setting "$2" binary)
+  local root=$1 binary
+  binary=$(captain_beads_setting "$2" binary)
   if [ -z "$binary" ]; then
     [ "$(fm_tasks_axi_backend_from_toml "$root/.tasks.toml" 2>/dev/null)" = beads ] || return 1
     binary=bd
@@ -678,9 +692,9 @@ captain_legacy_bd_binary() {  # <backlog-root> <beads-entries>
 captain_migration_scan_load() {  # <backlog-root> <beads-entries> <bd-binary>
   local root=$1 bd_bin=$3 bd_path
   [ "$CAPTAIN_MIGRATION_SCAN_LOADED" = 1 ] && return 0
-  bd_path=$(captain_beads_setting "$2" path)
+  bd_path=$(captain_beads_setting "$2" path) || return 2
   if [ -z "$bd_path" ]; then
-    printf 'fm-captain-hold: the beads backend carries no graph path in %s, so a migrated hold cannot be found\n' "$root/.tasks.toml" >&2
+    printf 'fm-captain-hold: the beads backend carries no graph path in TASKS_AXI_BEADS_PATH or %s, so a migrated hold cannot be found\n' "$root/.tasks.toml" >&2
     return 2
   fi
   # A relative [beads] path resolves against the backlog root, the same rule
