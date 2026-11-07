@@ -1,0 +1,16 @@
+## captain-hold hold with --title while config/tasks.toml lacks a backend (must refuse, never fall back to markdown)
+$ bin/fm-captain-hold.sh hold cap-zeta --title "zeta" --reason "must refuse"
+tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.AlH2Le/config/tasks.toml
+fm-captain-hold: could not create task cap-zeta
+exit=1
+$ bin/fm-captain-hold.sh answer cap-new --decision-file decision.txt
+fm-captain-hold: captain-held task cap-new is absent from this home's configured backlog (data directory /tmp/fm-lab.AlH2Le/data)
+exit=1
+-- tasks-axi data invocations: 0
+-- markdown files:
+identical
+0
+## after restoring selector, cap-new is still held in beads:
+  id: cap-new
+  state: queued
+  held: yes

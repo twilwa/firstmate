@@ -1,0 +1,127 @@
+## CONTRAST: pre-fix captain-hold (commit 47d4d7c8, extracted to temp dir) on the same selector home, inherited TASKS_AXI_FILE
+
+$ bin/fm-tasks-axi.sh add cap-gamma captain gamma task
+ok: added cap-gamma -> Queued
+task:
+  id: cap-gamma
+  title: captain gamma task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start cap-gamma` to move it to in flight
+  - Run `tasks-axi block cap-gamma --by <other>` to record a dependency
+exit=0
+
+$ /tmp/nm-taxi.GGnYJm/oldtree/bin/fm-captain-hold.sh hold cap-gamma --reason pre-fix hold
+fm-captain-hold: could not record the hold-set stamp on cap-gamma
+exit=1
+# beads row after pre-fix hold:
+
+$ bin/fm-tasks-axi.sh show cap-gamma --full
+task:
+  id: cap-gamma
+  title: captain gamma task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+exit=0
+# inherited markdown file after pre-fix hold (diff vs data/backlog.md pristine):
+diff-exit=0
+# pre-fix captain-hold tasks-axi calls:
+argv: update --help
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md
+--
+argv: hold --help
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md
+--
+argv: update cap-gamma --body-file /tmp/fm-captain-hold-stamp.EkzATi
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md
+
+## FIXED: HEAD captain-hold, same inputs
+
+$ bin/fm-tasks-axi.sh add cap-delta captain delta task
+ok: added cap-delta -> Queued
+task:
+  id: cap-delta
+  title: captain delta task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start cap-delta` to move it to in flight
+  - Run `tasks-axi block cap-delta --by <other>` to record a dependency
+exit=0
+
+$ bin/fm-captain-hold.sh hold cap-delta --reason post-fix hold
+cap-delta
+exit=0
+
+$ bin/fm-tasks-axi.sh show cap-delta --full
+task:
+  id: cap-delta
+  title: captain delta task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "post-fix hold"
+  hold_kind: captain
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-11-07T05:14:14Z\n"
+exit=0
+diff-exit=0
+argv: update --help
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md
+--
+argv: hold --help
+  cwd={run-worktree} TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md
+--
+argv: update cap-delta --body-file /tmp/fm-captain-hold-stamp.dWmRpN
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+--
+argv: hold cap-delta --reason fm-hold-v1:cG9zdC1maXggaG9sZA== --kind captain
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>

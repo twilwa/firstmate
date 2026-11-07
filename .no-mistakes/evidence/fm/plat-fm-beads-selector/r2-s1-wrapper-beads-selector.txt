@@ -1,0 +1,109 @@
+## lab /tmp/fm-lab.AlH2Le: config/tasks.toml selects beads (br); lab .tasks.toml (tracked default copy) says markdown; stale data/backlog.md present
+## tasks-axi = captain fork a0c217c built in temp dir; br = br 0.7.6
+
+$ cat /tmp/fm-lab.AlH2Le/config/tasks.toml
+# private home selector
+backend = "beads"
+
+[beads]
+binary = "br"
+path = "data/beads/.beads/beads.db" # relative to FM_HOME
+prefix = "fm"
+exit=0
+
+$ bin/fm-tasks-axi.sh add cap-alpha captain alpha task
+ok: added cap-alpha -> Queued
+task:
+  id: cap-alpha
+  title: captain alpha task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start cap-alpha` to move it to in flight
+  - Run `tasks-axi block cap-alpha --by <other>` to record a dependency
+exit=0
+
+$ bin/fm-tasks-axi.sh add cap-beta captain beta task
+ok: added cap-beta -> Queued
+task:
+  id: cap-beta
+  title: captain beta task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi start cap-beta` to move it to in flight
+  - Run `tasks-axi block cap-beta --by <other>` to record a dependency
+exit=0
+
+$ bin/fm-tasks-axi.sh block cap-beta --by cap-alpha
+ok: block cap-beta -> blocked-by cap-alpha
+help[2]:
+  - Run `tasks-axi unblock cap-beta --by <other>` to clear it
+  - Run `tasks-axi ready` to see what is still dispatchable
+exit=0
+
+$ bin/fm-tasks-axi.sh list
+count: 2
+tasks[2]{id,state,kind,repo,title}:
+  cap-alpha,queued,task,"-",captain alpha task
+  cap-beta,queued,task,"-",captain beta task
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+
+$ bin/fm-tasks-axi.sh ready
+count: 1
+ready[1]{id,state,kind,repo,title}:
+  cap-alpha,queued,task,"-",captain alpha task
+ready_public_followups: 0 delivery-ready obligations
+help[1]:
+  - Run `tasks-axi start <id>` to dispatch one of these
+exit=0
+
+# native br view of selected disposable store (explicit --db)
+
+$ br --db /tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db list --json
+{"issues":[{"id":"fm-cap-beta-ll1","title":"captain beta task","status":"open","priority":2,"issue_type":"task","created_at":"2026-11-07T05:13:24.957440477Z","created_by":"firstmate","updated_at":"2026-11-07T05:13:25.914181954Z","external_ref":"tasks-axi:cap-beta","source_repo":"beads","source_repo_path":"/tmp/fm-lab.AlH2Le/data/beads","agent_context":"{\"tasks_axi\":{\"version\":1,\"created\":\"2026-11-06\",\"prioritySet\":false,\"deps\":[{\"type\":\"blocked-by\",\"id\":\"cap-alpha\"}],\"order\":2,\"mirrors\":[]}}","compaction_level":0,"original_size":0,"dependency_count":1,"dependent_count":0},{"id":"fm-cap-alpha-ezk","title":"captain alpha task","status":"open","priority":2,"issue_type":"task","created_at":"2026-11-07T05:13:24.185701760Z","created_by":"firstmate","updated_at":"2026-11-07T05:13:24.185701760Z","external_ref":"tasks-axi:cap-alpha","source_repo":"beads","source_repo_path":"/tmp/fm-lab.AlH2Le/data/beads","agent_context":"{\"tasks_axi\":{\"version\":1,\"created\":\"2026-11-06\",\"prioritySet\":false,\"deps\":[],\"order\":1,\"mirrors\":[]}}","compaction_level":0,"original_size":0,"dependency_count":0,"dependent_count":1}],"total":2,"limit":0,"offset":0,"has_more":false}
+exit=0
+
+# stale markdown untouched (diff vs pristine copy):
+identical
+
+# tasks-axi data invocations recorded by PATH wrapper
+argv: add cap-alpha captain alpha task
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: add cap-beta captain beta task
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: block cap-beta --by cap-alpha
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: list
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: ready
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>

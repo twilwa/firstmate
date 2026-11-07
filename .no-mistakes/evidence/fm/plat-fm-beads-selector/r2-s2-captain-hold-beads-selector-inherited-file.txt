@@ -1,0 +1,124 @@
+## captain-hold on lab /tmp/fm-lab.AlH2Le; config/tasks.toml selects beads; lab .tasks.toml says markdown; inherited TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/unrelated.md (markdown copy containing a cap-alpha row)
+
+$ bin/fm-captain-hold.sh hold cap-alpha --reason captain decision (selector rollout)
+cap-alpha
+exit=0
+
+$ bin/fm-tasks-axi.sh show cap-alpha --full
+task:
+  id: cap-alpha
+  title: captain alpha task
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "captain decision (selector rollout)"
+  hold_kind: captain
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-06
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-11-07T05:13:37Z\n"
+exit=0
+
+$ bin/fm-captain-hold.sh hold cap-new --title new captain call --reason does the selector create rows in beads?
+cap-new
+exit=0
+
+$ bin/fm-captain-hold.sh open cap-new
+exit=0
+
+$ bin/fm-captain-hold.sh answer cap-alpha --decision-file /tmp/fm-lab.AlH2Le/decision.txt
+answered: cap-alpha
+exit=0
+
+$ bin/fm-tasks-axi.sh show cap-alpha --full
+task:
+  id: cap-alpha
+  title: captain alpha task
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "captain decision (selector rollout)"
+  hold_kind: captain
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: "-"
+  closed: 2026-11-06
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: b9ae533e9fcc434c20f0daace49055ed9ec38b4b3a3cedb1500c2dec8a17dffb\nResolution mode: answered\nCaptain hold answered: 2026-11-07T05:13:37Z\n\nCaptain decision:\nShip it with the beads selector.\n"
+exit=0
+
+# native br view (explicit --db)
+
+$ br --db /tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db list --all --json
+{"issues":[{"id":"fm-cap-new-lqs","title":"new captain call","description":"Captain hold set: 2026-11-07T05:13:42Z\n","status":"open","priority":2,"issue_type":"task","created_at":"2026-11-07T05:13:44.517951902Z","created_by":"firstmate","updated_at":"2026-11-07T05:13:47.770547126Z","external_ref":"tasks-axi:cap-new","source_repo":"beads","source_repo_path":"/tmp/fm-lab.AlH2Le/data/beads","agent_context":"{\"tasks_axi\":{\"version\":1,\"kind\":\"captain\",\"repo\":\"firstmate\",\"created\":\"2026-11-06\",\"prioritySet\":false,\"deps\":[],\"order\":3,\"mirrors\":[\"kind:captain\",\"repo:firstmate\",\"hold:captain\"],\"hold\":{\"reason\":\"fm-hold-v1:ZG9lcyB0aGUgc2VsZWN0b3IgY3JlYXRlIHJvd3MgaW4gYmVhZHM/\",\"kind\":\"captain\"}}}","compaction_level":0,"original_size":0,"labels":["hold:captain","kind:captain","repo:firstmate"],"dependency_count":0,"dependent_count":0},{"id":"fm-cap-beta-ll1","title":"captain beta task","status":"open","priority":2,"issue_type":"task","created_at":"2026-11-07T05:13:24.957440477Z","created_by":"firstmate","updated_at":"2026-11-07T05:13:25.914181954Z","external_ref":"tasks-axi:cap-beta","source_repo":"beads","source_repo_path":"/tmp/fm-lab.AlH2Le/data/beads","agent_context":"{\"tasks_axi\":{\"version\":1,\"created\":\"2026-11-06\",\"prioritySet\":false,\"deps\":[{\"type\":\"blocked-by\",\"id\":\"cap-alpha\"}],\"order\":2,\"mirrors\":[]}}","compaction_level":0,"original_size":0,"dependency_count":1,"dependent_count":0},{"id":"fm-cap-alpha-ezk","title":"captain alpha task","description":"Resolution recorded by fm-captain-hold.\nDecision digest: b9ae533e9fcc434c20f0daace49055ed9ec38b4b3a3cedb1500c2dec8a17dffb\nResolution mode: answered\nCaptain hold answered: 2026-11-07T05:13:37Z\n\nCaptain decision:\nShip it with the beads selector.\n","status":"closed","priority":2,"issue_type":"task","created_at":"2026-11-07T05:13:24.185701760Z","created_by":"firstmate","updated_at":"2026-11-07T05:13:56.029887519Z","closed_at":"2026-11-07T05:13:54.306863512Z","close_reason":"done","external_ref":"tasks-axi:cap-alpha","source_repo":"beads","source_repo_path":"/tmp/fm-lab.AlH2Le/data/beads","agent_context":"{\"tasks_axi\":{\"version\":1,\"created\":\"2026-11-06\",\"prioritySet\":false,\"deps\":[],\"order\":-1,\"mirrors\":[\"hold:captain\"],\"hold\":{\"reason\":\"fm-hold-v1:Y2FwdGFpbiBkZWNpc2lvbiAoc2VsZWN0b3Igcm9sbG91dCk=\",\"kind\":\"captain\"},\"closed\":\"2026-11-06\"}}","compaction_level":0,"original_size":0,"labels":["hold:captain"],"dependency_count":0,"dependent_count":1}],"total":3,"limit":0,"offset":0,"has_more":false}
+exit=0
+
+# stale markdown files untouched:
+data/backlog.md identical to pristine
+6
+# Backlog
+
+## In flight
+
+## Queued
+
+- [ ] **stale-md-row** - STALE MARKDOWN ROW that must not appear on a beads home
+- [ ] **cap-alpha** - STALE MARKDOWN COPY of cap-alpha (must stay untouched)
+
+## Done
+
+# tasks-axi invocations recorded by PATH wrapper (data ops only)
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update cap-alpha --body-file /tmp/fm-captain-hold-stamp.Eq74O7
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: hold cap-alpha --reason fm-hold-v1:Y2FwdGFpbiBkZWNpc2lvbiAoc2VsZWN0b3Igcm9sbG91dCk= --kind captain
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-new --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: add cap-new new captain call --kind captain --repo firstmate
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-new --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update cap-new --body-file /tmp/fm-captain-hold-stamp.R7NH7a
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-new --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: hold cap-new --reason fm-hold-v1:ZG9lcyB0aGUgc2VsZWN0b3IgY3JlYXRlIHJvd3MgaW4gYmVhZHM/ --kind captain
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-new --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-new
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update cap-alpha --body-file /tmp/fm-captain-hold-body.7Ef0ss --archive-body
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: done cap-alpha
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: update cap-alpha --body-file /tmp/fm-captain-hold-normalize.Ct08It
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>
+argv: show cap-alpha --full
+  cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fm TASKS_AXI_FILE=<unset>

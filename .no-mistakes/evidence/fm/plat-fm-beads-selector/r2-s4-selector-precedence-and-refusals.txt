@@ -1,0 +1,77 @@
+## R1 selector with [beads] table but no top-level backend
+
+$ bin/fm-tasks-axi.sh list
+fm-tasks-axi: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.AlH2Le/config/tasks.toml
+exit=2
+-- tasks-axi data invocations: 0
+
+$ bin/fm-captain-hold.sh hold cap-gamma --reason must refuse
+fm-captain-hold: --title is required to create task cap-gamma
+exit=1
+-- tasks-axi data invocations: 0
+## R1b session start with that malformed selector (backlog section)
+backlog
+--------------------------------------------------------------------------------
+Backlog unavailable: tasks-axi home selector requires one nonempty quoted backend at /tmp/fm-lab.AlH2Le/config/tasks.toml; not an empty queue.
+
+Work under way (state/*.meta)
+
+## R2 selector with unquoted beads.path
+
+$ bin/fm-tasks-axi.sh list
+tasks-axi home selector has invalid beads.path at /tmp/fm-lab.AlH2Le/config/tasks.toml
+exit=2
+-- tasks-axi data invocations: 0
+
+## R3 explicit TASKS_AXI_BACKEND=markdown env overrides a beads selector
+
+$ bin/fm-tasks-axi.sh list
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+exit=0
+-- tasks-axi data invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=markdown BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/data/backlog.md
+
+## R4 explicit TASKS_AXI_BEADS_PREFIX env wins over selector prefix
+
+$ bin/fm-tasks-axi.sh add cap-env env prefix row
+ok: added cap-env -> Queued
+task:
+  id: cap-env
+  title: env prefix row
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+exit=0
+-- tasks-axi data invocations: 1
+   argv: add cap-env env prefix row
+     cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=beads BINARY=br PATH=/tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db PREFIX=fmenv TASKS_AXI_FILE=<unset>
+
+$ br --db /tmp/fm-lab.AlH2Le/data/beads/.beads/beads.db show --json fm-cap-env-8e4
+[{"id":"fm-cap-env-8e4","title":"env prefix row","status":"open","priority":2,"issue_type":"task","created_at":"2026-11-07T05:15:37.669685218Z","created_by":"firstmate","updated_at":"2026-11-07T05:15:
+exit=0
+
+## R5 no selector: native tracked .tasks.toml (markdown) selection unchanged
+
+$ bin/fm-tasks-axi.sh list
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+exit=0
+-- tasks-axi data invocations: 1
+   argv: list
+     cwd=/tmp/fm-lab.AlH2Le TASKS_AXI_BACKEND=<unset> BINARY=<unset> PATH=<unset> PREFIX=<unset> TASKS_AXI_FILE=/tmp/fm-lab.AlH2Le/data/backlog.md
+
+## stale markdown untouched by all of the above:
+identical

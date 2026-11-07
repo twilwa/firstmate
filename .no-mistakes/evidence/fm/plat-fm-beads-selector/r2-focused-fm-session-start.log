@@ -1,0 +1,85 @@
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/chrome-devtools-axi <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/gh <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/gh-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/lavish-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/no-mistakes <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/node <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/ps <==
+#!/usr/bin/env bash
+set -u
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/tasks-axi <==
+#!/usr/bin/env bash
+set -u
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/tmux <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured/fakebin/treehouse <==
+#!/usr/bin/env bash
+if [ "${1:-}" = get ] && [ "${2:-}" = --help ]; then
+ok - session-start reads configured adapters from their root without markdown files or inherited file overrides
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/chrome-devtools-axi <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/gh <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/gh-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/lavish-axi <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/no-mistakes <==
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/node <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/ps <==
+#!/usr/bin/env bash
+set -u
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/tasks-axi <==
+#!/usr/bin/env bash
+set -u
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/tmux <==
+#!/usr/bin/env bash
+exit 0
+
+==> /tmp/fm-session-start-tests.TFQY5n/backlog-configured-failure/fakebin/treehouse <==
+#!/usr/bin/env bash
+if [ "${1:-}" = get ] && [ "${2:-}" = --help ]; then
+ok - configured adapter failures and timeouts are unavailable, never empty or stale markdown
+ok - compatible tasks-axi backlog rendering drops done rows and keeps every in-flight, held, and blocked row
+ok - the startup backlog bound cuts only dispatchable queued rows and discloses the remainder exactly
+ok - manual backlog rendering drops done rows, keeps every held or blocked title line, and bounds the rest
+ok - unavailable or incompatible tasks-axi falls back to compact manual backlog rendering
+exit=0
