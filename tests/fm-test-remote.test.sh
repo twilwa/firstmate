@@ -171,6 +171,7 @@ print('remote-stderr', file=sys.stderr, flush=True)
 print('FM_TEST_RESULT_' + header['nonce'] + ' ' + json.dumps({'kind': 'command', 'code': 23}), file=sys.stderr, flush=True)
 PY
 chmod +x "$TMP/ssh"
+# shellcheck disable=SC2016 # the $literal argv fixture must reach the remote unexpanded.
 if (cd "$TMP/task/sub" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" python3 "$ROOT/bin/fm-test-remote.py" --timeout 17 -- printf '%s' 'argument with spaces; $literal') >"$TMP/out" 2>"$TMP/err"; then
   echo 'remote exit code lost' >&2; exit 1
 else
@@ -257,6 +258,7 @@ for manager in 252 255; do
 done
 printf 'PASS scopes keep every cap, use OOMPolicy=continue from systemd 253 and omit it before\n'
 for failure in orphan invalid-owner; do
+  # shellcheck disable=SC2016 # the $literal argv fixture must reach the remote unexpanded.
   if (cd "$TMP/task/sub" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE="$failure" python3 "$ROOT/bin/fm-test-remote.py" --timeout 17 -- printf '%s' 'argument with spaces; $literal') >"$TMP/out" 2>"$TMP/err"; then
     echo 'failure fixture unexpectedly succeeded' >&2; exit 1
   else
