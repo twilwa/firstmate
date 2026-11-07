@@ -411,6 +411,17 @@ fm_ship_tdd_rule() {
   printf '%s\n' "Follow the \`tdd\` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests."
 }
 
+# fm_ship_remote_test_rule <fm-home> <config-dir> <fm-root> prints the ship
+# remote-test routing rule only when <config-dir>/remote-test.json exists.
+fm_ship_remote_test_rule() {
+  local home=$1 config=$2 root=$3 quoted_home quoted_config quoted_runner
+  [ -f "$config/remote-test.json" ] || return 0
+  quoted_home="'$(printf '%s' "$home" | sed "s/'/'\\\\''/g")'"
+  quoted_config="'$(printf '%s' "$config" | sed "s/'/'\\\\''/g")'"
+  quoted_runner="'$(printf '%s' "$root/bin/fm-test-remote.py" | sed "s/'/'\\\\''/g")'"
+  printf '%s\n' "For browser journeys, full server partitions, repeat loops, and tests longer than a few minutes, use \`FM_HOME=$quoted_home FM_CONFIG_OVERRIDE=$quoted_config $quoted_runner [--timeout N] -- <test command...>\`; keep focused quick tests local."
+}
+
 # Return 0 when a Task subsection still consists only of its scaffold
 # placeholder. A missing file and legacy briefs carry no such placeholders.
 fm_brief_task_placeholders_present() {  # <file>

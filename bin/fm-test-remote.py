@@ -9,10 +9,13 @@ cancels the generated remote scope and removes its run directory.
 
 Normal test exit codes are preserved, including 255, even when the command
 survived a memory OOM kill or PIDs-limit event; the typed result lists those
-events in cap_events. Infrastructure outcomes also print a typed result: 124
-queue timeout, 125 transport/unreported setup, 126 setup/cleanup failure, 130
-cancellation, 137 scope killed at a cap before reporting a command status. A
-test may itself return one of these codes; the typed result disambiguates it.
+events in cap_events. Scopes use OOMPolicy=continue on systemd 253+ so one
+OOM-killed test process does not stop the run; older managers do not accept it
+on scopes, so it is omitted there. Infrastructure outcomes also print a typed
+result: 124 queue timeout, 125 transport/unreported setup, 126 setup/cleanup
+failure, 130 cancellation, 137 scope killed at a cap before reporting a command
+status. A test may itself return one of these codes; the typed result
+disambiguates it.
 --timeout covers snapshot restoration and execution, not upload or the bounded
 queue; it may shorten but never raise the home's runtime cap. FM_SSH_BIN
 selects an explicit SSH executable for transport tests; it never changes PATH.

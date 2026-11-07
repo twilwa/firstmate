@@ -1611,7 +1611,7 @@ The address selects the existing shared server; it does not authorize starting o
 The optional, local, gitignored `config/remote-test.json` enables [`bin/fm-test-remote.py`](../bin/fm-test-remote.py) for workers whose heavy tests should run on a separate Linux host.
 It is absent by default and is configured independently in each home, not inherited into secondmate homes.
 The runner honors `FM_HOME`, `FM_ROOT_OVERRIDE`, and `FM_CONFIG_OVERRIDE` like other home-local commands.
-A present file adds one ship-brief instruction routing browser journeys, full server partitions, repeat loops, and tests longer than a few minutes to that runner; focused quick tests stay local.
+A present file adds one instruction to ship briefs and to promoted scouts' ship instructions, routing browser journeys, full server partitions, repeat loops, and tests longer than a few minutes to that runner; focused quick tests stay local.
 
 Example configuration (replace every access/path placeholder with your own):
 
@@ -1648,6 +1648,8 @@ Changing the resource or port policy while runs are active is refused; wait for 
 Each slot uses `flock` for restoration, execution, and descendant cleanup; waiting for that mutex is bounded by `queue_timeout` seconds.
 A durable owner reservation survives supervisor loss or failed scope cleanup, and a replacement verifies the prior scope has stopped and reconciles orphaned runs before launching.
 `timeout` is the maximum scope lifetime in seconds, including restoration, enforced with `RuntimeMaxSec` and a bounded supervisor backstop.
+On a systemd 253 or newer user manager each scope also sets `OOMPolicy=continue`, so a memory OOM kill of one test process does not stop the run; the command's own exit status is returned and the typed result lists the event in `cap_events`.
+Older managers do not accept `OOMPolicy` on scopes, so it is omitted there with every resource cap unchanged; an OOM kill that ends the scope before the command reports its status is reported as `cap-kill` with exit code 137.
 
 The remote account needs Python 3.12+, Git, a reachable systemd user manager, cgroup v2 with delegated CPU/memory/pids controllers, and its test toolchains already installed.
 The client needs Python 3.9+, Git and OpenSSH.
@@ -1668,7 +1670,7 @@ Other host services can still race for these ports, so reserve the interval oper
 
 The command's `--help` owns invocation, streaming, cancellation and exit-result mechanics.
 [`tests/fm-test-remote.test.sh`](../tests/fm-test-remote.test.sh) exercises configuration, primary-copy refusal, configured-only brief instructions, and the snapshot/transport protocol against a disposable linked task copy.
-When a local systemd user manager is reachable, its additional framed-worker regressions run a command that hits the PIDs cap in a real transient scope and check that its own exit status survives, plus orphan reconciliation and invalid-owner refusal.
+When a local systemd user manager is reachable, its additional framed-worker regressions run a command that hits the PIDs cap in a real transient scope and check that its own exit status survives, check through a stubbed `systemd-run` that the scope requests `OOMPolicy=continue` with every cap, plus orphan reconciliation and invalid-owner refusal.
 Real-host delivery evidence belongs in private task data, never in this configuration reference.
 
 ## Home brief include (config/brief-include.md)

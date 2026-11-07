@@ -292,11 +292,21 @@ def supervise(header, root):
         (run / "limits.json").write_text(json.dumps(dict(cpu=cpu, memory=memory, tasks=tasks)))
         properties = [f"CPUQuota={cpu}%", f"MemoryMax={memory}M", "MemorySwapMax=0",
                       f"TasksMax={tasks}", f"RuntimeMaxSec={timeout}"]
+        manager = subprocess.run(["systemctl", "--user", "show", "--property=Version", "--value"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True, timeout=5)
+        version = re.match(r"[0-9]+", manager.stdout.strip())
+        if version is None:
+            raise RuntimeError("cannot establish systemd user manager version")
+        if int(version.group()) >= 253:
+            # Scopes accept OOMPolicy from systemd 253; one in-scope OOM kill
+            # must not stop the run before the command reports its status.
+            properties.append("OOMPolicy=continue")
         argv = ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit=" + scope_name(run)]
         for prop in properties:
             argv.extend(["-p", prop])
         argv.extend(["--", sys.executable, str(Path(__file__).resolve()), "--execute", str(run)])
-        note(f"scope {run.name} cpu={cpu}% memory={memory}MiB tasks={tasks} timeout={timeout}s")
+        note(f"scope {run.name} cpu={cpu}% memory={memory}MiB tasks={tasks} timeout={timeout}s "
+             f"oom-policy={'continue' if 'OOMPolicy=continue' in properties else 'manager-default'}")
         child = subprocess.Popen(argv, stdin=subprocess.DEVNULL)
         start = time.monotonic()
         while child.poll() is None:

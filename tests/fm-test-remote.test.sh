@@ -15,6 +15,17 @@ FM_HOME="$TMP" bash "$ROOT/bin/fm-brief.sh" remote-off sample --mode local-only 
 if grep -q fm-test-remote.py "$TMP/data/remote-off/brief.md"; then
   echo 'unconfigured home received remote testing instructions' >&2; exit 1
 fi
+mkdir -p "$TMP/state"
+promote_scout() {  # <task-id>
+  FM_HOME="$TMP" bash "$ROOT/bin/fm-brief.sh" "$1" sample --scout >/dev/null
+  sed -i.bak -e 's/{TASK}/Fix the widget./' -e 's/{FIRSTMATE_SPEC}/Inspect the widget./' "$TMP/data/$1/brief.md"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$1" > "$TMP/state/$1.meta"
+  FM_HOME="$TMP" bash "$ROOT/bin/fm-promote.sh" "$1" --mode no-mistakes --yolo off >/dev/null 2>&1
+}
+promote_scout remote-promote-off
+if grep -q fm-test-remote.py "$TMP/data/remote-promote-off/ship-instructions.md"; then
+  echo 'unconfigured home promotion received remote testing instructions' >&2; exit 1
+fi
 mkdir -p "$TMP/config" "$TMP/repo"
 printf '{}\n' > "$TMP/config/remote-test.json"
 if FM_HOME="$TMP" python3 "$ROOT/bin/fm-test-remote.py" -- true >"$TMP/out" 2>"$TMP/err"; then
@@ -61,7 +72,10 @@ FM_HOME="$TMP" bash "$ROOT/bin/fm-brief.sh" remote-scout sample --scout --tests 
 if grep -q fm-test-remote.py "$TMP/data/remote-scout/brief.md"; then
   echo 'scout received ship-only remote testing instructions' >&2; exit 1
 fi
-printf 'PASS remote testing instruction appears only in configured ship briefs\n'
+promote_scout remote-promote-on
+test "$(grep -c 'fm-test-remote.py' "$TMP/data/remote-promote-on/ship-instructions.md")" -eq 1
+grep -q 'browser journeys, full server partitions, repeat loops' "$TMP/data/remote-promote-on/ship-instructions.md"
+printf 'PASS remote testing instruction appears only in configured ship briefs and promotions\n'
 # Disposable linked task copy with every kind of uncommitted change; the fake
 # SSH restores the shipped snapshot and compares it with these literal bytes.
 fixture_git() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false "$@"; }
@@ -124,10 +138,13 @@ with tarfile.open(fileobj=io.BytesIO(archive)) as tar, tempfile.TemporaryDirecto
     assert restored == expected, restored
 if mode:
     # Drive the real framed worker over local pipes in place of a remote host.
-    if mode != 'cap':
+    if mode not in ('cap', 'oom'):
         # An invalid execution timeout means no execution scope can launch.
         header['config']['timeout'] = 1
-    child = subprocess.Popen(shlex.split(args[-1]), stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    env = dict(os.environ)
+    if mode == 'oom':
+        env['PATH'] = os.environ['FM_REMOTE_TEST_STUB'] + os.pathsep + env['PATH']
+    child = subprocess.Popen(shlex.split(args[-1]), stdin=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     child.stdin.write(json.dumps(header).encode() + b'\n' + worker)
     child.stdin.flush()
     receiving = child.stderr.readline()
@@ -198,6 +215,30 @@ PY
   test ! -e "$TMP/remote/slot-0.owner"
 done
 printf 'PASS command status survives a PIDs-cap event and the typed result reports it\n'
+# Stub manager modelling systemd 253+ scopes: under the default OOMPolicy=stop,
+# one in-scope OOM kill stops the whole scope before the command can report.
+mkdir -p "$TMP/stub"
+REAL_SYSTEMD_RUN=$(type -P systemd-run)
+cat > "$TMP/stub/systemd-run" <<EOF
+#!/usr/bin/env bash
+for cap in CPUQuota= MemoryMax= MemorySwapMax=0 TasksMax= RuntimeMaxSec=; do
+  case " \$* " in *" -p \$cap"*) ;; *) echo "stub systemd-run: missing \$cap" >&2; exit 1 ;; esac
+done
+case " \$* " in
+  *" -p OOMPolicy=continue "*) exec $(printf '%q' "$REAL_SYSTEMD_RUN") "\$@" ;;
+esac
+touch "\${!#}/started"
+echo 'stub systemd-run: OOM kill in scope; OOMPolicy=stop stopped it' >&2
+exit 137
+EOF
+chmod +x "$TMP/stub/systemd-run"
+set +e
+(cd "$TMP/task" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE=oom FM_REMOTE_TEST_STUB="$TMP/stub" python3 "$ROOT/bin/fm-test-remote.py" --timeout 60 -- sh -c 'exit 3') >"$TMP/out" 2>"$TMP/err"
+actual=$?
+set -e
+test "$actual" -eq 3 || { cat "$TMP/err" >&2; echo "OOM policy stopped the scope: status 3 became $actual" >&2; exit 1; }
+test -z "$(ls -A "$TMP/remote/runs")"
+printf 'PASS scope survives an in-scope OOM kill under OOMPolicy=continue\n'
 for failure in orphan invalid-owner; do
   if (cd "$TMP/task/sub" && FM_HOME="$TMP" FM_SSH_BIN="$TMP/ssh" FM_REMOTE_TEST_MODE="$failure" python3 "$ROOT/bin/fm-test-remote.py" --timeout 17 -- printf '%s' 'argument with spaces; $literal') >"$TMP/out" 2>"$TMP/err"; then
     echo 'failure fixture unexpectedly succeeded' >&2; exit 1
