@@ -1,0 +1,40 @@
+## Queue: slots=1. A: sleep 8; exit 11 ; B (started 1s later): echo B-ran; exit 12
+## Queue timeout: C with queue_timeout=2 while A holds the only slot
+fm-test-remote: receiving r3e0edd7487a54e82b26f47beb8167844
+fm-test-remote: slot-wait-start r3e0edd7487a54e82b26f47beb8167844 at=1794019349.741444 slots=1
+fm-test-remote: result {"kind": "queue-timeout", "code": 124}
+FM_TEST_RESULT_ac51fdc1c06f1c52ce27d2895125cafa {"kind": "queue-timeout", "code": 124}
+C client exit=124
+## Policy change while runs active: D with memory_mb=256 on same root
+fm-test-remote: resource/port policy changed while runs are active; wait for them to finish
+fm-test-remote: result {"kind": "setup", "code": 126}
+FM_TEST_RESULT_b737612ed00d962361b9f4f30a5b15b4 {"kind": "setup", "code": 126}
+D client exit=126
+[1]-  Done                    ( R $H4 bash -c 'sleep 8; echo A-done; exit 11' > $LAB/A.out 2>&1; echo "A client exit=$?" >> $LAB/A.out )
+[2]+  Done                    ( R $H4 bash -c 'echo B-ran slot=$FM_REMOTE_SLOT; exit 12' > $LAB/B.out 2>&1; echo "B client exit=$?" >> $LAB/B.out )
+---- A output
+fm-test-remote: receiving rd6a35a025f40403fb01f405d0d135480
+fm-test-remote: slot-wait-start rd6a35a025f40403fb01f405d0d135480 at=1794019347.158034 slots=1
+fm-test-remote: slot-acquired rd6a35a025f40403fb01f405d0d135480 at=1794019347.158605 slot=0
+fm-test-remote: scope rd6a35a025f40403fb01f405d0d135480 cpu=100% memory=512MiB tasks=64 timeout=60s oom-policy=continue
+fm-test-remote: running rd6a35a025f40403fb01f405d0d135480 slot=0 ports=31000-31009
+A-done
+fm-test-remote: slot-released rd6a35a025f40403fb01f405d0d135480 at=1794019355.492155 slot=0
+fm-test-remote: result {"kind": "command", "code": 11, "cap_events": []}
+FM_TEST_RESULT_9dad1c8e523ab5a0cbb1e2f82f8806d8 {"kind": "command", "code": 11, "cap_events": []}
+A client exit=11
+---- B output
+fm-test-remote: receiving rd3ecf28aa02a4690a210437abd18a626
+fm-test-remote: slot-wait-start rd3ecf28aa02a4690a210437abd18a626 at=1794019348.723224 slots=1
+fm-test-remote: slot-acquired rd3ecf28aa02a4690a210437abd18a626 at=1794019355.527164 slot=0
+fm-test-remote: scope rd3ecf28aa02a4690a210437abd18a626 cpu=100% memory=512MiB tasks=64 timeout=60s oom-policy=continue
+fm-test-remote: running rd3ecf28aa02a4690a210437abd18a626 slot=0 ports=31000-31009
+B-ran slot=0
+fm-test-remote: slot-released rd3ecf28aa02a4690a210437abd18a626 at=1794019355.783777 slot=0
+fm-test-remote: result {"kind": "command", "code": 12, "cap_events": []}
+FM_TEST_RESULT_3cb0db8e8274d55fc74c6948d0e3f73f {"kind": "command", "code": 12, "cap_events": []}
+B client exit=12
+## box-side after all:
+runs/:
+no slot owner files
+(end of fm-test-remote-* units)

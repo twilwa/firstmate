@@ -1,0 +1,26 @@
+## Cancellation: $ fm-test-remote.py -- bash -c 'echo started; sleep 120'  then SIGINT to the client (Ctrl-C)
+## during run: active scopes:
+  fm-test-remote-r6ae188bca6724e5d9ac8d41dff9788c3.scope loaded active running /usr/bin/python3 /tmp/fm-rt-lab.ISC3Bj/box-s6/worker-v1-56edf6c3465d85c910990afc511fc2cc81e3a17a4bb40991d218ef93b27a6075.py --execute /tmp/fm-rt-lab.ISC3Bj/box-s6/runs/r6ae188bca6724e5d9ac8d41dff9788c3
+r6ae188bca6724e5d9ac8d41dff9788c3
+[1]+  Exit 130                FM_SSH_BIN=$LAB/ssh-wrap FM_HOME=$H6 python3 $W/bin/fm-test-remote.py -- bash -c 'echo started; sleep 120' > $LAB/c.out 2>&1
+## client exit code: 130
+fm-test-remote: receiving r6ae188bca6724e5d9ac8d41dff9788c3
+fm-test-remote: slot-wait-start r6ae188bca6724e5d9ac8d41dff9788c3 at=1794019366.478168 slots=1
+fm-test-remote: slot-acquired r6ae188bca6724e5d9ac8d41dff9788c3 at=1794019366.478604 slot=0
+fm-test-remote: scope r6ae188bca6724e5d9ac8d41dff9788c3 cpu=100% memory=512MiB tasks=64 timeout=60s oom-policy=continue
+fm-test-remote: running r6ae188bca6724e5d9ac8d41dff9788c3 slot=0 ports=31000-31009
+started
+fm-test-remote: stopping scope fm-test-remote-r6ae188bca6724e5d9ac8d41dff9788c3.scope
+fm-test-remote: stopped scope fm-test-remote-r6ae188bca6724e5d9ac8d41dff9788c3.scope
+fm-test-remote: slot-released r6ae188bca6724e5d9ac8d41dff9788c3 at=1794019367.137601 slot=0
+fm-test-remote: result {"kind": "cancelled", "code": 130}
+FM_TEST_RESULT_d0a34980805ba044db6dca0afed880bc {"kind": "cancelled", "code": 130}
+## box-side after cancel:
+runs/:
+no slot owner files
+(end of fm-test-remote-* units)
+3045554 /bin/bash -c source ~/.claude/shell-snapshots/snapshot-bash-1794019058370-6y472p.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \builtin unalias -- 'which'; \builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'LAB=$(cat /tmp/fm-rt-lab.path); EV=~/.no-mistakes/evidence/01M6SVP54AEFWD5EJ2PTPQKCWR; W={run-worktree} H6=$(python3 $LAB/mkhome.py $LAB s6 '"'"'{}'"'"') H7=$(python3 $LAB/mkhome.py $LAB s7 "{\"known_hosts_file\":\"$LAB/known_hosts_wrong\"}") cd $LAB/wt { echo "## Cancellation: \$ fm-test-remote.py -- bash -c '"'"'echo started; sleep 120'"'"'  then SIGINT to the client (Ctrl-C)" FM_SSH_BIN=$LAB/ssh-wrap FM_HOME=$H6 python3 $W/bin/fm-test-remote.py -- bash -c '"'"'echo started; sleep 120'"'"' > $LAB/c.out 2>&1 & CP=$! for i in $(seq 50); do grep -q started $LAB/c.out && break; sleep 0.2; done echo "## during run: active scopes:"; systemctl --user list-units --no-legend '"'"'fm-test-remote-*'"'"'; ls -A $LAB/box-s6/runs kill -INT $CP; wait $CP; echo "## client exit code: $?" cat $LAB/c.out echo "## box-side after cancel:"; echo "runs/:"; ls -A $LAB/box-s6/runs; ls $LAB/box-s6 | grep owner || echo "no slot owner files" systemctl --user list-units --all --no-legend '"'"'fm-test-remote-*'"'"'; echo "(end of fm-test-remote-* units)" pgrep -af '"'"'sleep 120'"'"' || echo "no remaining sleep 120 process" } > $EV/s6-cancel.log 2>&1; cat $EV/s6-cancel.log { echo "## Wrong host key in known_hosts_file (StrictHostKeyChecking=yes)" FM_SSH_BIN=$LAB/ssh-wrap FM_HOME=$H7 python3 $W/bin/fm-test-remote.py -- bash -c '"'"'echo SHOULD-NOT-RUN'"'"'; echo "## client exit code: $?" ls -la $LAB/box-s7 2>&1 || true } > $EV/s7-hostkey-refusal.log 2>&1; cat $EV/s7-hostkey-refusal.log' < /dev/null && pwd -P >| /tmp/claude-0ec6-cwd
+## re-check for leftover test process (exact argv match)
+no remaining 'sleep 120' process
+runs/:
+(no fm-test-remote-* units)

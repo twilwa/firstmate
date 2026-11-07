@@ -1,0 +1,12 @@
+ListenAddress 127.0.0.1
+Port 40955
+HostKey /tmp/fm-rt-lab.ISC3Bj/hostkey
+AuthorizedKeysFile /tmp/fm-rt-lab.ISC3Bj/authorized_keys
+StrictModes no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+PidFile /tmp/fm-rt-lab.ISC3Bj/sshd.pid
+LogLevel VERBOSE
+SetEnv XDG_RUNTIME_DIR=/run/user/1001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus

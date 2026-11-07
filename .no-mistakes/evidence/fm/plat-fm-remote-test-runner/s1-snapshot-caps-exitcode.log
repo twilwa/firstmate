@@ -1,0 +1,51 @@
+## local: cwd=/tmp/fm-rt-lab.ISC3Bj/wt/sub HEAD=ad4207d1f217064040a7169cf8881e8dbafb36d5
+M  staged.txt
+ M tracked.txt
+?? sub/untracked.txt
+## $ FM_HOME=home-s1 FM_SSH_BIN=ssh-wrap(port pin) PROD_SECRET=xyz bin/fm-test-remote.py -- bash -c '<checks>; exit 3'
+fm-test-remote: receiving r5fea3332b0434b099b7e3d078e3b5063
+fm-test-remote: slot-wait-start r5fea3332b0434b099b7e3d078e3b5063 at=1794019320.811469 slots=1
+fm-test-remote: slot-acquired r5fea3332b0434b099b7e3d078e3b5063 at=1794019320.812054 slot=0
+fm-test-remote: scope r5fea3332b0434b099b7e3d078e3b5063 cpu=150% memory=384MiB tasks=48 timeout=60s oom-policy=continue
+fm-test-remote: running r5fea3332b0434b099b7e3d078e3b5063 slot=0 ports=31000-31009
+remote pwd=/tmp/fm-rt-lab.ISC3Bj/box-s1/runs/r5fea3332b0434b099b7e3d078e3b5063/tree/sub
+remote HEAD=ad4207d1f217064040a7169cf8881e8dbafb36d5
+../tracked.txt: unstaged-edit
+../staged.txt: staged-edit
+inner.txt: sub-file
+untracked.txt: untracked-new
+ignored.txt absent (not shipped)
+ M staged.txt
+ M tracked.txt
+?? sub/untracked.txt
+cgroup=/user.slice/user-1001.slice/user@1001.service/app.slice/fm-test-remote-r5fea3332b0434b099b7e3d078e3b5063.scope
+cpu.max=150000 100000 memory.max=402653184 swap.max=0 pids.max=48
+FM_REMOTE_DB_SUFFIX=_r5fea3332b0434b099b7e3d078e3b5063
+FM_REMOTE_PORT_MAX=31009
+FM_REMOTE_PORT_MIN=31000
+FM_REMOTE_RUN_DIR=/tmp/fm-rt-lab.ISC3Bj/box-s1/runs/r5fea3332b0434b099b7e3d078e3b5063
+FM_REMOTE_RUN_ID=r5fea3332b0434b099b7e3d078e3b5063
+FM_REMOTE_SLOT=0
+GIT_CONFIG_GLOBAL=/dev/null
+GIT_CONFIG_NOSYSTEM=1
+HOME=/tmp/fm-rt-lab.ISC3Bj/box-s1/runs/r5fea3332b0434b099b7e3d078e3b5063/home
+LANG=C.UTF-8
+PATH=/usr/local/bin:/usr/bin:/bin
+PWD=/tmp/fm-rt-lab.ISC3Bj/box-s1/runs/r5fea3332b0434b099b7e3d078e3b5063/tree/sub
+SHLVL=1
+TMPDIR=/tmp/fm-rt-lab.ISC3Bj/box-s1/runs/r5fea3332b0434b099b7e3d078e3b5063/tmp
+fm-test-remote: slot-released r5fea3332b0434b099b7e3d078e3b5063 at=1794019321.276936 slot=0
+fm-test-remote: result {"kind": "command", "code": 3, "cap_events": []}
+FM_TEST_RESULT_cb2e2701c55f82092c807185b23fca58 {"kind": "command", "code": 3, "cap_events": []}
+## client exit code: 3
+## box-side after run:
+total 36
+drwx------ 3 firstmate firstmate  4096 Nov  6 18:42 .
+drwx------ 6 firstmate firstmate  4096 Nov  6 18:42 ..
+-rw-r--r-- 1 firstmate firstmate   105 Nov  6 18:42 policy.json
+-rw------- 1 firstmate firstmate     0 Nov  6 18:42 policy.lock
+drwx------ 2 firstmate firstmate  4096 Nov  6 18:42 runs
+-rw------- 1 firstmate firstmate     0 Nov  6 18:42 slot-0.lock
+-rw------- 1 firstmate firstmate 17829 Nov  6 18:42 worker-v1-56edf6c3465d85c910990afc511fc2cc81e3a17a4bb40991d218ef93b27a6075.py
+runs/:
+(end of fm-test-remote-* units)

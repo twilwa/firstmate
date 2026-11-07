@@ -1,0 +1,17 @@
+## Runtime cap: $ fm-test-remote.py --timeout 3 -- sleep 30
+fm-test-remote: receiving r2315587c08934b38a57a58ac9bc39b59
+fm-test-remote: slot-wait-start r2315587c08934b38a57a58ac9bc39b59 at=1794019333.971063 slots=1
+fm-test-remote: slot-acquired r2315587c08934b38a57a58ac9bc39b59 at=1794019333.971538 slot=0
+fm-test-remote: scope r2315587c08934b38a57a58ac9bc39b59 cpu=100% memory=512MiB tasks=64 timeout=3s oom-policy=continue
+fm-test-remote: running r2315587c08934b38a57a58ac9bc39b59 slot=0 ports=31000-31009
+fm-test-remote: slot-released r2315587c08934b38a57a58ac9bc39b59 at=1794019337.128202 slot=0
+fm-test-remote: result {"kind": "cap-kill", "code": 137}
+FM_TEST_RESULT_eb80d190d8e66b55429a14004ba91db5 {"kind": "cap-kill", "code": 137}
+## client exit code: 137 after 4s
+runs/:
+no slot owner files
+(end of fm-test-remote-* units)
+## Adversarial: --timeout above configured cap (61 > 60)
+usage: fm-test-remote.py [-h] [--timeout TIMEOUT] ...
+fm-test-remote.py: error: --timeout must be positive and no larger than the configured timeout
+## client exit code: 2

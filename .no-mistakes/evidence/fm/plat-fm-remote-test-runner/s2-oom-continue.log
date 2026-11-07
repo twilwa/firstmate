@@ -1,0 +1,15 @@
+## OOM: memory_mb=128 slots=1; $ fm-test-remote.py -- bash -c 'python3 -c "bytearray(400*2**20)"; echo child-rc=$?; echo still-running; exit 7'
+fm-test-remote: receiving rf1f29fbde25e4cf29ff2582117e20ea7
+fm-test-remote: slot-wait-start rf1f29fbde25e4cf29ff2582117e20ea7 at=1794019332.605695 slots=1
+fm-test-remote: slot-acquired rf1f29fbde25e4cf29ff2582117e20ea7 at=1794019332.606476 slot=0
+fm-test-remote: scope rf1f29fbde25e4cf29ff2582117e20ea7 cpu=100% memory=128MiB tasks=64 timeout=60s oom-policy=continue
+fm-test-remote: running rf1f29fbde25e4cf29ff2582117e20ea7 slot=0 ports=31000-31009
+child-rc=137
+still-running
+bash: line 1: 3035375 Killed                  python3 -c "b=bytearray(400*2**20); b[::4096]=b\"x\"*len(b[::4096])"
+fm-test-remote: slot-released rf1f29fbde25e4cf29ff2582117e20ea7 at=1794019333.277968 slot=0
+fm-test-remote: result {"kind": "command", "code": 7, "cap_events": ["memory.events:oom_kill"]}
+FM_TEST_RESULT_2c8e0f0ac2f779e9fabb8c0dd861e377 {"kind": "command", "code": 7, "cap_events": ["memory.events:oom_kill"]}
+## client exit code: 7
+runs/:
+(end of fm-test-remote-* units)

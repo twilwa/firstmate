@@ -1,0 +1,12 @@
+PASS remote runner refuses an unconfigured home
+PASS malformed configuration is actionable
+PASS non-object configuration is actionable
+PASS primary checkout is rejected before transport
+PASS config override and uncapped worker refusal
+PASS remote testing instruction appears only in configured ship briefs and promotions
+PASS snapshot fidelity, strict one-connection transport, argv and exit code
+PASS command status survives a PIDs-cap event and the typed result reports it
+PASS scopes keep every cap, use OOMPolicy=continue from systemd 253 and omit it before
+PASS slot acquisition reconciles orphans and refuses invalid owner records
+PASS early SSH failure is transport failure, not cancellation
+EXIT=0

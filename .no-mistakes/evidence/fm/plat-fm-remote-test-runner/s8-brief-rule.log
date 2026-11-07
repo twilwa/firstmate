@@ -1,0 +1,23 @@
+## unconfigured home: ship brief
+(no remote-test rule)
+## configured home: ship brief (no-mistakes)
+97-9. Follow the `tdd` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
+98:For browser journeys, full server partitions, repeat loops, and tests longer than a few minutes, use `FM_HOME='/tmp/fm-rt-lab.ISC3Bj/brief-home' FM_CONFIG_OVERRIDE='/tmp/fm-rt-lab.ISC3Bj/brief-home/config' '{run-worktree}/bin/fm-test-remote.py' [--timeout N] -- <test command...>`; keep focused quick tests local.
+## configured home: scout brief
+(no remote-test rule in scout brief)
+## configured home: scout promoted to ship
+promote exit=0
+44-# Current ship testing rule
+45-Follow the `tdd` skill and the no-mistakes test-quality rule: red -> green -> refactor in vertical slices, high-signal tests at public seams, a regression test red before the fix, and no tautological, implementation-coupled, or bulk-ahead tests.
+46:For browser journeys, full server partitions, repeat loops, and tests longer than a few minutes, use `FM_HOME='/tmp/fm-rt-lab.ISC3Bj/brief-home' FM_CONFIG_OVERRIDE='/tmp/fm-rt-lab.ISC3Bj/brief-home/config' '{run-worktree}/bin/fm-test-remote.py' [--timeout N] -- <test command...>`; keep focused quick tests local.
+## Running the brief's command verbatim: FM_HOME='/tmp/fm-rt-lab.ISC3Bj/brief-home' FM_CONFIG_OVERRIDE='/tmp/fm-rt-lab.ISC3Bj/brief-home/config' '{run-worktree}/bin/fm-test-remote.py' -- bash -c 'echo hello-from-brief-command; exit 0'
+fm-test-remote: receiving r683c8db547f84e5aa2cd326a52317e2d
+fm-test-remote: slot-wait-start r683c8db547f84e5aa2cd326a52317e2d at=1794019410.947336 slots=1
+fm-test-remote: slot-acquired r683c8db547f84e5aa2cd326a52317e2d at=1794019410.947981 slot=0
+fm-test-remote: scope r683c8db547f84e5aa2cd326a52317e2d cpu=150% memory=384MiB tasks=48 timeout=60s oom-policy=continue
+fm-test-remote: running r683c8db547f84e5aa2cd326a52317e2d slot=0 ports=31000-31009
+hello-from-brief-command
+fm-test-remote: slot-released r683c8db547f84e5aa2cd326a52317e2d at=1794019411.207777 slot=0
+fm-test-remote: result {"kind": "command", "code": 0, "cap_events": []}
+FM_TEST_RESULT_75d3b9d0372cf09d711e5deba9fb2481 {"kind": "command", "code": 0, "cap_events": []}
+## client exit code: 0
