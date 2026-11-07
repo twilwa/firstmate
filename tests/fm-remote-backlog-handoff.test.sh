@@ -146,6 +146,102 @@ sha256_file() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi
 }
 
+# Configured receiver stores, including an intentionally stale markdown mirror.
+BACKEND_FAKEBIN="$TMP_ROOT/backend-fakebin"
+mkdir -p "$BACKEND_FAKEBIN"
+printf '#!%s\n' "$(type -P python3)" > "$BACKEND_FAKEBIN/tasks-axi"
+printf 'exec(compile(open(%s).read(), %s, "exec"))\n' "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" >> "$BACKEND_FAKEBIN/tasks-axi"
+chmod +x "$BACKEND_FAKEBIN/tasks-axi"
+for receiver_backend in markdown beads; do
+  backend_home="$TMP_ROOT/$receiver_backend-receiver"
+  mkdir -p "$backend_home/bin" "$backend_home/data" "$backend_home/config" "$backend_home/state/handoff"
+  printf 'fixture\n' > "$backend_home/AGENTS.md"
+  printf 'ios\n' > "$backend_home/.fm-secondmate-home"
+  printf 'backend = "%s"\n[beads]\npath = "data/receiver.db"\nbinary = "br"\n' "$receiver_backend" > "$backend_home/config/tasks.toml"
+  if [ "$receiver_backend" = beads ]; then
+    printf 'READ ONLY MIRROR\n' > "$backend_home/data/backlog.md"
+  fi
+  for attempt in first retry; do
+    payload="$backend_home/state/handoff/ios.outbox.md"
+    printf '## Queued\n- [ ] configured-recv - received item (repo: alpha)\n  preserved body\n\n## Done\n' > "$payload"
+    backend_bytes=$(LC_ALL=C wc -c < "$payload" | tr -d ' ')
+    backend_hash=$(sha256_file "$payload")
+    printf '1\n%s\n%s\n' "$backend_bytes" "$backend_hash" > "$backend_home/state/handoff/.ios.upload-generation"
+    backend_out=$(FM_TEST_AXI_LOG="$backend_home/axi.log" PATH="$BACKEND_FAKEBIN:$PATH" FM_HOME="$backend_home" \
+      "$ROOT/bin/fm-backlog-receive.sh" state/handoff/ios.outbox.md "$backend_bytes" "$backend_hash" 1 2>&1) \
+      || fail "$receiver_backend configured receipt $attempt failed: $backend_out"
+    if [ "$receiver_backend" = beads ]; then
+      assert_grep 'configured-recv' "$backend_home/data/receiver.db" "receipt ignored configured Beads store"
+      assert_grep 'READ ONLY MIRROR' "$backend_home/data/backlog.md" "receipt wrote the markdown mirror"
+    else
+      assert_grep 'preserved body' "$backend_home/data/backlog.md" "configured receipt lost body"
+    fi
+    assert_absent "$payload" "confirmed receipt kept delivered scratch"
+    if [ "$attempt" = retry ]; then
+      assert_contains "$backend_out" 'moved=0 already=1' "backend retry duplicated a received item"
+    fi
+  done
+  if [ "$receiver_backend" = beads ]; then
+    for failing_command in list show render; do
+      printf '## Queued\n- [ ] configured-recv - received item (repo: alpha)\n\n## Done\n' > "$payload"
+      backend_bytes=$(LC_ALL=C wc -c < "$payload" | tr -d ' ')
+      backend_hash=$(sha256_file "$payload")
+      printf '1\n%s\n%s\n' "$backend_bytes" "$backend_hash" > "$backend_home/state/handoff/.ios.upload-generation"
+      if FM_TEST_AXI_FAIL_COMMAND="$failing_command" FM_TEST_AXI_LOG="$backend_home/axi.log" PATH="$BACKEND_FAKEBIN:$PATH" \
+        FM_HOME="$backend_home" "$ROOT/bin/fm-backlog-receive.sh" state/handoff/ios.outbox.md \
+        "$backend_bytes" "$backend_hash" 1 > "$backend_home/failure.out" 2>&1; then
+        fail "receipt concealed $failing_command backend failure"
+      fi
+      assert_present "$payload" "failed receipt deleted its retry payload"
+      assert_grep 'READ ONLY MIRROR' "$backend_home/data/backlog.md" "failed receipt wrote the mirror"
+    done
+    printf '[beads]\nmirror = "data/backlog.md"\n' > "$backend_home/.tasks.toml"
+    FM_TEST_AXI_LOG="$backend_home/axi.log" PATH="$BACKEND_FAKEBIN:$PATH" FM_HOME="$backend_home" \
+      "$ROOT/bin/fm-backlog-receive.sh" state/handoff/ios.outbox.md "$backend_bytes" "$backend_hash" 1 \
+      > "$backend_home/mirror.out" 2>&1 || fail "configured mirror refresh failed"
+    assert_grep 'preserved body' "$backend_home/data/backlog.md" "adapter did not refresh its configured mirror"
+    assert_absent "$payload" "mirror refresh recovery kept confirmed scratch"
+  fi
+  pass "$receiver_backend receipt initializes its configured store, retries and preserves failed payloads"
+done
+
+# Existing seeded homes converge through backend initialization without touching
+# a Beads mirror. A zero-project manifest performs no clone or external action.
+for provision_backend in markdown beads; do
+  provision_home="$TMP_ROOT/$provision_backend-provision"
+  mkdir -p "$provision_home/bin" "$provision_home/config" "$provision_home/data"
+  printf 'fixture\n' > "$provision_home/AGENTS.md"
+  printf 'ios\n' > "$provision_home/.fm-secondmate-home"
+  printf 'backend = "%s"\n[beads]\npath = "data/provision.db"\nbinary = "br"\n' "$provision_backend" > "$provision_home/config/tasks.toml"
+  if [ "$provision_backend" = beads ]; then
+    printf 'READ ONLY MIRROR\n' > "$provision_home/data/backlog.md"
+  fi
+  printf 'schema=fm-remote-home-provision.v1\nid_b64=aW9z\ncharter_b64=Zml4dHVyZQ==\nproject_count=0\n' > "$TMP_ROOT/backend-manifest"
+  provision_out=$(FM_TEST_AXI_LOG="$provision_home/axi.log" PATH="$BACKEND_FAKEBIN:$PATH" FM_HOME="$provision_home" \
+    "$ROOT/bin/fm-remote-home-provision.sh" < "$TMP_ROOT/backend-manifest" 2>&1) \
+    || fail "$provision_backend configured provisioning failed: $provision_out"
+  if [ "$provision_backend" = beads ]; then
+    assert_present "$provision_home/data/provision.db" "provisioning ignored configured Beads store"
+    assert_grep 'READ ONLY MIRROR' "$provision_home/data/backlog.md" "provisioning wrote the markdown mirror"
+  else
+    printf '## In flight\n\n## Queued\n\n## Done\n' > "$TMP_ROOT/expected-scaffold"
+    cmp -s "$TMP_ROOT/expected-scaffold" "$provision_home/data/backlog.md" \
+      || fail "provisioning changed the markdown scaffold bytes"
+  fi
+  if [ "$provision_backend" = beads ]; then
+    cp "$provision_home/data/provision.db" "$provision_home/db-before"
+    if FM_TEST_AXI_FAIL_COMMAND=list FM_TEST_AXI_LOG="$provision_home/axi.log" PATH="$BACKEND_FAKEBIN:$PATH" \
+      FM_HOME="$provision_home" "$ROOT/bin/fm-remote-home-provision.sh" < "$TMP_ROOT/backend-manifest" \
+      > "$provision_home/failure.out" 2>&1; then
+      fail "provisioning concealed backend initialization failure"
+    fi
+    cmp -s "$provision_home/db-before" "$provision_home/data/provision.db" \
+      || fail "provisioning rollback removed or changed an existing Beads database"
+    assert_grep 'READ ONLY MIRROR' "$provision_home/data/backlog.md" "provisioning rollback wrote the mirror"
+  fi
+  pass "$provision_backend provisioning initializes its configured backend and preserves rollback safety"
+done
+
 printf 'complete handoff payload\n' > "$TMP_ROOT/complete-payload"
 complete_bytes=$(LC_ALL=C wc -c < "$TMP_ROOT/complete-payload" | tr -d ' ')
 complete_hash=$(sha256_file "$TMP_ROOT/complete-payload")
@@ -711,5 +807,46 @@ assert_contains "$recv_out" 'received: ios moved=1 already=0' "decoy-cwd receipt
 assert_grep 'decoy-recv' "$RECV_HOME/data/backlog.md" "decoy-cwd receipt did not reach the destination backlog"
 assert_absent "$RECV_HOME/state/handoff/ios.outbox.md" "decoy-cwd receipt kept the delivered outbox"
 pass "a cwd .tasks.toml for another backend does not redirect a markdown receipt"
+
+# Exercise the complete remote path as well as receipt: Beads sources must
+# stage into a markdown scratch outbox and recover source duplicates correctly.
+rm -- "$REMOTE_ROOT/bin/tasks-axi"
+ln -s "$BACKEND_FAKEBIN/tasks-axi" "$REMOTE_ROOT/bin/tasks-axi"
+printf -- '- ios - iOS delivery (host: remote-mac; root: %s; home: %s; scope: iOS work; projects: alpha; added 2026-08-02)\n' \
+  "$REMOTE_ROOT" "$REMOTE" > "$PARENT/data/secondmates.md"
+mkdir -p "$PARENT/config"
+for pair in markdown:beads beads:markdown beads:beads; do
+  source_backend=${pair%:*}; destination_backend=${pair#*:}
+  printf 'backend = "%s"\n[beads]\npath = "data/source.db"\nbinary = "br"\n' "$source_backend" > "$PARENT/config/tasks.toml"
+  printf 'backend = "%s"\n[beads]\npath = "data/destination.db"\nbinary = "br"\n' "$destination_backend" > "$REMOTE/config/tasks.toml"
+  write_backlog '- [ ] remote-backend - full remote transfer (repo: alpha)'
+  if [ "$source_backend" = beads ]; then
+    printf '{"remote-backend":{"state":"queued","title":"full remote transfer (repo: alpha)","body":["  preserved remote body"]}}\n' > "$PARENT/data/source.db"
+    printf 'READ ONLY SOURCE MIRROR\n' > "$PARENT/data/backlog.md"
+  fi
+  rm -f "$REMOTE/data/destination.db"
+  if [ "$destination_backend" = beads ]; then
+    printf 'READ ONLY DESTINATION MIRROR\n' > "$REMOTE/data/backlog.md"
+  else
+    printf '## In flight\n\n## Queued\n\n## Done\n' > "$REMOTE/data/backlog.md"
+  fi
+  backend_out=$(FM_TEST_AXI_LOG="$TMP_ROOT/remote-backend.log" PATH="$BACKEND_FAKEBIN:$PATH" \
+    handoff_env "$ROOT/bin/fm-backlog-handoff.sh" ios remote-backend 2>&1) \
+    || fail "$pair remote transfer failed: $backend_out"
+  if [ "$destination_backend" = beads ]; then
+    assert_grep 'remote-backend' "$REMOTE/data/destination.db" "$pair remote move missed configured store"
+    assert_grep 'READ ONLY DESTINATION MIRROR' "$REMOTE/data/backlog.md" "$pair remote move wrote destination mirror"
+  else
+    assert_grep 'preserved remote body' "$REMOTE/data/backlog.md" "$pair remote move lost body"
+  fi
+  if [ "$source_backend" = beads ]; then
+    assert_no_grep 'remote-backend' "$PARENT/data/source.db" "$pair remote move left source item"
+    assert_grep 'READ ONLY SOURCE MIRROR' "$PARENT/data/backlog.md" "$pair remote move wrote source mirror"
+  else
+    assert_no_grep 'remote-backend' "$PARENT/data/backlog.md" "$pair remote move left source item"
+  fi
+  assert_absent "$PARENT/data/handoff/ios.outbox.md" "$pair remote move kept confirmed outbox"
+  pass "$pair remote handoff uses configured stores and a markdown transport outbox"
+done
 
 echo "ALL TESTS PASSED"

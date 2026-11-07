@@ -503,7 +503,7 @@ Backend resolution follows this order:
 
 With no selector, Firstmate leaves tasks-axi's native configuration precedence unchanged. The wrapper, automatic lifecycle calls, and captain-hold mutations export a selector's backend as `TASKS_AXI_BACKEND` in the child process only. For Beads, `binary`, `path`, and `prefix` map to `TASKS_AXI_BEADS_BINARY`, `TASKS_AXI_BEADS_PATH`, and `TASKS_AXI_BEADS_PREFIX`. An explicit environment value wins over the corresponding selector field; unset fields retain tasks-axi's normal defaults. A relative selector `path` becomes absolute against the owning home, even when its data directory is relocated. `path` names a workspace directory, not an implicit parent-directory database search. The Rust adapter uses `<path>/beads.db`, or `path` itself when it names a `.db` file.
 
-Selecting an adapter does not install it, initialize its database, migrate rows, or change a home's handoff or captain-hold configuration. Use a tasks-axi build that supports the selected binary before switching an existing home.
+Selecting an adapter does not install it, initialize its database, migrate rows, or change a home's captain-hold configuration. Handoffs into or out of the home then address the selected store, and a handoff, remote receipt, or remote provisioning initializes a missing one ([Handoffs between homes](#handoffs-between-homes)). Use a tasks-axi build that supports the selected binary before switching an existing home.
 
 ### Session-start reads
 
@@ -562,9 +562,10 @@ An unreadable backend configuration can refuse lifecycle work before the no-back
 ### Handoffs between homes
 
 Secondmate handoffs bypass that routine-backend choice: `fm-backlog-handoff.sh` keeps only its own fleet-level validation and delegates the item move to `tasks-axi mv`; its [script header](../bin/fm-backlog-handoff.sh) owns route-specific wake outcomes and remote outbox release.
+Each home of the pair resolves its own backend through the [backend resolution order](#home-local-selector), so a markdown and a Beads home can exchange work; the caller's `TASKS_AXI_*` environment addresses only the source home, and the script header owns the remaining store constraints.
 It moves in-scope `## Queued` items only and refuses `## In flight` and historical `## Done` records, which stay with their home for pruning or archiving.
 
-Handoff item bodies must use at least two leading spaces, and the helper refuses a selected item with a single-space or tab-indented continuation rather than risk orphaning it.
+Markdown handoff item bodies must use at least two leading spaces, and the helper refuses a selected item with a single-space or tab-indented continuation rather than risk orphaning it.
 Because bootstrap requires `tasks-axi` on `PATH` on every profile, that delegation works fleet-wide, and the `config/backlog-backend=manual` knob governs firstmate's own hand-editing of its backlog, not this validated helper.
 
 ### Required tools and manual mode

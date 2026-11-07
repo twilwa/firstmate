@@ -38,17 +38,22 @@
 # links preserved. It refuses a move that would strand a dependency across the
 # two files; that error is surfaced verbatim and nothing is moved.
 #
-# Item bodies must use at least two leading spaces. The helper refuses a selected
-# item with a single-space or tab-indented continuation rather than risk leaving
-# it orphaned, because tasks-axi treats only two-or-more-space lines as body.
+# Markdown item bodies must use at least two leading spaces. For a markdown
+# source backlog, the helper refuses a selected item with a single-space or
+# tab-indented continuation rather than risk leaving it orphaned, because
+# tasks-axi treats only two-or-more-space lines as body.
 # The move needs compatible `tasks-axi` on PATH, including atomic multi-ID `mv`
 # support. Bootstrap requires a compatible build fleet-wide, so this works
 # everywhere; the `config/backlog-backend=manual` knob only governs firstmate's
 # own hand-editing of its own backlog, not this validated helper. Idempotent:
 # re-running converges. Atomic: on any move failure nothing moves.
-# Every move names its markdown backlog files explicitly and pins
-# `--backend markdown`, so a `.tasks.toml` in the caller's working directory
-# cannot redirect the move to another backend.
+# Each home resolves its own backend and settings. Moves name both stores
+# explicitly; remote transport still uses a markdown scratch outbox. A caller's
+# working directory cannot redirect either home's configured store, and the
+# caller's tasks-axi environment addresses only the source home. A local
+# Beads-to-Beads move is one tasks-axi call with the source home's settings, so
+# both homes must resolve the same Beads binary (an unset binary matches only an
+# unset one); a destination store that aliases the source store is refused.
 # See AGENTS.md project management and task lifecycle.
 # Remote routes use an outbox handoff: one atomic local tasks-axi mv removes the
 # selected set from the dispatchable backlog into data/handoff/<id>.outbox.md,
@@ -84,9 +89,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
+# Resolve caller-relative source and outbox paths before adapter directory changes.
+case "$DATA" in
+  /*) ;;
+  *) DATA="$(pwd -P)/$DATA" ;;
+esac
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 REG="$DATA/secondmates.md"
-MAIN_BACKLOG="$DATA/backlog.md"
+MAIN_CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 # shellcheck source=bin/fm-tasks-axi-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
 # shellcheck source=bin/fm-secondmate-registry-lib.sh
@@ -274,32 +284,9 @@ validate_backlog_file() {
   fi
 }
 
-# Classify a single key by the section it lives under (## In flight /
-# ## Queued / ## Done), or return non-zero if no `- [ ] <key>` / `- [x] <key>`
-# header exists in the file. This reads only section headings and item header
-# lines - never item bodies - so it drives the fleet-level classification (in-
-# flight refusal, already-present idempotency, missing-key abort) without
-# re-implementing the block/body move semantics that tasks-axi mv owns.
+# Transport outboxes are always markdown, independently of either home backend.
 backlog_key_section() {
-  local file=$1 key=$2
-  [ -f "$file" ] || return 1
-  awk -v key="$key" '
-    BEGIN { section = "## Queued" }
-    /^##[[:space:]]+/ {
-      section = $0
-      sub(/^##[[:space:]]+/, "## ", section)
-      sub(/[[:space:]]+$/, "", section)
-      next
-    }
-    /^- \[[ x]\] / {
-      rest = $0
-      sub(/^- \[[ x]\] +/, "", rest)
-      id = rest
-      sub(/[ \t].*/, "", id)
-      if (id == key) { print section; found = 1; exit }
-    }
-    END { exit found ? 0 : 1 }
-  ' "$file"
+  fm_tasks_axi_markdown_section "$@"
 }
 
 backlog_key_noncanonical_body_lines() {
@@ -741,11 +728,13 @@ remove_interrupted_source_duplicates() { # <outbox> <keys...>
     progress=0
     for key in "$@"; do
       backlog_key_section "$outbox" "$key" >/dev/null 2>&1 || continue
-      if backlog_key_section "$MAIN_BACKLOG" "$key" >/dev/null 2>&1; then
+      if main_key_section "$key" >/dev/null; then
         remaining=$((remaining + 1))
-        if tasks-axi rm "$key" --file "$MAIN_BACKLOG" --backend markdown >/dev/null 2>&1; then
+        if main_store_run rm "$key" >/dev/null 2>&1; then
           progress=$((progress + 1))
         fi
+      else
+        [ "$?" -eq 1 ] || return 1
       fi
     done
     [ "$remaining" -gt 0 ] || return 0
@@ -764,7 +753,9 @@ remote_handoff() { # <secondmate-id> <keys...>
   shift
   requested=("$@")
   outbox="$DATA/handoff/$id.outbox.md"
-  validate_backlog_file "main backlog" "$MAIN_BACKLOG" || return 1
+  if [ "$MAIN_BACKEND" = markdown ]; then
+    validate_backlog_file "main backlog" "$MAIN_BACKLOG" || return 1
+  fi
   validate_backlog_file "remote handoff outbox" "$outbox" || return 1
   if [ ! -e "$outbox" ] && [ ! -L "$outbox" ]; then
     receiver_wake_clear_confirmed "$id" || {
@@ -784,7 +775,7 @@ remote_handoff() { # <secondmate-id> <keys...>
   not_queued=()
   for key in "${requested[@]}"; do
     out_section=$(backlog_key_section "$outbox" "$key" 2>/dev/null || true)
-    main_section=$(backlog_key_section "$MAIN_BACKLOG" "$key" 2>/dev/null || true)
+    main_section=$(main_key_section "$key") || { [ "$?" -eq 1 ] || return 1; }
     if [ -n "$out_section" ]; then
       [ "$out_section" = '## Queued' ] || not_queued+=("$key")
       already+=("$key")
@@ -811,7 +802,7 @@ remote_handoff() { # <secondmate-id> <keys...>
     while IFS= read -r line; do
       printf 'error: refusing to hand off %s: non-2-space continuation line: %s\n' "$key" "$line" >&2
       return 1
-    done < <(backlog_key_noncanonical_body_lines "$MAIN_BACKLOG" "$key")
+    done < <(main_noncanonical_body_lines "$key")
   done
   # Do not append a fresh handoff to an older recovery batch. In particular, a
   # confirmed wake can survive when outbox cleanup fails; if new work were
@@ -827,7 +818,9 @@ remote_handoff() { # <secondmate-id> <keys...>
   fi
   seed_backlog_scaffold "$outbox"
   if [ "${#to_move[@]}" -gt 0 ]; then
-    if ! mv_out=$(tasks-axi mv "${to_move[@]}" --file "$MAIN_BACKLOG" --to "$outbox" --backend markdown 2>&1); then
+    local -a destination_flags=()
+    [ "$MAIN_BACKEND" = markdown ] || destination_flags=(--to-backend markdown)
+    if ! mv_out=$(main_store_run mv "${to_move[@]}" --to "$outbox" ${destination_flags[@]+"${destination_flags[@]}"} 2>&1); then
       [ -z "$mv_out" ] || printf '%s\n' "$mv_out" >&2
       echo "error: atomic outbox staging failed; nothing new was handed off" >&2
       return 1
@@ -928,6 +921,39 @@ if [ "$RESUME_PENDING" -eq 1 ]; then
   exit "$FAILED"
 fi
 
+MAIN_BACKEND=$(fm_tasks_axi_store_address "$FM_HOME" "$DATA" "$MAIN_CONFIG" backend) || exit 1
+MAIN_BACKLOG="$DATA/backlog.md"
+if [ "$MAIN_BACKEND" != markdown ]; then
+  MAIN_BACKLOG=$(fm_tasks_axi_store_address "$FM_HOME" "$DATA" "$MAIN_CONFIG" path) || exit 1
+fi
+
+# Markdown addresses are already resolved for this request. Avoid resolving the
+# same settings again for each move; Beads still needs its exported adapter settings.
+main_store_run() {
+  if [ "$MAIN_BACKEND" = markdown ]; then
+    (
+      local command=$1
+      shift
+      cd "$FM_HOME" || exit 2
+      exec tasks-axi "$command" --file "$MAIN_BACKLOG" --backend markdown "$@"
+    )
+  else
+    fm_tasks_axi_store_run "$FM_HOME" "$DATA" "$MAIN_CONFIG" "$@"
+  fi
+}
+
+main_key_section() {
+  if [ "$MAIN_BACKEND" = markdown ]; then
+    fm_tasks_axi_markdown_section "$MAIN_BACKLOG" "$1"
+  else
+    fm_tasks_axi_store_section "$FM_HOME" "$DATA" "$MAIN_CONFIG" "$1"
+  fi
+}
+main_noncanonical_body_lines() {
+  [ "$MAIN_BACKEND" = markdown ] || return 0
+  backlog_key_noncanonical_body_lines "$MAIN_BACKLOG" "$1"
+}
+
 ACTIVE_REGISTRY_LOCK=$(secondmate_registry_lock_path "$STATE")
 fm_lock_acquire_wait "$ACTIVE_REGISTRY_LOCK"
 REMOTE=$(secondmate_registry_field "$REG" "$ID" remote 2>/dev/null || true)
@@ -949,9 +975,58 @@ RAW_HOME=$(secondmate_home "$ID") || exit 1
   exit 1
 }
 SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
+
+# The caller's tasks-axi environment addresses the source home only.
+sub_store() ( # <store-function> [args...]
+  local store_function=$1
+  shift
+  unset "${!TASKS_AXI_@}"
+  "$store_function" "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "$@"
+)
+
+# A markdown source has no Beads settings to lend the destination.
+destination_store_mv() ( # <home> <data> <config> <keys...>
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || exit 2
+  shift 3
+  cd "$FM_HOME" || exit 2
+  exec tasks-axi mv "$@" --file "$MAIN_BACKLOG" --backend markdown \
+    --to "$FM_TASKS_AXI_STORE_PATH" --to-backend "$FM_TASKS_AXI_STORE_BACKEND"
+)
+
+SUB_BACKEND=$(sub_store fm_tasks_axi_store_address backend) || exit 1
 SUB_BACKLOG="$SUB_HOME/data/backlog.md"
-validate_backlog_file "main backlog" "$MAIN_BACKLOG" || exit 1
-validate_backlog_file "secondmate backlog" "$SUB_BACKLOG" || exit 1
+if [ "$SUB_BACKEND" != markdown ]; then
+  SUB_BACKLOG=$(sub_store fm_tasks_axi_store_address path) || exit 1
+fi
+if [ "$MAIN_BACKEND" = "$SUB_BACKEND" ]; then
+  MAIN_STORE=$(fm_tasks_axi_store_database "$MAIN_BACKEND" "$MAIN_BACKLOG")
+  SUB_STORE=$(fm_tasks_axi_store_database "$SUB_BACKEND" "$SUB_BACKLOG")
+  if [ "$MAIN_STORE" = "$SUB_STORE" ] || [ "$MAIN_STORE" -ef "$SUB_STORE" ]; then
+    echo "error: secondmate $ID resolves to this home's own $SUB_BACKEND store $SUB_STORE; nothing was moved" >&2
+    exit 1
+  fi
+fi
+if [ "$MAIN_BACKEND" = beads ] && [ "$SUB_BACKEND" = beads ]; then
+  MAIN_BINARY=$(fm_tasks_axi_store_address "$FM_HOME" "$DATA" "$MAIN_CONFIG" binary) || exit 1
+  SUB_BINARY=$(sub_store fm_tasks_axi_store_address binary) || exit 1
+  if [ "$MAIN_BINARY" != "$SUB_BINARY" ]; then
+    echo "error: one tasks-axi mv cannot use both Beads binaries (${MAIN_BINARY:-unset} for this home, ${SUB_BINARY:-unset} for secondmate $ID); nothing was moved" >&2
+    exit 1
+  fi
+fi
+if [ "$MAIN_BACKEND" = markdown ]; then
+  validate_backlog_file "main backlog" "$MAIN_BACKLOG" || exit 1
+fi
+if [ "$SUB_BACKEND" = markdown ]; then
+  validate_backlog_file "secondmate backlog" "$SUB_BACKLOG" || exit 1
+fi
+sub_key_section() {
+  if [ "$SUB_BACKEND" = markdown ]; then
+    fm_tasks_axi_markdown_section "$SUB_BACKLOG" "$1"
+  else
+    sub_store fm_tasks_axi_store_section "$1"
+  fi
+}
 
 # Classify every key before changing anything: move-from-main, already-in-sub, or
 # missing. Abort with no changes if any key matches neither backlog.
@@ -962,9 +1037,13 @@ IN_FLIGHT=()
 DONE=()
 NOT_QUEUED=()
 for key in "$@"; do
-  if backlog_key_section "$SUB_BACKLOG" "$key" >/dev/null; then
+  if sub_key_section "$key" >/dev/null; then
     ALREADY+=("$key")
-  elif section=$(backlog_key_section "$MAIN_BACKLOG" "$key"); then
+    continue
+  else
+    [ "$?" -eq 1 ] || exit 1
+  fi
+  if section=$(main_key_section "$key"); then
     case "$section" in
     "## Queued") TO_MOVE+=("$key") ;;
     "## In flight") IN_FLIGHT+=("$key") ;;
@@ -972,6 +1051,7 @@ for key in "$@"; do
     *) NOT_QUEUED+=("$key") ;;
     esac
   else
+    [ "$?" -eq 1 ] || exit 1
     MISSING+=("$key")
   fi
 done
@@ -1004,6 +1084,10 @@ REQUESTED_BATCH=$(receiver_wake_batch_id "$@") || {
 }
 
 if [ "${#TO_MOVE[@]}" -eq 0 ]; then
+  # A previous move may have succeeded before its mirror refresh failed.
+  if [ "$SUB_BACKEND" = beads ]; then
+    sub_store fm_tasks_axi_store_refresh || exit 1
+  fi
   WAKE_PENDING_MARKER="$STATE/.backlog-handoff-$ID.wake-pending"
   case "$(cat "$WAKE_PENDING_MARKER" 2>/dev/null || true)" in
   prepared:*:"$REQUESTED_BATCH") receiver_wake_promote_prepared "$ID" "$REQUESTED_BATCH" || exit 1 ;;
@@ -1023,7 +1107,7 @@ for key in "${TO_MOVE[@]}"; do
     printf 'error: refusing to hand off %s: non-2-space continuation line: %s\n' \
       "$key" "$line" >&2
     FAILED=1
-  done < <(backlog_key_noncanonical_body_lines "$MAIN_BACKLOG" "$key")
+  done < <(main_noncanonical_body_lines "$key")
 done
 if [ "$FAILED" -ne 0 ]; then
   echo "       nothing was moved." >&2
@@ -1056,15 +1140,17 @@ receiver_wake_mark_prepared "$ID" "$REQUESTED_BATCH" || {
   exit 1
 }
 
-# Seed the destination with firstmate's standard three-section scaffold when it
-# does not exist yet, so the moved item lands under the right section. (Left to
-# create the file itself, tasks-axi mv writes its own `# Backlog` title format,
-# which is not firstmate's home-backlog convention.)
+# Initialize the selected destination. Markdown retains the standard three-section
+# scaffold instead of tasks-axi's `# Backlog` title; Beads owns its database/mirror.
 mkdir -p "$SUB_HOME/data"
 SUB_CREATED=0
-if [ ! -f "$SUB_BACKLOG" ]; then
-  printf '## In flight\n\n## Queued\n\n## Done\n' >"$SUB_BACKLOG"
+if [ "$SUB_BACKEND" = markdown ] && [ ! -f "$SUB_BACKLOG" ]; then
   SUB_CREATED=1
+fi
+if [ "$SUB_BACKEND" = markdown ]; then
+  fm_tasks_axi_markdown_init "$SUB_BACKLOG" || exit 1
+else
+  sub_store fm_tasks_axi_store_init || exit 1
 fi
 
 # Delegate the move to tasks-axi. Passing the whole in-scope set to one call is a
@@ -1072,7 +1158,16 @@ fi
 # together and, on any failure, neither backlog's content changes - the only
 # cleanup is a scaffold we just created. tasks-axi writes both its success and
 # error output to stdout, so capture it and surface it only on failure.
-if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BACKLOG" --backend markdown 2>&1); then
+transfer_to_sub() { # <keys...>
+  if [ "$MAIN_BACKEND" = markdown ] && [ "$SUB_BACKEND" = markdown ]; then
+    main_store_run mv "$@" --to "$SUB_BACKLOG"
+  elif [ "$MAIN_BACKEND" = markdown ]; then
+    sub_store destination_store_mv "$@"
+  else
+    main_store_run mv "$@" --to "$SUB_BACKLOG" --to-backend "$SUB_BACKEND"
+  fi
+}
+if ! MV_OUT=$(transfer_to_sub "${TO_MOVE[@]}" 2>&1); then
   if [ "$SUB_CREATED" -eq 1 ]; then
     rm -f "$SUB_BACKLOG"
   fi
@@ -1085,6 +1180,12 @@ if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BAC
   fi
   echo "error: tasks-axi mv failed; nothing was moved." >&2
   exit 1
+fi
+
+# Refresh a Beads destination's own configured mirror through its adapter,
+# never by writing data/backlog.md from this script.
+if [ "$SUB_BACKEND" = beads ]; then
+  sub_store fm_tasks_axi_store_refresh || exit 1
 fi
 
 echo "handed off ${#TO_MOVE[@]} item(s) to $ID: ${TO_MOVE[*]}"

@@ -6,12 +6,12 @@
 #
 # The delivered file must be a non-symlink backlog-format scratch file confined
 # to FM_HOME/state/handoff. Every item must be Queued. Keys already present in
-# data/backlog.md are skipped; every remaining key moves in one dependency-closed
+# the configured destination store are skipped; remaining keys move in one dependency-closed
 # `tasks-axi mv` transaction under tasks-axi's own locks. On an ambiguous caller
 # retry, destination-present classification makes this operation idempotent.
 #
 # If tasks-axi reports a lock failure, this host may remove and retry once only
-# for its own backlog or delivered lock whose pid is dead and whose mtime is at
+# for its own markdown backlog or delivered lock whose pid is dead and whose mtime is at
 # least 30 seconds old. No live or uncertain lock is touched. On confirmed
 # receipt the delivered scratch file is removed; no other path is deletable.
 set -eu
@@ -19,7 +19,7 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
-DEST="$FM_HOME/data/backlog.md"
+DEST_CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 LOCK_STALE_SECS=30
 
 # shellcheck source=bin/fm-tasks-axi-lib.sh
@@ -33,16 +33,8 @@ sha256_file() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi
 }
 
-backlog_key_section() { # <file> <key>
-  awk -v key="$2" '
-    BEGIN { section = "## Queued" }
-    /^##[[:space:]]+/ { section=$0; sub(/^##[[:space:]]+/, "## ", section); sub(/[[:space:]]+$/, "", section); next }
-    /^- \[[ x]\] / {
-      rest=$0; sub(/^- \[[ x]\] +/, "", rest); id=rest; sub(/[ \t].*/, "", id)
-      if (id == key) { print section; found=1; exit }
-    }
-    END { exit found ? 0 : 1 }
-  ' "$1"
+backlog_key_section() { # <markdown-file> <key>
+  fm_tasks_axi_markdown_section "$@"
 }
 
 list_keys() { # <file>
@@ -78,9 +70,17 @@ remove_dead_stale_lock() { # <lock-path>
   rm -f -- "$lock"
 }
 
-run_move() { # <keys...>
-  # Pin the markdown backend so a .tasks.toml in the caller's directory cannot redirect the move.
-  tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST" --backend markdown
+run_move() ( # <keys...>
+  # Transport is markdown; only the receiving store follows this home's backend.
+  fm_tasks_axi_store_resolve "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" || return 2
+  cd "$FM_HOME" || return 2
+  local -a destination_flags=()
+  [ "$DEST_BACKEND" = markdown ] || destination_flags=(--to-backend "$DEST_BACKEND")
+  exec tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST" --backend markdown ${destination_flags[@]+"${destination_flags[@]}"}
+)
+
+destination_key_section() {
+  fm_tasks_axi_store_section "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" "$1"
 }
 
 [ "$#" -eq 4 ] || usage
@@ -135,8 +135,12 @@ ACTUAL_BYTES=$(LC_ALL=C wc -c < "$DELIVERED" | tr -d ' ')
 [ "$ACTUAL_BYTES" -eq "$EXPECTED_BYTES" ] || die "delivered outbox length does not match its commitment"
 ACTUAL_HASH=$(sha256_file "$DELIVERED") || die "cannot hash delivered outbox"
 [ "$ACTUAL_HASH" = "$EXPECTED_HASH" ] || die "delivered outbox digest does not match its commitment"
-[ ! -L "$DEST" ] || die "destination backlog must not be a symlink"
-if [ -e "$DEST" ] && [ ! -f "$DEST" ]; then die "destination backlog is not a regular file"; fi
+DEST_BACKEND=$(fm_tasks_axi_store_address "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" backend) || die "cannot resolve destination backend"
+DEST=$(fm_tasks_axi_store_address "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" path) || die "cannot resolve destination store"
+if [ "$DEST_BACKEND" = markdown ]; then
+  [ ! -L "$DEST" ] || die "destination backlog must not be a symlink"
+  if [ -e "$DEST" ] && [ ! -f "$DEST" ]; then die "destination backlog is not a regular file"; fi
+fi
 
 KEYS=()
 while IFS= read -r key; do
@@ -149,16 +153,18 @@ done
 
 mkdir -p "$FM_HOME/data"
 DEST_CREATED=0
-if [ ! -f "$DEST" ]; then
-  printf '## In flight\n\n## Queued\n\n## Done\n' > "$DEST"
+if [ "$DEST_BACKEND" = markdown ] && [ ! -f "$DEST" ]; then
   DEST_CREATED=1
 fi
+fm_tasks_axi_store_init "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" \
+  || die "destination initialization failed; delivered outbox is preserved for retry"
 TO_MOVE=()
 ALREADY=()
 for key in "${KEYS[@]}"; do
-  if backlog_key_section "$DEST" "$key" >/dev/null 2>&1; then
+  if destination_key_section "$key" >/dev/null; then
     ALREADY+=("$key")
   else
+    [ "$?" -eq 1 ] || die "destination classification failed; delivered outbox is preserved for retry"
     TO_MOVE+=("$key")
   fi
 done
@@ -167,7 +173,10 @@ if [ "${#TO_MOVE[@]}" -gt 0 ]; then
   fm_tasks_axi_compatible || die "a compatible tasks-axi is required for atomic backlog receipt; run bin/fm-bootstrap.sh for the required version"
   if ! MOVE_OUT=$(run_move "${TO_MOVE[@]}" 2>&1); then
     recovered=0
-    for lock in "$DELIVERED.lock" "$DEST.lock"; do
+    LOCKS=("$DELIVERED.lock")
+    # A Beads database lock is not a tasks-axi markdown lock: never remove it.
+    [ "$DEST_BACKEND" != markdown ] || LOCKS+=("$DEST.lock")
+    for lock in "${LOCKS[@]}"; do
       if remove_dead_stale_lock "$lock"; then recovered=1; fi
     done
     if [ "$recovered" -ne 1 ] || ! MOVE_OUT=$(run_move "${TO_MOVE[@]}" 2>&1); then
@@ -178,8 +187,12 @@ if [ "${#TO_MOVE[@]}" -gt 0 ]; then
   fi
 fi
 
+if [ "$DEST_BACKEND" = beads ]; then
+  fm_tasks_axi_store_refresh "$FM_HOME" "$FM_HOME/data" "$DEST_CONFIG" \
+    || die "destination mirror refresh failed; delivered outbox is preserved for retry"
+fi
 for key in "${KEYS[@]}"; do
-  backlog_key_section "$DEST" "$key" >/dev/null 2>&1 \
+  destination_key_section "$key" >/dev/null \
     || die "receipt verification failed for $key; delivered outbox is preserved"
 done
 rm -f -- "$DELIVERED" || die "receipt succeeded but delivered scratch cleanup failed"

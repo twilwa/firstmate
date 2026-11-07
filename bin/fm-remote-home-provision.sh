@@ -28,6 +28,8 @@ MAX_MANIFEST_BYTES=1048576
 
 # shellcheck source=bin/fm-project-origin-lib.sh
 . "$SCRIPT_DIR/fm-project-origin-lib.sh"
+# shellcheck source=bin/fm-tasks-axi-lib.sh
+. "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
@@ -49,6 +51,7 @@ safe_id() { case "$1" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac; }
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-remote-provision.XXXXXX") || die "cannot create provisioning state"
 CREATED_HOME=0
 CREATED_BACKLOG=0
+BACKLOG_PATH=
 EXISTING_HOME=0
 PUBLISHED=0
 PROVISION_LOCK=
@@ -86,7 +89,7 @@ rollback() {
       restore_owned_file data/projects.md || true
       restore_owned_file .fm-secondmate-home || true
       restore_owned_file .fm-secondmate-parent || true
-      [ "$CREATED_BACKLOG" -eq 0 ] || rm -f -- "$FM_HOME/data/backlog.md"
+      [ "$CREATED_BACKLOG" -eq 0 ] || rm -f -- "$BACKLOG_PATH"
     fi
   fi
   release_provision_lock
@@ -209,13 +212,23 @@ for operational_dir in data state config projects; do
     mkdir "$operational_path" || die "cannot create remote operational directory: $operational_dir"
   fi
 done
-if [ -e "$FM_HOME/data/backlog.md" ] || [ -L "$FM_HOME/data/backlog.md" ]; then
-  [ -f "$FM_HOME/data/backlog.md" ] && [ ! -L "$FM_HOME/data/backlog.md" ] \
-    || die "remote backlog is not a safe regular file"
-else
-  printf '## In flight\n\n## Queued\n\n## Done\n' > "$FM_HOME/data/backlog.md"
-  CREATED_BACKLOG=1
+BACKLOG_CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
+BACKLOG_BACKEND=$(fm_tasks_axi_store_address "$FM_HOME" "$FM_HOME/data" "$BACKLOG_CONFIG" backend) \
+  || die "cannot resolve remote backlog backend"
+BACKLOG_PATH=$(fm_tasks_axi_store_address "$FM_HOME" "$FM_HOME/data" "$BACKLOG_CONFIG" path) \
+  || die "cannot resolve remote backlog store"
+if [ "$BACKLOG_BACKEND" = markdown ]; then
+  if [ -e "$BACKLOG_PATH" ] || [ -L "$BACKLOG_PATH" ]; then
+    [ -f "$BACKLOG_PATH" ] && [ ! -L "$BACKLOG_PATH" ] \
+      || die "remote backlog is not a safe regular file"
+  else
+    CREATED_BACKLOG=1
+  fi
 fi
+# Existing Beads stores are adapter-owned; rollback must never remove a database
+# or its mirror, even if initialization or a later provisioning step fails.
+fm_tasks_axi_store_init "$FM_HOME" "$FM_HOME/data" "$BACKLOG_CONFIG" \
+  || die "cannot initialize the remote backlog through its configured backend"
 
 PROJECT_REG="$TMP/projects.md"
 : > "$PROJECT_REG"
