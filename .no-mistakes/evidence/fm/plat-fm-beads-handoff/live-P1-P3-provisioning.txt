@@ -1,0 +1,49 @@
+### S-P1: provisioning converges an existing Beads(br) home through its configured backend
+--- /tmp/fm-lab-pv.aiQG4d/config/tasks.toml
+backend = "beads"
+[beads]
+path = "data/.beads"
+binary = "br"
+
+$ FM_HOME=/tmp/fm-lab-pv.aiQG4d fm-remote-home-provision.sh < manifest
+provisioned: /tmp/fm-lab-pv.aiQG4d projects=0
+[exit 0]
+
+$ br --db /tmp/fm-lab-pv.aiQG4d/data/.beads/beads.db list --all --json (ids/status/title)
+tasks-pv-existing-eye open | pre-existing beads item
+
+$ mirror unchanged?
+mirror bytes unchanged
+
+$ data/ contents
+.beads
+backlog.md
+charter.md
+done-archive.md
+projects.md
+
+### S-P2 (adversarial): Beads initialization failure aborts provisioning and leaves the existing database and mirror
+
+$ FM_HOME=/tmp/fm-lab-pv.aiQG4d fm-remote-home-provision.sh < manifest
+error: "EACCES: permission denied, lstat '/tmp/fm-lab-pv.aiQG4d/data/.beads/beads.db'"
+code: UNKNOWN
+error: cannot initialize the remote backlog through its configured backend
+[exit 1]
+
+$ br --db /tmp/fm-lab-pv.aiQG4d/data/.beads/beads.db list --all --json (ids/status/title)
+tasks-pv-existing-eye open | pre-existing beads item
+mirror bytes unchanged
+
+### S-P3: provisioning an existing default (markdown) home with no backlog creates the canonical scaffold (installed upstream tasks-axi)
+tasks-axi: ~/.local/bin/tasks-axi
+
+$ FM_HOME=/tmp/fm-lab-pv.Frsfso fm-remote-home-provision.sh < manifest
+provisioned: /tmp/fm-lab-pv.Frsfso projects=0
+[exit 0]
+
+$ data/backlog.md bytes
+0000000   #   #       I   n       f   l   i   g   h   t  \n  \n   #   #
+0000020       Q   u   e   u   e   d  \n  \n   #   #       D   o   n   e
+0000040  \n
+0000041
+scaffold matches the pre-change bytes

@@ -1,0 +1,34 @@
+
+### S-L4: default markdown -> markdown handoff (no selector) with the INSTALLED upstream tasks-axi 0.2.6
+tasks-axi: ~/.local/bin/tasks-axi
+pair: main=/tmp/fm-lab.QtNvYe sub=/tmp/fm-lab-sub.eeH5pD tmux=/tmp/fml.HTOgWs
+
+$ env FM_HOME=/tmp/fm-lab.QtNvYe TMUX_TMPDIR=/tmp/fml.HTOgWs {run-worktree}/bin/fm-backlog-handoff.sh design live-md2md
+handed off 1 item(s) to design: live-md2md
+  into /tmp/fm-lab-sub.eeH5pD/data/backlog.md
+[exit 0]
+
+$ main backlog
+## In flight
+
+## Queued
+## Done
+
+$ sub backlog
+## In flight
+
+## Queued
+- [ ] sub-existing - already here
+
+- [ ] live-md2md - plain markdown item (repo: alpha)
+  body one
+    deeper indent kept
+## Done
+inbox records: 1
+receiver pane:
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'design.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'design.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+
+$ env FM_HOME=/tmp/fm-lab.QtNvYe TMUX_TMPDIR=/tmp/fml.HTOgWs {run-worktree}/bin/fm-backlog-handoff.sh design live-md2md
+nothing to move: live-md2md already present in /tmp/fm-lab-sub.eeH5pD/data/backlog.md
+[exit 0]

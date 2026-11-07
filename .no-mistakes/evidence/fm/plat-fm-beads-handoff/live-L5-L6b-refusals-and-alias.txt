@@ -1,0 +1,88 @@
+### S-L5 (adversarial): In-flight and Done Beads source items are refused; source store unchanged
+pair: main=/tmp/fm-lab.H9XJLD sub=/tmp/fm-lab-sub.iCqs6a tmux=/tmp/fml.sUco4F
+--- /tmp/fm-lab.H9XJLD/config/tasks.toml
+backend = "beads"
+[beads]
+path = "data/.beads"
+binary = "br"
+--- /tmp/fm-lab-sub.iCqs6a/config/tasks.toml
+backend = "beads"
+[beads]
+path = "data/.beads"
+binary = "br"
+
+$ br --db /tmp/fm-lab.H9XJLD/data/.beads/beads.db list --all --json (ids/status/title)
+tasks-live-finished-b0z closed | already done
+tasks-live-flying-evv in_progress | already in flight
+
+$ env FM_HOME=/tmp/fm-lab.H9XJLD TMUX_TMPDIR=/tmp/fml.sUco4F {run-worktree}/bin/fm-backlog-handoff.sh design live-flying
+error: refusing to hand off in-flight backlog items: live-flying
+       nothing was moved.
+[exit 1]
+
+$ env FM_HOME=/tmp/fm-lab.H9XJLD TMUX_TMPDIR=/tmp/fml.sUco4F {run-worktree}/bin/fm-backlog-handoff.sh design live-finished
+error: refusing to hand off Done (historical) backlog items: live-finished; handoffs move in-scope queued work only - Done records stay with their home and are pruned/archived.
+       nothing was moved.
+[exit 1]
+
+$ br --db /tmp/fm-lab.H9XJLD/data/.beads/beads.db list --all --json (ids/status/title)
+tasks-live-finished-b0z closed | already done
+tasks-live-flying-evv in_progress | already in flight
+ls: cannot access '/tmp/fm-lab-sub.iCqs6a/data/.beads/beads.db': No such file or directory
+
+### S-L6b (adversarial): caller env aims the SOURCE at the destination's Beads store (alias) -> refused, nothing reported as moved
+
+$ env TASKS_AXI_BACKEND=beads TASKS_AXI_BEADS_PATH=/tmp/fm-lab-sub.iCqs6a/data/.beads TASKS_AXI_BEADS_BINARY=br FM_HOME=/tmp/fm-lab.H9XJLD TMUX_TMPDIR=/tmp/fml.sUco4F {run-worktree}/bin/fm-backlog-handoff.sh design live-alias live-alias2
+error: secondmate design resolves to this home's own beads store /tmp/fm-lab-sub.iCqs6a/data/.beads/beads.db; nothing was moved
+[exit 1]
+
+$ br --db /tmp/fm-lab.H9XJLD/data/.beads/beads.db list --all --json (ids/status/title)
+tasks-live-alias2-lr3 open | real main item
+tasks-live-finished-b0z closed | already done
+tasks-live-flying-evv in_progress | already in flight
+
+$ br --db /tmp/fm-lab-sub.iCqs6a/data/.beads/beads.db list --all --json (ids/status/title)
+br-live-alias-oag open | already in the sub store
+inbox records: 0
+
+### S-L4: default markdown -> markdown handoff (no selector) with the INSTALLED upstream tasks-axi 0.2.6
+tasks-axi: ~/.local/bin/tasks-axi
+pair: main=/tmp/fm-lab.cu7Bfc sub=/tmp/fm-lab-sub.2jEcJZ tmux=/tmp/fml.9cFmC6
+
+$ env FM_HOME=/tmp/fm-lab.cu7Bfc TMUX_TMPDIR=/tmp/fml.9cFmC6 {run-worktree}/bin/fm-backlog-handoff.sh design live-md2md
+mise ERROR No version is set for shim: node
+Set a global default version with one of the following:
+mise use -g node@26.13.0
+mise ERROR Version: 2026.11.0 linux-x64 (2026-11-03)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+error: tasks-axi mv failed; nothing was moved.
+[exit 1]
+
+$ main backlog
+## In flight
+
+## Queued
+- [ ] live-md2md - plain markdown item (repo: alpha)
+  body one
+    deeper indent kept
+
+## Done
+
+$ sub backlog
+## In flight
+
+## Queued
+- [ ] sub-existing - already here
+
+## Done
+inbox records: 0
+receiver pane:
+
+$ env FM_HOME=/tmp/fm-lab.cu7Bfc TMUX_TMPDIR=/tmp/fml.9cFmC6 {run-worktree}/bin/fm-backlog-handoff.sh design live-md2md
+mise ERROR No version is set for shim: node
+Set a global default version with one of the following:
+mise use -g node@26.13.0
+mise ERROR Version: 2026.11.0 linux-x64 (2026-11-03)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+error: tasks-axi mv failed; nothing was moved.
+[exit 1]

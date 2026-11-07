@@ -1,0 +1,6 @@
+base run1 exit=0 secs=7.48 load=6.83
+head run1 exit=0 secs=7.59 load=7.00
+base run2 exit=0 secs=7.44 load=6.84
+head run2 exit=0 secs=7.79 load=6.55
+base run3 exit=0 secs=7.58 load=6.42
+head run3 exit=0 secs=7.47 load=6.53
