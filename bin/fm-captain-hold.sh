@@ -615,7 +615,9 @@ verify_hold_durable() {  # <task-id>
 # prepending the configured prefix to the legacy id - a name-only guess, so it
 # is accepted solely for a row still held for the captain and only when it is
 # the single such row. A markdown home keeps its legacy rows verbatim, so its
-# exact-id resolution is unchanged.
+# exact-id resolution is unchanged. This is a legacy bd migration lookup;
+# other binaries leave identity mapping to tasks-axi instead of scanning a
+# native graph or guessing prefixed ids.
 
 CAPTAIN_MIGRATION_SCAN_LOADED=0
 CAPTAIN_MIGRATION_SCAN_JSON=
@@ -649,8 +651,49 @@ captain_beads_toml_entries() {  # <toml-file>
   captain_toml_section_entries "$1" beads 'prefix|path|binary'
 }
 
-captain_beads_setting() {  # <entries-output> <setting>
+# TASKS_AXI_BEADS_<SETTING> wins over the root .tasks.toml [beads] entry. An
+# env path is never resolved against a guessed base, so it must be absolute.
+captain_beads_setting() {  # <entries-output> <binary|path|prefix>
+  local var value
+  var=TASKS_AXI_BEADS_$(printf '%s' "$2" | tr '[:lower:]' '[:upper:]')
+  value=${!var:-}
+  if [ -n "$value" ]; then
+    if [ "$2" = path ] && [ "${value#/}" = "$value" ]; then
+      printf 'fm-captain-hold: %s must be an absolute path (got %s), so a migrated hold cannot be found\n' \
+        "$var" "$(sanitize_field "$value")" >&2
+      return 2
+    fi
+    printf '%s\n' "$value"
+    return 0
+  fi
   printf '%s\n' "$1" | sed -n "s/^$2 //p" | head -1
+}
+
+# Print the bd binary the legacy migration lookup runs, or return 1 when that
+# lookup does not apply. Binary precedence is environment, root .tasks.toml,
+# then user config; bd defaults only when the root .tasks.toml selects beads.
+# Relative configured paths use the backlog root. Env paths must be absolute
+# (a bare bd command remains a PATH lookup); return 2 for an invalid env path.
+captain_legacy_bd_binary() {  # <backlog-root> <beads-entries>
+  local root=$1 binary
+  binary=$(captain_beads_setting "$2" binary)
+  if [ -z "$binary" ] && [ -n "${HOME:-}" ]; then
+    binary=$(captain_beads_setting "$(captain_beads_toml_entries "$HOME/.tasks-axi/config.toml")" binary)
+  fi
+  if [ -z "$binary" ]; then
+    [ "$(fm_tasks_axi_backend_from_toml "$root/.tasks.toml" 2>/dev/null)" = beads ] || return 1
+    binary=bd
+  fi
+  [ "${binary##*/}" = bd ] || return 1
+  if [ "$binary" != bd ] && [ "${binary#/}" = "$binary" ]; then
+    if [ -n "${TASKS_AXI_BEADS_BINARY:-}" ]; then
+      printf 'fm-captain-hold: TASKS_AXI_BEADS_BINARY must be an absolute path or a bare command name (got %s), so a migrated hold cannot be found\n' \
+        "$(sanitize_field "$binary")" >&2
+      return 2
+    fi
+    binary="$root/$binary"
+  fi
+  printf '%s\n' "$binary"
 }
 
 # Read the configured beads graph's row listing for a migration-note scan.
@@ -659,24 +702,12 @@ captain_beads_setting() {  # <entries-output> <setting>
 # call site runs in, so it cannot persist across keys - bounded by a scout
 # report's handful of attested ids. Returns 0 when the listing loads, and 2
 # with the reason on stderr when the graph cannot be read.
-captain_migration_scan_load() {  # <resolved-data-dir>
-  local data=$1 root entries bd_bin bd_path backend
+captain_migration_scan_load() {  # <backlog-root> <beads-entries> <bd-binary>
+  local root=$1 bd_bin=$3 bd_path
   [ "$CAPTAIN_MIGRATION_SCAN_LOADED" = 1 ] && return 0
-  root=$(fm_backlog_root "$data") || {
-    printf 'fm-captain-hold: the configured data directory cannot be resolved for a migration scan: %s\n' "$FM_BACKLOG_TRANSITION_ERROR" >&2
-    return 2
-  }
-  backend=$(fm_tasks_axi_backend "$root") || return 2
-  if [ "$backend" != beads ]; then
-    CAPTAIN_MIGRATION_SCAN_LOADED=1
-    return 0
-  fi
-  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
-  bd_bin=$(captain_beads_setting "$entries" binary)
-  bd_path=$(captain_beads_setting "$entries" path)
-  bd_bin=${bd_bin:-bd}
+  bd_path=$(captain_beads_setting "$2" path) || return 2
   if [ -z "$bd_path" ]; then
-    printf 'fm-captain-hold: the beads backend carries no graph path in %s, so a migrated hold cannot be found\n' "$root/.tasks.toml" >&2
+    printf 'fm-captain-hold: the beads backend carries no graph path in TASKS_AXI_BEADS_PATH or %s, so a migrated hold cannot be found\n' "$root/.tasks.toml" >&2
     return 2
   fi
   # A relative [beads] path resolves against the backlog root, the same rule
@@ -693,14 +724,22 @@ captain_migration_scan_load() {  # <resolved-data-dir>
     printf 'fm-captain-hold: jq is required to scan the beads graph for a migrated hold\n' >&2
     return 2
   }
-  local bd_err
+  local bd_err status=0 secs=${FM_BACKLOG_ROW_TIMEOUT_SECS:-10}
+  case "$secs" in ''|*[!0-9]*) secs=10 ;; esac
+  [ "$secs" -gt 0 ] 2>/dev/null || secs=10
   bd_err=$(mktemp "${TMPDIR:-/tmp}/fm-captain-hold-bd.XXXXXX") || {
     printf 'fm-captain-hold: cannot stage the beads graph read diagnostics\n' >&2
     return 2
   }
-  if ! CAPTAIN_MIGRATION_SCAN_JSON=$(BEADS_DIR="$bd_path" "$bd_bin" list --all --json 2>"$bd_err"); then
-    printf 'fm-captain-hold: reading the beads graph at %s failed (%s), so a migrated hold cannot be found\n' \
-      "$bd_path" "$(sanitize_field "$(head -c 200 "$bd_err" | tr '\n' ' ')")" >&2
+  CAPTAIN_MIGRATION_SCAN_JSON=$(BEADS_DIR="$bd_path" fm_run_timed "$secs" "$bd_bin" list --all --json 2>"$bd_err") || status=$?
+  if [ "$status" -ne 0 ]; then
+    if fm_timed_out "$status"; then
+      printf 'fm-captain-hold: reading the beads graph at %s exceeded its %ss legacy graph read bound, so a migrated hold cannot be found\n' \
+        "$bd_path" "$secs" >&2
+    else
+      printf 'fm-captain-hold: reading the beads graph at %s failed (%s), so a migrated hold cannot be found\n' \
+        "$bd_path" "$(sanitize_field "$(head -c 200 "$bd_err" | tr '\n' ' ')")" >&2
+    fi
     rm -f "$bd_err"
     return 2
   fi
@@ -717,7 +756,7 @@ captain_migration_scan_load() {  # <resolved-data-dir>
 # guess, so it only runs when no marker line matches any identity and it accepts
 # a row solely when that row is itself still held for the captain.
 resolve_migrated_entry() {  # <origin-or-empty> <entry>
-  local origin=$1 entry=$2 data root entries prefix derived show backend
+  local origin=$1 entry=$2 data root entries prefix derived show backend binary
   local candidate candidate_matches prefixed matches count prefixed_matches prefixed_count
   data=$(fm_backlog_data_absolute "$DATA") || {
     printf 'fm-captain-hold: the migrated hold of %s cannot be resolved: %s\n' \
@@ -731,6 +770,10 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   }
   backend=$(fm_tasks_axi_backend "$root") || return 2
   [ "$backend" = beads ] || return 1
+  # BEADS_DIR, array JSON, and prefixed identities belong to the old bd
+  # migration. Only that binary (including its default) can use this lookup.
+  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
+  binary=$(captain_legacy_bd_binary "$root" "$entries") || return "$?"
   # Every identity this entry could have been migrated under: the raw entry,
   # and - for a pre-collapse channel key - the derived legacy identity its
   # origin would have minted, because fm-hold-migration recorded the DERIVED
@@ -742,7 +785,7 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
       CAPTAIN_MIGRATION_IDENTITIES="$CAPTAIN_MIGRATION_IDENTITIES $derived"
     fi
   fi
-  captain_migration_scan_load "$data" || return 2
+  captain_migration_scan_load "$root" "$entries" "$binary" || return 2
   matches=
   if [ -n "$CAPTAIN_MIGRATION_SCAN_JSON" ]; then
     for candidate in $CAPTAIN_MIGRATION_IDENTITIES; do
@@ -769,7 +812,6 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   # No marker line anywhere: a mechanical migration keeps the legacy id under
   # the configured prefix, but that name alone is evidence of nothing, so only
   # a row still held for the captain - and only one of them - is accepted.
-  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
   prefix=$(captain_beads_setting "$entries" prefix)
   [ -n "$prefix" ] || return 1
   prefixed_matches=
@@ -952,6 +994,8 @@ refuse_self_inventory() {
 
 # --- Done-archive reads on the markdown backend -----------------------------
 #
+# Closed rows on other backends remain readable through task_show; only
+# markdown retention needs this fallback after the configured row read misses.
 # Done retention moves closed markdown rows into the configured archive, which
 # tasks-axi show never reads, so an answered call a scout attested would read as
 # absent once retention ran. Only the completion gate consults the archive: an

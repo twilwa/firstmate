@@ -508,7 +508,8 @@ Three legacy inputs are resolved in place:
 
 ### Legacy ids on the Beads backend
 
-On the Beads backend, an attested legacy markdown id that resolves to no task is accepted through the row the markdown-to-beads hold migration produced.
+On a Beads home whose binary resolves to `bd`, an attested legacy markdown id that resolves to no task is accepted through the row the markdown-to-beads hold migration produced.
+Other Beads binaries, such as `br`, skip this lookup; [Captain holds on Beads](configuration.md#captain-holds-on-beads) owns the binary, path, and prefix resolution.
 That row is found by the authoritative evidence first: a row whose notes carry the marker line `migrated from data/backlog.md id <legacy id>`, either alone or followed by ` on <date>` as fm-hold-migration wrote it on 2026-09-04.
 
 Only when no row carries that marker line is the legacy id tried under the configured beads prefix.

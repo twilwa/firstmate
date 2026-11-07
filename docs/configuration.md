@@ -484,6 +484,18 @@ Captain rows have no Beads due semantics, so that create path waives a Beads `du
 
 Do not register a Beads `types.custom` `captain` type for this: captain is a hold kind, and the fleet Beads `due.required` policy for ordinary work stays in the federated beads config.
 
+`complete` and `verify` read closed calls through `tasks-axi show` on the configured backend and accept them only with a recorded, non-deferred answer.
+Only markdown uses the configured Done archive when the row is no longer in the active backlog.
+For legacy markdown-to-Beads migrations, the native graph scan and prefixed-id fallback apply only when the Beads binary resolves to `bd` or a path ending in `/bd`.
+Each lookup setting comes from its environment variable first, then the backlog root's `.tasks.toml` `[beads]` section: `TASKS_AXI_BEADS_BINARY` or `binary`, `TASKS_AXI_BEADS_PATH` or `path`, and `TASKS_AXI_BEADS_PREFIX` or `prefix`.
+For `binary`, `$HOME/.tasks-axi/config.toml` `[beads].binary` is the final configuration fallback after the environment and root file.
+When none sets the binary, it defaults to `bd` only if that root `.tasks.toml` itself selects `backend = "beads"`; a Beads backend selected elsewhere with no binary skips the lookup.
+`TASKS_AXI_BEADS_PATH` must be absolute; a relative `[beads].path` resolves against the backlog root.
+Relative configured binary paths also resolve against the backlog root; `TASKS_AXI_BEADS_BINARY` accepts a bare command name or an absolute path.
+The lookup refuses when the graph path is missing or an environment path is relative.
+A legacy scan timeout is a read failure, not evidence that the call is absent.
+Other binaries, including `br`, use tasks-axi's identity mapping instead: slug-mapped ids need no rehoming, and a missing row triggers neither a native scan nor a prefixed-id guess.
+
 ### Automatic dispatch and completion
 
 When the automatic transition gate applies, dispatch and completion each move the work item in the same run that creates or removes its task record.
@@ -509,7 +521,7 @@ Any other configured adapter is addressed by that root alone, because `--file` w
 The gate does not apply to persistent secondmates, manual-backend homes, or markdown homes without a backlog file.
 Those retain their existing persistent-agent, manual, or ad-hoc lifecycle behavior.
 Configured non-markdown adapters remain active without that file.
-Migrated-hold resolution on a beads home reads its graph path, binary, and prefix from the root `.tasks.toml` `[beads]` section only, and refuses (rc=2) when the beads backend is selected elsewhere (a `TASKS_AXI_BACKEND` override or user-level config) with no root-level `[beads]` section.
+The legacy `bd` migrated-hold lookup has additional configuration requirements described under [Captain holds on Beads](#captain-holds-on-beads).
 
 On an automatic-backend home, missing or incompatible `tasks-axi`, an unresolvable configured data directory, or one containing a control byte fails lifecycle work before mutation.
 An unreadable backend configuration can refuse lifecycle work before the no-backlog exemption applies; repair the configuration named in the diagnostic ([backend resolution contract](../bin/fm-tasks-axi-lib.sh)).
@@ -3407,7 +3419,7 @@ CMUX_SOCKET_PASSWORD=   # cmux-only: socket password fallback when config/cmux-s
 FM_SESSION_START_STATUS_TAIL=5   # state/*.status lines printed per task in the session-start digest; each line is capped by bin/fm-line-cap-lib.sh
 FM_SESSION_START_QUEUED_LIMIT=20   # plain queued backlog rows in the session-start digest; in-flight, held, and blocked rows are never bounded and done rows are never listed
 FM_SESSION_START_ENDPOINT_TIMEOUT=10   # seconds bounding each per-task endpoint liveness read in the session-start digest (bin/fm-session-start.sh); nonpositive or invalid values fall back to 10; a read that hits the bound or dies becomes that task's own `endpoint: error` line and the digest continues
-FM_BACKLOG_ROW_TIMEOUT_SECS=10   # seconds bounding each backlog row read (bin/fm-backlog-transition-lib.sh) and the tasks-axi replay of each captain-hold Done-archive row (bin/fm-captain-hold.sh, which stops with 124 on a replay timeout); the archive scan itself is not bounded; nonpositive or invalid values fall back to 10; the first backlog read bound hit latches the sweep so later reads return immediately, each still naming its own item
+FM_BACKLOG_ROW_TIMEOUT_SECS=10   # seconds bounding each backlog row read (bin/fm-backlog-transition-lib.sh) and the tasks-axi replay of each captain-hold Done-archive row (bin/fm-captain-hold.sh, which stops with 124 on a replay timeout), plus the legacy `bd` migrated-hold graph scan (which refuses with 2 on a timeout); the archive scan itself is not bounded; nonpositive or invalid values fall back to 10; the first backlog read bound hit latches the sweep so later reads return immediately, each still naming its own item
 FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
 FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (local steps only), or only (network steps only); see bin/fm-bootstrap.sh
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the deferred inactive-outcome scan plus network checks, including the lock waits the worker makes before them; hitting it prints an actionable NETWORK_CHECKS line, and a lock a live process still holds at the deadline ends the worker with a failed-rerun record (publication and delivery are bounded by FM_SESSION_START_TIMEOUT the same way)
