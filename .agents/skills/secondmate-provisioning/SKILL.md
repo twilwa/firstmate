@@ -228,7 +228,7 @@ There is no two-phase handoff journal and no tasks-axi release beyond the alread
 Bootstrap retries pending outboxes and wakes when mutation is authorized and emits `SECONDMATE_HANDOFF:` for any outboxes that remain.
 This delegated route remains required when `config/backlog-backend=manual`, which controls only routine firstmate backlog edits.
 It moves each queued item's whole block - the `- [ ] <id> ...` header plus every following two-or-more-space-indented body line and blank separator, up to the next item or column-0 section heading - byte-exact under the same section, treating an indented `## ...` line as body rather than a section boundary, so neither the header nor its body is duplicated or orphaned.
-It refuses a selected item with a single-space or tab-indented continuation rather than risk leaving content orphaned in the main backlog.
+When the main backlog is markdown, it refuses a selected item with a single-space or tab-indented continuation rather than risk leaving content orphaned there.
 It accepts in-scope `## Queued` entries only and refuses `## In flight` and historical `## Done` entries.
 Done records stay with their home for pruning or archiving.
 It is idempotent; an item already in the secondmate backlog is skipped.

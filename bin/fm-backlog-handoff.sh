@@ -38,9 +38,10 @@
 # links preserved. It refuses a move that would strand a dependency across the
 # two files; that error is surfaced verbatim and nothing is moved.
 #
-# Item bodies must use at least two leading spaces. The helper refuses a selected
-# item with a single-space or tab-indented continuation rather than risk leaving
-# it orphaned, because tasks-axi treats only two-or-more-space lines as body.
+# Markdown item bodies must use at least two leading spaces. For a markdown
+# source backlog, the helper refuses a selected item with a single-space or
+# tab-indented continuation rather than risk leaving it orphaned, because
+# tasks-axi treats only two-or-more-space lines as body.
 # The move needs compatible `tasks-axi` on PATH, including atomic multi-ID `mv`
 # support. Bootstrap requires a compatible build fleet-wide, so this works
 # everywhere; the `config/backlog-backend=manual` knob only governs firstmate's
