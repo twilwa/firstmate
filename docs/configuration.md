@@ -1667,8 +1667,8 @@ Each slot receives `port_count` advisory ports starting at `port_base + slot * p
 Other host services can still race for these ports, so reserve the interval operationally.
 
 The command's `--help` owns invocation, streaming, cancellation and exit-result mechanics.
-[`tests/fm-test-remote.test.sh`](../tests/fm-test-remote.test.sh) exercises configuration, primary-copy refusal, configured-only brief instructions, and the snapshot/transport protocol (the latter requires an existing isolated task copy).
-Its additional framed-worker regression checks orphan reconciliation and invalid-owner refusal when a local systemd user manager is reachable; it never launches an execution scope.
+[`tests/fm-test-remote.test.sh`](../tests/fm-test-remote.test.sh) exercises configuration, primary-copy refusal, configured-only brief instructions, and the snapshot/transport protocol against a disposable linked task copy.
+When a local systemd user manager is reachable, its additional framed-worker regressions run a command that hits the PIDs cap in a real transient scope and check that its own exit status survives, plus orphan reconciliation and invalid-owner refusal.
 Real-host delivery evidence belongs in private task data, never in this configuration reference.
 
 ## Home brief include (config/brief-include.md)

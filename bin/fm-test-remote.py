@@ -7,13 +7,15 @@ expansion is applied to COMMAND; pass bash -c explicitly when needed. Stdout and
 stderr stream live over one strict-host-key SSH connection. Ctrl-C/disconnect
 cancels the generated remote scope and removes its run directory.
 
-Normal test exit codes are preserved, including 255. Infrastructure outcomes
-also print a typed result: 124 queue timeout, 125 transport/unreported setup,
-126 setup/cleanup failure, 130 cancellation, 137 cap termination. A test may
-itself return one of these codes; the typed result disambiguates it. --timeout
-covers snapshot restoration and execution, not upload or the bounded queue;
-it may shorten but never raise the home's runtime cap. FM_SSH_BIN selects an
-explicit SSH executable for transport tests; it never changes PATH.
+Normal test exit codes are preserved, including 255, even when the command
+survived a memory OOM kill or PIDs-limit event; the typed result lists those
+events in cap_events. Infrastructure outcomes also print a typed result: 124
+queue timeout, 125 transport/unreported setup, 126 setup/cleanup failure, 130
+cancellation, 137 scope killed at a cap before reporting a command status. A
+test may itself return one of these codes; the typed result disambiguates it.
+--timeout covers snapshot restoration and execution, not upload or the bounded
+queue; it may shorten but never raise the home's runtime cap. FM_SSH_BIN
+selects an explicit SSH executable for transport tests; it never changes PATH.
 """
 import argparse
 import hashlib
@@ -46,13 +48,11 @@ code = sys.stdin.buffer.read(size)
 digest = hashlib.sha256(code).hexdigest()
 if digest != header['worker_sha256']: raise ValueError('worker checksum mismatch')
 worker = root / ('worker-v1-' + digest + '.py')
-try:
-    fd = os.open(worker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-except FileExistsError:
-    if worker.is_symlink() or hashlib.sha256(worker.read_bytes()).hexdigest() != digest:
-        raise ValueError('installed worker checksum mismatch')
-else:
-    with os.fdopen(fd, 'wb') as target: target.write(code)
+staged = root / ('worker-v1-' + digest + '.' + os.urandom(8).hex() + '.tmp')
+with os.fdopen(os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as target: target.write(code)
+os.replace(staged, worker)
+if worker.is_symlink() or hashlib.sha256(worker.read_bytes()).hexdigest() != digest:
+    raise ValueError('installed worker checksum mismatch')
 exec(compile(code, str(worker), 'exec'), {'__name__':'__main__', '__file__':str(worker), '_HEADER':header})
 '''
 

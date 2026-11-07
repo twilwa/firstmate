@@ -208,8 +208,8 @@ def execute(run):
     result = subprocess.run(request["command"], cwd=cwd, env=env, stdin=subprocess.DEVNULL)
     code = result.returncode if result.returncode >= 0 else 128 - result.returncode
     after = events()
-    limited = any(after[key] > before[key] for key in ("memory.events:oom_kill", "pids.events:max"))
-    (run / "result.json").write_text(json.dumps(dict(kind="cap-kill" if limited else "command", code=137 if limited else code)))
+    capped = [key for key in ("memory.events:oom_kill", "pids.events:max") if after[key] > before[key]]
+    (run / "result.json").write_text(json.dumps(dict(kind="command", code=code, cap_events=capped)))
     return 0
 
 
@@ -271,6 +271,7 @@ def supervise(header, root):
             for port in range(port_min, port_min + config["port_count"]):
                 sock = socket.socket()
                 sockets.append(sock)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(("127.0.0.1", port))
         finally:
             for sock in sockets:
@@ -291,7 +292,7 @@ def supervise(header, root):
         (run / "limits.json").write_text(json.dumps(dict(cpu=cpu, memory=memory, tasks=tasks)))
         properties = [f"CPUQuota={cpu}%", f"MemoryMax={memory}M", "MemorySwapMax=0",
                       f"TasksMax={tasks}", f"RuntimeMaxSec={timeout}"]
-        argv = ["systemd-run", "--user", "--scope", "--quiet", "--unit=" + scope_name(run)]
+        argv = ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit=" + scope_name(run)]
         for prop in properties:
             argv.extend(["-p", prop])
         argv.extend(["--", sys.executable, str(Path(__file__).resolve()), "--execute", str(run)])
@@ -369,7 +370,7 @@ def supervise(header, root):
 
 if __name__ == "__main__":
     if "_HEADER" in globals():
-        supervise(_HEADER, Path(sys.argv[1]))
+        supervise(_HEADER, Path(sys.argv[1]).resolve())
     elif len(sys.argv) == 3 and sys.argv[1] == "--execute":
         directory = Path(sys.argv[2])
         try:
