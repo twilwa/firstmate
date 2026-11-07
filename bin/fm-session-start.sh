@@ -580,7 +580,6 @@ print_backlog_tasks_axi_compact() {
 
 print_backlog_compact() {
   local path=$1 label=$2 addressing_status backend
-  subsection "$label"
   if ! fm_backlog_backend_manual "$CONFIG"; then
     fm_backlog_tasks_axi_addressing "$DATA"
     addressing_status=$?
@@ -589,10 +588,12 @@ print_backlog_compact() {
       # must never hide a selected adapter or a backend configuration error.
       if ! backend=$(fm_tasks_axi_backend_resolve "${DATA%/*}" 2>&1) ||
         [ "$addressing_status" -eq 2 ] || [ "$backend" != markdown ]; then
+        subsection backlog
         printf 'Backlog unavailable: %s; not an empty queue.\n' "${FM_BACKLOG_TRANSITION_ERROR:-$backend}"
         return
       fi
     elif [ "$FM_BACKLOG_AXI_BACKEND" != markdown ]; then
+      subsection backlog
       if fm_tasks_axi_backend_available "$CONFIG"; then
         print_backlog_tasks_axi_compact "$path"
       else
@@ -602,6 +603,7 @@ print_backlog_compact() {
       return
     fi
   fi
+  subsection "$label"
   if [ -f "$path" ]; then
     if [ -s "$path" ]; then
       if fm_tasks_axi_backend_available "$CONFIG"; then
@@ -957,7 +959,8 @@ Go to a source directly only when:
   - an individual full status log is needed for older wake-event history, or a
     status line was capped and its tail matters (each task's full log path is
     printed with its tail),
-  - a full task body is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
+  - a full task body is needed (bin/fm-tasks-axi.sh show <id> --full, or
+    data/backlog.md on a markdown home),
   - the backlog listing disclosed omitted queued items and this turn needs them,
   - the NETWORK CHECKS section reported its checks still IN PROGRESS and this
     turn needs their verdict (bin/fm-startup-network.sh report),

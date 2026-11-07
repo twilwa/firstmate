@@ -1540,10 +1540,7 @@ fi
 detect_beads_rust() (
   local root backend binary probe version out tested=0.7.6
   root=${DATA%/*}
-  backend=$(fm_tasks_axi_backend_resolve "$root" 2>&1) || {
-    printf 'BACKLOG_RECONCILE: %s\n' "$backend"
-    return
-  }
+  backend=$(fm_tasks_axi_backend_resolve "$root" 2>/dev/null) || return 0
   [ "$backend" = beads ] || return 0
   fm_tasks_axi_export_settings "$root" "$backend" || return
   binary=${TASKS_AXI_BEADS_BINARY:-}
