@@ -1368,6 +1368,103 @@ EOF
   pass "a cwd .tasks.toml for another backend does not redirect a markdown handoff"
 }
 
+test_configured_backend_handoffs() {
+  local pair home sub fakebin out source_backend destination_backend source_path source_store
+  for pair in markdown:beads beads:markdown beads:beads; do
+    source_backend=${pair%:*}; destination_backend=${pair#*:}
+    home="$TMP_ROOT/backend-$source_backend-$destination_backend-main"
+    sub="$TMP_ROOT/backend-$source_backend-$destination_backend-sub"
+    setup_homes "$home" "$sub"
+    mkdir -p "$home/config" "$sub/config" "$home/data" "$sub/data"
+    source_path=data/source.db
+    source_store="$home/$source_path"
+    if [ "$pair" = beads:beads ]; then
+      source_path=data/.beads
+      source_store="$home/$source_path/beads.db"
+      mkdir -p "$home/$source_path"
+    fi
+    printf 'backend = "%s"\n[beads]\npath = "%s"\nbinary = "br"\n' "$source_backend" "$source_path" > "$home/config/tasks.toml"
+    printf 'backend = "%s"\n[beads]\npath = "data/destination.db"\nbinary = "br"\n' "$destination_backend" > "$sub/config/tasks.toml"
+    printf '## Queued\n- [ ] backend-item - complete item (repo: alpha)\n  body survives\n\n## Done\n' > "$home/data/backlog.md"
+    if [ "$source_backend" = beads ]; then
+      printf '{"backend-item":{"state":"queued","title":"complete item (repo: alpha)","body":["  body survives"]}}\n' > "$source_store"
+      printf 'READ ONLY MIRROR: intentionally missing backend-item\n' > "$home/data/backlog.md"
+    fi
+    if [ "$destination_backend" = beads ]; then
+      printf 'READ ONLY MIRROR: not a backlog\n' > "$sub/data/backlog.md"
+    fi
+    fakebin="$home/fakebin"; mkdir -p "$fakebin"
+    printf '#!%s\n' "$(type -P python3)" > "$fakebin/tasks-axi"
+    printf 'exec(compile(open(%s).read(), %s, "exec"))\n' "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" >> "$fakebin/tasks-axi"
+    chmod +x "$fakebin/tasks-axi"
+    out=$(FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design backend-item 2>&1) \
+      || fail "$pair configured handoff failed: $out"
+    if [ "$destination_backend" = beads ]; then
+      assert_grep 'backend-item' "$sub/data/destination.db" "$pair missed configured destination store"
+      assert_grep 'READ ONLY MIRROR: not a backlog' "$sub/data/backlog.md" "$pair wrote the mirror"
+    else
+      assert_grep 'body survives' "$sub/data/backlog.md" "$pair lost item body"
+    fi
+    if [ "$source_backend" = beads ]; then
+      assert_no_grep 'backend-item' "$source_store" "$pair left source item behind"
+      assert_grep 'READ ONLY MIRROR: intentionally missing backend-item' "$home/data/backlog.md" "$pair wrote source mirror"
+    else
+      assert_no_grep 'backend-item' "$home/data/backlog.md" "$pair left source item behind"
+    fi
+    out=$(FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design backend-item 2>&1) \
+      || fail "$pair idempotent retry failed: $out"
+  done
+  # The final pair is beads→beads: authoritative in-flight/Done classification
+  # and backend failures must refuse, not fall back to the stale mirror.
+  local state
+  for state in in_flight 'done'; do
+    printf '{"refused":{"state":"%s","title":"must stay","body":[]}}\n' "$state" > "$source_store"
+    cp "$source_store" "$home/source-before"
+    if FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+      "$ROOT/bin/fm-backlog-handoff.sh" design refused > "$home/refused.out" 2>&1; then
+      fail "Beads $state item was handed off"
+    fi
+    cmp -s "$home/source-before" "$source_store" || fail "refused Beads $state source changed"
+  done
+  if FM_TEST_AXI_FAIL_COMMAND=show FM_TEST_AXI_LOG="$home/axi.log" PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design backend-item > "$home/unavailable.out" 2>&1; then
+    fail "unavailable Beads store was treated as an absent item"
+  fi
+  assert_grep 'fixture backend unavailable' "$home/unavailable.out" "backend failure diagnostic was concealed"
+  pass "configured mixed and beads handoffs preserve stores, mirrors, retries and refusal semantics"
+}
+
+test_configured_backend_handoff_refresh_retry() {
+  local home="$TMP_ROOT/refresh-retry-main" sub="$TMP_ROOT/refresh-retry-sub" fakebin out
+  setup_homes "$home" "$sub"
+  mkdir -p "$home/config" "$sub/config"
+  printf 'backend = "markdown"\n' > "$home/config/tasks.toml"
+  printf 'backend = "beads"\n[beads]\npath = "data/destination.db"\n' > "$sub/config/tasks.toml"
+  printf '[beads]\nmirror = "%s/data/backlog.md"\n' "$sub" > "$sub/.tasks.toml"
+  printf '## Queued\n- [ ] refresh-item - retry mirror refresh\n  body survives\n\n## Done\n' > "$home/data/backlog.md"
+  fakebin="$home/fakebin"; mkdir -p "$fakebin"
+  printf '#!%s\n' "$(type -P python3)" > "$fakebin/tasks-axi"
+  printf 'exec(compile(open(%s).read(), %s, "exec"))\n' "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" "\"$ROOT/tests/fixtures/tasks-axi-backlog.py\"" >> "$fakebin/tasks-axi"
+  chmod +x "$fakebin/tasks-axi"
+  if FM_TEST_AXI_FAIL_COMMAND=render FM_TEST_AXI_FAIL_KEY=refresh-item PATH="$fakebin:$PATH" FM_HOME="$home" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design refresh-item > "$home/refresh.out" 2>&1; then
+    fail "post-move mirror failure was reported as success"
+  fi
+  assert_grep 'fixture backend unavailable' "$home/refresh.out" "post-move refresh failure was concealed"
+  assert_no_grep 'refresh-item' "$home/data/backlog.md" "post-move refresh failure restored a duplicate source"
+  assert_grep 'refresh-item' "$sub/data/destination.db" "post-move refresh failure lost the authoritative destination"
+  assert_no_grep 'refresh-item' "$sub/data/backlog.md" "fixture did not leave a stale mirror"
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design refresh-item 2>&1) \
+    || fail "mirror refresh retry failed: $out"
+  assert_contains "$out" 'already present' "mirror retry did not reuse the completed move"
+  assert_grep 'refresh-item' "$sub/data/backlog.md" "retry skipped the destination mirror refresh"
+  assert_grep 'body survives' "$sub/data/backlog.md" "refreshed destination mirror lost the body"
+  [ "$(inbox_record_count "$home/state" design)" -eq 1 ] || fail "mirror retry did not wake the receiver exactly once"
+  pass "a post-move Beads mirror failure refreshes on retry before waking the receiver"
+}
+
+test_configured_backend_handoffs
+test_configured_backend_handoff_refresh_retry
 test_handoff_wakes_live_local_receiver
 test_cwd_tasks_toml_does_not_redirect_handoff
 test_failed_wake_retries_when_the_item_is_already_present

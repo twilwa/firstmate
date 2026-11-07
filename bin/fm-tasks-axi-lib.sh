@@ -340,6 +340,135 @@ fm_tasks_axi_export_settings() {  # <tasks-axi-working-directory> <resolved-back
   [ "$backend" = markdown ] || unset TASKS_AXI_FILE
 }
 
+# Resolve one home's store inside a subshell: private exported settings must not
+# leak from the source into the destination (or vice versa). Markdown retains
+# Firstmate's explicit data/backlog.md address, including data overrides.
+fm_tasks_axi_store_resolve() { # <home> <data> <config>
+  FM_HOME=$1
+  FM_CONFIG_OVERRIDE=$3
+  export FM_HOME FM_CONFIG_OVERRIDE
+  FM_TASKS_AXI_STORE_BACKEND=$(fm_tasks_axi_backend_resolve "$FM_HOME") || return 2
+  fm_tasks_axi_export_settings "$FM_HOME" "$FM_TASKS_AXI_STORE_BACKEND" || return 2
+  case "$FM_TASKS_AXI_STORE_BACKEND" in
+    markdown) FM_TASKS_AXI_STORE_PATH="$2/backlog.md" ;;
+    beads)
+      local path=${TASKS_AXI_BEADS_PATH:-} config status
+      if [ -z "$path" ]; then
+        for config in "$FM_HOME/.tasks.toml" "${HOME:-}/.tasks-axi/config.toml"; do
+          [ -f "$config" ] || continue
+          status=0
+          path=$(fm_tasks_axi_home_string "$config" beads path) || status=$?
+          [ "$status" -ne 2 ] || return 2
+          [ -z "$path" ] || break
+        done
+      fi
+      if [ -z "$path" ]; then
+        printf 'tasks-axi beads.path is required for home %s\n' "$FM_HOME" >&2
+        return 2
+      fi
+      case "$path" in /*) ;; *) path="$FM_HOME/$path" ;; esac
+      FM_TASKS_AXI_STORE_PATH=$path
+      ;;
+    *) printf 'unsupported backlog backend: %s\n' "$FM_TASKS_AXI_STORE_BACKEND" >&2; return 2 ;;
+  esac
+}
+
+fm_tasks_axi_store_address() ( # <home> <data> <config> <backend|path>
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
+  case "$4" in
+    backend) printf '%s\n' "$FM_TASKS_AXI_STORE_BACKEND" ;;
+    path) printf '%s\n' "$FM_TASKS_AXI_STORE_PATH" ;;
+    *) return 2 ;;
+  esac
+)
+
+fm_tasks_axi_store_run() ( # <home> <data> <config> <command> [args...]
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
+  shift 3
+  local command=$1
+  shift
+  cd "$FM_HOME" || return 2
+  exec tasks-axi "$command" --file "$FM_TASKS_AXI_STORE_PATH" --backend "$FM_TASKS_AXI_STORE_BACKEND" "$@"
+)
+
+fm_tasks_axi_markdown_init() ( # <resolved-markdown-path>
+  # Preserve the historical home scaffold, not tasks-axi's # Backlog title.
+  [ ! -L "$1" ] || return 2
+  if [ -e "$1" ]; then
+    [ -f "$1" ]
+  else
+    mkdir -p "$(dirname "$1")" || return 2
+    printf '## In flight\n\n## Queued\n\n## Done\n' > "$1"
+  fi
+)
+
+fm_tasks_axi_store_init() ( # <home> <data> <config>
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
+  if [ "$FM_TASKS_AXI_STORE_BACKEND" = markdown ]; then
+    fm_tasks_axi_markdown_init "$FM_TASKS_AXI_STORE_PATH"
+  else
+    # A read initializes a missing explicit br database. Unlike render, list is
+    # supported even when the home has not configured a markdown mirror.
+    local output
+    if ! output=$(fm_tasks_axi_store_run "$@" list 2>&1); then
+      printf '%s\n' "$output" >&2
+      return 2
+    fi
+    fm_tasks_axi_store_refresh "$@"
+  fi
+)
+
+fm_tasks_axi_store_refresh() ( # <home> <data> <config>
+  local output
+  if output=$(fm_tasks_axi_store_run "$@" render 2>&1); then return 0; fi
+  # render is optional only for a Beads store without a configured mirror.
+  # Do not conceal failed database access, malformed config or other failures.
+  if printf '%s\n' "$output" | grep -F 'render without beads.mirror' >/dev/null &&
+    printf '%s\n' "$output" | grep -Eq '^ *code: UNSUPPORTED$'; then
+    return 0
+  fi
+  printf '%s\n' "$output" >&2
+  return 2
+)
+
+fm_tasks_axi_markdown_section() { # <file> <key>
+  [ -f "$1" ] || return 1
+  awk -v key="$2" '
+    BEGIN { section = "## Queued" }
+    /^##[[:space:]]+/ { section=$0; sub(/^##[[:space:]]+/, "## ", section); sub(/[[:space:]]+$/, "", section); next }
+    /^- \[[ x]\] / {
+      rest=$0; sub(/^- \[[ x]\] +/, "", rest); id=rest; sub(/[ \t].*/, "", id)
+      if (id == key) { print section; found=1; exit }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$1"
+}
+
+# Missing keys return 1; configuration/backend errors return 2 and must not be
+# mistaken for an absent item during whole-request classification.
+fm_tasks_axi_store_section() ( # <home> <data> <config> <key>
+  fm_tasks_axi_store_resolve "$1" "$2" "$3" || return 2
+  if [ "$FM_TASKS_AXI_STORE_BACKEND" = markdown ]; then
+    fm_tasks_axi_markdown_section "$FM_TASKS_AXI_STORE_PATH" "$4"
+    return $?
+  fi
+  local database=$FM_TASKS_AXI_STORE_PATH out state
+  case "$database" in *.db) ;; *) database="$database/beads.db" ;; esac
+  [ -e "$database" ] || return 1
+  if ! out=$(fm_tasks_axi_store_run "$1" "$2" "$3" show "$4" 2>&1); then
+    if printf '%s\n' "$out" | grep -Eq '^ *code: NOT_FOUND$'; then return 1; fi
+    printf '%s\n' "$out" >&2
+    return 2
+  fi
+  state=$(printf '%s\n' "$out" | awk '/^  state: / { sub(/^  state: */, ""); print; exit }')
+  case "$state" in
+    queued) printf '## Queued\n' ;;
+    in_flight) printf '## In flight\n' ;;
+    done) printf '## Done\n' ;;
+    *) printf 'tasks-axi show %s returned invalid state: %s\n' "$4" "$state" >&2; return 2 ;;
+  esac
+)
+
 fm_backlog_backend_value() {
   local config_dir=$1 backend_file value
   backend_file="$config_dir/backlog-backend"
