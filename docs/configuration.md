@@ -488,9 +488,12 @@ Do not register a Beads `types.custom` `captain` type for this: captain is a hol
 Only markdown uses the configured Done archive when the row is no longer in the active backlog.
 For legacy markdown-to-Beads migrations, the native graph scan and prefixed-id fallback apply only when the Beads binary resolves to `bd` or a path ending in `/bd`.
 Each lookup setting comes from its environment variable first, then the backlog root's `.tasks.toml` `[beads]` section: `TASKS_AXI_BEADS_BINARY` or `binary`, `TASKS_AXI_BEADS_PATH` or `path`, and `TASKS_AXI_BEADS_PREFIX` or `prefix`.
-When neither sets the binary, it defaults to `bd` only if that root `.tasks.toml` itself selects `backend = "beads"`; a Beads backend selected elsewhere with no binary skips the lookup.
+For `binary`, `$HOME/.tasks-axi/config.toml` `[beads].binary` is the final configuration fallback after the environment and root file.
+When none sets the binary, it defaults to `bd` only if that root `.tasks.toml` itself selects `backend = "beads"`; a Beads backend selected elsewhere with no binary skips the lookup.
 `TASKS_AXI_BEADS_PATH` must be absolute; a relative `[beads].path` resolves against the backlog root.
-The lookup refuses when the graph path is missing or `TASKS_AXI_BEADS_PATH` is relative.
+Relative configured binary paths also resolve against the backlog root; `TASKS_AXI_BEADS_BINARY` accepts a bare command name or an absolute path.
+The lookup refuses when the graph path is missing or an environment path is relative.
+A legacy scan timeout is a read failure, not evidence that the call is absent.
 Other binaries, including `br`, use tasks-axi's identity mapping instead: slug-mapped ids need no rehoming, and a missing row triggers neither a native scan nor a prefixed-id guess.
 
 ### Automatic dispatch and completion

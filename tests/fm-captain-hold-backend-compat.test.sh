@@ -12,7 +12,7 @@ HOLD="$ROOT/bin/fm-captain-hold.sh"
 
 make_compat_home() {  # <name> <backend> [binary]
   local home="$TMP_ROOT/$1" backend=$2 binary=${3:-br}
-  mkdir -p "$home/data" "$home/state" "$home/config" "$home/fakebin" "$home/rows" "$home/graph"
+  mkdir -p "$home/data" "$home/state" "$home/config" "$home/fakebin" "$home/rows" "$home/graph" "$home/user/.tasks-axi"
   printf 'backend = "%s"\n' "$backend" > "$home/.tasks.toml"
   if [ "$backend" = beads ]; then
     printf '\n[beads]\npath = "graph"\nprefix = "fm"\n' >> "$home/.tasks.toml"
@@ -79,6 +79,7 @@ SH
 [ "${BEADS_DIR:-}" = "$FM_TEST_COMPAT_HOME/graph" ] || exit 95
 [ "$*" = 'list --all --json' ] || exit 96
 printf 'bd %s\n' "$*" >> "$FM_TEST_COMPAT_HOME/native-calls"
+[ ! -e "$FM_TEST_COMPAT_HOME/bd-sleep" ] || sleep 4
 cat "$FM_TEST_COMPAT_HOME/graph.json"
 SH
   chmod +x "$home/fakebin/tasks-axi" "$home/fakebin/br" "$home/fakebin/bd"
@@ -103,7 +104,7 @@ compat_row() {  # <home> <lookup-id> <shown-id> <answered|unanswered|deferred|he
 run_compat() {  # <home> <command args...>
   local home=$1
   shift
-  PATH="$home/fakebin:$BASE_PATH" FM_TEST_COMPAT_HOME="$home" \
+  HOME="$home/user" PATH="$home/fakebin:$BASE_PATH" FM_TEST_COMPAT_HOME="$home" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$home/state" \
     FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
     bash "$HOLD" "$@"
@@ -177,7 +178,9 @@ test_env_selected_non_bd_skips_migration_lookup() {
     set -- TASKS_AXI_BEADS_BINARY=br
     if [ "$variant" = env-backend-no-binary ]; then
       # The root file keeps markdown; beads is selected only by the override.
-      sed -i 's/^backend = "beads"$/backend = "markdown"/' "$home/.tasks.toml"
+      sed 's/^backend = "beads"$/backend = "markdown"/' "$home/.tasks.toml" > "$home/.tasks.toml.tmp" \
+        || fail "cannot rewrite the markdown root config"
+      mv "$home/.tasks.toml.tmp" "$home/.tasks.toml" || fail "cannot stage the markdown root config"
       set -- TASKS_AXI_BACKEND=beads
     fi
     status=0
@@ -195,6 +198,42 @@ test_env_selected_non_bd_skips_migration_lookup() {
   pass "a non-bd binary or beads backend selected outside the root config skips the legacy migration lookup"
 }
 
+test_user_config_binary_precedence() {
+  local variant home binary override out status
+  for variant in user-br root-bd env-bd; do
+    binary=default-bd
+    override=
+    [ "$variant" != root-bd ] || binary=bd
+    [ "$variant" != env-bd ] || override=bd
+    home=$(make_compat_home "$variant" beads "$binary")
+    printf '[beads]\nbinary = "br"\n' > "$home/user/.tasks-axi/config.toml"
+    compat_row "$home" fm-missing fm-missing held
+    printf '%s\n' '[{"id":"fm-missing","notes":"migrated from data/backlog.md id missing"}]' > "$home/graph.json"
+    status=0
+    out=$(TASKS_AXI_BEADS_BINARY="$override" run_compat "$home" complete origin missing 2>&1) || status=$?
+    if [ "$variant" = user-br ]; then
+      [ "$status" = 1 ] || fail "user-configured br completion returned $status: $out"
+      assert_contains "$out" 'no captain-held task' 'user-configured br must report a clean absence'
+      [ ! -e "$home/native-calls" ] || fail "user-configured br completion attempted a native scan"
+      ! grep -q '^decisions_reviewed=1$' "$home/state/origin.meta" || fail "user-configured br was attested"
+      attest_compat "$home" missing
+    else
+      [ "$status" = 0 ] || fail "$variant did not override the user binary: $out"
+    fi
+    status=0
+    out=$(TASKS_AXI_BEADS_BINARY="$override" run_compat "$home" verify origin 2>&1) || status=$?
+    if [ "$variant" = user-br ]; then
+      [ "$status" = 1 ] || fail "user-configured br verification returned $status: $out"
+      [ ! -e "$home/native-calls" ] || fail "user-configured br verification attempted a native scan"
+      ! grep -q 'show fm-missing' "$home/calls" || fail "user-configured br guessed a prefixed identity"
+    else
+      [ "$status" = 0 ] || fail "$variant verification ignored the overriding binary: $out"
+      grep -q '^bd list --all --json$' "$home/native-calls" || fail "$variant did not use its bd override"
+    fi
+  done
+  pass "the user-configured binary is honored below environment and root settings"
+}
+
 test_bd_migration_lookup_is_preserved() {
   local binary home out
   for binary in bd absolute-bd default-bd; do
@@ -206,6 +245,44 @@ test_bd_migration_lookup_is_preserved() {
     grep -q '^bd list --all --json$' "$home/native-calls" || fail "$binary did not read its configured graph"
   done
   pass "legacy bd migration markers still resolve with default, named, and absolute bd binaries"
+}
+
+test_bd_binary_paths_have_unambiguous_bases() {
+  local variant home binary override cwd out status
+  for variant in root-relative env-absolute env-relative; do
+    binary=default-bd
+    [ "$variant" != root-relative ] || binary=./fakebin/bd
+    home=$(make_compat_home "binary-$variant" beads "$binary")
+    override=
+    cwd=$TMP_ROOT
+    case "$variant" in
+      env-absolute) override="$home/fakebin/bd" ;;
+      env-relative) override=./fakebin/bd; cwd=$home ;;
+    esac
+    compat_row "$home" fm-missing fm-missing held
+    printf '%s\n' '[{"id":"fm-missing","notes":"migrated from data/backlog.md id missing"}]' > "$home/graph.json"
+    status=0
+    out=$( (cd "$cwd" && TASKS_AXI_BEADS_BINARY="$override" run_compat "$home" complete origin missing) 2>&1) || status=$?
+    if [ "$variant" = env-relative ]; then
+      [ "$status" != 0 ] || fail "a relative env binary was accepted: $out"
+      assert_contains "$out" 'TASKS_AXI_BEADS_BINARY must be an absolute path' 'the relative env binary must be refused by name'
+      ! grep -q '^decisions_reviewed=1$' "$home/state/origin.meta" || fail "a relative env binary was attested"
+      attest_compat "$home" missing
+    else
+      [ "$status" = 0 ] || fail "$variant completion from another cwd failed: $out"
+    fi
+    status=0
+    out=$( (cd "$cwd" && TASKS_AXI_BEADS_BINARY="$override" run_compat "$home" verify origin) 2>&1) || status=$?
+    if [ "$variant" = env-relative ]; then
+      [ "$status" != 0 ] || fail "verification accepted a relative env binary: $out"
+      assert_contains "$out" 'TASKS_AXI_BEADS_BINARY must be an absolute path' 'verification must name the relative env binary'
+      [ ! -e "$home/native-calls" ] || fail "a relative env binary was executed"
+    else
+      [ "$status" = 0 ] || fail "$variant verification from another cwd failed: $out"
+      grep -q '^bd list --all --json$' "$home/native-calls" || fail "$variant did not execute its addressed binary"
+    fi
+  done
+  pass "root-relative bd binaries use the backlog root, while env binaries are bare names or absolute paths"
 }
 
 test_env_addressed_bd_lookup_uses_env_path_and_prefix() {
@@ -247,6 +324,27 @@ test_markdown_done_archive_is_preserved() {
   pass "markdown completion and verification still replay their configured Done archive"
 }
 
+test_bd_migration_scan_timeout_is_not_absence() {
+  local home out status
+  home=$(make_compat_home native-timeout beads bd)
+  : > "$home/bd-sleep"
+  compat_row "$home" fm-missing fm-missing held
+  printf '%s\n' '[{"id":"fm-missing","notes":"migrated from data/backlog.md id missing"}]' > "$home/graph.json"
+  status=0
+  out=$(FM_BACKLOG_ROW_TIMEOUT_SECS=1 run_compat "$home" complete origin missing 2>&1) || status=$?
+  [ "$status" != 0 ] || fail "completion accepted an unbounded legacy graph read: $out"
+  assert_contains "$out" 'exceeded its 1s legacy graph read bound' 'completion must distinguish the legacy timeout from absence'
+  ! grep -q '^decisions_reviewed=1$' "$home/state/origin.meta" || fail "timed-out legacy scan was attested"
+  attest_compat "$home" missing
+  status=0
+  out=$(FM_BACKLOG_ROW_TIMEOUT_SECS=1 run_compat "$home" verify origin 2>&1) || status=$?
+  [ "$status" != 0 ] || fail "verification accepted an unbounded legacy graph read: $out"
+  assert_contains "$out" 'exceeded its 1s legacy graph read bound' 'verification must distinguish the legacy timeout from absence'
+  ! grep -q 'show fm-missing' "$home/calls" || fail "a timed-out legacy scan tried a prefixed identity"
+  ! grep -q -- '--file' "$home/calls" || fail "a timed-out legacy scan tried a markdown archive"
+  pass "a sleeping legacy bd scan stops at its read bound without attestation or fallback"
+}
+
 test_show_timeout_is_not_absence() {
   local home out status
   home=$(make_compat_home timeout beads)
@@ -272,7 +370,10 @@ fm_test_run \
   test_closed_rows_require_a_non_deferred_answer \
   test_slug_backends_do_not_rehome_missing_calls \
   test_env_selected_non_bd_skips_migration_lookup \
+  test_user_config_binary_precedence \
   test_bd_migration_lookup_is_preserved \
+  test_bd_binary_paths_have_unambiguous_bases \
   test_env_addressed_bd_lookup_uses_env_path_and_prefix \
   test_markdown_done_archive_is_preserved \
+  test_bd_migration_scan_timeout_is_not_absence \
   test_show_timeout_is_not_absence
