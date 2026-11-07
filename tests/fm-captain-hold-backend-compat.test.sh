@@ -168,6 +168,33 @@ test_slug_backends_do_not_rehome_missing_calls() {
   pass "slug-mapped backends leave missing calls missing without a native scan or prefixed-id guess"
 }
 
+test_env_selected_non_bd_skips_migration_lookup() {
+  local variant home out status
+  for variant in env-binary-br env-backend-no-binary; do
+    home=$(make_compat_home "env-$variant" beads default-bd)
+    compat_row "$home" fm-missing fm-missing held
+    printf '%s\n' '[{"id":"fm-missing","notes":"migrated from data/backlog.md id missing"}]' > "$home/graph.json"
+    set -- TASKS_AXI_BEADS_BINARY=br
+    if [ "$variant" = env-backend-no-binary ]; then
+      # The root file keeps markdown; beads is selected only by the override.
+      sed -i 's/^backend = "beads"$/backend = "markdown"/' "$home/.tasks.toml"
+      set -- TASKS_AXI_BACKEND=beads
+    fi
+    status=0
+    out=$(export "$@"; run_compat "$home" complete origin missing 2>&1) || status=$?
+    [ ! -e "$home/native-calls" ] || fail "$variant completion attempted a native migration scan: $out"
+    [ "$status" = 1 ] || fail "$variant missing completion returned $status: $out"
+    assert_contains "$out" 'no captain-held task' "$variant completion must report a clean absence"
+    attest_compat "$home" missing
+    status=0
+    out=$(export "$@"; run_compat "$home" verify origin 2>&1) || status=$?
+    [ ! -e "$home/native-calls" ] || fail "$variant verification attempted a native migration scan: $out"
+    [ "$status" = 1 ] || fail "$variant missing verification returned $status: $out"
+    ! grep -q 'show fm-missing' "$home/calls" || fail "$variant guessed a prefixed identity"
+  done
+  pass "a non-bd binary or beads backend selected outside the root config skips the legacy migration lookup"
+}
+
 test_bd_migration_lookup_is_preserved() {
   local binary home out
   for binary in bd absolute-bd default-bd; do
@@ -219,6 +246,7 @@ fm_test_run \
   test_closed_answer_uses_show_on_nonmarkdown_backends \
   test_closed_rows_require_a_non_deferred_answer \
   test_slug_backends_do_not_rehome_missing_calls \
+  test_env_selected_non_bd_skips_migration_lookup \
   test_bd_migration_lookup_is_preserved \
   test_markdown_done_archive_is_preserved \
   test_show_timeout_is_not_absence

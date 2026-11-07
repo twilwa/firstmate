@@ -655,28 +655,30 @@ captain_beads_setting() {  # <entries-output> <setting>
   printf '%s\n' "$1" | sed -n "s/^$2 //p" | head -1
 }
 
+# Print the bd binary the legacy migration lookup runs, or return 1 when that
+# lookup does not apply. TASKS_AXI_BEADS_BINARY wins over the root .tasks.toml
+# [beads] binary; bd is the default only when that root file selects beads.
+captain_legacy_bd_binary() {  # <backlog-root> <beads-entries>
+  local root=$1 binary=${TASKS_AXI_BEADS_BINARY:-}
+  [ -n "$binary" ] || binary=$(captain_beads_setting "$2" binary)
+  if [ -z "$binary" ]; then
+    [ "$(fm_tasks_axi_backend_from_toml "$root/.tasks.toml" 2>/dev/null)" = beads ] || return 1
+    binary=bd
+  fi
+  [ "${binary##*/}" = bd ] || return 1
+  printf '%s\n' "$binary"
+}
+
 # Read the configured beads graph's row listing for a migration-note scan.
 # The listing is deliberately re-read per unresolvable key: the cache below
 # lives and dies with the command-substitution subshell every resolve_entry
 # call site runs in, so it cannot persist across keys - bounded by a scout
 # report's handful of attested ids. Returns 0 when the listing loads, and 2
 # with the reason on stderr when the graph cannot be read.
-captain_migration_scan_load() {  # <resolved-data-dir>
-  local data=$1 root entries bd_bin bd_path backend
+captain_migration_scan_load() {  # <backlog-root> <beads-entries> <bd-binary>
+  local root=$1 bd_bin=$3 bd_path
   [ "$CAPTAIN_MIGRATION_SCAN_LOADED" = 1 ] && return 0
-  root=$(fm_backlog_root "$data") || {
-    printf 'fm-captain-hold: the configured data directory cannot be resolved for a migration scan: %s\n' "$FM_BACKLOG_TRANSITION_ERROR" >&2
-    return 2
-  }
-  backend=$(fm_tasks_axi_backend "$root") || return 2
-  if [ "$backend" != beads ]; then
-    CAPTAIN_MIGRATION_SCAN_LOADED=1
-    return 0
-  fi
-  entries=$(captain_beads_toml_entries "$root/.tasks.toml")
-  bd_bin=$(captain_beads_setting "$entries" binary)
-  bd_path=$(captain_beads_setting "$entries" path)
-  bd_bin=${bd_bin:-bd}
+  bd_path=$(captain_beads_setting "$2" path)
   if [ -z "$bd_path" ]; then
     printf 'fm-captain-hold: the beads backend carries no graph path in %s, so a migrated hold cannot be found\n' "$root/.tasks.toml" >&2
     return 2
@@ -736,9 +738,7 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   # BEADS_DIR, array JSON, and prefixed identities belong to the old bd
   # migration. Only that binary (including its default) can use this lookup.
   entries=$(captain_beads_toml_entries "$root/.tasks.toml")
-  binary=$(captain_beads_setting "$entries" binary)
-  binary=${binary:-bd}
-  [ "${binary##*/}" = bd ] || return 1
+  binary=$(captain_legacy_bd_binary "$root" "$entries") || return 1
   # Every identity this entry could have been migrated under: the raw entry,
   # and - for a pre-collapse channel key - the derived legacy identity its
   # origin would have minted, because fm-hold-migration recorded the DERIVED
@@ -750,7 +750,7 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
       CAPTAIN_MIGRATION_IDENTITIES="$CAPTAIN_MIGRATION_IDENTITIES $derived"
     fi
   fi
-  captain_migration_scan_load "$data" || return 2
+  captain_migration_scan_load "$root" "$entries" "$binary" || return 2
   matches=
   if [ -n "$CAPTAIN_MIGRATION_SCAN_JSON" ]; then
     for candidate in $CAPTAIN_MIGRATION_IDENTITIES; do

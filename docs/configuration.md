@@ -486,8 +486,10 @@ Do not register a Beads `types.custom` `captain` type for this: captain is a hol
 
 `complete` and `verify` read closed calls through `tasks-axi show` on the configured backend and accept them only with a recorded, non-deferred answer.
 Only markdown uses the configured Done archive when the row is no longer in the active backlog.
-For legacy markdown-to-Beads migrations, the native graph scan and prefixed-id fallback apply only when `[beads].binary` is `bd`, a path ending in `/bd`, or omitted.
-That lookup reads the graph path, binary, and prefix from the backlog root's `.tasks.toml` and refuses when the graph path is missing.
+For legacy markdown-to-Beads migrations, the native graph scan and prefixed-id fallback apply only when the Beads binary resolves to `bd` or a path ending in `/bd`.
+The binary comes from `TASKS_AXI_BEADS_BINARY`, then the backlog root's `.tasks.toml` `[beads].binary`.
+When neither sets it, the binary defaults to `bd` only if that root `.tasks.toml` itself selects `backend = "beads"`; a Beads backend selected elsewhere with no binary skips the lookup.
+That lookup reads the graph path and prefix from the backlog root's `.tasks.toml` and refuses when the graph path is missing.
 Other binaries, including `br`, use tasks-axi's identity mapping instead: slug-mapped ids need no rehoming, and a missing row triggers neither a native scan nor a prefixed-id guess.
 
 ### Automatic dispatch and completion
