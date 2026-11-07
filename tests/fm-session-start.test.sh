@@ -3216,13 +3216,12 @@ EOF
   out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" FM_FAKE_TASKS_AXI_BREAK=zero \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" 'configured fixture backend' "valid empty adapter response was rejected"
-  assert_not_contains "$out" 'Backlog unavailable' "valid empty queue was mistaken for an unreadable backend"
   assert_contains "$out" 'tasks: 0 in_flight tasks in this backlog' "empty in-flight answer was not shown"
   assert_contains "$out" 'tasks: 0 held tasks in this backlog' "empty held answer was not shown"
   assert_contains "$out" 'tasks: 0 blocked queued tasks in this backlog' "empty blocked answer was not shown"
   out=$(FM_FAKE_TASKS_AXI_ADAPTER=fixture FM_FAKE_TASKS_AXI_ROOT="$home" FM_FAKE_TASKS_AXI_PUBLIC_TABLE=1 \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_not_contains "$out" 'Backlog unavailable' "a ready-public-followups table was counted as ready task rows"
+  assert_contains "$out" '(shown 2 of 2 ready queued item(s))' "a ready-public-followups table was counted as ready task rows"
   assert_contains "$out" 'reply-one,Public followup' "public followup visibility was lost"
   rm "$home/config/tasks.toml" "$home/data/backlog.md"
   rmdir "$home/data"

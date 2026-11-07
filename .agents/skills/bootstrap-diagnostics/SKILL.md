@@ -17,12 +17,13 @@ When any diagnostic needs captain attention, report the plain consequence and re
 
 - `MISSING: <tool> (install: <command>)` - the tool is absent; list the missing tools to the captain with a one-line purpose each plus the printed install commands, wait for consent (one approval may cover the list), then run `bin/fm-bootstrap.sh install <approved tools...>`.
   An installed tool below its floor, or one missing a required capability, reports `OUTDATED:` instead.
-- `OUTDATED: <tool> (installed: <version|unparseable>; requires <floor|capability>; upgrade: <command>)` - the tool is present but below what this home needs, so it is an upgrade request, not an install.
+- `OUTDATED: <tool> (installed: <version|unparseable>; requires <floor|capability>; upgrade: <command|advice>)` - the tool is present but below what this home needs, so it is an upgrade request, not an install.
   Report the installed version and the printed `upgrade:` command and wait for the same consent rule before running it; a printed command that is the tool's own installer means that tool ships no self-updater yet, so the upgrade reuses its install command.
   [`bin/fm-bootstrap.sh`](../../../bin/fm-bootstrap.sh) owns the floor policy, and never argue the floor down to whatever the home happens to have installed.
   For `no-mistakes`, the floor is 1.46.0 because this repo's PR gate requires structured pipeline attestation that older builds do not write.
   For `treehouse`, the requirement is `treehouse get --lease` support.
   For `tasks-axi`, the requirement also covers the separate feature probe (`bin/fm-tasks-axi-lib.sh` owns the definition); `config/backlog-backend=manual` only suppresses the verbose `BOOTSTRAP_INFO: tasks-axi available` fact, not this report.
+  Its `upgrade:` field is advice, not a runnable command: ask the captain to upgrade tasks-axi from its installed source, which may be a fork. Never run `npm install -g tasks-axi` or any other upstream reinstall over it.
   For `quota-axi`, bootstrap requires it because firstmate reads its current output directly before resolving every crew-dispatch profile array; without it, report the requirement and do not choose around an unexamined candidate.
 - `PRESENTATION_UNAVAILABLE: lavish-axi ...` - explain that visual presentation is unavailable and continue nonvisual work with plain-text decisions and reports; do not hold unrelated dispatch for installation consent.
   Do not use Lavish until it satisfies the floor owned by `bin/fm-bootstrap.sh`; when visual work needs it, request consent for the printed install or upgrade command, then rerun bootstrap to confirm compatibility before using it.
