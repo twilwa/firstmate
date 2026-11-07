@@ -1,0 +1,134 @@
+===== legacy-bd
+--- .tasks.toml
+backend = "beads"
+
+[beads]
+path = "/tmp/fm-live-bd.MOg7Xh/.beads"
+prefix = "fm"
+binary = "bd"
+$ fm-captain-hold.sh complete origin legacy-call
+complete: origin captain-call inventory reviewed (legacy-call)
+[rc=0]
+$ fm-captain-hold.sh verify origin
+verified: origin captain-call inventory
+[rc=0]
+--- native backend calls:
+bd list --all --json BEADS_DIR=/tmp/fm-live-bd.MOg7Xh/.beads
+bd list --all --json BEADS_DIR=/tmp/fm-live-bd.MOg7Xh/.beads
+--- tasks-axi show calls:
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+--- origin.meta attestation:
+decisions_reviewed=1
+decision_keys=legacy-call
+===== legacy-bd-default
+--- .tasks.toml
+backend = "beads"
+
+[beads]
+path = "/tmp/fm-live-bd.MOg7Xh/.beads"
+prefix = "fm"
+$ fm-captain-hold.sh complete origin legacy-call
+complete: origin captain-call inventory reviewed (legacy-call)
+[rc=0]
+$ fm-captain-hold.sh verify origin
+verified: origin captain-call inventory
+[rc=0]
+--- native backend calls:
+bd list --all --json BEADS_DIR=/tmp/fm-live-bd.MOg7Xh/.beads
+bd list --all --json BEADS_DIR=/tmp/fm-live-bd.MOg7Xh/.beads
+--- tasks-axi show calls:
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+--- origin.meta attestation:
+decisions_reviewed=1
+decision_keys=legacy-call
+===== legacy-bd-absolute
+--- .tasks.toml
+backend = "beads"
+
+[beads]
+path = "/tmp/fm-live-bd.MOg7Xh/.beads"
+prefix = "fm"
+binary = "~/.local/share/mise/installs/node/lts/bin/bd"
+$ fm-captain-hold.sh complete origin legacy-call
+complete: origin captain-call inventory reviewed (legacy-call)
+[rc=0]
+$ fm-captain-hold.sh verify origin
+verified: origin captain-call inventory
+[rc=0]
+--- native backend calls:
+(none)
+--- tasks-axi show calls:
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+tasks-axi show fm-itv --full
+tasks-axi show origin --full
+tasks-axi show origin --full
+--- origin.meta attestation:
+decisions_reviewed=1
+decision_keys=legacy-call
+===== br-root
+--- .tasks.toml
+backend = "beads"
+
+[beads]
+path = "/tmp/fm-live-bd.MOg7Xh/.beads"
+prefix = "fm"
+binary = "br"
+$ fm-captain-hold.sh complete origin legacy-call
+fm-captain-hold: no captain-held task legacy-call and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-live-br-root.Opr9po/data); the nearest legacy identity origin-decision-legacy-call also resolves to nothing
+[rc=1]
+$ fm-captain-hold.sh verify origin
+fm-captain-hold: origin origin has no completed captain-call inventory
+[rc=1]
+--- native backend calls:
+(none)
+--- tasks-axi show calls:
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+--- origin.meta attestation:
+(not attested)
+===== br-env-over-root-bd
+--- .tasks.toml
+backend = "beads"
+
+[beads]
+path = "/tmp/fm-live-bd.MOg7Xh/.beads"
+prefix = "fm"
+binary = "bd"
+env TASKS_AXI_BEADS_BINARY=br
+$ fm-captain-hold.sh complete origin legacy-call
+fm-captain-hold: no captain-held task legacy-call and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-live-br-env-over-root-bd.IGKXZT/data); the nearest legacy identity origin-decision-legacy-call also resolves to nothing
+[rc=1]
+$ fm-captain-hold.sh verify origin
+fm-captain-hold: origin origin has no completed captain-call inventory
+[rc=1]
+--- native backend calls:
+(none)
+--- tasks-axi show calls:
+tasks-axi show legacy-call --full
+tasks-axi show origin-decision-legacy-call --full
+--- origin.meta attestation:
+(not attested)

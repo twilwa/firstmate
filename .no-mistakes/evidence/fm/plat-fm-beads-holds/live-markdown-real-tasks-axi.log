@@ -1,0 +1,89 @@
+home=/tmp/fm-live-md.j0Z9rJ  tasks-axi=0.2.6
+$ fm-captain-hold.sh hold call-live --reason pick a db --title Captain: pick a db --origin origin
+call-live
+[rc=0]
+$ fm-captain-hold.sh answer call-live --decision-file /tmp/fm-live-md.j0Z9rJ/decision.txt --release
+released: call-live
+[rc=0]
+--- backlog after answer
+## Ready
+
+## In Progress
+
+## Blocked
+
+## Done
+## In flight
+## Queued
+- [ ] call-live - Captain: pick a db (repo: firstmate) (kind: captain) (since 2026-11-06)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: fe2ff5188fd2726a72ea87496c6746bd17c68095114b071cbb6c03ed24ae078b
+  Resolution mode: released
+  Captain hold answered: 2026-11-07T02:50:09Z
+
+  Captain decision:
+  Use sqlite.
+
+  Captain hold origin: origin
+
+  Origin: origin
+
+$ fm-captain-hold.sh complete origin call-live
+complete: origin captain-call inventory reviewed (call-live)
+[rc=0]
+$ fm-captain-hold.sh verify origin
+verified: origin captain-call inventory
+[rc=0]
+--- Done retention: move closed row into configured archive
+usage: tasks-axi prune [--keep <n>] [--state done]
+Trim a section to the N most recent tasks, archiving the rest (never deletes).
+flags:
+  --keep <n>   tasks to retain (default from config, usually 10)
+  --state <queued|in_flight|done>   section to prune (default done)
+$ tasks-axi done call-live
+ok: done call-live -> Done
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+$ tasks-axi prune --keep 0
+ok: prune done -> archived 1 (kept 0)
+help[1]:
+  - Run `tasks-axi list --state done` to see retained Done items
+$ tasks-axi show call-live (active backlog)
+error: "Task \"call-live\" not found in this backlog"
+code: NOT_FOUND
+help[1]: Run `tasks-axi list` to see existing tasks
+[prune rc=0]
+--- backlog
+## Ready
+
+## In Progress
+
+## Blocked
+
+## Done
+## In flight
+## Queued
+--- archive
+
+## Archived 2026-11-06
+- [x] call-live - Captain: pick a db (repo: firstmate) (kind: captain) (done 2026-11-06)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: fe2ff5188fd2726a72ea87496c6746bd17c68095114b071cbb6c03ed24ae078b
+  Resolution mode: released
+  Captain hold answered: 2026-11-07T02:50:09Z
+
+  Captain decision:
+  Use sqlite.
+
+  Captain hold origin: origin
+
+  Origin: origin
+$ fm-captain-hold.sh verify origin
+verified: origin captain-call inventory
+[rc=0]
+--- unanswered-call adversarial: complete with a never-held id
+$ fm-captain-hold.sh complete origin nope-call
+fm-captain-hold: no captain-held task nope-call and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-live-md.j0Z9rJ/data); the nearest legacy identity origin-decision-nope-call also resolves to nothing
+[rc=1]
+3:decisions_reviewed=1
+4:decision_keys=call-live

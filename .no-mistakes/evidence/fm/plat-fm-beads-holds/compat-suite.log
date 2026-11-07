@@ -1,0 +1,18 @@
+1..11
+ok - closed answered calls use tasks-axi show on non-markdown backends, including slug-mapped ids
+ok - closed rows without an answer or carrying only a deferral cannot satisfy completion or verification
+ok - slug-mapped backends leave missing calls missing without a native scan or prefixed-id guess
+ok - a non-bd binary or beads backend selected outside the root config skips the legacy migration lookup
+ok - the user-configured binary is honored below environment and root settings
+ok - legacy bd migration markers still resolve with default, named, and absolute bd binaries
+ok - root-relative bd binaries use the backlog root, while env binaries are bare names or absolute paths
+ok - the legacy bd lookup takes its graph path and prefix from the env first and refuses a relative env path
+ok - markdown completion and verification still replay their configured Done archive
+ok - a sleeping legacy bd scan stops at its read bound without attestation or fallback
+ok - tasks-axi show timeout stops completion and verification without archive or migration fallback
+FM_TEST_COMPLETE
+
+real	0m55.429s
+user	0m11.233s
+sys	0m43.012s
+exit=0
