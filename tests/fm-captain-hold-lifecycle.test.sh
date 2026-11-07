@@ -538,6 +538,7 @@ test_verify_resolves_a_pre_collapse_key_through_its_derived_marker() {
 # is needed.
 test_captain_hold_mutations_address_the_beads_backend() {
   local home id fb log decision config_source=${1:-native}
+  # shellcheck disable=SC2034 # scopes the caller's tasks-axi settings to this case
   local TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
   unset TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
   home="$TMP_ROOT/captain-stub-$config_source-beads/home"
