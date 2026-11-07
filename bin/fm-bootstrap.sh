@@ -9,6 +9,7 @@
 #                 "OUTDATED: <tool> (installed: <version|unparseable>; requires <floor|capability>; upgrade: <command>)",
 #                 "PRESENTATION_UNAVAILABLE: lavish-axi (requires >=<floor>; install: <command>) - nonvisual work may proceed with plain-text decisions and reports; install or upgrade before using Lavish",
 #                 "MISSING_MANUAL: <tool> (instructions: <url>)", "NEEDS_GH_AUTH",
+#                 "UNTESTED: br (installed: <version|unknown>; tested: 0.7.6; ...)",
 #                 "BACKEND_INVALID: <name> (known: <names>)",
 #                 "STARTUP_MEMORY_BUDGET: invalid config/startup-memory-budget - <reason>",
 #                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
@@ -71,7 +72,11 @@
 #          tasks-axi feature probes remain a separate defense-in-depth check, and
 #          a build failing one is OUTDATED like a below-floor build.
 #          tasks-axi and quota-axi are essential bootstrap tools.
-#          A compatible tasks-axi default backend is silent.
+#          A compatible tasks-axi default backend is silent. Upgrade hints preserve
+#          its installed source rather than replacing a fork with upstream.
+#          When the configured Beads binary is br, a bounded version probe uses
+#          --db in a fresh temporary directory. Missing br reports MISSING_MANUAL;
+#          a version other than tested 0.7.6 or failed probe reports UNTESTED.
 #          quota-axi is required for the agent-owned dispatch-profile array
 #          procedure in .agents/skills/quota-array-dispatch/SKILL.md.
 #          On a primary home, the locked mutable path materializes the visible
@@ -883,15 +888,16 @@ install_cmd() {
   esac
 }
 
-# A tool's own updater for the OUTDATED remediation. Every entry here runs no
-# first-install step, so an upgrade never re-runs a hook setup or an installer
-# script; a tool with no self-updater reuses its install command rather than an
-# invented one, and the header above owns that absent-versus-outdated split.
+# Prefer a tool's own updater for OUTDATED remediation, without first-install
+# hooks. tasks-axi may be a custom distribution: retain its source rather than
+# recommending an upstream install that would overwrite it. Other tools without
+# an updater reuse the install command; never invent an updater.
 upgrade_cmd() {
   case "$1" in
     treehouse) echo "treehouse update" ;;
     no-mistakes) echo "no-mistakes update" ;;
     gh-axi|quota-axi) echo "$1 update" ;;
+    tasks-axi) echo "upgrade from the installed tasks-axi source; preserve any fork" ;;
     *) install_cmd "$1" ;;
   esac
 }
@@ -1527,6 +1533,44 @@ if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ] && local_phase; then
   fi
 fi
 
+# Only the selected Beads Rust binary needs this additional compatibility
+# diagnostic. The version probe uses a fresh explicit database path, never the
+# configured workspace (br otherwise searches parents for a database).
+detect_beads_rust() (
+  local root backend binary probe version out tested=0.7.6
+  root=${DATA%/*}
+  backend=$(fm_tasks_axi_backend_resolve "$root" 2>&1) || {
+    printf 'BACKLOG_RECONCILE: %s\n' "$backend"
+    return
+  }
+  [ "$backend" = beads ] || return 0
+  fm_tasks_axi_export_settings "$root" "$backend" || return
+  binary=${TASKS_AXI_BEADS_BINARY:-}
+  if [ -z "$binary" ] && [ -f "$root/.tasks.toml" ]; then
+    binary=$(fm_tasks_axi_home_string "$root/.tasks.toml" beads binary) || true
+  fi
+  if [ -z "$binary" ] && [ -n "${HOME:-}" ] && [ -f "$HOME/.tasks-axi/config.toml" ]; then
+    binary=$(fm_tasks_axi_home_string "$HOME/.tasks-axi/config.toml" beads binary) || true
+  fi
+  # bd and other adapters retain their own compatibility policy.
+  [ "${binary##*/}" = br ] || return 0
+  case "$binary" in /*) ;; */*) binary="$root/$binary" ;; esac
+  if ! command -v "$binary" >/dev/null 2>&1; then
+    printf 'MISSING_MANUAL: br (selected binary: %s; instructions: https://github.com/Dicklesworthstone/beads_rust)\n' "$binary"
+    return
+  fi
+  probe=$(mktemp -d "${TMPDIR:-/tmp}/fm-br-version.XXXXXX") || {
+    printf 'UNTESTED: br (cannot allocate isolated version probe; tested: %s)\n' "$tested"
+    return
+  }
+  out=$(fm_run_timed 5 "$binary" --db "$probe/beads.db" --version 2>/dev/null) || out=
+  rm -rf "$probe"
+  version=$(printf '%s\n' "$out" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  if [ "$version" != "$tested" ]; then
+    printf 'UNTESTED: br (installed: %s; tested: %s; verify compatibility before using this backend)\n' "${version:-unknown}" "$tested"
+  fi
+)
+
 # Local detection: presence, version floors, and configuration. Nothing here
 # leaves this machine, so it stays on the session-start critical path.
 detect_local_tools() {
@@ -1564,6 +1608,7 @@ detect_local_tools() {
   if command -v tasks-axi >/dev/null 2>&1 && ! fm_tasks_axi_compatible; then
     echo "OUTDATED: tasks-axi (installed: $(tool_version tasks-axi); requires $(tasks_axi_requirement); upgrade: $(upgrade_cmd tasks-axi))"
   fi
+  detect_beads_rust
 }
 
 detect_local_config() {
