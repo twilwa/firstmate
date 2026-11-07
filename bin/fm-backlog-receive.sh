@@ -76,7 +76,7 @@ run_move() ( # <keys...>
   cd "$FM_HOME" || return 2
   local -a destination_flags=()
   [ "$DEST_BACKEND" = markdown ] || destination_flags=(--to-backend "$DEST_BACKEND")
-  exec tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST" --backend markdown "${destination_flags[@]}"
+  exec tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST" --backend markdown ${destination_flags[@]+"${destination_flags[@]}"}
 )
 
 destination_key_section() {

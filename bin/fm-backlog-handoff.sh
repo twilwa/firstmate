@@ -814,7 +814,7 @@ remote_handoff() { # <secondmate-id> <keys...>
   if [ "${#to_move[@]}" -gt 0 ]; then
     local -a destination_flags=()
     [ "$MAIN_BACKEND" = markdown ] || destination_flags=(--to-backend markdown)
-    if ! mv_out=$(main_store_run mv "${to_move[@]}" --to "$outbox" "${destination_flags[@]}" 2>&1); then
+    if ! mv_out=$(main_store_run mv "${to_move[@]}" --to "$outbox" ${destination_flags[@]+"${destination_flags[@]}"} 2>&1); then
       [ -z "$mv_out" ] || printf '%s\n' "$mv_out" >&2
       echo "error: atomic outbox staging failed; nothing new was handed off" >&2
       return 1
@@ -972,8 +972,10 @@ SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
 
 # The caller's tasks-axi environment addresses the source home only.
 sub_store() ( # <store-function> [args...]
+  local store_function=$1
+  shift
   unset "${!TASKS_AXI_@}"
-  "$1" "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "${@:2}"
+  "$store_function" "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "$@"
 )
 
 # A markdown source has no Beads settings to lend the destination.
