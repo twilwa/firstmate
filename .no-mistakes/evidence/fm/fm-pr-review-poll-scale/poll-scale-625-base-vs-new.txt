@@ -1,0 +1,8 @@
+# poll scale: 625 ledgers cloned from a real 'fm-pr-review.sh init' ledger (3 generations each, 2.5MB), 6 due
+# host: 12 cpus, load average: 8.85, 7.53, 8.41
+base run1 rc=0 elapsed=7.75s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+base run2 rc=0 elapsed=7.49s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+base run3 rc=0 elapsed=7.65s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+new run1 rc=0 elapsed=0.19s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+new run2 rc=0 elapsed=0.17s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+new run3 rc=0 elapsed=0.16s output=PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600

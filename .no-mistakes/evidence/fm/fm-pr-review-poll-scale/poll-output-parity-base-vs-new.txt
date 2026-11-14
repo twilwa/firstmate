@@ -1,0 +1,346 @@
+# base (43353f03) vs new (d1833f81) 'fm-pr-review.sh poll' byte-for-byte stdout+rc comparison
+# 51 edge-case ledger homes + combined corpus + absent home, each at FM_REVIEW_NOW_EPOCH 999/1400/1500/1600/2000 and real clock
+# generator: gen-edge.sh (copied alongside)
+crlf                         now=999   SAME rc=0/0 base='' new=''
+crlf                         now=1400  SAME rc=0/0 base='' new=''
+crlf                         now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26
+crlf                         now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26
+crlf                         now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26
+crlf                         now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/26
+dangling-symlink             now=999   SAME rc=0/0 base='' new=''
+dangling-symlink             now=1400  SAME rc=0/0 base='' new=''
+dangling-symlink             now=1500  SAME rc=0/0 base='' new=''
+dangling-symlink             now=1600  SAME rc=0/0 base='' new=''
+dangling-symlink             now=2000  SAME rc=0/0 base='' new=''
+dangling-symlink             now=real  SAME rc=0/0 base='' new=''
+deep-nesting                 now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+deep-nesting                 now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+deep-nesting                 now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+deep-nesting                 now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+deep-nesting                 now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+deep-nesting                 now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+directory                    now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+due-and-notdue               now=999   SAME rc=0/0 base='' new=''
+due-and-notdue               now=1400  SAME rc=0/0 base='' new=''
+due-and-notdue               now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/1 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/1
+due-and-notdue               now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/1 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/1
+due-and-notdue               now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(2\):\ https://github.com/o/r/pull/1\,https://github.com/o/r/pull/2 new=PR\ review\ checkpoint\ due\ \(2\):\ https://github.com/o/r/pull/1\,https://github.com/o/r/pull/2
+due-and-notdue               now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(2\):\ https://github.com/o/r/pull/1\,https://github.com/o/r/pull/2 new=PR\ review\ checkpoint\ due\ \(2\):\ https://github.com/o/r/pull/1\,https://github.com/o/r/pull/2
+duplicate-keys               now=999   SAME rc=0/0 base='' new=''
+duplicate-keys               now=1400  SAME rc=0/0 base='' new=''
+duplicate-keys               now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36
+duplicate-keys               now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36
+duplicate-keys               now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36
+duplicate-keys               now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/36
+empty-dir                    now=999   SAME rc=0/0 base='' new=''
+empty-dir                    now=1400  SAME rc=0/0 base='' new=''
+empty-dir                    now=1500  SAME rc=0/0 base='' new=''
+empty-dir                    now=1600  SAME rc=0/0 base='' new=''
+empty-dir                    now=2000  SAME rc=0/0 base='' new=''
+empty-dir                    now=real  SAME rc=0/0 base='' new=''
+empty-file                   now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-file                   now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-file                   now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-file                   now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-file                   now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-file                   now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+empty-generations            now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+escaped-nul-url              now=999   SAME rc=0/0 base='' new=''
+escaped-nul-url              now=1400  SAME rc=0/0 base='' new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+escaped-nul-url              now=1500  DIFF rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 627:\ warning:\ command\ substitution:\ ignored\ null\ byte\ in\ input new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+escaped-nul-url              now=1600  DIFF rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 627:\ warning:\ command\ substitution:\ ignored\ null\ byte\ in\ input new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+escaped-nul-url              now=2000  DIFF rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 627:\ warning:\ command\ substitution:\ ignored\ null\ byte\ in\ input new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+escaped-nul-url              now=real  DIFF rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/y
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 627:\ warning:\ command\ substitution:\ ignored\ null\ byte\ in\ input new=''
+fifo                         now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+fifo                         now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+fifo                         now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+fifo                         now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+fifo                         now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+fifo                         now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+generations-object           now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+hidden-json                  now=999   SAME rc=0/0 base='' new=''
+hidden-json                  now=1400  SAME rc=0/0 base='' new=''
+hidden-json                  now=1500  SAME rc=0/0 base='' new=''
+hidden-json                  now=1600  SAME rc=0/0 base='' new=''
+hidden-json                  now=2000  SAME rc=0/0 base='' new=''
+hidden-json                  now=real  SAME rc=0/0 base='' new=''
+huge-ledger                  now=999   SAME rc=0/0 base='' new=''
+huge-ledger                  now=1400  SAME rc=0/0 base='' new=''
+huge-ledger                  now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31
+huge-ledger                  now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31
+huge-ledger                  now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31
+huge-ledger                  now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/31
+invalid-utf8-url             now=999   SAME rc=0/0 base='' new=''
+invalid-utf8-url             now=1400  SAME rc=0/0 base='' new=''
+invalid-utf8-url             now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/� new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/�
+invalid-utf8-url             now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/� new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/�
+invalid-utf8-url             now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/� new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/�
+invalid-utf8-url             now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://x/� new=PR\ review\ checkpoint\ due\ \(1\):\ https://x/�
+last-generation-not-object   now=999   SAME rc=0/0 base='' new=''
+last-generation-not-object   now=1400  SAME rc=0/0 base='' new=''
+last-generation-not-object   now=1500  SAME rc=0/0 base='' new=''
+last-generation-not-object   now=1600  SAME rc=0/0 base='' new=''
+last-generation-not-object   now=2000  SAME rc=0/0 base='' new=''
+last-generation-not-object   now=real  SAME rc=0/0 base='' new=''
+malformed                    now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+malformed                    now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+malformed                    now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+malformed                    now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+malformed                    now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+malformed                    now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+name-with-newline            now=999   SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-newline            now=1400  SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-newline            now=1500  SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-newline            now=1600  SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-newline            now=2000  SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-newline            now=real  SAME rc=0/0 base=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0' new=$'PR review ledger attention: unreadable=1 first=a\nb.json due=0'
+name-with-space              now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=0
+name-with-space              now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=0
+name-with-space              now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30
+name-with-space              now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30
+name-with-space              now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30
+name-with-space              now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=c\ d.json\ due=1\ urls=https://github.com/o/r/pull/30
+next-array                   now=999   SAME rc=0/0 base='' new=''
+next-array                   now=1400  SAME rc=0/0 base='' new=''
+next-array                   now=1500  SAME rc=0/0 base='' new=''
+next-array                   now=1600  SAME rc=0/0 base='' new=''
+next-array                   now=2000  SAME rc=0/0 base='' new=''
+next-array                   now=real  SAME rc=0/0 base='' new=''
+next-big                     now=999   SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-big                     now=1400  SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-big                     now=1500  SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-big                     now=1600  SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-big                     now=2000  SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-big                     now=real  SAME rc=0/0 base='' new=''
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+next-exponent                now=999   SAME rc=0/0 base='' new=''
+next-exponent                now=1400  SAME rc=0/0 base='' new=''
+next-exponent                now=1500  SAME rc=0/0 base='' new=''
+next-exponent                now=1600  SAME rc=0/0 base='' new=''
+next-exponent                now=2000  SAME rc=0/0 base='' new=''
+next-exponent                now=real  SAME rc=0/0 base='' new=''
+next-false                   now=999   SAME rc=0/0 base='' new=''
+next-false                   now=1400  SAME rc=0/0 base='' new=''
+next-false                   now=1500  SAME rc=0/0 base='' new=''
+next-false                   now=1600  SAME rc=0/0 base='' new=''
+next-false                   now=2000  SAME rc=0/0 base='' new=''
+next-false                   now=real  SAME rc=0/0 base='' new=''
+next-float                   now=999   SAME rc=0/0 base='' new=''
+next-float                   now=1400  SAME rc=0/0 base='' new=''
+next-float                   now=1500  SAME rc=0/0 base='' new=''
+next-float                   now=1600  SAME rc=0/0 base='' new=''
+next-float                   now=2000  SAME rc=0/0 base='' new=''
+next-float                   now=real  SAME rc=0/0 base='' new=''
+next-float-frac              now=999   SAME rc=0/0 base='' new=''
+next-float-frac              now=1400  SAME rc=0/0 base='' new=''
+next-float-frac              now=1500  SAME rc=0/0 base='' new=''
+next-float-frac              now=1600  SAME rc=0/0 base='' new=''
+next-float-frac              now=2000  SAME rc=0/0 base='' new=''
+next-float-frac              now=real  SAME rc=0/0 base='' new=''
+next-missing                 now=999   SAME rc=0/0 base='' new=''
+next-missing                 now=1400  SAME rc=0/0 base='' new=''
+next-missing                 now=1500  SAME rc=0/0 base='' new=''
+next-missing                 now=1600  SAME rc=0/0 base='' new=''
+next-missing                 now=2000  SAME rc=0/0 base='' new=''
+next-missing                 now=real  SAME rc=0/0 base='' new=''
+next-negative                now=999   SAME rc=0/0 base='' new=''
+next-negative                now=1400  SAME rc=0/0 base='' new=''
+next-negative                now=1500  SAME rc=0/0 base='' new=''
+next-negative                now=1600  SAME rc=0/0 base='' new=''
+next-negative                now=2000  SAME rc=0/0 base='' new=''
+next-negative                now=real  SAME rc=0/0 base='' new=''
+next-null                    now=999   SAME rc=0/0 base='' new=''
+next-null                    now=1400  SAME rc=0/0 base='' new=''
+next-null                    now=1500  SAME rc=0/0 base='' new=''
+next-null                    now=1600  SAME rc=0/0 base='' new=''
+next-null                    now=2000  SAME rc=0/0 base='' new=''
+next-null                    now=real  SAME rc=0/0 base='' new=''
+next-string-digits           now=999   SAME rc=0/0 base='' new=''
+next-string-digits           now=1400  SAME rc=0/0 base='' new=''
+next-string-digits           now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5
+next-string-digits           now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5
+next-string-digits           now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5
+next-string-digits           now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/5
+next-string-nondigit         now=999   SAME rc=0/0 base='' new=''
+next-string-nondigit         now=1400  SAME rc=0/0 base='' new=''
+next-string-nondigit         now=1500  SAME rc=0/0 base='' new=''
+next-string-nondigit         now=1600  SAME rc=0/0 base='' new=''
+next-string-nondigit         now=2000  SAME rc=0/0 base='' new=''
+next-string-nondigit         now=real  SAME rc=0/0 base='' new=''
+next-zero                    now=999   SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+next-zero                    now=1400  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+next-zero                    now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+next-zero                    now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+next-zero                    now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+next-zero                    now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/14
+no-trailing-newline          now=999   SAME rc=0/0 base='' new=''
+no-trailing-newline          now=1400  SAME rc=0/0 base='' new=''
+no-trailing-newline          now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25
+no-trailing-newline          now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25
+no-trailing-newline          now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25
+no-trailing-newline          now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/25
+non-json-ext                 now=999   SAME rc=0/0 base='' new=''
+non-json-ext                 now=1400  SAME rc=0/0 base='' new=''
+non-json-ext                 now=1500  SAME rc=0/0 base='' new=''
+non-json-ext                 now=1600  SAME rc=0/0 base='' new=''
+non-json-ext                 now=2000  SAME rc=0/0 base='' new=''
+non-json-ext                 now=real  SAME rc=0/0 base='' new=''
+nul-byte                     now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-byte                     now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-byte                     now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-byte                     now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-byte                     now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-byte                     now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+nul-inside-string            now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+ordering-bad-first           now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=0
+ordering-bad-first           now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=1\ urls=https://github.com/o/r/pull/34 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=1\ urls=https://github.com/o/r/pull/34
+ordering-bad-first           now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33
+ordering-bad-first           now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33
+ordering-bad-first           now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33
+ordering-bad-first           now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33 new=PR\ review\ ledger\ attention:\ unreadable=2\ first=a.json\ due=2\ urls=https://github.com/o/r/pull/34\,https://github.com/o/r/pull/33
+symlink                      now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+symlink                      now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+symlink                      now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+symlink                      now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+symlink                      now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+symlink                      now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-array              now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-null               now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+top-level-string             now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+trailing-garbage             now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=999   DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=1400  DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=1500  DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=1600  DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=2000  DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+two-documents                now=real  DIFF rc=0/0 base='' new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+unreadable                   now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-empty                    now=999   SAME rc=0/0 base='' new=''
+url-empty                    now=1400  SAME rc=0/0 base='' new=''
+url-empty                    now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\  new=PR\ review\ checkpoint\ due\ \(1\):\ 
+url-empty                    now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\  new=PR\ review\ checkpoint\ due\ \(1\):\ 
+url-empty                    now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\  new=PR\ review\ checkpoint\ due\ \(1\):\ 
+url-empty                    now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\  new=PR\ review\ checkpoint\ due\ \(1\):\ 
+url-inner-newline            now=999   SAME rc=0/0 base='' new=''
+url-inner-newline            now=1400  SAME rc=0/0 base='' new=''
+url-inner-newline            now=1500  SAME rc=0/0 base=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX' new=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX'
+url-inner-newline            now=1600  SAME rc=0/0 base=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX' new=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX'
+url-inner-newline            now=2000  SAME rc=0/0 base=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX' new=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX'
+url-inner-newline            now=real  SAME rc=0/0 base=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX' new=$'PR review checkpoint due (1): https://github.com/o/r/pull/19\nX'
+url-number                   now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-number                   now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-number                   now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-number                   now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-number                   now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-number                   now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+url-trailing-newlines        now=999   SAME rc=0/0 base='' new=''
+url-trailing-newlines        now=1400  SAME rc=0/0 base='' new=''
+url-trailing-newlines        now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18
+url-trailing-newlines        now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18
+url-trailing-newlines        now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18
+url-trailing-newlines        now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/18
+url-unicode-space            now=999   SAME rc=0/0 base='' new=''
+url-unicode-space            now=1400  SAME rc=0/0 base='' new=''
+url-unicode-space            now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x
+url-unicode-space            now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x
+url-unicode-space            now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x
+url-unicode-space            now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/20\ é\,x
+utf8-bom                     now=999   SAME rc=0/0 base='' new=''
+utf8-bom                     now=1400  SAME rc=0/0 base='' new=''
+utf8-bom                     now=1500  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24
+utf8-bom                     now=1600  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24
+utf8-bom                     now=2000  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24
+utf8-bom                     now=real  SAME rc=0/0 base=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24 new=PR\ review\ checkpoint\ due\ \(1\):\ https://github.com/o/r/pull/24
+whitespace-only              now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+whitespace-only              now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+whitespace-only              now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+whitespace-only              now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+whitespace-only              now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+whitespace-only              now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=999   SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=1400  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=1500  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=1600  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=2000  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+wrong-schema                 now=real  SAME rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0 new=PR\ review\ ledger\ attention:\ unreadable=1\ first=a.json\ due=0
+combined                     now=999   DIFF rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=22\ first=deep-nesting--a.json\ due=1\ urls=https://github.com/o/r/pull/14 new=PR\ review\ ledger\ attention:\ unreadable=23\ first=deep-nesting--a.json\ due=1\ urls=https://github.com/o/r/pull/14
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+combined                     now=1400  DIFF rc=0/0 base=PR\ review\ ledger\ attention:\ unreadable=22\ first=deep-nesting--a.json\ due=2\ urls=https://github.com/o/r/pull/14\,https://github.com/o/r/pull/34 new=PR\ review\ ledger\ attention:\ unreadable=23\ first=deep-nesting--a.json\ due=2\ urls=https://github.com/o/r/pull/14\,https://github.com/o/r/pull/34
+   stderr differs: base=/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh:\ line\ 626:\ \[:\ 100000000000000000000:\ integer\ expression\ expected new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+combined                     now=1500  DIFF rc=0/0 base=$'PR review ledger attention: unreadable=22 first=deep-nesting--a.json due=18 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24' new=$'PR review ledger attention: unreadable=23 first=deep-nesting--a.json due=18 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24'
+   stderr differs: base=$'/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 627: warning: command substitution: ignored null byte in input\n/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 626: [: 100000000000000000000: integer expression expected' new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+combined                     now=1600  DIFF rc=0/0 base=$'PR review ledger attention: unreadable=22 first=deep-nesting--a.json due=18 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24' new=$'PR review ledger attention: unreadable=23 first=deep-nesting--a.json due=18 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24'
+   stderr differs: base=$'/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 627: warning: command substitution: ignored null byte in input\n/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 626: [: 100000000000000000000: integer expression expected' new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+combined                     now=2000  DIFF rc=0/0 base=$'PR review ledger attention: unreadable=22 first=deep-nesting--a.json due=19 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/2,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24' new=$'PR review ledger attention: unreadable=23 first=deep-nesting--a.json due=19 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/2,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24'
+   stderr differs: base=$'/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 627: warning: command substitution: ignored null byte in input\n/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 626: [: 100000000000000000000: integer expression expected' new=''
+/tmp/fm-poll-test.si2ngO/scripts/diff-run.sh: line 23: warning: command substitution: ignored null byte in input
+combined                     now=real  DIFF rc=0/0 base=$'PR review ledger attention: unreadable=22 first=deep-nesting--a.json due=19 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/2,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24' new=$'PR review ledger attention: unreadable=23 first=deep-nesting--a.json due=19 urls=https://github.com/o/r/pull/26,https://github.com/o/r/pull/1,https://github.com/o/r/pull/2,https://github.com/o/r/pull/36,https://x/y,https://github.com/o/r/pull/29,https://github.com/o/r/pull/31,https://x/�,https://github.com/o/r/pull/30,https://github.com/o/r/pull/5,https://github.com/o/r/pull/14,https://github.com/o/r/pull/25,https://github.com/o/r/pull/34,https://github.com/o/r/pull/33,,https://github.com/o/r/pull/19\nX,https://github.com/o/r/pull/18,https://github.com/o/r/pull/20 é,x,https://github.com/o/r/pull/24'
+   stderr differs: base=$'/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 627: warning: command substitution: ignored null byte in input\n/tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh: line 626: [: 100000000000000000000: integer expression expected' new=''
+no-such-home                 now=999   SAME rc=0/0 base='' new=''
+no-such-home                 now=1400  SAME rc=0/0 base='' new=''
+no-such-home                 now=1500  SAME rc=0/0 base='' new=''
+no-such-home                 now=1600  SAME rc=0/0 base='' new=''
+no-such-home                 now=2000  SAME rc=0/0 base='' new=''
+no-such-home                 now=real  SAME rc=0/0 base='' new=''
+TOTAL same=302 differ=16

@@ -1,0 +1,16 @@
+== new-default: armed=exec {run-worktree}/bin/fm-pr-review.sh poll check_timeout=default ledgers=625 load=6.58
+watcher rc=0 wall=2.31s
+watcher stdout:
+  check: /tmp/fm-lab.gVV23U/state/review-policy.check.sh: PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+== new-5s: armed=exec {run-worktree}/bin/fm-pr-review.sh poll check_timeout=5 ledgers=625 load=6.37
+watcher rc=0 wall=2.33s
+watcher stdout:
+  check: /tmp/fm-lab.KVVosd/state/review-policy.check.sh: PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600
+== base-5s: armed=exec /tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh poll check_timeout=5 ledgers=625 load=6.06
+watcher rc=0 wall=7.21s
+watcher stdout:
+  check: /tmp/fm-lab.iEy5wk/state/review-policy.check.sh: timed out after 5s
+== base-default: armed=exec /tmp/fm-poll-test.si2ngO/base/bin/fm-pr-review.sh poll check_timeout=default ledgers=625 load=5.67
+watcher rc=0 wall=9.30s
+watcher stdout:
+  check: /tmp/fm-lab.dLvvWu/state/review-policy.check.sh: PR review checkpoint due (6): https://github.com/o/r/pull/100,https://github.com/o/r/pull/200,https://github.com/o/r/pull/300,https://github.com/o/r/pull/400,https://github.com/o/r/pull/500,https://github.com/o/r/pull/600

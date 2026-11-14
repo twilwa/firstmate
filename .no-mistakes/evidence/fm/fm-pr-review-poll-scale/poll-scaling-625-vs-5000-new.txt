@@ -1,0 +1,3 @@
+# new poll scaling (real clock; 1 in 100 ledgers due); load=6.02
+ledgers=625 rc=0 elapsed=0.19s output_prefix=PR review checkpoint due (7): https://github.com/o/r/pull/10
+ledgers=5000 rc=0 elapsed=1.08s output_prefix=PR review checkpoint due (50): https://github.com/o/r/pull/1
