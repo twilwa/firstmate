@@ -974,6 +974,44 @@ test_failed_post_merge_smoke_requires_bug_and_blocks_ready_for_qa() {
   pass 'a failed post-merge smoke requires an owning bug and blocks Ready for QA'
 }
 
+test_poll_scales_and_preserves_checkpoint_output() {
+  local home="$TMP_ROOT/poll-home" dir out started elapsed i name next
+  dir="$home/data/pr-review-ledger"
+  mkdir -p "$dir"
+  for ((i=0; i<600; i++)); do
+    printf -v name '%03d' "$i"
+    next=1001
+    [ "$i" -gt 1 ] || next=1000
+    printf '{"schema":"firstmate-pr-review-ledger.v1","url":"https://example.test/%s","generations":[{"next_checkpoint_epoch":%s}]}\n' \
+      "$name" "$next" > "$dir/$name.json"
+  done
+  printf '{broken' > "$dir/000-bad.json"
+  ln -s "$dir/000.json" "$dir/001-link.json"
+  mkdir "$dir/599-directory.json"
+  started=$SECONDS
+  out=$(FM_HOME="$home" FM_REVIEW_NOW_EPOCH=1000 "$REVIEW" poll) || fail 'poll failed'
+  elapsed=$((SECONDS - started))
+  [ "$out" = 'PR review ledger attention: unreadable=3 first=000-bad.json due=2 urls=https://example.test/000,https://example.test/001' ] \
+    || fail "poll changed its ordered unreadable/due output: $out"
+  [ "$elapsed" -lt 5 ] || fail "poll took ${elapsed}s for 600 ledgers (limit: 5s)"
+  rm "$dir/000-bad.json" "$dir/001-link.json"
+  rmdir "$dir/599-directory.json"
+  out=$(FM_HOME="$home" FM_REVIEW_NOW_EPOCH=1000 "$REVIEW" poll)
+  [ "$out" = 'PR review checkpoint due (2): https://example.test/000,https://example.test/001' ] \
+    || fail "poll changed its due-only output: $out"
+  out=$(FM_HOME="$home" FM_REVIEW_NOW_EPOCH=999 "$REVIEW" poll)
+  [ -z "$out" ] || fail 'poll was not silent before the checkpoint'
+  out=$(FM_HOME="$home/absent" "$REVIEW" poll) || fail 'missing ledger directory failed'
+  [ -z "$out" ] || fail 'poll was not silent without a ledger directory'
+  pass "poll preserves ordered checkpoint output for 600 ledgers (${elapsed}s)"
+}
+
+if [ "${1:-}" = --poll-only ]; then
+  test_poll_scales_and_preserves_checkpoint_output
+  exit 0
+fi
+
+test_poll_scales_and_preserves_checkpoint_output
 test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
 test_high_stakes_uses_configured_model_without_mandatory_independent_review

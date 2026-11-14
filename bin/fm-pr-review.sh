@@ -614,23 +614,46 @@ case "$cmd" in
   poll)
     [ "$#" -eq 0 ] || die 'poll takes no arguments'
     [ -d "$LEDGER_DIR" ] && [ ! -L "$LEDGER_DIR" ] || exit 0
-    NOW=$(now_epoch); DUE=; COUNT=0; BAD=0; BADFILE=
-    for file in "$LEDGER_DIR"/*.json; do
-      [ -e "$file" ] || continue
-      if [ ! -f "$file" ] || [ -L "$file" ] \
-        || ! jq -e '.schema == "firstmate-pr-review-ledger.v1" and (.url | type == "string") and (.generations | type == "array" and length > 0)' "$file" >/dev/null 2>&1; then
-        BAD=$((BAD + 1)); BADFILE=${BADFILE:-$(basename "$file")}; continue
-      fi
-      NEXT=$(jq -er '.generations[-1].next_checkpoint_epoch // empty' "$file" 2>/dev/null || true)
-      case "$NEXT" in ''|*[!0-9]*) continue ;; esac
-      [ "$NEXT" -le "$NOW" ] || continue
-      COUNT=$((COUNT + 1)); DUE="${DUE:+$DUE,}$(jq -r .url "$file")"
-    done
-    if [ "$BAD" -gt 0 ]; then
-      printf 'PR review ledger attention: unreadable=%s first=%s due=%s%s\n' "$BAD" "$BADFILE" "$COUNT" "${DUE:+ urls=$DUE}"
-    elif [ "$COUNT" -gt 0 ]; then
-      printf 'PR review checkpoint due (%s): %s\n' "$COUNT" "$DUE"
-    fi
+    NOW=$(now_epoch)
+    # Frame each filename and raw document with NULs so malformed JSON cannot
+    # abort parsing of its neighbours. Bash reads files without a process per
+    # ledger; a literal NUL (invalid in JSON) is rejected rather than reframed.
+    {
+      for file in "$LEDGER_DIR"/*.json; do
+        [ -e "$file" ] || continue
+        CONTENT=
+        if [ -f "$file" ] && [ ! -L "$file" ]; then
+          if { IFS= read -r -d '' CONTENT < "$file"; } 2>/dev/null; then
+            CONTENT=
+          fi
+        fi
+        printf '%s\0%s\0' "${file##*/}" "$CONTENT"
+      done
+    } | jq -Rrs --argjson now "$NOW" '
+      split("\u0000") as $parts
+      | reduce range(0; ($parts | length) - 1; 2) as $i
+          ({bad:0, first:"", count:0, due:""};
+        (try ($parts[$i + 1] | fromjson) catch null) as $ledger
+        | if (try ($ledger.schema == "firstmate-pr-review-ledger.v1"
+            and ($ledger.url | type == "string")
+            and ($ledger.generations | type == "array" and length > 0)) catch false)
+          then
+            # Keep the legacy digit-only check of jq-rendered timestamps.
+            (try ($ledger.generations[-1].next_checkpoint_epoch // "" | tostring) catch "") as $next
+            | if ($next | test("^[0-9]+$")) and (($next | tonumber) <= $now)
+              then .count += 1
+                # Match the old comma joining and command-substitution trimming.
+                | .due += (if .due == "" then "" else "," end)
+                    + ($ledger.url | sub("\n+$"; ""))
+              else . end
+          else .bad += 1 | if .first == "" then .first = $parts[$i] else . end
+          end)
+      | if .bad > 0 then
+          "PR review ledger attention: unreadable=\(.bad) first=\(.first) due=\(.count)"
+          + (if .due == "" then "" else " urls=\(.due)" end)
+        elif .count > 0 then "PR review checkpoint due (\(.count)): \(.due)"
+        else empty end
+    '
     ;;
   arm)
     [ "$#" -eq 0 ] || die 'arm takes no arguments'
