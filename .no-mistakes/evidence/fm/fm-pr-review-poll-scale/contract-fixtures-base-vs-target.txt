@@ -1,0 +1,41 @@
+== fixture: dueonly ==
+-- base:
+PR review checkpoint due (7): https://github.com/o/r/pull/1,https://github.com/o/r/pull/3,https://github.com/o/r/pull/5,https://github.com/o/r/pull/10,https://github.com/o/r/pull/13,https://github.com/o/r/pull/15/é,https://github.com/o/r/pull/17
+[exit=0]
+-- target:
+PR review checkpoint due (7): https://github.com/o/r/pull/1,https://github.com/o/r/pull/3,https://github.com/o/r/pull/5,https://github.com/o/r/pull/10,https://github.com/o/r/pull/13,https://github.com/o/r/pull/15/é,https://github.com/o/r/pull/17
+[exit=0]
+MATCH
+== fixture: notdue ==
+-- base:
+[exit=0]
+-- target:
+[exit=0]
+MATCH
+== fixture: absent ==
+-- base:
+[exit=0]
+-- target:
+[exit=0]
+MATCH
+== fixture: emptydir ==
+-- base:
+[exit=0]
+-- target:
+[exit=0]
+MATCH
+== fixture: symdir ==
+-- base:
+[exit=0]
+-- target:
+[exit=0]
+MATCH
+== fixture: multidoc ==
+-- base:
+PR review checkpoint due (4): https://github.com/o/r/pull/1,https://github.com/o/r/pull/5�,https://github.com/o/r/pull/2,https://github.com/o/r/pull/3
+https://github.com/o/r/pull/4
+[exit=0]
+-- target:
+PR review ledger attention: unreadable=1 first=multi.json due=3 urls=https://github.com/o/r/pull/1,https://github.com/o/r/pull/5�,https://github.com/o/r/pull/2
+[exit=0]
+DIFFER

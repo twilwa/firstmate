@@ -1,0 +1,7 @@
+== base (7782115b) ==
+PR review ledger attention: unreadable=12 first=b01-schema.json due=7 urls=https://github.com/o/r/pull/1,https://github.com/o/r/pull/3,https://github.com/o/r/pull/5,https://github.com/o/r/pull/10,https://github.com/o/r/pull/13,https://github.com/o/r/pull/15/é,https://github.com/o/r/pull/17
+[exit=0]
+== target (4134090b) ==
+PR review ledger attention: unreadable=12 first=b01-schema.json due=7 urls=https://github.com/o/r/pull/1,https://github.com/o/r/pull/3,https://github.com/o/r/pull/5,https://github.com/o/r/pull/10,https://github.com/o/r/pull/13,https://github.com/o/r/pull/15/é,https://github.com/o/r/pull/17
+[exit=0]
+IDENTICAL-BYTES

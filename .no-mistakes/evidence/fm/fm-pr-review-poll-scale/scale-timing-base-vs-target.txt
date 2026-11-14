@@ -1,0 +1,17 @@
+host: 12 cpus;  09:58:52 up 9 days, 22:39,  0 user,  load average: 4.68, 5.03, 4.85
+base N=625 run1 wall=11.91s
+base N=625 run2 wall=11.32s
+base N=625 jq_processes=1266
+target N=625 run1 wall=0.83s
+target N=625 run2 wall=0.79s
+target N=625 jq_processes=2
+N=625 output byte-identical base vs target
+target output (first 200 chars): PR review ledger attention: unreadable=5 first=github--org--repo--0125.json due=20 urls=https://github.com/org/repo/pull/30,https://github.com/org/repo/pull/60,https://github.com/org/repo/pull/90,http
+base N=1250 run1 wall=21.28s
+base N=1250 run2 wall=22.88s
+base N=1250 jq_processes=2531
+target N=1250 run1 wall=1.60s
+target N=1250 run2 wall=1.45s
+target N=1250 jq_processes=2
+N=1250 output byte-identical base vs target
+target output (first 200 chars): PR review ledger attention: unreadable=10 first=github--org--repo--0125.json due=40 urls=https://github.com/org/repo/pull/30,https://github.com/org/repo/pull/60,https://github.com/org/repo/pull/90,htt

@@ -1,0 +1,34 @@
+Fixture: fresh lab home per run (bin/fm-lab-home.sh create), 625 ledgers: 20 due, 600 not due, 5 malformed; check armed via 'fm-pr-review.sh arm'; real bin/fm-watch.sh one cycle
+host load: 7.79 6.25 5.36
+
+## TARGET, default 30s check limit
+watcher={run-worktree} check_timeout=30s exit=0 wall=3.9s
+--- stdout:
+check: /tmp/fm-lab.IcnJnM/state/review-policy.check.sh: PR review ledger attention: unreadable=5 first=github--org--repo--0125.json due=20 urls=https://github.com/org/repo/pull/30,https://github.com/org/repo/pull/60,https://github.com/org/repo/pull/90,https://github.com/org/repo/pull/120,https://github.com/org/repo/pull/150,http
+... (stdout bytes: 881)
+--- stderr (tail):
+--- queued wake rows: 1
+
+## TARGET, tightened 5s check limit
+watcher={run-worktree} check_timeout=5s exit=0 wall=4.0s
+--- stdout:
+check: /tmp/fm-lab.JGb1xg/state/review-policy.check.sh: PR review ledger attention: unreadable=5 first=github--org--repo--0125.json due=20 urls=https://github.com/org/repo/pull/30,https://github.com/org/repo/pull/60,https://github.com/org/repo/pull/90,https://github.com/org/repo/pull/120,https://github.com/org/repo/pull/150,http
+... (stdout bytes: 881)
+--- stderr (tail):
+--- queued wake rows: 1
+
+## BASE 7782115b, tightened 5s check limit
+watcher=/tmp/fmpoll.H0Z1tf/base check_timeout=5s exit=0 wall=7.7s
+--- stdout:
+check: /tmp/fm-lab.PF2Ck5/state/review-policy.check.sh: timed out after 5s
+... (stdout bytes: 75)
+--- stderr (tail):
+--- queued wake rows: 1
+
+## BASE 7782115b, default 30s check limit
+watcher=/tmp/fmpoll.H0Z1tf/base check_timeout=30s exit=0 wall=11.4s
+--- stdout:
+check: /tmp/fm-lab.OBpw41/state/review-policy.check.sh: PR review ledger attention: unreadable=5 first=github--org--repo--0125.json due=20 urls=https://github.com/org/repo/pull/30,https://github.com/org/repo/pull/60,https://github.com/org/repo/pull/90,https://github.com/org/repo/pull/120,https://github.com/org/repo/pull/150,http
+... (stdout bytes: 881)
+--- stderr (tail):
+--- queued wake rows: 1
