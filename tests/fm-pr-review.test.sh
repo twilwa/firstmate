@@ -1006,11 +1006,6 @@ test_poll_scales_and_preserves_checkpoint_output() {
   pass "poll preserves ordered checkpoint output for 600 ledgers (${elapsed}s)"
 }
 
-if [ "${1:-}" = --poll-only ]; then
-  test_poll_scales_and_preserves_checkpoint_output
-  exit 0
-fi
-
 test_poll_scales_and_preserves_checkpoint_output
 test_pending_review_retries_and_every_review_surface_needs_disposition
 test_new_head_invalidates_old_checks_and_review_coverage
