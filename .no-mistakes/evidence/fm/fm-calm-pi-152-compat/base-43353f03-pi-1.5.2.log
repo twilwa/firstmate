@@ -1,0 +1,14 @@
+$ repo=base-43353f03 pi=1.5.2 cases: test_queued_operational_rows
+pi package version: 1.5.2
+not ok - Pi Calm queued operational rows: file:///tmp/nmtest-calm/pi-1.5.2/lib/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js:4009
+        for (const component of this.pendingBashComponents) {
+                                     ^
+
+TypeError: this.pendingBashComponents is not iterable
+    at InteractiveMode.updatePendingMessagesDisplay (file:///tmp/nmtest-calm/pi-1.5.2/lib/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js:4009:38)
+    at prototype.updatePendingMessagesDisplay (file:///tmp/fm-calm-pi-extension.7PhtBv/queued-operational-rows/lib/fm-calm-pending-operational-layout.ts:207:44)
+    at file:///tmp/fm-calm-pi-extension.7PhtBv/queued-operational-rows/[eval1]:112:8
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v26.13.0
+exit=1

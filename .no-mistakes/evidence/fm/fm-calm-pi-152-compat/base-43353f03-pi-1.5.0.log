@@ -1,0 +1,4 @@
+$ repo=base-43353f03 pi=1.5.0 cases: test_queued_operational_rows
+pi package version: 1.5.0
+ok - Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock
+exit=0

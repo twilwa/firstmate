@@ -1,0 +1,7 @@
+$ repo=head-8b9ba39f pi=1.5.0 cases: test_pi_compat_no_upper_bound test_pi_compat_degraded_adapter test_pi_compat_missing_adapter_exports test_queued_operational_rows
+pi package version: 1.5.0
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+ok - Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock
+exit=0

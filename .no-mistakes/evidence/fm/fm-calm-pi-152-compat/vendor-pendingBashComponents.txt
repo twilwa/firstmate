@@ -1,0 +1,9 @@
+Real Pi vendor source, global-layout installs (npm install -g --prefix):
+== 1.5.0
+312:    pendingBashComponents = [];
+4069:        for (const component of this.pendingBashComponents) {
+4073:        this.pendingBashComponents = [];
+== 1.5.2
+318:    pendingBashComponents = [];
+1802:        this.pendingBashComponents = [];
+4009:        for (const component of this.pendingBashComponents) {
