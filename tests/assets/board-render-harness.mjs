@@ -7,7 +7,7 @@
 // rendered Captain's Call forms, so the answer context the page hands to lavish
 // is observed as the page emits it.
 // Prints one JSON document:
-//   { stats:[{n,label}], underway:[{title,sub,badges}],
+//   { stats:[{n,label}], captains_call:[text], underway:[{title,sub,badges}],
 //     charted:[{title,sub,badges,pickable}], call:[{question,options}], empty,
 //     more, error, queued:[{prompt,tag,text,data}] }
 import { readFileSync } from "node:fs";
@@ -36,10 +36,12 @@ class Node {
         this.className = this.className.split(/\s+/).filter((x) => x && x !== c).join(" ");
       },
       contains: (c) => this.className.split(/\s+/).includes(c),
-      toggle: (c, on) => {
-        const has = this.className.split(/\s+/).includes(c);
-        const want = on === undefined ? !has : !!on;
-        if (want) this.classList.add(c); else this.classList.remove(c);
+      toggle: (c, force) => {
+        const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+        const enabled = force ?? !classes.has(c);
+        if (enabled) classes.add(c); else classes.delete(c);
+        this.className = [...classes].join(" ");
+        return enabled;
       },
     };
   }
@@ -173,6 +175,9 @@ const rowsOf = (container) =>
 
 const uw = byId.get("bb-underway") || new Node("div");
 const underway = rowsOf(uw);
+const captains_call = (byId.get("bb-call") || new Node("div")).children
+  .filter((n) => n.className.split(/\s+/).includes("bb-decision"))
+  .map((n) => n.textContent);
 
 const ch = byId.get("bb-charted") || new Node("div");
 const charted = rowsOf(ch);
@@ -208,4 +213,4 @@ const empty = ch.children.filter((c) => c.className.includes("bb-empty")).map((c
 const more = ch.children.filter((c) => c.className.includes("bb-morechip")).map((c) => c.textContent);
 
 process.stdout.write(
-  JSON.stringify({ stats, underway, charted, call, empty, more, error: errorText, queued }) + "\n");
+  JSON.stringify({ stats, captains_call, underway, charted, call, empty, more, error: errorText, queued }) + "\n");

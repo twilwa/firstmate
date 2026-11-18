@@ -49,6 +49,7 @@ The archived August run (`fm-isolation-1787273044622-10250`, `total=24 failed=0 
 - `tests/fm-grok-harness.test.sh`
 - `tests/fm-herdr-lab.test.sh`
 - `tests/fm-lint.test.sh`
+- `tests/fm-park.test.sh`
 - `tests/fm-pi-primary-types.test.sh`
 - `tests/fm-pr-merge.test.sh`
 - `tests/fm-review-diff.test.sh`
@@ -105,6 +106,14 @@ The backend suite spawns real tasks, and `fm-spawn.sh` creates each task's `/tmp
 - Separately, two concurrent copies of the backend suite plus the helper suite passed twice, and each suite passed beside `tests/fm-busy-state.test.sh`.
 
 The clean Linux artifact this note called for now exists: the hosted run recorded above under [Verification](#verification), archived in `docs/fm-test-isolation-proof.json`.
+
+## 2026-11-10: Review parking suite added
+
+`tests/fm-park.test.sh` keeps all state under `fm_test_tmproot` and drives a fake tmux binary, so it shares no global state.
+
+- Command: `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on macOS arm64 with Bash 5.3 and tmux, run under `caffeinate -i`
+- Result: `FM_ISOLATION_SUMMARY total=27 failed=0 concurrency=4 duration_ms=1372646`
+- `tests/fm-park.test.sh` exit 0 (188248 ms).
 
 ## Family concurrency proofs
 

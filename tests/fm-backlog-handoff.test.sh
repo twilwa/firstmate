@@ -583,7 +583,7 @@ SH
   while [ ! -f "$TMP_ROOT/concurrent.entered" ]; do
     kill -0 "$first" 2>/dev/null || fail "first concurrent handoff exited before its blocked wake"
     i=$((i + 1))
-    [ "$i" -le 250 ] || fail "first concurrent handoff never reached its receiver wake"
+    [ "$i" -le 250 ] || fail "first concurrent handoff never reached its receiver wake: $(cat "$TMP_ROOT/concurrent-a.out")"
     sleep 0.02
   done
   cat > "$home/data/backlog.md" <<'EOF'
@@ -653,7 +653,7 @@ SH
   while [ ! -f "$TMP_ROOT/teardown-race.entered" ]; do
     kill -0 "$handoff" 2>/dev/null || fail "teardown-race handoff exited before its blocked wake"
     i=$((i + 1))
-    [ "$i" -le 250 ] || fail "teardown-race handoff never reached its receiver wake"
+    [ "$i" -le 250 ] || fail "teardown-race handoff never reached its receiver wake: $(cat "$TMP_ROOT/teardown-race-handoff.out")"
     sleep 0.02
   done
   PATH="$basebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \

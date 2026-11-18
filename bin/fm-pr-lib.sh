@@ -1216,11 +1216,60 @@ fm_pr_github_read_required_contexts() {  # <owner> <repo> <base>
   [ -z "$FM_PR_GITHUB_REQUIRED_ERROR" ]
 }
 
+# Merge and review-parking callers bind the same reader to their PR identity.
+github_read_required_contexts() {  # <base>
+  fm_pr_github_read_required_contexts "$PR_OWNER" "$PR_REPO" "$1"
+}
+
+github_required_checks_missing() {
+  local json=$1 required=$2 producers=$3
+  printf '%s' "$json" | jq -r --argjson required "$required" --argjson producers "$producers" '
+    if (.statusCheckRollup | type) != "array" then error("no check rollup") else . end
+    | .statusCheckRollup as $reported
+    | $required
+    | map(. as $requirement
+      | select(any($reported[];
+          if $requirement.app_id == null then
+            (if .__typename == "CheckRun" then .name else .context end) == $requirement.context
+          elif .__typename == "CheckRun" then
+            .name == $requirement.context
+            and any($producers[]; .name == $requirement.context and .app.id == $requirement.app_id)
+          else
+            .context == $requirement.context
+          end) | not)
+      | .context) | unique[]
+  ' 2>/dev/null || return 1
+}
+
+# Reads the check runs at <head> with their producing app into
+# FM_PR_GITHUB_PRODUCERS, only when a required check in FM_PR_GITHUB_REQUIRED
+# names its app; '[]' otherwise or when the read fails, which returns 1.
+FM_PR_GITHUB_PRODUCERS='[]'
+github_read_required_producers() {  # <head>
+  local head=$1 runs
+  FM_PR_GITHUB_PRODUCERS='[]'
+  printf '%s' "$FM_PR_GITHUB_REQUIRED" | jq -e 'any(.[]; .app_id != null)' >/dev/null || return 0
+  if ! runs=$(gh api --paginate "repos/$PR_OWNER/$PR_REPO/commits/$head/check-runs" 2>/dev/null) \
+    || [ -z "$runs" ] \
+    || ! FM_PR_GITHUB_PRODUCERS=$(printf '%s' "$runs" | jq -sc --arg head "$head" '
+      [ .[] | if (.check_runs | type) == "array" then .check_runs[] else error("invalid check runs") end
+        | if (.name | type) == "string" and (.app.id | type) == "number" and .head_sha == $head
+          then . else error("invalid check producer") end ]' 2>/dev/null); then
+    # shellcheck disable=SC2034 # read by the callers
+    FM_PR_GITHUB_PRODUCERS='[]'
+    return 1
+  fi
+}
+
+# Reads one merge request's state and its own head commit (the MR's sha, never
+# a merge, squash, or merge-train commit, which is what lets bin/fm-teardown.sh
+# prove a squash-merged or merge-train-merged copy landed).
 fm_pr_gitlab_read_record() {  # <host> <path> <number>
   local host=$1 path=$2 number=$3 project_url json fields line
-  local total=0 named=0 state='' merged=''
+  local total=0 named=0 state='' merged='' head=''
   FM_PR_RECORD_STATE=
   FM_PR_RECORD_MERGED=
+  FM_PR_RECORD_HEAD=
   command -v glab >/dev/null 2>&1 || return 1
   command -v jq >/dev/null 2>&1 || return 1
   project_url="https://$host/$path"
@@ -1232,7 +1281,8 @@ fm_pr_gitlab_read_record() {  # <host> <path> <number>
   if ! fields=$(printf '%s' "$json" | jq -r '
       if type == "object" and (.state | type == "string") and .state != "" then
         "state=" + .state,
-        "merged=" + (if .state == "merged" then "true" else "false" end)
+        "merged=" + (if .state == "merged" then "true" else "false" end),
+        "head=" + (if (.sha | type) == "string" then .sha else "" end)
       else
         error("invalid merge request state")
       end' 2>/dev/null); then
@@ -1243,13 +1293,14 @@ fm_pr_gitlab_read_record() {  # <host> <path> <number>
     case "$line" in
       state=*) state=${line#state=} ;;
       merged=*) merged=${line#merged=} ;;
+      head=*) head=${line#head=} ;;
       *) continue ;;
     esac
     named=$((named + 1))
   done <<FIELDS
 $fields
 FIELDS
-  if [ "$named" -ne 2 ] || [ "$total" -ne 2 ] || [ -z "$state" ] \
+  if [ "$named" -ne 3 ] || [ "$total" -ne 3 ] || [ -z "$state" ] \
     || { [ "$merged" != true ] && [ "$merged" != false ]; }; then
     return 1
   fi
@@ -1257,9 +1308,12 @@ FIELDS
   # Consumed by bin/fm-crew-state.sh passed_pr_detail.
   # shellcheck disable=SC2034
   FM_PR_RECORD_STATE=$state
-  # Consumed by bin/fm-crew-state.sh passed_pr_detail.
+  # Consumed by bin/fm-crew-state.sh passed_pr_detail and bin/fm-teardown.sh.
   # shellcheck disable=SC2034
   FM_PR_RECORD_MERGED=$merged
+  # Consumed by bin/fm-teardown.sh pr_is_merged; empty when the forge omitted it.
+  # shellcheck disable=SC2034
+  FM_PR_RECORD_HEAD=$head
 }
 
 # tea addresses a repo by slug only and takes the host from a named login, so
@@ -1704,4 +1758,132 @@ fm_pr_poll_merge_notified_remove() {  # <state> <id>
   [ -e "$marker" ] || [ -L "$marker" ] || return 0
   [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
   rm -f -- "$marker"
+}
+
+# --- degraded ready-PR marker -------------------------------------------------
+# A ready PR/MR that degraded after its ready report - GitHub required checks
+# turning failing, GitLab leaving an active merge train or a failing head
+# pipeline - wakes once per observed head/pipeline identity. The marker below
+# carries the identity that last woke, so the same degraded state stays silent
+# on later polls while a changed identity (a new head, a new failing pipeline)
+# wakes again. The identity is what the static poll (bin/fm-pr-poll.sh) emits
+# after its "degraded " prefix, and both sides validate it so a forged or
+# malformed line can never enter the marker.
+fm_pr_poll_degraded_identity_valid() {  # <identity>
+  local identity=${1-} value
+  local LC_ALL=C
+  case $identity in
+    head=*)
+      value=${identity#head=}
+      [ "${#value}" -eq 40 ] || return 1
+      case $value in
+        *[!0-9a-f]*) return 1 ;;
+      esac
+      ;;
+    pipeline=*)
+      value=${identity#pipeline=}
+      case $value in
+        [1-9]*) ;;
+        *) return 1 ;;
+      esac
+      case $value in
+        *[!0-9]*) return 1 ;;
+      esac
+      [ "${#value}" -le 18 ] || return 1
+      ;;
+    train=on|train=dropped) ;;
+    *) return 1 ;;
+  esac
+}
+
+fm_pr_poll_degraded_marker_matches() {  # <marker> <device> <provider> <host> <path> <number> <identity>
+  local marker=$1 device=$2 expected_provider=$3 expected_host=$4 expected_path=$5 expected_number=$6 expected_identity=$7
+  local version provider host path number identity
+  fm_pr_private_file_valid "$marker" 600 "$device" || return 1
+  exec 8< "$marker" || return 1
+  IFS= read -r version <&8 || { exec 8<&-; return 1; }
+  IFS= read -r provider <&8 || { exec 8<&-; return 1; }
+  IFS= read -r host <&8 || { exec 8<&-; return 1; }
+  IFS= read -r path <&8 || { exec 8<&-; return 1; }
+  IFS= read -r number <&8 || { exec 8<&-; return 1; }
+  IFS= read -r identity <&8 || { exec 8<&-; return 1; }
+  if IFS= read -r _extra <&8; then
+    exec 8<&-
+    return 1
+  fi
+  exec 8<&-
+  [ "$version" = fm-pr-poll-degraded-notified-v1 ] \
+    && [ "$provider" = "$expected_provider" ] \
+    && [ "$host" = "$expected_host" ] \
+    && [ "$path" = "$expected_path" ] \
+    && [ "$number" = "$expected_number" ] \
+    && [ "$identity" = "$expected_identity" ]
+}
+
+fm_pr_poll_degraded_already_notified() {  # <state> <id> <provider> <host> <path> <number> <identity>
+  local state=$1 id=$2 provider=$3 host=$4 path=$5 number=$6 identity=$7 marker state_device
+  fm_pr_task_id_valid "$id" || return 1
+  fm_pr_poll_degraded_identity_valid "$identity" || return 1
+  [ -d "$state" ] && [ ! -L "$state" ] || return 1
+  state_device=$(fm_pr_file_device "$state") || return 1
+  if [ "$identity" = train=on ]; then
+    marker="$state/$id.pr-poll-train"
+  else
+    marker="$state/$id.pr-poll-degraded"
+  fi
+  fm_pr_poll_degraded_marker_matches "$marker" "$state_device" \
+    "$provider" "$host" "$path" "$number" "$identity"
+}
+
+fm_pr_poll_degraded_mark_notified() {  # <state> <id> <provider> <host> <path> <number> <identity>
+  local state=$1 id=$2 provider=$3 host=$4 path=$5 number=$6 identity=$7 marker tmp state_device
+  fm_pr_task_id_valid "$id" || return 1
+  fm_pr_poll_degraded_identity_valid "$identity" || return 1
+  [ -d "$state" ] && [ ! -L "$state" ] || return 1
+  state_device=$(fm_pr_file_device "$state") || return 1
+  if [ "$identity" = train=on ]; then
+    marker="$state/$id.pr-poll-train"
+  else
+    marker="$state/$id.pr-poll-degraded"
+  fi
+  fm_pr_regular_destination_on_device_or_absent "$marker" "$state_device" || return 1
+  umask 077
+  tmp=$(mktemp "$state/.fm-pr-poll-degraded.XXXXXX") || return 1
+  if ! printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
+      fm-pr-poll-degraded-notified-v1 "$provider" "$host" "$path" "$number" "$identity" > "$tmp" \
+    || ! chmod 0600 "$tmp" \
+    || ! fm_pr_poll_degraded_marker_matches "$tmp" "$state_device" \
+      "$provider" "$host" "$path" "$number" "$identity" \
+    || ! fm_pr_regular_destination_on_device_or_absent "$marker" "$state_device" \
+    || ! mv -f -- "$tmp" "$marker" \
+    || ! fm_pr_poll_degraded_marker_matches "$marker" "$state_device" \
+      "$provider" "$host" "$path" "$number" "$identity"; then
+    rm -f -- "$tmp"
+    return 1
+  fi
+}
+
+# Removed at teardown alongside the other per-task PR-poll artifacts
+# (bin/fm-teardown.sh) so a retired task id leaves no residue behind.
+fm_pr_poll_degraded_remove() {  # <state> <id>
+  local state=$1 id=$2 marker
+  fm_pr_task_id_valid "$id" || return 1
+  marker="$state/$id.pr-poll-degraded"
+  [ ! -e "$marker" ] && [ ! -L "$marker" ] || {
+    [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
+    rm -f -- "$marker" || return 1
+  }
+  fm_pr_poll_train_clear "$state" "$id"
+}
+
+# Forgets that the merge request was seen on its merge train; the watcher calls
+# it after waking for a drop, so only a later re-queue arms the next drop wake.
+fm_pr_poll_train_clear() {  # <state> <id>
+  local state=$1 id=$2 marker
+  fm_pr_task_id_valid "$id" || return 1
+  marker="$state/$id.pr-poll-train"
+  [ ! -e "$marker" ] && [ ! -L "$marker" ] || {
+    [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
+    rm -f -- "$marker"
+  }
 }

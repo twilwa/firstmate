@@ -95,6 +95,9 @@
 #     reconcile_inventory independently of projection trust.
 #     Actionable captain holds appear in decisions_open; every captain hold remains
 #     in the bounded queued inventory with its structured classification metadata.
+#     Generated captain-hold rows in decisions_open and queued carry the full
+#     question for presentation; their overview summary, reason, title, and
+#     hold_reason fields stay bounded.
 #     Before that queued bound is applied, non-captain-actionable rows are selected
 #     ahead of captain-actionable rows so separately projected live decisions cannot
 #     crowd Charted-Next-eligible work out of the summary. Each group is ordered by
@@ -269,7 +272,11 @@ reported unreadable with the reason; collection never computes a summary in
 that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
-observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).
+observations run in batches of up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY tasks
+(default 8), each task's status-history fold and row composition running in its
+own observation worker, and each batch waits for its slowest task before the next
+batch starts. That fold and the bounded current-state read both scan the task's
+whole status history, so collection time still grows with accumulated history.
 Remote secondmate endpoint liveness is not probed by this command.
 Terminal contradiction evidence uses
 FM_SNAPSHOT_TERMINAL_LINES, FM_SNAPSHOT_TERMINAL_BYTES, and
@@ -614,7 +621,7 @@ snapshot_task_generation_is_current() {  # <captured-meta> <id>
 
 prefetch_task_observations() {  # <meta> <id>
   local meta=$1 id=$2 remote_host current_file endpoint_file current_pid='' current_rc=0
-  local status_log status_capture report_path report_capture
+  local status_log status_capture report_path report_capture open_file
   local kind='' backend='' target='' window='' terminal='' line
   local endpoint_exists=null agent_alive=not_checked generation_current=1
   remote_host=''
@@ -630,12 +637,16 @@ prefetch_task_observations() {  # <meta> <id>
   backend=${backend:-tmux}
   target=$window
   if [ "$backend" = orca ] && [ -n "$terminal" ]; then target=$terminal; fi
+
   current_file="$SNAPSHOT_TASK_DIR/$id.json"
   endpoint_file="$SNAPSHOT_TASK_DIR/$id.endpoint"
+  open_file="$SNAPSHOT_TASK_DIR/$id.open-decisions"
   status_log="$STATE/$id.status"
   status_capture="$SNAPSHOT_TASK_DIR/$id.status"
   report_path="$DATA/$id/report.md"
   report_capture="$SNAPSHOT_TASK_DIR/$id.report"
+  kind=$(meta_value "$meta" kind)
+  [ -n "$kind" ] || kind=ship
 
   snapshot_task_generation_is_current "$meta" "$id" || generation_current=0
   if [ "$generation_current" = 1 ]; then
@@ -650,6 +661,7 @@ prefetch_task_observations() {  # <meta> <id>
   elif [ "$generation_current" = 1 ]; then
     crew_state_json "$id" "$meta" "$status_capture" > "$current_file" &
     current_pid=$!
+
     if [ -n "$target" ]; then
       if fm_backend_target_exists "$backend" "$target" "fm-$id" >/dev/null 2>&1; then
         endpoint_exists=true
@@ -666,24 +678,35 @@ prefetch_task_observations() {  # <meta> <id>
     agent_alive=unknown
   fi
 
+  # The whole-stream open-decision fold costs time proportional to the task's
+  # status history, so it runs here while the bounded current-state read is
+  # still outstanding rather than after every read has finished.
+  status_open_decisions "$status_capture" "$kind" > "$open_file" || current_rc=1
   [ -z "$current_pid" ] || wait "$current_pid" || current_rc=1
   # All mutable observations must belong to the metadata generation captured in
   # the manifest. If teardown/relaunch raced any read, discard the whole sample.
   if ! snapshot_task_generation_is_current "$meta" "$id"; then
     rm -f -- "$status_capture" "$report_capture"
+    : > "$open_file" || current_rc=1
     jq -n '{state:"unknown",source:"none",detail:"task generation changed during snapshot",raw:""}' \
       > "$current_file" || current_rc=1
     endpoint_exists=null
     agent_alive=unknown
   fi
   printf 'endpoint_exists=%s\nagent_alive=%s\n' "$endpoint_exists" "$agent_alive" > "$endpoint_file" || current_rc=1
-  return "$current_rc"
+  [ "$current_rc" -eq 0 ] || return "$current_rc"
+  task_json_row "$meta" "$id" > "$SNAPSHOT_TASK_DIR/$id.row"
 }
 
-# Current-state and endpoint reads are independent observations. Start each
-# task's pair together so five local workers pay one slow no-mistakes response
-# window rather than five in series, while every command bound remains owned by
-# fm-timeout-lib.sh.
+# Each task's observations and row composition are independent of every other
+# task's. Start each task's current-state and endpoint reads together, fold its
+# status history while they run, and compose its row in the same worker. Workers
+# run in batches of up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY tasks and each batch
+# waits for its slowest task, so a fleet pays its slowest task once per batch
+# rather than every task's no-mistakes response window and status history in
+# series, while every command bound remains owned by fm-timeout-lib.sh. The fold
+# still scans each task's whole history, so a batch's cost grows with its longest
+# accumulated history.
 prefetch_task_current_states() {
   local meta captured_meta id active=0 index=0 rc=0
   local -a pids=()
@@ -734,19 +757,16 @@ prefetch_task_current_states() {
   fi
 }
 
-task_json_lines() {
-  local meta original_meta id kind harness model effort mode yolo project worktree home projects spawn_gen backend target status_log report_path
-  local remote_host remote_root current_file endpoint_file observation_line index=0
+# Compose one task row from the observations its own worker captured.
+task_json_row() {  # <captured-meta> <id>
+  local meta=$1 id=$2 original_meta kind harness model effort mode yolo project worktree home projects spawn_gen backend target status_log report_path
+  local remote_host remote_root current_file endpoint_file observation_line
   local pr pr_source current_json endpoint_exists agent_alive current_state current_source pr_from_status
   local open_decisions_tsv open_decisions_json line
   local event_present event_raw event_verb event_note event_age
   local meta_present report_present worktree_present home_present
   local branch remote_backend remote_target meta_backend terminal window pr_head
 
-  while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
-    meta=${SNAPSHOT_TASK_METAS[index]}
-    index=$((index + 1))
-    id=$(basename "$meta" .meta)
     original_meta="$STATE/$id.meta"
     # One pass over the captured generation retains fm_meta_get's last-value
     # semantics without launching a subshell for every field.
@@ -802,10 +822,7 @@ task_json_lines() {
     fi
 
     current_file="$SNAPSHOT_TASK_DIR/$id.json"
-    current_json=$(<"$current_file") || {
-      snapshot_task_cleanup
-      return 1
-    }
+    current_json=$(<"$current_file") || return 1
     status_event_fields "$status_log"
     read -r current_state current_source < <(
       jq -r '[.state // "", .source // ""] | @tsv' "$current_file"
@@ -828,7 +845,7 @@ task_json_lines() {
     # never clear another concern's keyed decision. A parked/blocked state, or a
     # non-authoritative status-log/none read on a still-live task, keeps the fold's
     # open decision surfacing.
-    open_decisions_tsv=$(status_open_decisions "$status_log" "$kind")
+    open_decisions_tsv=$(<"$SNAPSHOT_TASK_DIR/$id.open-decisions") || return 1
     if [ "$kind" != secondmate ] && \
        { { { [ "$current_source" = run-step ] || [ "$current_source" = pane ]; } \
            && [ "$current_state" != parked ] && [ "$current_state" != blocked ]; } \
@@ -847,10 +864,7 @@ task_json_lines() {
         endpoint_exists=*) endpoint_exists=${observation_line#*=} ;;
         agent_alive=*) agent_alive=${observation_line#*=} ;;
       esac
-    done < "$endpoint_file" || {
-      snapshot_task_cleanup
-      return 1
-    }
+    done < "$endpoint_file" || return 1
     [ -f "$report_path" ] && report_present=true || report_present=false
     [ -e "$meta" ] && meta_present=true || meta_present=false
     [ -n "$worktree" ] && [ -e "$worktree" ] && worktree_present=true || worktree_present=false
@@ -947,7 +961,17 @@ task_json_lines() {
              return_channel_note:null}
           end)
       }'
-  done | jq -s 'sort_by(.id)'
+}
+
+task_json_lines() {
+  local index=0
+  local -a row_files=()
+  [ "$SNAPSHOT_TASK_META_COUNT" -gt 0 ] || { jq -n '[]'; return; }
+  while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
+    row_files[index]="$SNAPSHOT_TASK_DIR/$(basename "${SNAPSHOT_TASK_METAS[index]}" .meta).row"
+    index=$((index + 1))
+  done
+  jq -s 'sort_by(.id)' "${row_files[@]}"
 }
 
 # Main-home current-inventory validity: same orphan / unstructured-current checks
@@ -1023,6 +1047,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
          | select(.captain_actionable == true)
          | {id,key:.id,verb:"captain-hold",summary:(.title | trunc(160)),
             reason:(.hold_reason | trunc(160)),
+             question:(.title + ": " + .hold_reason),
             hold_until:(.hold_until // null),
             hold_bucket:(.hold_bucket // null),
             hold_age_days:(.hold_age_days // null),source:"backlog"} ]) as $captain_holds_all
@@ -1131,6 +1156,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
         decisions_open:$decisions_all[:$decisions_n],
         holds:$holds_all[:$queued_n],
         queued:([$queued_all[] | {id:(.id | trunc(120)),title:(.title | trunc(120)),
+          question:(if .hold_kind == "captain" then (.title + ": " + .hold_reason) else null end),
           blocked_by:((.blocked_by // null) | if . == null then null else trunc(120) end),
           blocked_by_ids:((.blocked_by_ids // []) | map(trunc(120))),
           unresolved_blocker_ids:((.unresolved_blocker_ids // []) | map(trunc(120))),
