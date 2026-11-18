@@ -2458,8 +2458,8 @@ Both paths append only to a regular file at that exact path: a `state/dispatch-r
 
 **Task record (data/<id>/dispatch-resolution.json)**
 
-For a brief at `data/<id>/brief.md`, or `<FM_DATA_OVERRIDE>/<id>/brief.md` when that override is set, each run first removes that task's `dispatch-resolution.json`, so a decision never outlives a later run.
-Every outcome that exits 0, including off, then writes one JSON object there: `task` (the `<id>`), `status` (`clear`, `ambiguous`, `escalate`, `error`, or `off`), and `profile`.
+For a brief at `data/<id>/brief.md`, or `<FM_DATA_OVERRIDE>/<id>/brief.md` when that override is set, each resolve run first removes that task's `dispatch-resolution.json`, so a decision never outlives a later run; a `--record-dispatch` run leaves the record untouched.
+Every resolve outcome that exits 0, including off, then writes one JSON object there: `task` (the `<id>`), `status` (`clear`, `ambiguous`, `escalate`, `error`, or `off`), and `profile`.
 On `clear`, `profile` holds `harness`, `model`, and `effort`, each `null` when the chosen profile leaves it unset; otherwise `profile` is `null`.
 A usage or configuration error (exit 2) writes no record.
 `fm-spawn.sh` reads this record as the task's decision, as "Per-launch overrides and inherited defaults" describes.
