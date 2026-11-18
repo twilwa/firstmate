@@ -622,7 +622,7 @@ snapshot_task_generation_is_current() {  # <captured-meta> <id>
 prefetch_task_observations() {  # <meta> <id>
   local meta=$1 id=$2 remote_host current_file endpoint_file current_pid='' current_rc=0
   local status_log status_capture report_path report_capture open_file
-  local kind='' backend='' target='' window='' terminal='' line
+  local kind='' backend='' target='' window='' terminal='' t3_thread_id='' line
   local endpoint_exists=null agent_alive=not_checked generation_current=1
   remote_host=''
   while IFS= read -r line || [ -n "$line" ]; do
@@ -632,11 +632,13 @@ prefetch_task_observations() {  # <meta> <id>
       backend=*) backend=${line#*=} ;;
       window=*) window=${line#*=} ;;
       terminal=*) terminal=${line#*=} ;;
+      t3_thread_id=*) t3_thread_id=${line#*=} ;;
     esac
   done < "$meta"
   backend=${backend:-tmux}
   target=$window
   if [ "$backend" = orca ] && [ -n "$terminal" ]; then target=$terminal; fi
+  if [ "$backend" = t3code ] && [ -n "$t3_thread_id" ]; then target=$t3_thread_id; fi
 
   current_file="$SNAPSHOT_TASK_DIR/$id.json"
   endpoint_file="$SNAPSHOT_TASK_DIR/$id.endpoint"
@@ -765,14 +767,14 @@ task_json_row() {  # <captured-meta> <id>
   local open_decisions_tsv open_decisions_json line
   local event_present event_raw event_verb event_note event_age
   local meta_present report_present worktree_present home_present
-  local branch remote_backend remote_target meta_backend terminal window pr_head
+  local branch remote_backend remote_target meta_backend terminal t3_thread_id window pr_head
 
     original_meta="$STATE/$id.meta"
     # One pass over the captured generation retains fm_meta_get's last-value
     # semantics without launching a subshell for every field.
     kind='' harness='' model='' effort='' mode='' yolo='' project='' worktree='' home='' projects=''
     spawn_gen='' branch='' remote_host='' remote_root='' remote_backend='' remote_target=''
-    meta_backend='' terminal='' window='' pr='' pr_head=''
+    meta_backend='' terminal='' t3_thread_id='' window='' pr='' pr_head=''
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in
         kind=*) kind=${line#*=} ;;
@@ -793,6 +795,7 @@ task_json_row() {  # <captured-meta> <id>
         remote_target=*) remote_target=${line#*=} ;;
         backend=*) meta_backend=${line#*=} ;;
         terminal=*) terminal=${line#*=} ;;
+        t3_thread_id=*) t3_thread_id=${line#*=} ;;
         window=*) window=${line#*=} ;;
         pr=*) pr=${line#*=} ;;
         pr_head=*) pr_head=${line#*=} ;;
@@ -807,6 +810,9 @@ task_json_row() {  # <captured-meta> <id>
       target=$window
       if [ "$backend" = orca ] && [ -n "$terminal" ]; then
         target=$terminal
+      fi
+      if [ "$backend" = t3code ] && [ -n "$t3_thread_id" ]; then
+        target=$t3_thread_id
       fi
     fi
     status_log="$SNAPSHOT_TASK_DIR/$id.status"

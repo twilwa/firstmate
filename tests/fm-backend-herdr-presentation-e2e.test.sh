@@ -233,7 +233,9 @@ set -u
   done
   printf '\n'
 } >> "$TREEHOUSE_CALL_LOG"
-if [ -d "$POST_CREATE_ABORT_CONTROL" ] && [ "${1:-}" = get ]; then
+treehouse_command=${1:-}
+[ "$treehouse_command" != --root ] || treehouse_command=${3:-}
+if [ -d "$POST_CREATE_ABORT_CONTROL" ] && [ "$treehouse_command" = get ]; then
   # Fail the lease after the projected pane is created, exercising the
   # post-create abort cleanup without consuming a real pool slot.
   exit 0

@@ -1608,6 +1608,14 @@ assert_contains "$out" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-m
 assert_equals '{"task":"pager-fix","status":"clear","profile":{"harness":"cursor","model":"cursor-grok-4.6-medium","effort":null}}' \
   "$(jq -c '{task, status, profile: (.profile | {harness, model, effort})}' "$TASK_RECORD")" \
   "a clear run records the task, status, and the printed profile with an unset effort as null"
+clear_record=$(cat "$TASK_RECORD")
+TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness cursor --model cursor-grok-4.6-medium
+expect_code 0 "$code" "recording the dispatch of a task brief succeeds"
+assert_equals "$clear_record" "$(cat "$TASK_RECORD" 2>/dev/null)" \
+  "recording the accepted dispatch keeps the task's clear selection for a later fm-spawn"
+run code out err --record-dispatch "$TASK_BRIEF" --harness cursor --model cursor-grok-4.6-medium
+assert_equals "$clear_record" "$(cat "$TASK_RECORD" 2>/dev/null)" \
+  "a keyless --record-dispatch run does not replace the task's clear selection with off"
 reset_log
 write_response "$RESPONSE" rule_4 0.41
 TYPESAFE_API_KEY=$KEY run code out err "$TASK_BRIEF" --project pager

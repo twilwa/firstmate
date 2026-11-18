@@ -102,11 +102,12 @@
 #        (with the shared-quota opt-out: <harness>:<model> provider=.. -> eligible (quota ranking off: home declares a single shared quota))
 #     profile: --harness <h> [--model <m>] [--effort <e>]     (status clear only)
 #   Task record: for <data>/<id>/brief.md, where <data> is FM_DATA_OVERRIDE,
-#   else $FM_HOME/data, every run first removes
+#   else $FM_HOME/data, every resolve run first removes
 #   <data>/<id>/dispatch-resolution.json, then every outcome except exit 2 writes
 #   {"task", "status" (clear, ambiguous, escalate, error, or off), "profile"}
 #   there; profile holds harness, model, and effort on clear and is null
-#   otherwise. fm-spawn.sh reads it as the task's dispatch decision.
+#   otherwise. fm-spawn.sh reads it as the task's dispatch decision; a
+#   --record-dispatch run leaves it untouched.
 #   clear     -> pass the profile line to fm-spawn.sh unless you state a reason to override
 #   ambiguous -> confidence below the floor; decide as today from the probabilities
 #   escalate  -> the rule requires captain approval, no candidate is rankable, or a genuine tie
@@ -434,7 +435,7 @@ TASK_ID='' TASK_RECORD=''
 # FM_DATA_OVERRIDE home records where fm-spawn.sh reads.
 task_dir=$(CDPATH='' cd -- "$(dirname -- "$BRIEF")" 2>/dev/null && pwd -P) || task_dir=''
 data_dir=$(CDPATH='' cd -- "${FM_DATA_OVERRIDE:-$FM_HOME/data}" 2>/dev/null && pwd -P) || data_dir=''
-if [ "$(basename -- "$BRIEF")" = brief.md ] && [ -n "$task_dir" ] && [ -n "$data_dir" ] \
+if [ "$MODE" = resolve ] && [ "$(basename -- "$BRIEF")" = brief.md ] && [ -n "$task_dir" ] && [ -n "$data_dir" ] \
   && [ "$(dirname -- "$task_dir")" = "$data_dir" ]; then
   TASK_ID=$(basename -- "$task_dir")
   TASK_RECORD="$task_dir/dispatch-resolution.json"

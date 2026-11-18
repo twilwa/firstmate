@@ -46,6 +46,7 @@ make_lease_case() {
 #!/usr/bin/env bash
 set -u
 D=$FM_FAKE_DIR
+if [ "${1:-}" = --root ]; then printf '%s\n' "${2:-}" > "$D/treehouse-root"; shift 2; fi
 printf '%s\n' "$*" >> "$D/treehouse-log"
 case "$*" in
   'get --lease '*) [ ! -f "$D/lease-fails" ] || { echo 'lease failed' >&2; exit 1; }
@@ -152,6 +153,12 @@ test_fresh_spawn_leases_and_moves_the_top_level_shell() {
   expect_code 0 "$status" "spawn should succeed"$'\n'"$out"
   assert_grep "get --lease --lease-holder $id" "$dir/fake/treehouse-log" \
     "the task copy was not leased durably under the task id"
+  [ -f "$dir/fake/treehouse-root" ] \
+    || fail "the Herdr lease used the ambient Treehouse root instead of the project-bound one"
+  case "$(cat "$dir/fake/treehouse-root")" in
+    "$dir/user-home/.treehouse-fm/"[0-9a-f]*) ;;
+    *) fail "the Herdr lease root '$(cat "$dir/fake/treehouse-root")' is not a project-bound root under \$HOME/.treehouse-fm" ;;
+  esac
   ! grep -qx 'get' "$dir/fake/treehouse-log" \
     || fail "the interactive treehouse get opened a nested shell the restore cannot see"
   [ "$(cat "$dir/fake/cwd")" = "$dir/slot" ] \

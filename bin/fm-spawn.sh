@@ -358,9 +358,10 @@
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
 #   linked git worktree root sharing the spawning project's canonical common git
 #   directory, distinct from both the spawning project and the primary checkout.
-#   New Treehouse allocations use --root $HOME/.treehouse-fm/<hash of the
-#   canonical common git dir> to separate independent clones even when they
-#   share an origin, and to keep crew slots outside every Firstmate home. This
+#   New Treehouse allocations, including Herdr's lease but not the T3 Code
+#   lease, use --root $HOME/.treehouse-fm/<hash of the canonical common git
+#   dir> to separate independent clones even when they share an origin, and
+#   to keep crew slots outside every Firstmate home. This
 #   overrides ambient Treehouse root configuration for new allocations only; recorded
 #   worktrees, slot claims, project locks and absolute-path returns keep their
 #   existing owners. Relaunch never reallocates or refreshes the recorded copy.
@@ -5707,6 +5708,23 @@ spawn_send_key() { # <target> <key>
   esac
 }
 
+# Bind new allocations to this clone, even when homes share an origin or an
+# ambient Treehouse root is set, by keying the root on a hash of the clone's
+# canonical common git dir. The root sits under the user's HOME rather than
+# beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
+# of a crew slot. Relaunch uses the recorded slot unchanged.
+spawn_treehouse_pool_root() {
+  local pool_hash
+  if command -v shasum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
+  else
+    pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
+  fi
+  printf '%s' "$HOME/.treehouse-fm/$pool_hash"
+}
+
 # Lease the task copy durably instead of typing the interactive `treehouse get`
 # into the pane. That command runs a subshell, so the later `cd` lands inside
 # it and the pane's top-level shell stays in the project; Herdr restores a pane
@@ -5716,7 +5734,7 @@ spawn_send_key() { # <target> <key>
 # outlives its pane, so an aborted spawn returns it (spawn_abort_cleanup) and
 # bin/fm-teardown.sh returns it for a finished task.
 spawn_lease_herdr_slot() {
-  WT=$(cd "$PROJ_ABS" && treehouse get --lease --lease-holder "$ID") || {
+  WT=$(cd "$PROJ_ABS" && treehouse --root "$(spawn_treehouse_pool_root)" get --lease --lease-holder "$ID") || {
     echo "error: treehouse get --lease failed to lease a worktree for $ID from $PROJ_ABS; $(spawn_endpoint_hint)" >&2
     exit 1
   }
@@ -6335,19 +6353,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   elif [ "$BACKEND" = herdr ]; then
     spawn_lease_herdr_slot
   else
-    # Bind new allocations to this clone, even when homes share an origin or an
-    # ambient Treehouse root is set, by keying the root on a hash of the clone's
-    # canonical common git dir. The root sits under the user's HOME rather than
-    # beside the clone so no Firstmate home's AGENTS.md/CLAUDE.md is an ancestor
-    # of a crew slot. Relaunch uses the recorded slot unchanged.
-    if command -v shasum >/dev/null 2>&1; then
-      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | shasum -a 256 | awk '{print substr($1,1,12)}')
-    elif command -v sha256sum >/dev/null 2>&1; then
-      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | sha256sum | awk '{print substr($1,1,12)}')
-    else
-      pool_hash=$(printf '%s' "$PROJ_COMMON_REAL" | cksum | awk '{printf "%08x", $1}')
-    fi
-    spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$HOME/.treehouse-fm/$pool_hash") get"
+    spawn_send_text_line "$WT_TARGET" "treehouse --root $(shell_quote "$(spawn_treehouse_pool_root)") get"
 
     # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
     # Target the stable window id, not the name: if the name is ever lost (e.g. an

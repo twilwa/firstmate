@@ -50,7 +50,8 @@ exec env PATH="$ORIGINAL_PATH" "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" "${a
 EOF
 cat > "$TMP_ROOT/fakebin/treehouse" <<'EOF'
 #!/usr/bin/env bash
-case "$1" in
+[ "${1:-}" != --root ] || shift 2
+case "${1:-}" in
 get) printf '%s\n' "$TEST_SLOT" ;;
 *) echo 'test refuses pool administration' >&2; exit 1 ;;
 esac
