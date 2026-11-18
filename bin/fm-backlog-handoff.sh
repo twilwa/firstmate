@@ -980,6 +980,7 @@ SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
 sub_store() ( # <store-function> [args...]
   local store_function=$1
   shift
+  # shellcheck disable=SC2031 # Child-only selector reset in this deliberate subshell.
   unset "${!TASKS_AXI_@}"
   "$store_function" "$SUB_HOME" "$SUB_HOME/data" "$SUB_HOME/config" "$@"
 )
