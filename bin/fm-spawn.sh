@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--dispatch-override <reason>] [--hermes-profile <name>] [--account <entry>] [--backend <name>] [--herdr-resume-lock-wait]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--dispatch-override <reason>] [--hermes-profile <name>] [--account <entry>] [--backend <name>] [--herdr-resume-lock-wait]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--dispatch-override <reason>] [--hermes-profile <name>] [--claude-route <route>] [--account <entry>] [--backend <name>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--dispatch-override <reason>] [--hermes-profile <name>] [--claude-route <route>] [--account <entry>] [--backend <name>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
@@ -68,7 +68,7 @@
 #   first in the private launch-brief overlay, including the exact task-owned
 #   steering inbox. This never rewrites a project's instruction files or a
 #   secondmate's charter.
-#        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--account <entry>]
+#        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--claude-route <route>] [--account <entry>]
 #   --relaunch launches a replacement agent for an EXISTING task into that
 #   task's own recorded worktree, reusing its recorded endpoint when that
 #   endpoint still exists, instead of creating either from scratch. It is
@@ -116,6 +116,18 @@
 #   overlay; an existing managed scope is refused. The profile's own gateway
 #   may run only while idle; a mid-turn, ambiguous or unreadable gateway is
 #   refused without changing it. No profile config or SOUL is edited.
+#   --claude-route <default|direct|direct-code-mode> selects how a native claude
+#   ship or scout reaches the API. default (or absent) is today's launch, byte
+#   for byte, with no task-record line. direct adds
+#   "env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com",
+#   "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"0"} to the one existing --settings
+#   value, bypassing a user-settings proxy base URL, and direct-code-mode does
+#   the same with "1" to enable Claude Code's experimental Code Mode. The
+#   route is recorded as claude_route= (absent means default) and a relaunch
+#   reuses it; a relaunch naming a different route, or moving a routed task
+#   off claude, is refused. Refused for every other harness, a raw launch
+#   command, a secondmate, and the t3code backend. Code Mode's first-use
+#   consent dialog is never answered: the spawn prints a notice naming it.
 #   --model <name> and --effort <low|medium|high|xhigh|max|ultra> are concrete profile
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
@@ -1049,6 +1061,8 @@ MODEL_SET=0
 EFFORT_SET=0
 HERMES_PROFILE=
 HERMES_PROFILE_SET=0
+CLAUDE_ROUTE=
+CLAUDE_ROUTE_SET=0
 BACKEND_SET=0
 MODE_SET=0
 YOLO_SET=0
@@ -1091,6 +1105,10 @@ for a in "$@"; do
     hermes-profile)
       HERMES_PROFILE=$a
       HERMES_PROFILE_SET=1
+      ;;
+    claude-route)
+      CLAUDE_ROUTE=$a
+      CLAUDE_ROUTE_SET=1
       ;;
     backend)
       BACKEND_ARG=$a
@@ -1170,6 +1188,8 @@ for a in "$@"; do
   --dispatch-override=*) DISPATCH_OVERRIDE=${a#--dispatch-override=} ;;
   --hermes-profile) want_value=hermes-profile ;;
   --hermes-profile=*) HERMES_PROFILE=${a#--hermes-profile=}; HERMES_PROFILE_SET=1 ;;
+  --claude-route) want_value=claude-route ;;
+  --claude-route=*) CLAUDE_ROUTE=${a#--claude-route=}; CLAUDE_ROUTE_SET=1 ;;
   --backend) want_value=backend ;;
   --backend=*)
     BACKEND_ARG=${a#--backend=}
@@ -1305,6 +1325,19 @@ case "$EFFORT" in
   exit 1
   ;;
 esac
+if [ "$CLAUDE_ROUTE_SET" -eq 1 ]; then
+  case "$CLAUDE_ROUTE" in
+  default | direct | direct-code-mode) ;;
+  *)
+    echo "error: --claude-route must be one of default, direct, direct-code-mode" >&2
+    exit 1
+    ;;
+  esac
+  [ "$KIND" != secondmate ] || {
+    echo "error: --claude-route applies to ship and scout workers; a secondmate launches on its home's own settings" >&2
+    exit 1
+  }
+fi
 
 # --relaunch reuses an existing task's endpoint, worktree, project, and kind,
 # so every axis this block resolves for a fresh spawn instead comes from that
@@ -2245,6 +2278,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
   [ -z "$DISPATCH_OVERRIDE" ] || shared_args+=(--dispatch-override "$DISPATCH_OVERRIDE")
   [ "$HERMES_PROFILE_SET" -eq 0 ] || shared_args+=(--hermes-profile "$HERMES_PROFILE")
+  [ "$CLAUDE_ROUTE_SET" -eq 0 ] || shared_args+=(--claude-route "$CLAUDE_ROUTE")
   [ -z "$BACKEND_ARG" ] || shared_args+=(--backend "$BACKEND_ARG")
   # One delivery contract applies to every pair in a batch, exactly like the shared
   # harness. Each pair still re-validates it against its own brief, so a batch
@@ -3447,6 +3481,40 @@ fi
 if [ "$HERMES_PROFILE_SET" -eq 1 ] && [ "$HARNESS" != hermes ]; then
   echo "error: --hermes-profile requires --harness hermes" >&2
   exit 1
+fi
+# --claude-route (header above). A relaunch keeps the route its task records,
+# so an explicit different route, or a move off claude, refuses rather than
+# silently changing how the worker reaches the API.
+if [ "$RELAUNCH" -eq 1 ]; then
+  RECORDED_CLAUDE_ROUTE=$(fm_meta_get "$RELAUNCH_META" claude_route)
+  RECORDED_CLAUDE_ROUTE=${RECORDED_CLAUDE_ROUTE:-default}
+  if [ "$CLAUDE_ROUTE_SET" -eq 1 ] && [ "$CLAUDE_ROUTE" != "$RECORDED_CLAUDE_ROUTE" ]; then
+    echo "error: task $ID records claude_route=$RECORDED_CLAUDE_ROUTE; a relaunch keeps that route and refuses --claude-route $CLAUDE_ROUTE" >&2
+    exit 1
+  fi
+  CLAUDE_ROUTE=$RECORDED_CLAUDE_ROUTE
+fi
+CLAUDE_ROUTE=${CLAUDE_ROUTE:-default}
+if [ "$CLAUDE_ROUTE_SET" -eq 1 ] || [ "$CLAUDE_ROUTE" != default ]; then
+  if [ "$RAW_LAUNCH" -eq 1 ]; then
+    echo "error: --claude-route cannot be applied to a raw launch command; use --harness claude" >&2
+    exit 1
+  fi
+  if [ "$HARNESS" != claude ]; then
+    if [ "$RELAUNCH" -eq 1 ] && [ "$CLAUDE_ROUTE_SET" -eq 0 ]; then
+      echo "error: task $ID records claude_route=$CLAUDE_ROUTE, which only the native claude harness can keep; refusing a relaunch onto $HARNESS" >&2
+    else
+      echo "error: --claude-route applies only to the native claude harness, not $HARNESS" >&2
+    fi
+    exit 1
+  fi
+  if [ "$BACKEND" = t3code ]; then
+    echo "error: --claude-route needs the claude --settings launch, which the t3code backend does not use" >&2
+    exit 1
+  fi
+fi
+if [ "$CLAUDE_ROUTE" = direct-code-mode ]; then
+  echo "notice: claude_route=direct-code-mode: on first use Claude Code shows a blocking \"Code Mode (experimental)\" consent dialog with \"No, start without it\" preselected; this spawn never answers it, so an operator must choose \"Yes, turn on Code Mode\" in the worker's pane (a blind Enter starts without Code Mode)" >&2
 fi
 if [ "$HARNESS" = hermes ]; then
   # shellcheck source=bin/fm-hermes-lib.sh
@@ -7613,7 +7681,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness hermes_profile hermes_home kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
+      split("window endpoint_task_id worktree project harness hermes_profile hermes_home claude_route kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -7657,6 +7725,8 @@ preserve_relaunch_meta() {
   # task record stays byte-identical.
   [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
   [ "$HARNESS" != hermes ] || { echo "hermes_profile=$HERMES_PROFILE"; echo "hermes_home=$HERMES_PROFILE_HOME"; }
+  # Only a non-default --claude-route is recorded; absent means default.
+  [ "$CLAUDE_ROUTE" = default ] || echo "claude_route=$CLAUDE_ROUTE"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   if [ "$KIND" != secondmate ] && [ "$RELAUNCH" -eq 0 ]; then
@@ -7852,16 +7922,28 @@ LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 CLAUDE_EXCLUDE=
 [ -z "$EXCLUDE_TOOLS" ] || [ "$HARNESS" != claude ] || CLAUDE_EXCLUDE="--disallowedTools $(shell_quote "$EXCLUDE_TOOLS") "
 LAUNCH=${LAUNCH//__CLAUDEEXCLUDE__/$CLAUDE_EXCLUDE}
+# The --claude-route env block joins the one inline settings object; it is
+# empty on the default route, so that launch stays byte-identical.
+claude_route_env=
+case "$CLAUDE_ROUTE" in
+direct) claude_route_env=',"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"0"}' ;;
+direct-code-mode) claude_route_env=',"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"}' ;;
+esac
 case "$LAUNCH" in
 *__CLAUDESETTINGS__*)
   if [ "$KIND" = secondmate ]; then
     LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$(shell_quote "$STATE_REAL/$ID.claude-settings.json")}
   else
-    claude_settings="'{\"feedbackDrafts\":\"off\"__CLAUDEATTRIBUTION__}'"
+    claude_settings="'{\"feedbackDrafts\":\"off\"__CLAUDEATTRIBUTION__$claude_route_env}'"
     LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$claude_settings}
+    claude_route_env=
   fi
   ;;
 esac
+if [ -n "$claude_route_env" ]; then
+  echo "error: claude_route=$CLAUDE_ROUTE has no claude --settings value to join in this launch; refusing to launch on the default route instead" >&2
+  exit 1
+fi
 LAUNCH=${LAUNCH//__CODEXAPPROVALFLAG__/$CODEX_APPROVAL_FLAG}
 if [ "$KEEP_AI_TRAILERS" = 1 ]; then
   LAUNCH=${LAUNCH//__CLAUDEATTRIBUTION__/}

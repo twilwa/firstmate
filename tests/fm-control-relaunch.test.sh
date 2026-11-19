@@ -1031,6 +1031,54 @@ test_harness_switch_does_not_carry_the_old_profile_axes() {
   pass "fm-control relaunch: a harness switch resets model and effort unless they are named too"
 }
 
+# --claude-route is recorded with the task, so a relaunch keeps it, and any
+# attempt to change it - a different route or a move off claude - refuses
+# before the running agent is stopped.
+test_relaunch_reuses_the_recorded_claude_route() {
+  local dir out rc
+  dir=$(new_case claude-route rl60)
+  add_ship_task "$dir" rl60 claude
+  printf 'claude_route=direct-code-mode\n' >> "$dir/home/state/rl60.meta"
+  out=$(run_control "$dir" rl60 relaunch --note "keep the route"); rc=$?
+  expect_code 0 "$rc" "a relaunch of a routed claude task should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rl60 claude_route)" = direct-code-mode ] \
+    || fail "the relaunch dropped the recorded claude route"
+  assert_grep '"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"}' \
+    "$dir/fake/literal" "the replacement launch did not carry the recorded route's settings"
+  out=$(run_control "$dir" rl60 relaunch --claude-route direct-code-mode --note "same route named"); rc=$?
+  expect_code 0 "$rc" "naming the recorded route again should be accepted"$'\n'"$out"
+  pass "fm-control relaunch: a recorded claude route is reused by the replacement launch"
+}
+
+test_relaunch_refuses_a_conflicting_claude_route_before_stopping_the_agent() {
+  local dir out rc
+  dir=$(new_case claude-route-conflict rl61)
+  add_ship_task "$dir" rl61 claude
+  printf 'claude_route=direct\n' >> "$dir/home/state/rl61.meta"
+  cp "$dir/home/state/rl61.meta" "$dir/meta.before"
+
+  out=$(run_control "$dir" rl61 relaunch --claude-route direct-code-mode --note "switch route"); rc=$?
+  [ "$rc" -ne 0 ] || fail "a relaunch naming a different claude route should be refused"
+  assert_contains "$out" "claude_route=direct" "the refusal should name the recorded route"
+  out=$(run_control "$dir" rl61 relaunch --claude-route default --note "drop route"); rc=$?
+  [ "$rc" -ne 0 ] || fail "a relaunch naming the default route over a recorded direct route should be refused"
+  printf 'codex' > "$dir/fake/becomes"
+  out=$(run_control "$dir" rl61 relaunch --harness codex --note "switch runtime"); rc=$?
+  [ "$rc" -ne 0 ] || fail "a relaunch moving a routed task off claude should be refused"
+  assert_contains "$out" "claude_route=direct" "the harness-switch refusal should name the recorded route"
+
+  assert_no_grep "/exit" "$dir/fake/literal" "a refused route change must not stop the running agent"
+  cmp -s "$dir/meta.before" "$dir/home/state/rl61.meta" || fail "a refused route change must leave the task record unchanged"
+  out=$(run_control "$dir" rl61 interrupt --claude-route direct); rc=$?
+  [ "$rc" -ne 0 ] || fail "--claude-route should apply to relaunch only"
+
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" rl61 --relaunch --claude-route direct-code-mode); rc=$?
+  expect_code 1 "$rc" "fm-spawn --relaunch should refuse a different claude route on its own"
+  assert_contains "$out" "keeps that route" "the launch owner's refusal should name the route rule"
+  pass "fm-control relaunch: a conflicting claude route or a move off claude refuses before the agent stops"
+}
+
 test_harness_switch_resolves_a_prefixed_recorded_harness() {
   local dir out rc auth
   dir=$(new_case prefixcontrol rl32)
@@ -3371,6 +3419,8 @@ test_refused_relaunch_onto_polytoken_keeps_the_project_hook_layer
 test_refused_polytoken_profile_leaves_the_running_agent
 test_relaunch_from_a_raw_polytoken_launch_keeps_the_project_layers
 test_harness_switch_does_not_carry_the_old_profile_axes
+test_relaunch_reuses_the_recorded_claude_route
+test_relaunch_refuses_a_conflicting_claude_route_before_stopping_the_agent
 test_harness_switch_resolves_a_prefixed_recorded_harness
 test_prefixed_recorded_harness_requires_explicit_replacement
 test_same_harness_relaunch_keeps_the_profile_axes

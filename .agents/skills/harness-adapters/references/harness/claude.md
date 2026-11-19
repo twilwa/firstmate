@@ -46,6 +46,7 @@ Firstmate cannot move a selection with Enter, Escape, and C-c alone, so it canno
 Inspect the session to identify which dialog is on screen, and report it rather than answering it.
 A launch under `config/claude-permission-mode=auto` never meets the bypass confirmation, because it does not request bypass mode: on 2.1.269 `claude --permission-mode auto` reached the composer directly with the footer `⏵⏵ auto mode on (shift+tab to cycle)`, so a captain who refuses the bypass dialog selects `auto` there instead of accepting it.
 The workspace-trust dialog is unaffected by the permission mode and still needs the pre-registration above.
+A `--claude-route direct-code-mode` worker meets a fourth dialog on first use, "Code Mode (experimental)", with "No, start without it" preselected; leave it for an operator, as [`docs/configuration.md`](../../../../../docs/configuration.md#claude-worker-route-fm-spawnsh---claude-route) owns.
 
 ## Composer ghost
 

@@ -2792,6 +2792,136 @@ claude_expected_launch() {  # <launch> <home> <id> <permission-flag> <worktree>
   printf '%s' "$(fm_test_launch_mise_prefix "$5")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")$(fm_test_launch_git_prefix "$1")export FM_HOME='$2'; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' $CLAUDE_CONTROL_CHANNEL_FLAG $quoted"
 }
 
+# --claude-route selects how a native Claude worker reaches the API. Its
+# default is today's launch byte for byte; the direct routes add one env block
+# to the single existing --settings value and are recorded for relaunch.
+assert_single_settings_flag() {  # <launch> <what>
+  local command count=0
+  command=$(fm_test_launch_command "$1")
+  eval "set -- $command"
+  while [ "$#" -gt 0 ]; do
+    [ "$1" != --settings ] || count=$((count + 1))
+    shift
+  done
+  [ "$count" -eq 1 ] || fail "$2 launch carries $count --settings flags, want exactly one"
+}
+
+test_claude_route_default_keeps_the_launch_and_record_unchanged() {
+  local rec id out status launch expected
+  id=claude-route-default-z1
+  rec=$(make_spawn_case claude-route-default claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route default)
+  status=$?
+  expect_code 0 "$status" "an explicit default claude route should launch"$'\n'"$out"
+  launch=$(fm_test_launch_unframe "$(cat "$LAUNCH_LOG")")
+  expected=$(claude_expected_launch "$launch" "$HOME_DIR" "$id" --dangerously-skip-permissions "$WT_DIR")
+  [ "$launch" = "$expected" ] || fail "--claude-route default changed the claude launch"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  [ -f "$HOME_DIR/state/$id.meta" ] || fail "the default-route spawn published no task record"
+  assert_no_grep 'claude_route=' "$HOME_DIR/state/$id.meta" "the default route must leave the task record unchanged"
+  pass "--claude-route default launches exactly today's claude command and records nothing extra"
+}
+
+test_claude_route_direct_routes_merge_env_into_the_single_settings_value() {
+  local route code rec id out status launch settings
+  for route in direct direct-code-mode; do
+    case "$route" in
+    direct) code=0 ;;
+    direct-code-mode) code=1 ;;
+    esac
+    id=claude-route-$route-z2
+    rec=$(make_spawn_case "claude-route-$route" claude "$id")
+    read_case_record "$rec"
+
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route "$route")
+    status=$?
+    expect_code 0 "$status" "--claude-route $route should launch"$'\n'"$out"
+    launch=$(fm_test_launch_unframe "$(cat "$LAUNCH_LOG")")
+    assert_single_settings_flag "$launch" "--claude-route $route"
+    settings=$(claude_settings_json_arg "$launch") || fail "--claude-route $route launch has no --settings value"
+    printf '%s' "$settings" | jq -e --arg code "$code" '
+      .env == {"ANTHROPIC_BASE_URL": "https://api.anthropic.com", "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE": $code}
+      and .feedbackDrafts == "off"
+      and .attribution == {"commit":"","pr":"","sessionUrl":false}' >/dev/null \
+      || fail "--claude-route $route settings did not merge the route env beside the existing keys: $settings"
+    grep -qx "claude_route=$route" "$HOME_DIR/state/$id.meta" || fail "the task record did not keep claude_route=$route"
+  done
+  pass "--claude-route direct and direct-code-mode add only the route env to the one --settings value"
+}
+
+test_claude_route_direct_code_mode_names_the_consent_dialog() {
+  local rec id out status
+  id=claude-route-consent-z3
+  rec=$(make_spawn_case claude-route-consent claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route direct-code-mode)
+  status=$?
+  expect_code 0 "$status" "--claude-route direct-code-mode should launch"$'\n'"$out"
+  assert_contains "$out" 'Code Mode (experimental)' "direct-code-mode did not name the consent dialog an operator must answer"
+  pass "--claude-route direct-code-mode tells the operator about the unanswered Code Mode consent dialog"
+}
+
+test_batch_forwards_the_claude_route_to_every_pair() {
+  local rec id1 id2 out status
+  id1=claude-route-batch-a-z7
+  id2=claude-route-batch-b-z8
+  rec=$(make_spawn_case claude-route-batch claude "$id1" "$id2")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id1=$PROJ_DIR" "$id2=$PROJ_DIR" --harness claude --claude-route direct)
+  status=$?
+  expect_code 0 "$status" "a batch spawn with a shared claude route should succeed"$'\n'"$out"
+  grep -qx 'claude_route=direct' "$HOME_DIR/state/$id1.meta" || fail "the first batch task lost the shared claude route"
+  grep -qx 'claude_route=direct' "$HOME_DIR/state/$id2.meta" || fail "the second batch task lost the shared claude route"
+  pass "batch dispatch forwards a shared --claude-route to every pair"
+}
+
+test_claude_route_refuses_what_it_cannot_route() {
+  local rec id out status sm
+  id=claude-route-codex-z4
+  rec=$(make_spawn_case claude-route-codex codex "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route direct)
+  status=$?
+  expect_code 1 "$status" "--claude-route on a codex worker should be refused"
+  assert_contains "$out" '--claude-route applies only to the native claude harness' "the non-claude refusal did not explain itself"
+  assert_absent "$HOME_DIR/state/$id.meta" "a refused route must not publish the task"
+  assert_equals '' "$(cat "$LAUNCH_LOG")" "a refused route must not create a worker"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route default)
+  status=$?
+  expect_code 1 "$status" "even an explicit default route on a codex worker should be refused"
+
+  id=claude-route-raw-z5
+  rec=$(make_spawn_case claude-route-raw claude "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "claude --model opus" --claude-route direct)
+  status=$?
+  expect_code 1 "$status" "--claude-route on a raw launch command should be refused"
+  assert_contains "$out" 'raw launch command' "the raw-launch refusal did not explain itself"
+  assert_absent "$HOME_DIR/state/$id.meta" "a refused raw route must not publish the task"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --claude-route proxy)
+  status=$?
+  expect_code 1 "$status" "an unknown route should be refused"
+  assert_contains "$out" '--claude-route must be one of default, direct, direct-code-mode' "the unknown-route refusal did not list the routes"
+
+  id=claude-route-secondmate-z6
+  rec=$(make_spawn_case claude-route-secondmate claude "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate --claude-route direct)
+  status=$?
+  expect_code 1 "$status" "--claude-route on a secondmate should be refused"
+  assert_contains "$out" '--claude-route applies to ship and scout workers' "the secondmate refusal did not explain itself"
+  assert_equals '' "$(cat "$LAUNCH_LOG")" "a refused secondmate route must not create a worker"
+  pass "--claude-route refuses non-claude harnesses, raw launches, unknown routes, and secondmates before launch"
+}
+
 test_claude_permission_mode_absent_defaults_to_bypass() {
   local rec id out status launch expected
   id=permmode-absent-z18
@@ -3157,5 +3287,10 @@ test_keep_ai_trailers_omits_attribution_settings_and_strip_hooks
 test_keep_ai_trailers_reaches_secondmate_crew_launches
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_claude_route_default_keeps_the_launch_and_record_unchanged
+test_claude_route_direct_routes_merge_env_into_the_single_settings_value
+test_claude_route_direct_code_mode_names_the_consent_dialog
+test_claude_route_refuses_what_it_cannot_route
+test_batch_forwards_the_claude_route_to_every_pair
 
 echo "# all fm-spawn-dispatch-profile tests passed"

@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [several Claude accounts](#several-claude-accounts-configclaude-accounts), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Claude worker route](#claude-worker-route-fm-spawnsh---claude-route), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [several Claude accounts](#several-claude-accounts-configclaude-accounts), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-configtaskstoml--taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), [startup memory budget](#startup-memory-budget-configstartup-memory-budget), and [stow guard](#stow-guard-configstow-guard) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [Codex native Stop park](#codex-native-stop-park-configcodex-stop-park), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1643,6 +1643,30 @@ Both approval-mode files follow the primary-authoritative [`secondmate-provision
 T3 Code owns its provider command and always uses `full-access`, so `backend=t3code` accepts the default `bypass` posture and refuses `auto` before mutation; [`t3code-backend.md`](t3code-backend.md#active-limits) owns that backend limit.
 
 The [Claude adapter reference](../.agents/skills/harness-adapters/references/harness/claude.md) records the permission-mode observations and the distinct startup dialogs.
+
+## Claude worker route (fm-spawn.sh --claude-route)
+
+`bin/fm-spawn.sh --claude-route <route>` chooses, per ship or scout, how a native Claude worker reaches the API.
+It is a per-task choice made at dispatch, not a home setting, and it never touches user or global Claude settings.
+
+| Route | Effect on the worker's one `--settings` value |
+| --- | --- |
+| `default`, or no flag | None: today's launch, byte for byte, and no task-record line. |
+| `direct` | Adds `"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"0"}`. |
+| `direct-code-mode` | Adds the same `env` block with `"CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"`. |
+
+The `env` block joins the existing inline settings object beside `feedbackDrafts` and the attribution policy, so the launch still carries exactly one `--settings` flag.
+Per-launch `--settings` env takes precedence over the user settings env, so a direct route bypasses a proxy base URL the user settings set for every Claude session, such as a token-compression proxy.
+Claude Code's experimental Code Mode refuses to run behind such a proxy, which is why `direct-code-mode` pairs it with the direct base URL.
+
+A non-default route is recorded in the task record as `claude_route=`; absent means `default`.
+A relaunch through `bin/fm-control.sh` reuses the recorded route, and refuses, before the running agent stops, a `--claude-route` naming a different route or a move of a routed task to another harness.
+
+The flag is refused for any harness other than native `claude`, a raw launch command, a secondmate, and the `t3code` backend, which launches Claude without the `--settings` flag.
+
+On first use, Code Mode shows a blocking "Code Mode (experimental)" consent dialog with "No, start without it" preselected, so a blind Enter starts without Code Mode.
+Firstmate never answers it: a `direct-code-mode` spawn prints a notice naming the dialog, and an operator chooses "Yes, turn on Code Mode" in the worker's pane, after which that session can be resumed only with Code Mode on.
+The Claude launch has no post-launch dialog watch, so the spawn does not detect the dialog itself.
 
 ## Codex permission mode (config/codex-permission-mode)
 

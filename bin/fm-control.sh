@@ -6,6 +6,7 @@
 #        fm-control.sh <task-id> exit
 #        fm-control.sh <task-id> relaunch [--harness <name>] [--model <name>]
 #                                         [--effort <level>] [--account <entry>]
+#                                         [--claude-route <route>]
 #                                         (--note <text> | --note-file <path>)
 #
 # Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
@@ -94,6 +95,10 @@
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
+#              A task's recorded claude_route (bin/fm-spawn.sh --claude-route)
+#              is kept by the replacement; --claude-route naming a different
+#              route, or a harness other than claude for a routed task,
+#              refuses here before the old agent stops.
 #              Refused on t3code before anything is stopped: a T3 thread
 #              keeps its conversation, so a new turn or a provider change on
 #              it continues the same agent rather than a fresh one
@@ -269,6 +274,8 @@ NEW_HARNESS=
 NEW_MODEL=
 NEW_EFFORT=
 NEW_ACCOUNT=
+NEW_CLAUDE_ROUTE=
+CLAUDE_ROUTE_SET=0
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
@@ -286,6 +293,7 @@ for control_arg in "$@"; do
       model) NEW_MODEL=$control_arg; MODEL_SET=1 ;;
       effort) NEW_EFFORT=$control_arg; EFFORT_SET=1 ;;
       account) NEW_ACCOUNT=$control_arg; ACCOUNT_SET=1 ;;
+      claude_route) NEW_CLAUDE_ROUTE=$control_arg; CLAUDE_ROUTE_SET=1 ;;
       note) NOTE=$control_arg; NOTE_SET=1 ;;
       note_file)
         [ -f "$control_arg" ] || die "--note-file '$control_arg' is not a readable file"
@@ -305,6 +313,8 @@ for control_arg in "$@"; do
     --effort=*) NEW_EFFORT=${control_arg#--effort=}; EFFORT_SET=1 ;;
     --account) control_want_value=account ;;
     --account=*) NEW_ACCOUNT=${control_arg#--account=}; ACCOUNT_SET=1 ;;
+    --claude-route) control_want_value=claude_route ;;
+    --claude-route=*) NEW_CLAUDE_ROUTE=${control_arg#--claude-route=}; CLAUDE_ROUTE_SET=1 ;;
     --note) control_want_value=note ;;
     --note=*) NOTE=${control_arg#--note=}; NOTE_SET=1 ;;
     --note-file) control_want_value=note_file ;;
@@ -318,12 +328,13 @@ for control_arg in "$@"; do
 done
 if [ -n "$control_want_value" ]; then
   [ "$control_want_value" = note_file ] && die "--note-file requires a value"
+  [ "$control_want_value" = claude_route ] && die "--claude-route requires a value"
   die "--$control_want_value requires a value"
 fi
 
 if [ "$VERB" != relaunch ]; then
-  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$ACCOUNT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
-    || die "--harness, --model, --effort, --account, and --note apply to 'relaunch' only"
+  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$ACCOUNT_SET" = 0 ] && [ "$CLAUDE_ROUTE_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
+    || die "--harness, --model, --effort, --account, --claude-route, and --note apply to 'relaunch' only"
 fi
 [ "$ACCOUNT_SET" = 0 ] || [ -n "$NEW_ACCOUNT" ] || die "--account requires a non-empty value"
 [ "$HARNESS_SET" = 0 ] || [ -n "$NEW_HARNESS" ] || die "--harness requires a non-empty value"
@@ -1106,6 +1117,18 @@ resolve_relaunch_profile() {
     fm_control_harness_wiring_paths "$PRIOR_HARNESS" "$WT" "$STATE" "$ID" "$KIND" \
         | grep -qxF "$(fm_polytoken_hooks_file "$WT")" \
       || fm_polytoken_require_hooks_free "$WT" || return 1
+  fi
+  # The launch owner keeps the task's recorded claude route and refuses a
+  # change, but only after the old agent has stopped, so the same refusal
+  # happens here first.
+  local recorded_route
+  recorded_route=$(fm_meta_get "$META" claude_route)
+  recorded_route=${recorded_route:-default}
+  if [ "$CLAUDE_ROUTE_SET" = 1 ] && [ "$NEW_CLAUDE_ROUTE" != "$recorded_route" ]; then
+    die "task $ID records claude_route=$recorded_route; a relaunch keeps that route and refuses --claude-route $NEW_CLAUDE_ROUTE"
+  fi
+  if [ "$TARGET_HARNESS" != claude ] && { [ "$recorded_route" != default ] || [ "$CLAUDE_ROUTE_SET" = 1 ]; }; then
+    die "task $ID records claude_route=$recorded_route, which only the native claude harness can keep; refusing a relaunch onto $TARGET_HARNESS"
   fi
   # Likewise config/crew-exclude-tools: a malformed file, or a replacement
   # runtime that cannot hide the listed tools, refuses here, before the old
