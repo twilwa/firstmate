@@ -344,10 +344,16 @@ record_actual_dispatch() {
   fi
   record=$(jq -c --arg timestamp "$timestamp" \
     --argjson profile "$profile" '
+      # fm-spawn launches a claude dispatch with no --claude-route on the
+      # default route, so when the chosen profile declares a route the
+      # receipt records that normalized default rather than omitting it.
       . + {
         receipt_type: "dispatch",
         timestamp_utc: $timestamp,
-        dispatched_profile: $profile
+        dispatched_profile: (
+          if $profile.harness == "claude" and ($profile | has("claude_route") | not)
+            and ((.chosen_profile // {}) | type) == "object" and ((.chosen_profile // {}) | has("claude_route"))
+          then $profile + {claude_route: "default"} else $profile end)
       }' 2>/dev/null <<<"$base") || record=''
   if [ -z "$record" ] || ! receipt_append_locked "$record"; then
     join_failed "the receipt could not be appended; the file may be full, replaced, or unwritable"
@@ -581,6 +587,13 @@ BRIEF_SHA256=$(sha256_file "$BRIEF_SNAPSHOT") || BRIEF_SHA256=''
 
 if [ "$MODE" = dispatch ]; then
   [ -n "$DISPATCHED_HARNESS" ] || die "--record-dispatch needs --harness"
+  if [ -n "$DISPATCHED_ROUTE" ]; then
+    case "$DISPATCHED_ROUTE" in
+      default | direct | direct-code-mode) ;;
+      *) die "--claude-route must be one of default, direct, direct-code-mode" ;;
+    esac
+    [ "$DISPATCHED_HARNESS" = claude ] || die "--claude-route applies only to a claude dispatch, not $DISPATCHED_HARNESS"
+  fi
   record_actual_dispatch >/dev/null || true
   exit 0
 fi
@@ -630,7 +643,9 @@ rules_err=$(jq -r --argjson verified_harnesses "$VERIFIED_HARNESSES" --arg provi
   # native claude profile.
   def route_bad($p):
     ($p | type) == "object" and ($p | has("claude_route"))
-    and ((["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null or $p.harness != "claude");
+    and (($p.claude_route | type) != "string"
+      or (["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null
+      or $p.harness != "claude");
   def duplicate_profiles($items):
     ($items | map([.harness, (.model // null), (.effort // null)] | @json)) as $keys
     | ($keys | length) != ($keys | unique | length);

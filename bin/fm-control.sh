@@ -1124,6 +1124,10 @@ resolve_relaunch_profile() {
   local recorded_route
   recorded_route=$(fm_meta_get "$META" claude_route)
   recorded_route=${recorded_route:-default}
+  case "$recorded_route" in
+    default|direct|direct-code-mode) ;;
+    *) die "task $ID records an unrecognized claude_route=$recorded_route; refusing a relaunch that would not carry it" ;;
+  esac
   if [ "$CLAUDE_ROUTE_SET" = 1 ] && [ "$NEW_CLAUDE_ROUTE" != "$recorded_route" ]; then
     die "task $ID records claude_route=$recorded_route; a relaunch keeps that route and refuses --claude-route $NEW_CLAUDE_ROUTE"
   fi

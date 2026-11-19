@@ -1597,6 +1597,7 @@ non-boolean shared_quota is flagged^{"shared_quota":"yes","rules":[{"when":"big 
 array use without select is accepted^{"rules":[{"when":"big feature","use":[{"harness":"claude"},{"harness":"codex"}]}]}^empty^
 claude route profile is accepted^{"rules":[{"when":"code mode study","use":{"harness":"claude","model":"opus","claude_route":"direct-code-mode"}}],"default":{"harness":"claude","claude_route":"direct"}}^empty^
 unknown claude route is flagged^{"rules":[{"when":"code mode study","use":{"harness":"claude","claude_route":"proxy"}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
+array claude route is flagged^{"rules":[{"when":"code mode study","use":{"harness":"claude","claude_route":["direct"]}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
 claude route on another harness is flagged^{"default":{"harness":"codex","claude_route":"direct"}}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
 one-element array use is accepted^{"rules":[{"when":"focused feature","use":[{"harness":"claude"}]}]}^empty^
 default array is accepted^{"default":[{"harness":"pi","model":"anthropic/claude-sonnet-5"},{"harness":"grok"}]}^empty^

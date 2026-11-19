@@ -3489,6 +3489,13 @@ fi
 if [ "$RELAUNCH" -eq 1 ]; then
   RECORDED_CLAUDE_ROUTE=$(fm_meta_get "$RELAUNCH_META" claude_route)
   RECORDED_CLAUDE_ROUTE=${RECORDED_CLAUDE_ROUTE:-default}
+  case "$RECORDED_CLAUDE_ROUTE" in
+  default | direct | direct-code-mode) ;;
+  *)
+    echo "error: task $ID records an unrecognized claude_route=$RECORDED_CLAUDE_ROUTE; refusing a relaunch that would not carry it" >&2
+    exit 1
+    ;;
+  esac
   if [ "$CLAUDE_ROUTE_SET" -eq 1 ] && [ "$CLAUDE_ROUTE" != "$RECORDED_CLAUDE_ROUTE" ]; then
     echo "error: task $ID records claude_route=$RECORDED_CLAUDE_ROUTE; a relaunch keeps that route and refuses --claude-route $CLAUDE_ROUTE" >&2
     exit 1

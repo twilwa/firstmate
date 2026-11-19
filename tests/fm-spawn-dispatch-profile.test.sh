@@ -2932,6 +2932,8 @@ test_claude_route_refuses_what_it_cannot_route() {
   status=$?
   expect_code 1 "$status" "an unknown route should be refused"
   assert_contains "$out" '--claude-route must be one of default, direct, direct-code-mode' "the unknown-route refusal did not list the routes"
+  assert_absent "$HOME_DIR/state/$id.meta" "a refused unknown route must not publish the task"
+  assert_equals '' "$(cat "$LAUNCH_LOG")" "a refused unknown route must not create a worker"
 
   id=claude-route-secondmate-z6
   rec=$(make_spawn_case claude-route-secondmate claude "$id")

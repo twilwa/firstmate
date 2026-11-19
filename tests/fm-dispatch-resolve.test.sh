@@ -1646,6 +1646,20 @@ pass "task record: every exit-0 outcome records its decision for data/<id>/brief
   TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness claude --model sonnet --effort high --claude-route direct-code-mode
   expect_code 0 "$code" "recording a routed dispatch succeeds"
   assert_equals 'direct-code-mode' "$(jq -rs '[.[] | select(.receipt_type == "dispatch")] | last.dispatched_profile.claude_route' "$RECEIPTS")" "the dispatch receipt carries the route actually dispatched"
+  receipts_before=$(wc -l < "$RECEIPTS")
+  TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness claude --claude-route proxy
+  expect_code 2 "$code" "recording an unknown claude route is a usage error"
+  TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness codex --claude-route direct
+  expect_code 2 "$code" "recording a claude route on another harness is a usage error"
+  assert_contains "$err" "--claude-route" "the receipt refusal names the route flag"
+  assert_equals "$receipts_before" "$(wc -l < "$RECEIPTS")" "a refused route records no dispatch receipt"
+  jq '.rules[3].use = [{harness:"claude", model:"sonnet", effort:"high", claude_route:"default"}]' "$BASE_RULES" > "$RULES"
+  reset_log
+  write_response "$RESPONSE" rule_4 0.9
+  TYPESAFE_API_KEY=$KEY run code out err "$TASK_BRIEF" --project pager
+  TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness claude --model sonnet --effort high
+  expect_code 0 "$code" "recording a dispatch without the route flag succeeds"
+  assert_equals 'default' "$(jq -rs '[.[] | select(.receipt_type == "dispatch")] | last.dispatched_profile.claude_route' "$RECEIPTS")" "a claude dispatch whose chosen profile declares a route records the default route it launched on"
   jq '.rules[3].use = [{harness:"claude", model:"sonnet", effort:"high"}]' "$BASE_RULES" > "$RULES"
   reset_log
   write_response "$RESPONSE" rule_4 0.9
@@ -2370,6 +2384,7 @@ for bad in \
   '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":[{"harness":"claude","model":"opus"},{"harness":"claude","model":"opus"}]}|default must not contain duplicate harness, model, and effort profiles' \
   '{"rules":[{"when":"x","use":{"harness":"spaceship"}}]}|each use profile must name a verified harness' \
   '{"rules":[{"when":"x","use":{"harness":"claude","claude_route":"proxy"}}]}|each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
+  '{"rules":[{"when":"x","use":{"harness":"claude","claude_route":["direct"]}}]}|each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
   '{"rules":[{"when":"x","use":{"harness":"codex","claude_route":"direct"}}]}|each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
   '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":{"harness":"pi","claude_route":"direct","provider":"codex"}}|each default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
   '{"rules":[{"when":"x","use":{"harness":"grok","effort":"max"}}]}|each use profile effort must be supported by its harness and model' \

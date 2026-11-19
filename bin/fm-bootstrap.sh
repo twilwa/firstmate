@@ -1245,7 +1245,9 @@ crew_dispatch_validate() {
     # native claude profile.
     def malformed_claude_routes($items):
       ($items | any(. as $p | has("claude_route")
-        and (((["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null) or $p.harness != "claude")));
+        and ((($p.claude_route | type) != "string")
+          or ((["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null)
+          or $p.harness != "claude")));
     def malformed_quota_scopes($items):
       ($items | any(has("quota_scope") and (((.quota_scope | type) != "string") or (.quota_scope | length) == 0)));
     def bad_efforts:
