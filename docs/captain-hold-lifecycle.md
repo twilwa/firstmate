@@ -115,6 +115,10 @@ A deferral continues the call it answers rather than opening another:
 - It keeps one age basis for a live and an already-expired hold instead of the expired one restarting the clock.
 - It publishes only its `resolved ... deferred until <date>` parent line, never a fresh `needs-decision` for the question the captain just postponed.
 
+A recorded deferral invalidates a [PR settlement](#pr-settlement) policy declared on that hold before it.
+The next settlement then removes the declaration, reports that the question changed, exits nonzero, and leaves the hold open.
+To keep forge settlement, declare `pr-policy` again after deferring.
+
 ### Answer retries and tasks closed elsewhere
 
 - An exact retry is idempotent only when the requested close mode matches the newest record.

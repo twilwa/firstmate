@@ -881,6 +881,8 @@ With the flag absent, no settlement or new closure notification occurs.
 The flag takes effect on the next contribution poll and is not inherited by secondmate homes.
 The observer's existing `bin/fm-contributions.sh arm` command enables polling when it is not already armed.
 The [captain-hold policy](../.agents/skills/captain-hold-lifecycle/SKILL.md#policy) owns when a forge event may settle a question.
+A deferral recorded with `answer --defer-until` invalidates any PR policy already declared on that hold: the next settlement removes the declaration, reports that the question changed, exits nonzero, and leaves the hold open.
+Declare `pr-policy` again after deferring.
 
 ## Park on review
 
@@ -2316,8 +2318,8 @@ Secondmate homes inherit this file from the primary, so a secondmate's own crewm
 Each setting comes from the calling environment or the home's gitignored `.env` through `bin/fm-env-lib.sh`; a non-empty environment value wins.
 OpenRouter, `systemone`, and OpenAI each require their explicit `FM_DISPATCH_PROVIDER` value and a non-empty `FM_DISPATCH_MODEL`; an omitted model is an actionable configuration error, and the presence of a provider's key never selects that provider by itself.
 `systemone` also requires `FM_DISPATCH_BASE_URL`, an `http://` or `https://` base such as a local llama.cpp server or a hosted System One-compatible service, and posts to `<base>/v1/systemone`; a missing or scheme-less base URL is an actionable configuration error.
-With no provider setting and a valid base, TypeSafe uses `jev-latest` when `TYPESAFE_API_KEY` is available, ignores `FM_DISPATCH_MODEL`, and is off when no key is available and no `typesafe` credential source is declared.
-Explicit `FM_DISPATCH_PROVIDER=typesafe` also uses `jev-latest` when no model is set.
+With no provider setting and a valid base, TypeSafe uses the pinned `jev-1.13.0` when `TYPESAFE_API_KEY` is available, ignores `FM_DISPATCH_MODEL`, and is off when no key is available and no `typesafe` credential source is declared.
+Explicit `FM_DISPATCH_PROVIDER=typesafe` also uses the pinned `jev-1.13.0` when no model is set.
 `TYPESAFE_BASE` optionally selects a different base for the TypeSafe request, from the environment or `.env` with the same non-empty-environment precedence.
 If neither source supplies a non-empty value, the base defaults to `https://api.typesafe.ai`.
 It must be an `http://` or `https://` URL with a host and no userinfo, query, fragment, whitespace, or backslash.
