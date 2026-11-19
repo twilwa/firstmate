@@ -1,3 +1,4 @@
 --exclude-family real-herdr-gated
 --exclude-family live-harness-optin
 --exclude-script tests/fm-backend-t3code.test.sh
+--exclude-script tests/fm-supervision-host-herdr-live-e2e.test.sh

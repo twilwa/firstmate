@@ -25,6 +25,17 @@ Those seven scripts, and every script the 2026-10-30 upstream merge added, carry
 Replace them with fork timing-artifact maxima at the next refresh.
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms Git Bash measurement instead of a portable capability skip.
 
+The upstream additions retain their provisional local serial measurements until a fork CI refresh replaces them with Ubuntu timing-artifact maxima:
+
+- `tests/fm-capacity-auto.test.sh` 36243 ms, `tests/fm-lane-capacity-integration.test.sh` 48000 ms, and `tests/fm-lane-vitals.test.sh` 5077 ms, from a loaded macOS host on 2026-11-08.
+- `tests/fm-stow-guard.test.sh` 30000 ms, above a 27436 ms macOS sample on 2026-11-09.
+- `tests/fm-herdr-projected-cd-live-e2e.test.sh` 28000 ms, above a successful 27692 ms Herdr 0.9.5 macOS arm64 sample on 2026-11-03.
+- `tests/fm-claude-account-quota.test.sh` 2492 ms, the slowest of five Linux samples on 2026-10-27.
+- `tests/fm-install-herdr.test.sh` 1000 ms, above five Linux samples of 155-223 ms on 2026-11-04.
+- `tests/fm-lavish-url.test.sh` 30000 ms, above three Linux samples of 25148-26650 ms on 2026-11-08.
+- `tests/fm-live-lab-isolation.test.sh` 6459 ms, the slowest of six Linux samples in a private `unshare -Urm` /tmp on 2026-10-29.
+- `tests/fm-remote-herdr-identity.test.sh` 6158 ms, from a successful macOS arm64 sample on 2026-11-08.
+
 Hints are not a formality: without one a script packs on the 45000 ms default, which can sit it beside a shard already holding more than eighteen minutes of measured work, so that shard would really have run well past the 20-minute target the guard reserves while the coverage guard still passed.
 The wedge-cap suites retain the fork's newer timing-artifact maxima rather than replacing them with the older upstream CI measurements.
 `test_portable_serial_packing_budget_boundary` now pins every other fixture script to 1 ms, so packing exactly at the 1200000 ms budget is accepted and one millisecond above it is refused even when real serial members have no hint.
@@ -46,7 +57,8 @@ The CI cap is the dedicated portable tier in [Timeouts](#timeouts) below.
 ### Pool budget guard
 
 `portable_pool_weight_hints` holds durations measured under four-worker contention, so the guard's makespan models the pool job's wall time rather than a serial floor.
-The current values are the per-script `duration_ms` of the 25-file hosted four-worker proof run [40843566303](https://github.com/twilwa/firstmate/actions/runs/40843566303) ([fm-test-isolation-proof.md](fm-test-isolation-proof.md)).
+The original 25 values are the per-script `duration_ms` of the hosted four-worker proof run [40843566303](https://github.com/twilwa/firstmate/actions/runs/40843566303) ([fm-test-isolation-proof.md](fm-test-isolation-proof.md)).
+The added `tests/fm-park.test.sh` carries upstream's 70085 ms successful Ubuntu parallel-lane sample from run [42730709201](https://github.com/kunchenguid/firstmate/actions/runs/42730709201). Its four-worker isolation proof is recorded separately in `fm-test-isolation-proof.md`. That timing is not a fork four-worker pool measurement; refresh it from the pool's next successful CI artifacts.
 `--check-coverage` models the pool as the four-worker makespan of those hints, packed longest-first, and refuses a makespan above `PORTABLE_POOL_MAX_WEIGHT_MS` (`pool_budget_ms`, 1400000 ms).
 It also refuses the ceiling itself unless the 60-second setup allowance plus the ceiling plus the 1500-second per-file bound stays below the pool job timeout (`pool_timeout_min`), so any pool it accepts leaves a hung file room to fail by name.
 Today that is 60 + 1400 + 1500 = 2960 seconds against 3000.
