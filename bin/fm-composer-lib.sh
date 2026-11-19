@@ -2313,7 +2313,7 @@ fm_composer_transcript_above() {  # <screen>
   local plain top
   plain=$(printf '%s\n' "$1" | fm_composer_strip_ansi)
   _fm_composer_scan_screen "$plain" ''
-  _fm_composer_select_cursorless "$plain" || return 1
+  _fm_composer_select_cursorless "$plain" "$plain" 0 || return 1
   case "$FM_COMPOSER_SELECTED_KIND" in
     box) top=$FM_COMPOSER_SCAN_BOX_TOP ;;
     pi) top=$FM_COMPOSER_SCAN_PI_OPEN ;;

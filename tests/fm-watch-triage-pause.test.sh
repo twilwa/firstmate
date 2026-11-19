@@ -1456,9 +1456,11 @@ test_busy_overdue_pause_does_not_enter_wedge_ladder() {
   local dir state statusf
   dir=$(paused_until_fixture busy-overdue "$(( $(date +%s) - 90000 ))" 90000); state="$dir/state"; statusf="$state/until.status"
   arm_pause_ceiling "$dir"
-  FM_STATE_OVERRIDE="$state" FM_HOME="$dir" FM_PAUSE_UNDATED_MAX_SECS=1 bash -c '
+  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOWS=fm-until FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_STATE_OVERRIDE="$state" FM_HOME="$dir" FM_PAUSE_UNDATED_MAX_SECS=1 bash -c '
     . "$1"
     wake() { :; }
+    [ "$(fm_backend_agent_state "$(window_backend test:fm-until)" test:fm-until)" = alive ] || exit 1
     key=$(window_key test:fm-until)
     since="$STATE/.stale-since-$key"; escalations="$STATE/.escalated-$key"
     busy_turn_bound_check test:fm-until until first "$since" "$escalations" || exit 1
@@ -1871,7 +1873,7 @@ test_required_captain_hold_tests_fail_without_tasks_axi() {
 # endpoint proves absence. Neither may keep asking whether an external wait holds.
 test_paused_dead_or_missing_agent_reports_once() {
   local verdict dir state window key out marker before
-  window=test:fm-wedge; key=test_fm-wedge
+  window=test:fm-wedge; key=$(watch_window_key "$window")
   for verdict in dead missing; do
     dir=$(wedge_threshold_fixture "paused-$verdict" 'paused: waiting for an upstream release' 500)
     state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
@@ -1907,7 +1909,7 @@ test_paused_dead_or_missing_agent_reports_once() {
 # recovered. Its next confirmed death must therefore stay reported once.
 test_paused_unreadable_probe_keeps_reported_death() {
   local dir state window key out marker
-  window=test:fm-wedge; key=test_fm-wedge
+  window=test:fm-wedge; key=$(watch_window_key "$window")
   dir=$(wedge_threshold_fixture paused-dead-unreadable-dead 'paused: waiting for an upstream release' 500)
   state="$dir/state"; out="$dir/watch.out"; marker="$state/.paused-resurfaced-$key"
   printf 'incarnation-one\n' > "$state/wedge.busy-gen"
@@ -1944,7 +1946,7 @@ test_paused_unreadable_probe_keeps_reported_death() {
 # Between due rounds the marker and notification count remain unchanged.
 test_paused_alive_or_unreadable_keeps_recheck_cadence() {
   local verdict command dir state window key out marker dead_marker round
-  window=test:fm-wedge; key=test_fm-wedge
+  window=test:fm-wedge; key=$(watch_window_key "$window")
   for verdict in alive unreadable; do
     command=grok
     [ "$verdict" != unreadable ] || command=
@@ -2021,7 +2023,7 @@ SH
 # confirmation and is never called dead.
 test_paused_uncapturable_endpoint_reports_missing_once() {
   local spec name backend verdict dir state window key out marker before
-  window=test:fm-wedge; key=test_fm-wedge
+  window=test:fm-wedge; key=$(watch_window_key "$window")
   for spec in tmux:missing tmux:alive herdr:missing herdr:unreadable; do
     backend=${spec%%:*}; verdict=${spec#*:}; name="uncapturable-$backend-$verdict"
     dir=$(wedge_threshold_fixture "$name" 'paused: waiting for an upstream release' 500)

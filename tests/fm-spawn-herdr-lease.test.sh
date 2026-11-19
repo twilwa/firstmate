@@ -36,7 +36,8 @@ make_lease_case() {
   mkdir -p "$d" "$fb" "$dir/user-home"
   fm_test_spawn_home "$home" "$harness"
   fm_git_init_commit "$proj"
-  git clone -q "$proj" "$wt"
+  # A fresh leased copy must be linked to the project, never another primary clone.
+  git -C "$proj" worktree add -q --detach "$wt" HEAD
   fm_test_spawn_brief "$home" "$name" "Exercise the Herdr task-copy lease for $name."
   printf '%s' "$proj" > "$d/cwd"
   printf '%s' "$proj" > "$d/fg"

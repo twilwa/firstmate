@@ -74,6 +74,17 @@ CLAUDE_TAIL="\n\n✻ Worked for 2s · done 5:54 PM$CLAUDE_PROMPT_TAIL"
 CODEX_TAIL='\n\n› Use /skills to list available skills\n\n  gpt-5.5 high · ~/repo'
 ASK='Would you like me to change this?'
 
+# The watcher sources the transcript owner under nounset; preserve its plain-screen API.
+test_plain_transcript_under_nounset() {
+  local screen transcript
+  screen=$(printf '%b\n' "$ASK$PI_TAIL")
+  transcript=$(bash -uc '. "$1/bin/fm-composer-lib.sh"; fm_composer_transcript_above "$2"' _ "$ROOT" "$screen") \
+    || fail 'plain transcript extraction failed under nounset'
+  [ "$transcript" = "$ASK" ] || fail "plain transcript extraction returned unexpected text: $transcript"
+  pass 'plain transcript extraction preserves the question under nounset'
+}
+test_plain_transcript_under_nounset
+
 run_turn pi-question "$ASK$PI_TAIL" '' 1
 run_turn pi-summary "Implementation complete.$PI_TAIL" '' 0
 run_turn claude-question "$ASK$CLAUDE_TAIL" '' 1

@@ -1383,7 +1383,7 @@ test_wedge_cap_reports_gone_endpoint_while_capped_and_held() {
   fi
   task=wedge-cap-held-gone-endpoint
   dir=$(make_case "$task"); state="$dir/state"
-  window="test:fm-$task"; key="test_fm-$task"
+  window="test:fm-$task"; key=$(watch_window_key "$window")
   printf 'idle wedged content' > "$dir/pane.txt"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/$task.meta"
   printf 'working: still wedged\n' > "$state/$task.status"
@@ -1959,7 +1959,7 @@ test_wedge_cap_reports_gone_endpoint_on_terminal_override_route() {
 # route itself, without preclassifying each new hash in watcher state.
 test_wedge_cap_footer_ticks_are_not_recovery() {
   local dir state key n
-  dir=$(make_case wedge-cap-footer); state="$dir/state"; key=test_fm-wedge-cap-footer
+  dir=$(make_case wedge-cap-footer); state="$dir/state"; key=$(watch_window_key test:fm-wedge-cap-footer)
   printf 'waiting on CI; elapsed 0s' > "$dir/pane.txt"
   printf 'window=test:fm-wedge-cap-footer\nkind=ship\nharness=grok\n' > "$state/wedge-cap-footer.meta"
   printf 'working: waiting on CI\n' > "$state/wedge-cap-footer.status"
@@ -1987,8 +1987,8 @@ test_wedge_cap_footer_ticks_are_not_recovery() {
 # evidence, not a repaint: the capped lane must surface it exactly once.
 test_wedge_cap_new_blocking_dialog_escalates() {
   local dir state key window n
-  dir=$(make_case wedge-cap-dialog); state="$dir/state"; key=test_fm-wedge-cap-dialog
-  window=test:fm-wedge-cap-dialog
+  dir=$(make_case wedge-cap-dialog); state="$dir/state"
+  window=test:fm-wedge-cap-dialog; key=$(watch_window_key "$window")
   printf 'waiting on CI' > "$dir/pane.txt"
   printf 'window=%s\nkind=ship\nharness=grok\n' "$window" > "$state/wedge-cap-dialog.meta"
   printf 'working: waiting on CI\n' > "$state/wedge-cap-dialog.status"
@@ -2022,7 +2022,7 @@ test_wedge_cap_releases_on_structural_events() {
   local event dir state task key gen statusf
   for event in busy inbox turn progress; do
     task="wedge-cap-event-$event"
-    dir=$(make_case "$task"); state="$dir/state"; key="test_fm-$task"
+    dir=$(make_case "$task"); state="$dir/state"; key=$(watch_window_key "test:fm-$task")
     statusf="$state/$task.status"; gen="cap-event-$event"
     printf 'waiting for a batch' > "$dir/pane.txt"
     printf 'window=test:fm-%s\nkind=ship\nharness=grok\n' "$task" > "$state/$task.meta"
@@ -2062,7 +2062,7 @@ test_wedge_cap_open_blocker_survives_unrelated_note() {
   local variant dir state task key line n
   for variant in worker supervisor; do
     task="wedge-cap-open-blocker-$variant"
-    dir=$(make_case "$task"); state="$dir/state"; key="test_fm-$task"
+    dir=$(make_case "$task"); state="$dir/state"; key=$(watch_window_key "test:fm-$task")
     case "$variant" in
       worker) line='blocked [key=staging-access]: need staging access' ;;
       supervisor) line='blocked [key=remote-reply-continuity-mate1]: the remote reply mirror stopped' ;;
@@ -2090,7 +2090,7 @@ test_wedge_cap_preserves_blocker_escalations() {
   local variant dir state task key line n
   for variant in worker supervisor; do
     task="wedge-cap-blocker-$variant"
-    dir=$(make_case "$task"); state="$dir/state"; key="test_fm-$task"
+    dir=$(make_case "$task"); state="$dir/state"; key=$(watch_window_key "test:fm-$task")
     case "$variant" in
       worker) line='blocked: need staging access' ;;
       supervisor) line='blocked [key=remote-reply-continuity-mate1]: the remote reply mirror stopped' ;;
