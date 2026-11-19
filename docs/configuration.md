@@ -881,8 +881,7 @@ With the flag absent, no settlement or new closure notification occurs.
 The flag takes effect on the next contribution poll and is not inherited by secondmate homes.
 The observer's existing `bin/fm-contributions.sh arm` command enables polling when it is not already armed.
 The [captain-hold policy](../.agents/skills/captain-hold-lifecycle/SKILL.md#policy) owns when a forge event may settle a question.
-A deferral recorded with `answer --defer-until` invalidates any PR policy already declared on that hold: the next settlement removes the declaration, reports that the question changed, exits nonzero, and leaves the hold open.
-Declare `pr-policy` again after deferring.
+After `answer --defer-until`, declare `pr-policy` again; [Deferring a call](captain-hold-lifecycle.md#deferring-a-call-answer---defer-until) owns why.
 
 ## Park on review
 
