@@ -1633,6 +1633,29 @@ assert_absent "$TASK_RECORD" "a configuration error leaves no task record to act
 mv "$RULES.keep" "$RULES"
 pass "task record: every exit-0 outcome records its decision for data/<id>/brief.md, and exit 2 records none"
 
+# A profile's optional claude_route rides the printed profile line, the task
+# record fm-spawn checks, and the actual-dispatch receipt.
+(
+  jq '.rules[3].use = [{harness:"claude", model:"sonnet", effort:"high", claude_route:"direct-code-mode"}]' "$BASE_RULES" > "$RULES"
+  reset_log
+  write_response "$RESPONSE" rule_4 0.9
+  TYPESAFE_API_KEY=$KEY run code out err "$TASK_BRIEF" --project pager
+  expect_code 0 "$code" "a routed claude profile resolves"
+  assert_contains "$out" "  profile: --harness 'claude' --model 'sonnet' --effort 'high' --claude-route 'direct-code-mode'" "the profile line carries the claude route"
+  assert_equals 'direct-code-mode' "$(jq -r .profile.claude_route "$TASK_RECORD")" "the task record carries the claude route for fm-spawn"
+  TYPESAFE_API_KEY=$KEY run code out err --record-dispatch "$TASK_BRIEF" --harness claude --model sonnet --effort high --claude-route direct-code-mode
+  expect_code 0 "$code" "recording a routed dispatch succeeds"
+  assert_equals 'direct-code-mode' "$(jq -rs '[.[] | select(.receipt_type == "dispatch")] | last.dispatched_profile.claude_route' "$RECEIPTS")" "the dispatch receipt carries the route actually dispatched"
+  jq '.rules[3].use = [{harness:"claude", model:"sonnet", effort:"high"}]' "$BASE_RULES" > "$RULES"
+  reset_log
+  write_response "$RESPONSE" rule_4 0.9
+  TYPESAFE_API_KEY=$KEY run code out err "$TASK_BRIEF" --project pager
+  assert_not_contains "$out" "--claude-route" "a profile without a route prints no route flag"
+  assert_equals 'false' "$(jq -r '.profile | has("claude_route")' "$TASK_RECORD")" "a profile without a route records no route"
+) || fail "claude_route dispatch profile regression"
+cp "$BASE_RULES" "$RULES"
+pass "task record: a profile's claude_route reaches the profile line, the task record, and the dispatch receipt"
+
 # A home with FM_DATA_OVERRIDE keeps briefs outside $FM_HOME/data; fm-spawn.sh
 # reads the record there, so the resolver must write it there too.
 OVERRIDE_DATA="$TMP_ROOT/custom-records"
@@ -2346,6 +2369,9 @@ for bad in \
   '{"rules":[{"when":"x","use":[{"harness":"codex","model":"gpt-5.5","effort":"high"},{"harness":"codex","model":"gpt-5.5","effort":"high"}]}]}|each rule use must not contain duplicate harness, model, and effort profiles' \
   '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":[{"harness":"claude","model":"opus"},{"harness":"claude","model":"opus"}]}|default must not contain duplicate harness, model, and effort profiles' \
   '{"rules":[{"when":"x","use":{"harness":"spaceship"}}]}|each use profile must name a verified harness' \
+  '{"rules":[{"when":"x","use":{"harness":"claude","claude_route":"proxy"}}]}|each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
+  '{"rules":[{"when":"x","use":{"harness":"codex","claude_route":"direct"}}]}|each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
+  '{"rules":[{"when":"x","use":{"harness":"codex"}}],"default":{"harness":"pi","claude_route":"direct","provider":"codex"}}|each default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only' \
   '{"rules":[{"when":"x","use":{"harness":"grok","effort":"max"}}]}|each use profile effort must be supported by its harness and model' \
   '{"rules":[{"when":"x","use":{"harness":"opencode","model":"anthropic/claude-sonnet-4-5"}}]}|use profiles whose harness lacks one authoritative provider family require provider: opencode' \
   '{"rules":[{"when":"x","use":{"harness":"rovo"}}]}|use profiles whose harness lacks one authoritative provider family require provider: rovo' \

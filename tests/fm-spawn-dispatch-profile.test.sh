@@ -2879,6 +2879,30 @@ test_batch_forwards_the_claude_route_to_every_pair() {
   pass "batch dispatch forwards a shared --claude-route to every pair"
 }
 
+test_recorded_dispatch_selection_binds_the_claude_route() {
+  local rec id out status
+  id=claude-route-selected-z9
+  rec=$(make_spawn_case claude-route-selected claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  mkdir -p "$HOME_DIR/data/$id"
+  jq -cn --arg id "$id" '{task: $id, status: "clear",
+    profile: {harness: "claude", model: null, effort: null, claude_route: "direct-code-mode"}}' \
+    > "$HOME_DIR/data/$id/dispatch-resolution.json"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 1 "$status" "a spawn without the selected claude route should be refused"
+  assert_contains "$out" 'clear dispatch selection --harness claude --claude-route direct-code-mode' "the refusal did not name the selected route"
+  assert_absent "$HOME_DIR/state/$id.meta" "a refused selection must not publish the task"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness claude --claude-route direct-code-mode)
+  status=$?
+  expect_code 0 "$status" "a spawn with the selected claude route should launch"$'\n'"$out"
+  grep -qx 'claude_route=direct-code-mode' "$HOME_DIR/state/$id.meta" || fail "the selected route was not recorded"
+  pass "a clear dispatch selection naming a claude route binds the spawn to that route"
+}
+
 test_claude_route_refuses_what_it_cannot_route() {
   local rec id out status sm
   id=claude-route-codex-z4
@@ -3292,5 +3316,6 @@ test_claude_route_direct_routes_merge_env_into_the_single_settings_value
 test_claude_route_direct_code_mode_names_the_consent_dialog
 test_claude_route_refuses_what_it_cannot_route
 test_batch_forwards_the_claude_route_to_every_pair
+test_recorded_dispatch_selection_binds_the_claude_route
 
 echo "# all fm-spawn-dispatch-profile tests passed"

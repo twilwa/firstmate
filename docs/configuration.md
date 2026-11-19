@@ -1563,7 +1563,7 @@ Remote secondmate routes accept verified harness adapters only and reject raw la
 When `config/crew-dispatch.json` exists, crewmate and scout spawns require an explicit resolved harness instead of automatically falling back to `config/crew-harness`.
 Such a spawn also refuses until `bin/fm-dispatch-resolve.sh data/<id>/brief.md` has written that task's record, `data/<id>/dispatch-resolution.json`.
 Both paths are under `FM_DATA_OVERRIDE` instead of `data/` when it is set.
-When the record is `clear`, the spawn must match its harness, and its model and effort where the record sets them, with no raw launch command, unless `--dispatch-override <reason>` records a task override in `state/<id>.meta` as `dispatch_override=<reason>`.
+When the record is `clear`, the spawn must match its harness, and its model, effort, and Claude route where the record sets them, with no raw launch command, unless `--dispatch-override <reason>` records a task override in `state/<id>.meta` as `dispatch_override=<reason>`.
 A model or effort the record leaves empty is not bound, so the documented effort fallback still applies.
 When the record is `ambiguous`, `escalate`, `error`, or `off`, the explicit flags from the manual intake are enough.
 An `fm-spawn.sh --relaunch` skips this check.
@@ -2193,7 +2193,7 @@ Firstmate cannot see which part of a worker's life uses the resource, so the num
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.
 Firstmate chooses the best matching rule with judgment; shell scripts do not match the natural-language rules.
-Firstmate resolves the rule's profile object or array under `AGENTS.md` section 4 and `quota-array-dispatch`, then passes only concrete `--harness`, `--model`, and `--effort` flags to `fm-spawn.sh`.
+Firstmate resolves the rule's profile object or array under `AGENTS.md` section 4 and `quota-array-dispatch`, then passes only concrete `--harness`, `--model`, and `--effort` flags, plus `--claude-route` when the profile declares one, to `fm-spawn.sh`.
 
 **Spawn requirements**
 
@@ -2217,7 +2217,7 @@ This section is the single owner of the canonical schema and its per-field seman
       "min_confidence": 0.85,
       "floor": { "scope": "<quota-axi scope>", "min_percent": 20, "provider": "<quota-axi provider>" },
       "use": [
-        { "harness": "<adapter>", "model": "<optional model>", "effort": "<low|medium|high|xhigh|max|ultra, optional>", "provider": "<optional quota-axi provider>", "quota_scope": "<optional quota-axi scope>", "floor": { "scope": "<quota-axi scope>", "min_percent": 50 } }
+        { "harness": "<adapter>", "model": "<optional model>", "effort": "<low|medium|high|xhigh|max|ultra, optional>", "claude_route": "<default|direct|direct-code-mode, optional, claude only>", "provider": "<optional quota-axi provider>", "quota_scope": "<optional quota-axi scope>", "floor": { "scope": "<quota-axi scope>", "min_percent": 50 } }
       ],
       "why": "<optional rationale that helps firstmate choose>"
     }
@@ -2237,6 +2237,7 @@ This section is the single owner of the canonical schema and its per-field seman
 | `use` and optional top-level `default` | Accept one profile object or a non-empty array of profile objects; the single-object form remains fully backward-compatible. |
 | Profile `harness` | Required in every profile. |
 | Profile `model` and `effort`; rule `why` | Optional. |
+| Profile `claude_route` | Optional, on a `claude` profile only: the [Claude worker route](#claude-worker-route-fm-spawnsh---claude-route) passed as `fm-spawn.sh --claude-route`. Any other value, or the field on another harness, is a configuration error. It is not part of a profile's duplicate identity, so two profiles differing only in route are duplicates. |
 | Top-level `preferred_provider` | Optional provider-family preference, applied after eligibility checks under `quota-array-dispatch`. |
 | Top-level `shared_quota` | Optional; see "Shared-quota opt-out" below. |
 
@@ -2361,7 +2362,7 @@ Rules come only from the effective home's `config/crew-dispatch.json`; `FM_CONFI
 
 ```sh
 bin/fm-dispatch-resolve.sh data/<id>/brief.md --project <name>        # TOON block on stdout
-bin/fm-dispatch-resolve.sh --record-dispatch data/<id>/brief.md --harness <name> [--model <name>] [--effort <level>]   # after the spawn
+bin/fm-dispatch-resolve.sh --record-dispatch data/<id>/brief.md --harness <name> [--model <name>] [--effort <level>] [--claude-route <route>]   # after the spawn
 ```
 
 **When firstmate invokes the resolver**
@@ -2485,7 +2486,7 @@ Both paths append only to a regular file at that exact path: a `state/dispatch-r
 
 For a brief at `data/<id>/brief.md`, or `<FM_DATA_OVERRIDE>/<id>/brief.md` when that override is set, each resolve run first removes that task's `dispatch-resolution.json`, so a decision never outlives a later run; a `--record-dispatch` run leaves the record untouched.
 Every resolve outcome that exits 0, including off, then writes one JSON object there: `task` (the `<id>`), `status` (`clear`, `ambiguous`, `escalate`, `error`, or `off`), and `profile`.
-On `clear`, `profile` holds `harness`, `model`, and `effort`, each `null` when the chosen profile leaves it unset; otherwise `profile` is `null`.
+On `clear`, `profile` holds `harness`, `model`, and `effort`, each `null` when the chosen profile leaves it unset, plus `claude_route` only when the chosen profile declares one; otherwise `profile` is `null`.
 A usage or configuration error (exit 2) writes no record.
 `fm-spawn.sh` reads this record as the task's decision, as "Per-launch overrides and inherited defaults" describes.
 

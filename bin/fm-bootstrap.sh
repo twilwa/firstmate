@@ -1241,6 +1241,11 @@ crew_dispatch_validate() {
           end);
     def malformed_profile_floors($items):
       ($items | any(has("floor") and floor_bad(.floor; false)));
+    # claude_route is a fm-spawn.sh --claude-route value, meaningful only on a
+    # native claude profile.
+    def malformed_claude_routes($items):
+      ($items | any(. as $p | has("claude_route")
+        and (((["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null) or $p.harness != "claude")));
     def malformed_quota_scopes($items):
       ($items | any(has("quota_scope") and (((.quota_scope | type) != "string") or (.quota_scope | length) == 0)));
     def bad_efforts:
@@ -1264,6 +1269,7 @@ crew_dispatch_validate() {
       if $typed then "use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\\z when present"
       else "use profile model and effort must be non-empty strings when present"
       end
+    elif malformed_claude_routes([(.rules // [])[]? | profiles(.use?)[]?]) then "use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only"
     elif $typed and malformed_quota_scopes([(.rules // [])[]? | profiles(.use?)[]?]) then "use profile quota_scope must be a non-empty string when present"
     elif $typed and malformed_profile_floors([(.rules // [])[]? | profiles(.use?)[]?]) then "use profile floor needs scope and min_percent 0..100"
     elif $typed and ([(.rules // [])[]? | select(has("approval") and .approval != "captain")] | length > 0) then "approval must be \"captain\" when present"
@@ -1281,6 +1287,7 @@ crew_dispatch_validate() {
       if $typed then "default profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\\z when present"
       else "default profile model and effort must be non-empty strings when present"
       end
+    elif has("default") and malformed_claude_routes([profiles(.default)[]?]) then "default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only"
     elif $typed and has("default") and malformed_quota_scopes([profiles(.default)[]?]) then "default profile quota_scope must be a non-empty string when present"
     elif $typed and has("default") and malformed_profile_floors([profiles(.default)[]?]) then "default profile floor needs scope and min_percent 0..100"
     else
