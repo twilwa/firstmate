@@ -1,0 +1,9 @@
+== rttp7bzk-direct (claude pid 4187451)
+child 17516 [~/.local/share/headroom/venv/bin/pyt]: ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=0 
+tcp peers of claude:       1 [2600:1901:0:9e23::]:443;     10 [2607:6bc0::10]:443;
+== rttp7bzk-default (claude pid 38957)
+child 39963 [~/.local/share/headroom/venv/bin/pyt]: ANTHROPIC_BASE_URL=http://127.0.0.1:8787 
+tcp peers of claude:       1 160.79.104.10:443;      1 [2600:1901:0:9e23::]:443;      9 [2607:6bc0::10]:443;
+== rttp7bzk-code (claude pid 42826)
+child 43170 [~/.local/share/headroom/venv/bin/pyt]: ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 
+tcp peers of claude:       3 160.79.104.10:443;      1 [2600:1901:0:9e23::]:443;      9 [2607:6bc0::10]:443;

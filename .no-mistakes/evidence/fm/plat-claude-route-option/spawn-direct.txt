@@ -1,0 +1,3 @@
+$ fm-spawn.sh rttp7bzk-direct <lab>/projects/notes --mode local-only --yolo on --harness claude --model sonnet --effort low --claude-route direct
+spawned rttp7bzk-direct harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rttp7bzk-direct worktree=~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/1/notes
+exit=0

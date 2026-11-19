@@ -1,0 +1,14 @@
+worker claude before: claude(42826)
+$ fm-control.sh rttp7bzk-code relaunch --claude-route direct
+error: task rttp7bzk-code records claude_route=direct-code-mode; a relaunch keeps that route and refuses --claude-route direct
+exit=1
+$ fm-control.sh rttp7bzk-code relaunch --claude-route default
+error: task rttp7bzk-code records claude_route=direct-code-mode; a relaunch keeps that route and refuses --claude-route default
+exit=1
+$ fm-control.sh rttp7bzk-code relaunch --harness codex
+error: task rttp7bzk-code records claude_route=direct-code-mode, which only the native claude harness can keep; refusing a relaunch onto codex
+exit=1
+$ fm-spawn.sh rttp7bzk-code --relaunch --claude-route direct   (direct launch-owner path; agent still alive)
+error: task rttp7bzk-code's endpoint reads 'alive'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh rttp7bzk-code exit)
+worker claude after: claude(42826) (same process => agent not stopped: yes)
+meta still: claude_route=direct-code-mode

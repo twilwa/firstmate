@@ -1,0 +1,25 @@
+treehouse --root '~/.treehouse-fm/7e353c2e40c1' get
+firstmate@vmi3582798:/tmp/fmrt.Tp7BZk/home/projects/notes$ treehouse --root '~/.treehouse-fm/7e353c2e40c1' get
+🌳 Setting up worktree...
+🌳 Entered worktree at ~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes. Type 'exit' to return.
+firstmate@vmi3582798:~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes$ cd -- '~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes'
+firstmate@vmi3582798:~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes$ export GOTMPDIR=/tmp/fm-rttp7bzk-default/gotmp
+export COMPACT_ADVISER_DISABLE=1
+export FM_TASK_ID=rttp7bzk-default
+firstmate@vmi3582798:~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes$ export COMPACT_ADVISER_DISABLE=1
+firstmate@vmi3582798:~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes$ export FM_TASK_ID=rttp7bzk-default
+firstmate@vmi3582798:~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes$ . '/tmp/fm-rttp7bzk-default+75b15e4b6561211cb089610ce25243253d23780263de44fec18623ee86e37a03/launch.s1795128635.35096.4628.sh'
+ ▐▛███▛█   Claude Code v2.1.329
+▝▜██████▀  Sonnet 5.5 with low effort · Claude Ultra
+ ▝▝   ▝▝   ~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/2/notes
+❯ : Firstmate operational input waiting: read '/tmp/fmrt.Tp7BZk/home/state/operational-inbox/1795128636-d20d5110048c4635.msg' and handle its contents as Firstmate operational input.
+  Read 1 file (ctrl+o to expand)
+● Bash(echo "paused [at=$(date +%s)]: lab route probe idle, awaiting instructions" >> '/tmp/fmrt.Tp7BZk/home/state/rttp7bzk-default.status' && { [ ! -e '/tmp/fmrt.Tp7B…)
+  ⎿  (No output)
+  ⎿  Allowed by auto mode
+● Status line appended: paused, lab route probe idle, awaiting instructions. Ending my turn.
+✻ Crunched for 5s · done 2:50 PM
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent

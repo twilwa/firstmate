@@ -1,0 +1,5 @@
+$ fm-spawn.sh rttp7bzk-code <lab>/projects/notes --mode local-only --yolo on --harness claude --model sonnet --effort low --claude-route direct-code-mode
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+notice: claude_route=direct-code-mode: on first use Claude Code shows a blocking "Code Mode (experimental)" consent dialog with "No, start without it" preselected; this spawn never answers it, so an operator must choose "Yes, turn on Code Mode" in the worker's pane (a blind Enter starts without Code Mode)
+spawned rttp7bzk-code harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rttp7bzk-code worktree=~/.treehouse-fm/7e353c2e40c1/.treehouse/notes-d0f6bb/3/notes
+exit=0

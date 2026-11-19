@@ -1,0 +1,15 @@
+# base 38ea79f6 default launch vs HEAD dc816788 default launch (no flag) and HEAD --claude-route default; ids/slots/gens normalized
+## diff base vs HEAD(default):
+IDENTICAL (2349 bytes)
+## diff base vs HEAD(newdef):
+IDENTICAL (2349 bytes)
+## sha256
+9c77481dfb89f2fbb9f16e8c23f561e7bb61f500e18e295eee2a085e5947eb36  norm-based2.sh
+9c77481dfb89f2fbb9f16e8c23f561e7bb61f500e18e295eee2a085e5947eb36  norm-default.sh
+9c77481dfb89f2fbb9f16e8c23f561e7bb61f500e18e295eee2a085e5947eb36  norm-newdef.sh
+## meta claude_route lines
+based2: 0
+default: 0
+newdef: 0
+## base meta keys vs HEAD default meta keys
+same key set

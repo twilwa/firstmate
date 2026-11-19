@@ -1,0 +1,16 @@
+$ fm-spawn.sh rttp7bzk-neg /tmp/fmrt.Tp7BZk/home/projects/notes --mode local-only --yolo on --harness claude --claude-route proxy
+error: --claude-route must be one of default, direct, direct-code-mode
+exit=1
+$ fm-spawn.sh rttp7bzk-neg /tmp/fmrt.Tp7BZk/home/projects/notes --mode local-only --yolo on --harness codex --claude-route direct
+error: --claude-route applies only to the native claude harness, not codex
+exit=1
+$ fm-spawn.sh rttp7bzk-neg /tmp/fmrt.Tp7BZk/home/projects/notes --mode local-only --yolo on --harness claude --foo --claude-route direct
+error: --claude-route cannot be applied to a raw launch command; use --harness claude
+exit=1
+$ fm-spawn.sh rttp7bzk-neg /tmp/fmrt.Tp7BZk/home/projects/notes --mode local-only --yolo on --harness codex --claude-route default
+error: --claude-route applies only to the native claude harness, not codex
+exit=1
+$ fm-spawn.sh rttp7bzk-mate --secondmate --claude-route direct
+error: --claude-route applies to ship and scout workers; a secondmate launches on its home's own settings
+exit=1
+state records for rttp7bzk-neg: 0  windows: 0
