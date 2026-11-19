@@ -111,8 +111,10 @@ The clean Linux artifact this note called for now exists: the hosted run recorde
 
 `tests/fm-park.test.sh` keeps all state under `fm_test_tmproot` and drives a fake tmux binary, so it shares no global state.
 
-- Command: `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on macOS arm64 with Bash 5.3 and tmux, run under `caffeinate -i`
-- Result: `FM_ISOLATION_SUMMARY total=27 failed=0 concurrency=4 duration_ms=1372646`
+This measurement is upstream's, taken in [kunchenguid/firstmate](https://github.com/kunchenguid/firstmate) over upstream's 27-member candidate set, which still includes `tests/fm-captain-hold-lifecycle.test.sh`. It is not a fork measurement: the fork runs that suite in a serial shard, so its candidate set has 26 members.
+
+- Command (upstream): `bin/fm-test-isolation-proof.sh --jobs 4 --json <path>` on macOS arm64 with Bash 5.3 and tmux, run under `caffeinate -i`
+- Result (upstream): `FM_ISOLATION_SUMMARY total=27 failed=0 concurrency=4 duration_ms=1372646`
 - `tests/fm-park.test.sh` exit 0 (188248 ms).
 
 ## Family concurrency proofs

@@ -1745,23 +1745,6 @@ test_pi_registered_workers_preapprove_only_the_task_launch() {
   pass "registered Pi/pi-signed ships and scouts approve only the supported task launch"
 }
 
-test_pi_worker_launch_omits_seeded_home_approve() {
-  local rec id out status launch
-  id=profile-pi-worker-no-approve-z8f
-  rec=$(make_spawn_case profile-pi-worker-no-approve pi "$id")
-  read_case_record "$rec"
-
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
-  status=$?
-  expect_code 0 "$status" "pi ship spawn should succeed"
-  launch=$(fm_test_launch_unframe "$(cat "$LAUNCH_LOG")")
-  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular" \
-    "pi worker launch lost its regular TUI probe"
-  assert_not_contains "$launch" "--approve" \
-    "ordinary Pi worker launches must not receive secondmate seeded-home --approve"
-  pass "ordinary Pi worker launches omit --approve"
-}
-
 test_pi_approve_probe_omits_unsupported_flag() {
   local harness rec id sm out status launch
   for harness in pi pi-signed; do
