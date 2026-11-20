@@ -1,0 +1,66 @@
+$ fm-brief.sh t-ship alpha --mode no-mistakes
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-ship/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-direct alpha --mode direct-PR
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-direct/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-local alpha --mode local-only
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-local/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-gerrit alpha --mode no-mistakes --forge gerrit
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-gerrit/brief.md (ship, mode=no-mistakes forge=gerrit shape=squash; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-forgejo alpha --mode no-mistakes --forge forgejo
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-forgejo/brief.md (ship, mode=no-mistakes forge=forgejo; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-ext alpha --mode direct-PR --forge external
+error: forge=external needs /tmp/fmbrief.CDK1eX/config/external-review.md, the worker instructions for this home's review tool (docs/configuration.md "External review tool"); without it a worker has no way to publish except a push
+[exit 1]
+
+$ fm-brief.sh t-scout alpha --scout
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-land alpha --landing-crew
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-land/brief.md (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ fm-brief.sh t-sm --secondmate --no-projects
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-sm/brief.md (secondmate charter)
+[exit 0]
+
+$ fm-brief.sh t-bad alpha --mode bogus
+error: --mode must be one of no-mistakes, direct-PR, local-only (got 'bogus')
+[exit 1]
+
+$ fm-brief.sh t-ship alpha --mode no-mistakes
+error: /tmp/fmbrief.CDK1eX/data/t-ship/brief.md already exists
+[exit 1]
+
+$ fm-brief.sh t-ext alpha --mode direct-PR --forge external  (with config/external-review.md present)
+scaffolded: /tmp/fmbrief.CDK1eX/data/t-ext/brief.md (ship, mode=direct-PR forge=external; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+# hint path resolves to a readable file:
+readable: {run-worktree}/docs/brief-prompting.md
+
+# brief.md bodies never contain the hint (it is stdout-only, not loaded into worker briefs):
+no brief.md references brief-prompting
+
+# brief.md still carries {TASK}/{FIRSTMATE_SPEC} placeholders, Captain intent section untouched:
+/tmp/fmbrief.CDK1eX/data/t-ship/brief.md: 2 placeholder lines; 1 Captain's intent heading
+/tmp/fmbrief.CDK1eX/data/t-scout/brief.md: 2 placeholder lines; 1 Captain's intent heading
+/tmp/fmbrief.CDK1eX/data/t-land/brief.md: 2 placeholder lines; 1 Captain's intent heading
