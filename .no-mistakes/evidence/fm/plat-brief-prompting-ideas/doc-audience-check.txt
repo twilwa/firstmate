@@ -1,2 +1,7 @@
+$ bin/fm-doc-audience-check.sh   # real inventory
 fm-doc-audience-check: ok surfaces=150 local_links=1294
 [exit 0]
+
+$ bin/fm-doc-audience-check.sh --inventory <inventory without docs/brief-prompting.md entry>
+fm-doc-audience-check: unclassified: docs/brief-prompting.md
+[exit 1]

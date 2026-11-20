@@ -1,0 +1,8 @@
+Generated brief.md bodies, target ({run-worktree}) vs base e3c67315, with FM_HOME and code-root paths normalized:
+s-nm: byte-identical; brief-prompting mentions in brief: 0
+s-dpr: byte-identical; brief-prompting mentions in brief: 0
+s-lo: byte-identical; brief-prompting mentions in brief: 0
+s-ger: byte-identical; brief-prompting mentions in brief: 0
+s-fj: byte-identical; brief-prompting mentions in brief: 0
+sc: byte-identical; brief-prompting mentions in brief: 0
+lc: byte-identical; brief-prompting mentions in brief: 0

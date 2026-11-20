@@ -1,0 +1,52 @@
+$ FM_HOME=$LAB bin/fm-brief.sh s-nm alpha --mode no-mistakes
+scaffolded: $LAB/data/s-nm/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh s-dpr alpha --mode direct-PR
+scaffolded: $LAB/data/s-dpr/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh s-lo alpha --mode local-only
+scaffolded: $LAB/data/s-lo/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh s-ger alpha --mode no-mistakes --forge gerrit
+scaffolded: $LAB/data/s-ger/brief.md (ship, mode=no-mistakes forge=gerrit shape=squash; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh s-fj alpha --mode direct-PR --forge forgejo
+scaffolded: $LAB/data/s-fj/brief.md (ship, mode=direct-PR forge=forgejo; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh sc alpha --scout
+scaffolded: $LAB/data/sc/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_HOME=$LAB bin/fm-brief.sh lc alpha --landing-crew
+scaffolded: $LAB/data/lc/brief.md (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
+$ FM_SECONDMATE_CHARTER=x FM_HOME=$LAB bin/fm-brief.sh sm --secondmate --no-projects
+scaffolded: $LAB/data/sm/brief.md (secondmate charter)
+[exit 0]
+
+$ (adversarial) FM_HOME=$LAB <code-root-without-docs>/bin/fm-brief.sh nodoc alpha --scout
+scaffolded: $LAB/data/nodoc/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+[exit 0]
+
+$ (adversarial) FM_HOME=$LAB <code-root-without-docs>/bin/fm-brief.sh nodoc-ship alpha --mode no-mistakes
+scaffolded: $LAB/data/nodoc-ship/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+[exit 0]
+
+$ (adversarial) cd /tmp && FM_HOME=$LAB FM_ROOT_OVERRIDE=. <worktree>/bin/fm-brief.sh ovr alpha --scout
+scaffolded: $LAB/data/ovr/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+[exit 0]
+
