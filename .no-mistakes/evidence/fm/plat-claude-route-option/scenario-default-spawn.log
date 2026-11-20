@@ -1,0 +1,3 @@
+$ fm-spawn.sh rtx-default <notes> --mode local-only --yolo on --harness claude --model sonnet --effort low --claude-route default
+spawned rtx-default harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-default worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/2/notes
+exit=0

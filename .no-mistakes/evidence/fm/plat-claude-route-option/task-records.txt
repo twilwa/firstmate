@@ -1,0 +1,33 @@
+== state/rtx-refuse.meta
+harness=claude
+kind=ship
+model=default
+effort=default
+claude_route=direct
+== state/rtx-default.meta
+harness=claude
+kind=ship
+model=default
+effort=default
+== state/rtx-codemode.meta
+harness=claude
+kind=ship
+model=sonnet
+effort=low
+claude_route=direct-code-mode
+== state/rtx-absnt.meta
+harness=claude
+kind=ship
+model=sonnet
+effort=low
+== state/rtx-base.meta
+harness=claude
+kind=ship
+model=sonnet
+effort=low
+== state/rtx-disp.meta
+harness=claude
+kind=ship
+model=sonnet
+effort=low
+claude_route=direct

@@ -1,0 +1,15 @@
+  Settings  Status   Config   Usage   Stats
+  Version:             2.1.329
+  Session name:        Firstmate operational inbox message
+  Session ID:          <session-id>
+  Session kind:        interactive
+  Peer address:        uds:/tmp/cc-socks/2421818.sock
+  cwd:                 ~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/3/notes
+  Cloud sessions:      Not set up · /web-setup to connect GitHub
+  Anthropic base URL:  https://api.anthropic.com
+  Model:               sonnet (claude-sonnet-5-5)
+  MCP servers:         4 connected · /mcp
+  Setting sources:     User settings, Project local settings, Command line arguments
+  Auto mode server:    Enabled
+  Code Mode:           on (experimental) · CLAUDE_CODE_EXPERIMENTAL_CODE_MODE in --settings
+  ←/→ to switch · Esc to close

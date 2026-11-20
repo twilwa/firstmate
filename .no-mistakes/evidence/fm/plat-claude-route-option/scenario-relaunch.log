@@ -1,0 +1,23 @@
+$ fm-spawn.sh rtx-refuse --relaunch --claude-route default
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: task rtx-refuse records claude_route=direct; a relaunch keeps that route and refuses --claude-route default
+exit=1
+meta unchanged: yes
+
+$ fm-spawn.sh rtx-refuse --relaunch --claude-route direct-code-mode
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: task rtx-refuse records claude_route=direct; a relaunch keeps that route and refuses --claude-route direct-code-mode
+exit=1
+meta unchanged: yes
+
+$ fm-spawn.sh rtx-refuse --relaunch --harness codex
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: task rtx-refuse records claude_route=direct, which only the native claude harness can keep; refusing a relaunch onto codex
+exit=1
+meta unchanged: yes
+
+$ fm-spawn.sh rtx-refuse --relaunch
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+spawned rtx-refuse harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-refuse worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/1/notes
+exit=0
+claude_route=direct

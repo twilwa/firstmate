@@ -1,0 +1,14 @@
+$ fm-control.sh rtx-codemode relaunch --claude-route direct
+error: task rtx-codemode records claude_route=direct-code-mode; a relaunch keeps that route and refuses --claude-route direct
+exit=1
+worker pid before=2421818 after=2421818 meta unchanged=yes
+
+$ fm-control.sh rtx-codemode relaunch --harness codex
+error: task rtx-codemode records claude_route=direct-code-mode, which only the native claude harness can keep; refusing a relaunch onto codex
+exit=1
+worker pid before=2421818 after=2421818 meta unchanged=yes
+
+$ fm-spawn.sh rtx-raw <notes> 'claude --verbose' --mode local-only --yolo on --claude-route direct
+error: --claude-route cannot be applied to a raw launch command; use --harness claude
+exit=1
+meta present: no

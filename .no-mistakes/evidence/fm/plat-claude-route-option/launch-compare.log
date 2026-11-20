@@ -1,0 +1,9 @@
+== cmp base vs HEAD --claude-route default
+IDENTICAL
+== cmp base vs HEAD (no flag)
+IDENTICAL
+== diff base vs HEAD direct-code-mode
+75c75
+< '{"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false}}'
+---
+> '{"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"}}'

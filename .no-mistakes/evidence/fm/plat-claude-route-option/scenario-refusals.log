@@ -1,0 +1,29 @@
+$ fm-spawn.sh rtx-refuse <notes> --mode local-only --yolo on --harness claude --claude-route bogus
+error: --claude-route must be one of default, direct, direct-code-mode
+exit=1
+meta present: no
+
+$ fm-spawn.sh rtx-refuse <notes> --mode local-only --yolo on --harness codex --claude-route direct
+error: --claude-route applies only to the native claude harness, not codex
+exit=1
+meta present: no
+
+$ fm-spawn.sh rtx-refuse <notes> --mode local-only --yolo on --harness codex --claude-route default
+error: --claude-route applies only to the native claude harness, not codex
+exit=1
+meta present: no
+
+$ fm-spawn.sh rtx-refuse <notes> --mode local-only --yolo on --claude-route direct claude
+spawned rtx-refuse harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-refuse worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/1/notes
+exit=0
+meta present: yes
+
+$ fm-spawn.sh rtx-sm --secondmate --claude-route direct
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: --claude-route applies to ship and scout workers; a secondmate launches on its home's own settings
+exit=1
+
+lab windows:
+firstmate:lab
+firstmate:fm-rtx-refuse

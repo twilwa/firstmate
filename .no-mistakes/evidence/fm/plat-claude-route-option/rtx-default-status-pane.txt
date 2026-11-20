@@ -1,0 +1,16 @@
+  Settings  Status   Config   Usage   Stats
+  Version:                    2.1.329
+  Session name:               Firstmate operational inbox message
+  Session ID:                 <session-id>
+  Session kind:               interactive
+  Peer address:               uds:/tmp/cc-socks/2413992.sock
+  cwd:                        ~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/2/notes
+  Cloud sessions:             Not set up · /web-setup to connect GitHub
+  Anthropic base URL:         http://127.0.0.1:8787
+  Model:                      sonnet (claude-sonnet-5-5)
+  MCP servers:                2 connected · /mcp
+  Setting sources:            User settings, Project local settings, Command line arguments
+  Managed settings (remote):  not fetched — not available with a custom ANTHROPIC_BASE_URL
+  Organization policy:        not fetched with a custom ANTHROPIC_BASE_URL
+  Auto mode server:           Enabled
+  ←/→ to switch · Esc to close

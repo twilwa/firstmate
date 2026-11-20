@@ -1,0 +1,10 @@
+# synthetic clear resolution record (documented shape) in data/rtx-disp/dispatch-resolution.json:
+{"task":"rtx-disp","status":"clear","profile":{"harness":"claude","model":"sonnet","effort":"low","claude_route":"direct"}}
+$ fm-spawn.sh rtx-disp <notes> --mode local-only --yolo on --harness claude --model sonnet --effort low   (route omitted)
+error: launch flags do not match the clear dispatch selection --harness claude --model sonnet --effort low --claude-route direct recorded in /tmp/fmlab.Q9LEpL/home/data/rtx-disp/dispatch-resolution.json; pass those flags with no raw launch command, or record this task's override with --dispatch-override <reason>
+exit=1
+meta present: no
+$ fm-spawn.sh rtx-disp <notes> --mode local-only --yolo on --harness claude --model sonnet --effort low --claude-route direct
+spawned rtx-disp harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-disp worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/6/notes
+exit=0
+meta claude_route: claude_route=direct

@@ -1,0 +1,4 @@
+$ fm-spawn.sh rtx-codemode <notes> --mode local-only --yolo on --harness claude --model sonnet --effort low --claude-route direct-code-mode
+notice: claude_route=direct-code-mode: on first use Claude Code shows a blocking "Code Mode (experimental)" consent dialog with "No, start without it" preselected; this spawn never answers it, so an operator must choose "Yes, turn on Code Mode" in the worker's pane (a blind Enter starts without Code Mode)
+spawned rtx-codemode harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-codemode worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/3/notes
+exit=0

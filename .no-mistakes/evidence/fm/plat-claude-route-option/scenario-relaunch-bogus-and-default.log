@@ -1,0 +1,13 @@
+# stopped rtx-default's claude; hand-edit its record to claude_route=bogus
+$ fm-spawn.sh rtx-default --relaunch
+error: task rtx-default records an unrecognized claude_route=bogus; refusing a relaunch that would not carry it
+exit=1
+new claude started: no
+$ fm-control.sh rtx-default relaunch
+error: task rtx-default records an unrecognized claude_route=bogus; refusing a relaunch that would not carry it
+exit=1
+# restore the record (remove the bogus line) and relaunch on the default route
+spawned rtx-default harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-rtx-default worktree=~/.treehouse-fm/c05c105e9e93/.treehouse/notes-00f135/2/notes
+exit=0
+relaunched default settings: {"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false}}
+meta claude_route: <absent>
