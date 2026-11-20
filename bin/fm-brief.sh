@@ -17,7 +17,8 @@
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
 # After a ship, scout, or landing-crew `scaffolded:` line, one more stdout line
-# names docs/brief-prompting.md, optional suggestions for filling the Task.
+# names docs/brief-prompting.md, optional suggestions for filling the Firstmate
+# spec.
 # Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo|external> [--shape squash]] [--pr <auto|manual>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--base-branch <branch>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --landing-crew [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--herdr-lab]
@@ -506,10 +507,10 @@ if [ "$KIND" != secondmate ] && { [ -e "$BRIEF_INCLUDE_FILE" ] || [ -L "$BRIEF_I
   [ -n "$(printf '%s' "$BRIEF_INCLUDE_BODY" | tr -d '[:space:]')" ] || BRIEF_INCLUDE_BODY=
 fi
 
-# Optional, never binding: point the writer filling {TASK} and {FIRSTMATE_SPEC}
+# Optional, never binding: point the writer filling {FIRSTMATE_SPEC}
 # at the brief-prompting suggestions, on its own line after `scaffolded:`.
 print_prompting_hint() {
-  echo "optional: prompting ideas for the Task sections: $FM_ROOT/docs/brief-prompting.md"
+  echo "optional: prompting ideas for the Firstmate spec: $FM_ROOT/docs/brief-prompting.md"
 }
 
 # Append the include as the last section of a ship or scout scaffold.

@@ -1,6 +1,7 @@
 # Brief prompting ideas
 
-These are optional suggestions for writing a brief's `## Captain's intent` and `## Firstmate spec`; use them with judgment or ignore them.
+These are optional suggestions for writing a brief's `## Firstmate spec`; use them with judgment or ignore them.
+Leave `## Captain's intent` in the captain's own words.
 They never widen the captain's ask or invent a target, number, or reference that the captain or measured evidence did not supply.
 
 - Measurable target: replace "optimize" with a number, such as "make this 10x faster".

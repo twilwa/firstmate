@@ -1205,8 +1205,9 @@ ROWS
 }
 
 # Contract: right after scaffolding a brief that still needs its Task filled,
-# fm-brief.sh points firstmate at the optional brief-prompting suggestions by an
-# absolute path, on its own line after the unchanged `scaffolded:` line. A
+# fm-brief.sh points firstmate's `## Firstmate spec` (never the captain's intent)
+# at the optional brief-prompting suggestions by an absolute path, on its own
+# line after the unchanged `scaffolded:` line. A
 # secondmate charter has no Firstmate spec to write and gets no hint.
 test_scaffold_output_points_at_optional_prompting_ideas() {
   local out kind doc="$ROOT/docs/brief-prompting.md"
@@ -1222,8 +1223,8 @@ test_scaffold_output_points_at_optional_prompting_ideas() {
       "scaffolded: $BRIEF_HOME/data/brief-hint-$kind/brief.md ("*"replace {TASK} and {FIRSTMATE_SPEC}"*")") ;;
       *) fail "$kind scaffold changed its first scaffolded: line: $out" ;;
     esac
-    printf '%s\n' "$out" | sed -n 2p | grep -qF "$doc" \
-      || fail "$kind scaffold output does not name $doc on the line after scaffolded: ($out)"
+    [ "$(printf '%s\n' "$out" | sed -n 2p)" = "optional: prompting ideas for the Firstmate spec: $doc" ] \
+      || fail "$kind scaffold output does not point the Firstmate spec at $doc on the line after scaffolded: ($out)"
   done
   out=$(FM_SECONDMATE_CHARTER=x FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-sm --secondmate --no-projects 2>/dev/null)
   case "$out" in
