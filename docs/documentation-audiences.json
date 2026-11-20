@@ -354,6 +354,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "docs/brief-prompting.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "docs/calm-mode-feasibility.md",
       "audience": "maintainer-verification"
     },

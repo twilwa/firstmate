@@ -1204,6 +1204,34 @@ ROWS
   pass "fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor"
 }
 
+# Contract: right after scaffolding a brief that still needs its Task filled,
+# fm-brief.sh points firstmate at the optional brief-prompting suggestions by an
+# absolute path, on its own line after the unchanged `scaffolded:` line. A
+# secondmate charter has no Firstmate spec to write and gets no hint.
+test_scaffold_output_points_at_optional_prompting_ideas() {
+  local out kind doc="$ROOT/docs/brief-prompting.md"
+  assert_present "$doc" "the brief-prompting suggestions doc is missing"
+  for kind in ship scout landing; do
+    case "$kind" in
+      ship) out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-ship alpha --mode no-mistakes 2>/dev/null) ;;
+      scout) out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-scout alpha --scout 2>/dev/null) ;;
+      landing) out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-landing alpha --landing-crew 2>/dev/null) ;;
+    esac
+    expect_code 0 "$?" "$kind scaffold exited non-zero"
+    case "$(printf '%s\n' "$out" | sed -n 1p)" in
+      "scaffolded: $BRIEF_HOME/data/brief-hint-$kind/brief.md ("*"replace {TASK} and {FIRSTMATE_SPEC}"*")") ;;
+      *) fail "$kind scaffold changed its first scaffolded: line: $out" ;;
+    esac
+    printf '%s\n' "$out" | sed -n 2p | grep -qF "$doc" \
+      || fail "$kind scaffold output does not name $doc on the line after scaffolded: ($out)"
+  done
+  out=$(FM_SECONDMATE_CHARTER=x FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-sm --secondmate --no-projects 2>/dev/null)
+  case "$out" in
+    *brief-prompting*) fail "secondmate charter output gained the prompting hint: $out" ;;
+  esac
+  pass "fm-brief: Task-bearing scaffolds point at the optional brief-prompting suggestions"
+}
+
 # Scout and secondmate paths still scaffold well-formed briefs.
 test_scout_and_secondmate_scaffold() {
   local brief
@@ -1852,6 +1880,7 @@ test_ship_and_scout_teach_validation_round_pause
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_completion_write_exception_is_task_scoped
 test_scout_and_secondmate_scaffold
+test_scaffold_output_points_at_optional_prompting_ideas
 test_landing_crew_scaffold
 test_landing_crew_refuses_delivery_flags
 test_scout_lavish_line_follows_presentation_floor
