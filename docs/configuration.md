@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [several Claude accounts](#several-claude-accounts-configclaude-accounts), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Claude worker route](#claude-worker-route-fm-spawnsh---claude-route), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [several Claude accounts](#several-claude-accounts-configclaude-accounts), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-configtaskstoml--taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), [startup memory budget](#startup-memory-budget-configstartup-memory-budget), and [stow guard](#stow-guard-configstow-guard) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [Codex native Stop park](#codex-native-stop-park-configcodex-stop-park), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1563,7 +1563,7 @@ Remote secondmate routes accept verified harness adapters only and reject raw la
 When `config/crew-dispatch.json` exists, crewmate and scout spawns require an explicit resolved harness instead of automatically falling back to `config/crew-harness`.
 Such a spawn also refuses until `bin/fm-dispatch-resolve.sh data/<id>/brief.md` has written that task's record, `data/<id>/dispatch-resolution.json`.
 Both paths are under `FM_DATA_OVERRIDE` instead of `data/` when it is set.
-When the record is `clear`, the spawn must match its harness, and its model and effort where the record sets them, with no raw launch command, unless `--dispatch-override <reason>` records a task override in `state/<id>.meta` as `dispatch_override=<reason>`.
+When the record is `clear`, the spawn must match its harness, and its model, effort, and Claude route where the record sets them, with no raw launch command, unless `--dispatch-override <reason>` records a task override in `state/<id>.meta` as `dispatch_override=<reason>`.
 A model or effort the record leaves empty is not bound, so the documented effort fallback still applies.
 When the record is `ambiguous`, `escalate`, `error`, or `off`, the explicit flags from the manual intake are enough.
 An `fm-spawn.sh --relaunch` skips this check.
@@ -1643,6 +1643,30 @@ Both approval-mode files follow the primary-authoritative [`secondmate-provision
 T3 Code owns its provider command and always uses `full-access`, so `backend=t3code` accepts the default `bypass` posture and refuses `auto` before mutation; [`t3code-backend.md`](t3code-backend.md#active-limits) owns that backend limit.
 
 The [Claude adapter reference](../.agents/skills/harness-adapters/references/harness/claude.md) records the permission-mode observations and the distinct startup dialogs.
+
+## Claude worker route (fm-spawn.sh --claude-route)
+
+`bin/fm-spawn.sh --claude-route <route>` chooses, per ship or scout, how a native Claude worker reaches the API.
+It is a per-task choice made at dispatch, not a home setting, and it never touches user or global Claude settings.
+
+| Route | Effect on the worker's one `--settings` value |
+| --- | --- |
+| `default`, or no flag | None: today's launch, byte for byte, and no task-record line. |
+| `direct` | Adds `"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"0"}`. |
+| `direct-code-mode` | Adds the same `env` block with `"CLAUDE_CODE_EXPERIMENTAL_CODE_MODE":"1"`. |
+
+The `env` block joins the existing inline settings object beside `feedbackDrafts` and the attribution policy, so the launch still carries exactly one `--settings` flag.
+Per-launch `--settings` env takes precedence over the user settings env, so a direct route bypasses a proxy base URL the user settings set for every Claude session, such as a token-compression proxy.
+Claude Code's experimental Code Mode refuses to run behind such a proxy, which is why `direct-code-mode` pairs it with the direct base URL.
+
+A non-default route is recorded in the task record as `claude_route=`; absent means `default`.
+A relaunch through `bin/fm-control.sh` reuses the recorded route, and refuses, before the running agent stops, a `--claude-route` naming a different route or a move of a routed task to another harness.
+
+The flag is refused for any harness other than native `claude`, a raw launch command, a secondmate, and the `t3code` backend, which launches Claude without the `--settings` flag.
+
+On first use, Code Mode shows a blocking "Code Mode (experimental)" consent dialog with "No, start without it" preselected, so a blind Enter starts without Code Mode.
+Firstmate never answers it: a `direct-code-mode` spawn prints a notice naming the dialog, and an operator chooses "Yes, turn on Code Mode" in the worker's pane, after which that session can be resumed only with Code Mode on.
+The Claude launch has no post-launch dialog watch, so the spawn does not detect the dialog itself.
 
 ## Codex permission mode (config/codex-permission-mode)
 
@@ -2169,7 +2193,7 @@ Firstmate cannot see which part of a worker's life uses the resource, so the num
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.
 Firstmate chooses the best matching rule with judgment; shell scripts do not match the natural-language rules.
-Firstmate resolves the rule's profile object or array under `AGENTS.md` section 4 and `quota-array-dispatch`, then passes only concrete `--harness`, `--model`, and `--effort` flags to `fm-spawn.sh`.
+Firstmate resolves the rule's profile object or array under `AGENTS.md` section 4 and `quota-array-dispatch`, then passes only concrete `--harness`, `--model`, and `--effort` flags, plus `--claude-route` when the profile declares one, to `fm-spawn.sh`.
 
 **Spawn requirements**
 
@@ -2193,7 +2217,7 @@ This section is the single owner of the canonical schema and its per-field seman
       "min_confidence": 0.85,
       "floor": { "scope": "<quota-axi scope>", "min_percent": 20, "provider": "<quota-axi provider>" },
       "use": [
-        { "harness": "<adapter>", "model": "<optional model>", "effort": "<low|medium|high|xhigh|max|ultra, optional>", "provider": "<optional quota-axi provider>", "quota_scope": "<optional quota-axi scope>", "floor": { "scope": "<quota-axi scope>", "min_percent": 50 } }
+        { "harness": "<adapter>", "model": "<optional model>", "effort": "<low|medium|high|xhigh|max|ultra, optional>", "claude_route": "<default|direct|direct-code-mode, optional, claude only>", "provider": "<optional quota-axi provider>", "quota_scope": "<optional quota-axi scope>", "floor": { "scope": "<quota-axi scope>", "min_percent": 50 } }
       ],
       "why": "<optional rationale that helps firstmate choose>"
     }
@@ -2213,6 +2237,7 @@ This section is the single owner of the canonical schema and its per-field seman
 | `use` and optional top-level `default` | Accept one profile object or a non-empty array of profile objects; the single-object form remains fully backward-compatible. |
 | Profile `harness` | Required in every profile. |
 | Profile `model` and `effort`; rule `why` | Optional. |
+| Profile `claude_route` | Optional, on a `claude` profile only: the [Claude worker route](#claude-worker-route-fm-spawnsh---claude-route) passed as `fm-spawn.sh --claude-route`. Any other value, or the field on another harness, is a configuration error. It is not part of a profile's duplicate identity, so two profiles differing only in route are duplicates. |
 | Top-level `preferred_provider` | Optional provider-family preference, applied after eligibility checks under `quota-array-dispatch`. |
 | Top-level `shared_quota` | Optional; see "Shared-quota opt-out" below. |
 
@@ -2337,7 +2362,7 @@ Rules come only from the effective home's `config/crew-dispatch.json`; `FM_CONFI
 
 ```sh
 bin/fm-dispatch-resolve.sh data/<id>/brief.md --project <name>        # TOON block on stdout
-bin/fm-dispatch-resolve.sh --record-dispatch data/<id>/brief.md --harness <name> [--model <name>] [--effort <level>]   # after the spawn
+bin/fm-dispatch-resolve.sh --record-dispatch data/<id>/brief.md --harness <name> [--model <name>] [--effort <level>] [--claude-route <route>]   # after the spawn
 ```
 
 **When firstmate invokes the resolver**
@@ -2448,7 +2473,8 @@ Firstmate passes its profile line unless it states a reason to override, such as
 Every keyed outcome also appends one resolution receipt to the home's gitignored `state/dispatch-receipts.jsonl`, holding the brief and rules content hashes, the answering model id, the request id, usage, the full probabilities, the confidence, the reason a non-clear outcome gives, and the chosen profile, and never the key or any rule `why`.
 On `clear` only, after passing the profile line to `fm-spawn`, firstmate reruns the script with `--record-dispatch` for the profile it actually dispatched, which appends a dispatch receipt joined by brief content hash to that brief's latest resolution, so chosen-versus-dispatched disagreement is inspectable; no other outcome records a dispatch.
 The dispatch receipt copies that resolution's row, so its `resolution_id` names the one resolution instance the dispatch joined even when a brief resolves several times under the same content hash.
-Read that disagreement by projecting both `chosen_profile` and `dispatched_profile` to `{harness, model, effort}` and comparing the projections: `chosen_profile` is the rules file's profile verbatim and may also carry the declared `provider` or `floor`, which no dispatch flag can express, so comparing the whole objects reports a disagreement on profiles the dispatch in fact matched exactly.
+Read that disagreement by projecting both `chosen_profile` and `dispatched_profile` to `{harness, model, effort, claude_route}` and comparing the projections: `chosen_profile` is the rules file's profile verbatim and may also carry the declared `provider` or `floor`, which no dispatch flag can express, so comparing the whole objects reports a disagreement on profiles the dispatch in fact matched exactly.
+When the chosen profile declares `claude_route` and a `claude` dispatch is recorded without `--claude-route`, `dispatched_profile` records `claude_route: "default"`, the route `fm-spawn.sh` launches on; `--claude-route` is refused with any other value or harness, and no receipt is written.
 Resolve-path receipt writes are best-effort but never silent: a failure changes neither the resolver's stdout nor its exit status, because every receipt is written after its block is printed, and on every outcome, clear or not, the run prints the one fixed line `dispatch-resolve: no resolution receipt for this run` on stderr, which carries nothing from the receipt, the brief, the model's answer, or the key.
 On `clear` the same loss is additionally detectable later, when the `--record-dispatch` run for that brief reports on stderr that no resolution receipt carries its content hash; the other outcomes record no dispatch, so the stderr line is the whole of their visibility.
 It does cost the resolver's own process lifetime after the block, and that cost is bounded rather than incidental: receipt work stays at or under a 100 ms median on an idle home and at or under 200 ms under the held-lock fixture, both measured in [`verification/dispatch-resolve.md`](verification/dispatch-resolve.md).
@@ -2461,7 +2487,7 @@ Both paths append only to a regular file at that exact path: a `state/dispatch-r
 
 For a brief at `data/<id>/brief.md`, or `<FM_DATA_OVERRIDE>/<id>/brief.md` when that override is set, each resolve run first removes that task's `dispatch-resolution.json`, so a decision never outlives a later run; a `--record-dispatch` run leaves the record untouched.
 Every resolve outcome that exits 0, including off, then writes one JSON object there: `task` (the `<id>`), `status` (`clear`, `ambiguous`, `escalate`, `error`, or `off`), and `profile`.
-On `clear`, `profile` holds `harness`, `model`, and `effort`, each `null` when the chosen profile leaves it unset; otherwise `profile` is `null`.
+On `clear`, `profile` holds `harness`, `model`, and `effort`, each `null` when the chosen profile leaves it unset, plus `claude_route` only when the chosen profile declares one; otherwise `profile` is `null`.
 A usage or configuration error (exit 2) writes no record.
 `fm-spawn.sh` reads this record as the task's decision, as "Per-launch overrides and inherited defaults" describes.
 

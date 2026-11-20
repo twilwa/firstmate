@@ -1595,6 +1595,10 @@ top-level shared_quota true is accepted^{"shared_quota":true,"rules":[{"when":"b
 top-level shared_quota false is accepted^{"shared_quota":false,"rules":[{"when":"big feature","use":{"harness":"claude"}}]}^empty^
 non-boolean shared_quota is flagged^{"shared_quota":"yes","rules":[{"when":"big feature","use":{"harness":"claude"}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - shared_quota must be true or false when present
 array use without select is accepted^{"rules":[{"when":"big feature","use":[{"harness":"claude"},{"harness":"codex"}]}]}^empty^
+claude route profile is accepted^{"rules":[{"when":"code mode study","use":{"harness":"claude","model":"opus","claude_route":"direct-code-mode"}}],"default":{"harness":"claude","claude_route":"direct"}}^empty^
+unknown claude route is flagged^{"rules":[{"when":"code mode study","use":{"harness":"claude","claude_route":"proxy"}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
+array claude route is flagged^{"rules":[{"when":"code mode study","use":{"harness":"claude","claude_route":["direct"]}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
+claude route on another harness is flagged^{"default":{"harness":"codex","claude_route":"direct"}}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only
 one-element array use is accepted^{"rules":[{"when":"focused feature","use":[{"harness":"claude"}]}]}^empty^
 default array is accepted^{"default":[{"harness":"pi","model":"anthropic/claude-sonnet-5"},{"harness":"grok"}]}^empty^
 provider-less multi-provider profile remains accepted without opt-in^{"rules":[{"when":"cross-provider work","use":{"harness":"opencode","model":"anthropic/claude-sonnet-4-5"}}],"default":{"harness":"pi","model":"anthropic/claude-sonnet-5"}}^empty^

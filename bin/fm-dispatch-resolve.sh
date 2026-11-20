@@ -5,7 +5,7 @@
 # Usage:
 #   fm-dispatch-resolve.sh <brief-file> [--project <name>]
 #   fm-dispatch-resolve.sh --record-dispatch <brief-file> --harness <name> \
-#       [--model <name>] [--effort <level>]
+#       [--model <name>] [--effort <level>] [--claude-route <route>]
 #   fm-dispatch-resolve.sh --supports-credential-source <source>
 #
 # Opt-in gate: FM_DISPATCH_PROVIDER and FM_DISPATCH_MODEL select the provider
@@ -100,13 +100,14 @@
 #     preferred_provider: <family and preference or fallback decision, when applied>
 #     candidate: <harness>:<model> provider=.. scope=.. remaining=..% spendPriority=.. runway=.. -> eligible | eligible, unranked: <reason> | not eligible: <reason>
 #        (with the shared-quota opt-out: <harness>:<model> provider=.. -> eligible (quota ranking off: home declares a single shared quota))
-#     profile: --harness <h> [--model <m>] [--effort <e>]     (status clear only)
+#     profile: --harness <h> [--model <m>] [--effort <e>] [--claude-route <r>]     (status clear only)
 #   Task record: for <data>/<id>/brief.md, where <data> is FM_DATA_OVERRIDE,
 #   else $FM_HOME/data, every resolve run first removes
 #   <data>/<id>/dispatch-resolution.json, then every outcome except exit 2 writes
 #   {"task", "status" (clear, ambiguous, escalate, error, or off), "profile"}
 #   there; profile holds harness, model, and effort on clear and is null
-#   otherwise. fm-spawn.sh reads it as the task's dispatch decision; a
+#   otherwise, plus claude_route only when the chosen profile declares one.
+#   fm-spawn.sh reads it as the task's dispatch decision; a
 #   --record-dispatch run leaves it untouched.
 #   clear     -> pass the profile line to fm-spawn.sh unless you state a reason to override
 #   ambiguous -> confidence below the floor; decide as today from the probabilities
@@ -319,10 +320,11 @@ receipt_failed() {
 record_actual_dispatch() {
   local timestamp profile base record rc=0
   [ -n "$BRIEF_SHA256" ] || join_failed "the brief could not be hashed" || return 1
-  profile=$(jq -cn --arg harness "$DISPATCHED_HARNESS" --arg model "$DISPATCHED_MODEL" --arg effort "$DISPATCHED_EFFORT" '
+  profile=$(jq -cn --arg harness "$DISPATCHED_HARNESS" --arg model "$DISPATCHED_MODEL" --arg effort "$DISPATCHED_EFFORT" --arg route "$DISPATCHED_ROUTE" '
     {harness: $harness}
     + (if $model == "" then {} else {model: $model} end)
-    + (if $effort == "" then {} else {effort: $effort} end)' 2>/dev/null) ||
+    + (if $effort == "" then {} else {effort: $effort} end)
+    + (if $route == "" then {} else {claude_route: $route} end)' 2>/dev/null) ||
     join_failed "the dispatched profile could not be built" || return 1
   timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || join_failed "no timestamp" || return 1
   receipt_lock_acquire "$DISPATCH_LOCK_ATTEMPTS" || join_failed "the receipts lock stayed busy" || return 1
@@ -342,10 +344,16 @@ record_actual_dispatch() {
   fi
   record=$(jq -c --arg timestamp "$timestamp" \
     --argjson profile "$profile" '
+      # fm-spawn launches a claude dispatch with no --claude-route on the
+      # default route, so when the chosen profile declares a route the
+      # receipt records that normalized default rather than omitting it.
       . + {
         receipt_type: "dispatch",
         timestamp_utc: $timestamp,
-        dispatched_profile: $profile
+        dispatched_profile: (
+          if $profile.harness == "claude" and ($profile | has("claude_route") | not)
+            and ((.chosen_profile // {}) | type) == "object" and ((.chosen_profile // {}) | has("claude_route"))
+          then $profile + {claude_route: "default"} else $profile end)
       }' 2>/dev/null <<<"$base") || record=''
   if [ -z "$record" ] || ! receipt_append_locked "$record"; then
     join_failed "the receipt could not be appended; the file may be full, replaced, or unwritable"
@@ -411,7 +419,7 @@ usage() {
 }
 
 BRIEF='' PROJECT='' RULES_PATH="$CONFIG/crew-dispatch.json"
-MODE=resolve DISPATCHED_HARNESS='' DISPATCHED_MODEL='' DISPATCHED_EFFORT=''
+MODE=resolve DISPATCHED_HARNESS='' DISPATCHED_MODEL='' DISPATCHED_EFFORT='' DISPATCHED_ROUTE=''
 NEVER_SEND_PATH="$CONFIG/dispatch-never-send"
 CRED_PATH="$CONFIG/dispatch-credential-sources.json"
 while [ $# -gt 0 ]; do
@@ -420,6 +428,7 @@ while [ $# -gt 0 ]; do
     --harness) [ $# -ge 2 ] || die "--harness needs a value"; DISPATCHED_HARNESS=$2; shift 2 ;;
     --model) [ $# -ge 2 ] || die "--model needs a value"; DISPATCHED_MODEL=$2; shift 2 ;;
     --effort) [ $# -ge 2 ] || die "--effort needs a value"; DISPATCHED_EFFORT=$2; shift 2 ;;
+    --claude-route) [ $# -ge 2 ] || die "--claude-route needs a value"; DISPATCHED_ROUTE=$2; shift 2 ;;
     --project) [ $# -ge 2 ] || die "--project needs a value"; PROJECT=$2; shift 2 ;;
     --supports-credential-source)
       [ $# -ge 2 ] || die "--supports-credential-source needs a value"
@@ -578,10 +587,17 @@ BRIEF_SHA256=$(sha256_file "$BRIEF_SNAPSHOT") || BRIEF_SHA256=''
 
 if [ "$MODE" = dispatch ]; then
   [ -n "$DISPATCHED_HARNESS" ] || die "--record-dispatch needs --harness"
+  if [ -n "$DISPATCHED_ROUTE" ]; then
+    case "$DISPATCHED_ROUTE" in
+      default | direct | direct-code-mode) ;;
+      *) die "--claude-route must be one of default, direct, direct-code-mode" ;;
+    esac
+    [ "$DISPATCHED_HARNESS" = claude ] || die "--claude-route applies only to a claude dispatch, not $DISPATCHED_HARNESS"
+  fi
   record_actual_dispatch >/dev/null || true
   exit 0
 fi
-[ -z "$DISPATCHED_HARNESS$DISPATCHED_MODEL$DISPATCHED_EFFORT" ] || die "dispatch profile flags need --record-dispatch"
+[ -z "$DISPATCHED_HARNESS$DISPATCHED_MODEL$DISPATCHED_EFFORT$DISPATCHED_ROUTE" ] || die "dispatch profile flags need --record-dispatch"
 [ -e "$RULES_PATH" ] || [ -L "$RULES_PATH" ] || no_rules
 command -v jq >/dev/null 2>&1 || die "jq required"
 [ -r "$RULES_PATH" ] || die "rules file not readable: $RULES_PATH"
@@ -623,6 +639,13 @@ rules_err=$(jq -r --argjson verified_harnesses "$VERIFIED_HARNESSES" --arg provi
     or ($p | has("effort") and ((.effort | type) != "string" or (.effort | length) == 0))
     or ($p | has("provider") and (provider_id(.provider) | not))
     or ($p | has("floor") and floor_bad(.floor; false));
+  # claude_route is a fm-spawn.sh --claude-route value, meaningful only on a
+  # native claude profile.
+  def route_bad($p):
+    ($p | type) == "object" and ($p | has("claude_route"))
+    and (($p.claude_route | type) != "string"
+      or (["default", "direct", "direct-code-mode"] | index($p.claude_route)) == null
+      or $p.harness != "claude");
   def duplicate_profiles($items):
     ($items | map([.harness, (.model // null), (.effort // null)] | @json)) as $keys
     | ($keys | length) != ($keys | unique | length);
@@ -643,12 +666,14 @@ rules_err=$(jq -r --argjson verified_harnesses "$VERIFIED_HARNESSES" --arg provi
   elif any((.rules // [])[] | profiles(.use)[]; profile_bad(.)) then "each use profile needs harness; model, effort, and floor must be well formed, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\\z when present"
   elif any((.rules // [])[]; duplicate_profiles(profiles(.use))) then "each rule use must not contain duplicate harness, model, and effort profiles"
   elif any((.rules // [])[] | profiles(.use)[]; (verified(.harness) | not)) then "each use profile must name a verified harness"
+  elif any((.rules // [])[] | profiles(.use)[]; route_bad(.)) then "each use profile claude_route must be default, direct, or direct-code-mode, on a claude profile only"
   elif any((.rules // [])[] | profiles(.use)[]; (effort_ok(.harness; .model; .effort) | not)) then "each use profile effort must be supported by its harness and model"
   elif has("default") and (profiles(.default) | length) == 0 then "default must be a profile object or non-empty profile array"
   elif has("default") and any(profiles(.default)[]; type == "object" and has("quota_scope") and ((.quota_scope | type) != "string" or (.quota_scope | length) == 0)) then "each default profile quota_scope must be a non-empty string when present"
   elif has("default") and any(profiles(.default)[]; profile_bad(.)) then "each default profile needs harness; model, effort, and floor must be well formed, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\\z when present"
   elif has("default") and duplicate_profiles(profiles(.default)) then "default must not contain duplicate harness, model, and effort profiles"
   elif has("default") and any(profiles(.default)[]; (verified(.harness) | not)) then "each default profile must name a verified harness"
+  elif has("default") and any(profiles(.default)[]; route_bad(.)) then "each default profile claude_route must be default, direct, or direct-code-mode, on a claude profile only"
   elif has("default") and any(profiles(.default)[]; (effort_ok(.harness; .model; .effort) | not)) then "each default profile effort must be supported by its harness and model"
   else empty end
 ' "$RULES" 2>/dev/null) || die "malformed rules file: $RULES_PATH (not JSON)"
@@ -1048,9 +1073,10 @@ TEXT=$(jq -r '
       + "  -> " + (if .unranked then "eligible, unranked: \(.reason | flat): disclosed uncertainty" elif .sq then "eligible (quota ranking off: home declares a single shared quota)" elif .eligible then "eligible" else "not eligible: \(.reason | flat)" end)),
   (if .chosen then "  profile: --harness \(.chosen.profile.harness | shell_arg)"
       + (if .chosen.profile.model then " --model \(.chosen.profile.model | shell_arg)" else "" end)
-      + (if .chosen.profile.effort then " --effort \(.chosen.profile.effort | shell_arg)" else "" end) else empty end)' <<<"$RESULT") || emit_error "output rendering failed"
+      + (if .chosen.profile.effort then " --effort \(.chosen.profile.effort | shell_arg)" else "" end)
+      + (if .chosen.profile.claude_route then " --claude-route \(.chosen.profile.claude_route | shell_arg)" else "" end) else empty end)' <<<"$RESULT") || emit_error "output rendering failed"
 STATUS=$(jq -r '.status' <<<"$RESULT") || emit_error "status rendering failed"
-PROFILE=$(jq -c 'if .chosen then .chosen.profile | {harness, model: (.model // null), effort: (.effort // null)} else null end' <<<"$RESULT") \
+PROFILE=$(jq -c 'if .chosen then .chosen.profile | {harness, model: (.model // null), effort: (.effort // null)} + (if .claude_route then {claude_route} else {} end) else null end' <<<"$RESULT") \
   || emit_error "profile rendering failed"
 record_task "$STATUS" "$PROFILE" || emit_error "could not record the dispatch resolution"
 printf '%s\n' "$TEXT"
