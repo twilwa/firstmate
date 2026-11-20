@@ -16,6 +16,9 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
+# After a ship, scout, or landing-crew `scaffolded:` line, one more stdout line
+# names docs/brief-prompting.md, optional suggestions for filling the Firstmate
+# spec.
 # Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo|external> [--shape squash]] [--pr <auto|manual>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--base-branch <branch>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --landing-crew [--budget-wall-secs <n>] [--budget-output-tokens <n>] [--tests <none|focused|safe-suite|full>] [--herdr-lab]
@@ -504,6 +507,15 @@ if [ "$KIND" != secondmate ] && { [ -e "$BRIEF_INCLUDE_FILE" ] || [ -L "$BRIEF_I
   [ -n "$(printf '%s' "$BRIEF_INCLUDE_BODY" | tr -d '[:space:]')" ] || BRIEF_INCLUDE_BODY=
 fi
 
+# Optional, never binding: point the writer filling {FIRSTMATE_SPEC}
+# at the brief-prompting suggestions shipped beside this script, on its own
+# line after `scaffolded:`, and only when that doc exists.
+PROMPTING_DOC="$(cd "$SCRIPT_DIR/.." && pwd)/docs/brief-prompting.md"
+print_prompting_hint() {
+  [ -f "$PROMPTING_DOC" ] || return 0
+  echo "optional: prompting ideas for the Firstmate spec: $PROMPTING_DOC"
+}
+
 # Append the include as the last section of a ship or scout scaffold.
 append_brief_include() {
   [ -n "$BRIEF_INCLUDE_BODY" ] || return 0
@@ -856,6 +868,7 @@ If your findings reveal work that should ship (e.g. you reproduced a bug and the
 EOF
 append_brief_include
 echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
+print_prompting_hint
 exit 0
 fi
 
@@ -920,6 +933,7 @@ Before every \`done\`, \`failed\`, or stopping \`blocked\` line, run \`git switc
 EOF
 append_brief_include
 echo "scaffolded: $BRIEF (landing crew; replace {TASK} and {FIRSTMATE_SPEC}; spawn with --scout)"
+print_prompting_hint
 exit 0
 fi
 
@@ -1018,3 +1032,4 @@ elif [ "$FORGE" = gerrit ]; then
 else
   echo "scaffolded: $BRIEF (ship, mode=$MODE forge=$FORGE; replace {TASK} and {FIRSTMATE_SPEC})"
 fi
+print_prompting_hint
