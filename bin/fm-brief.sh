@@ -508,9 +508,12 @@ if [ "$KIND" != secondmate ] && { [ -e "$BRIEF_INCLUDE_FILE" ] || [ -L "$BRIEF_I
 fi
 
 # Optional, never binding: point the writer filling {FIRSTMATE_SPEC}
-# at the brief-prompting suggestions, on its own line after `scaffolded:`.
+# at the brief-prompting suggestions shipped beside this script, on its own
+# line after `scaffolded:`, and only when that doc exists.
+PROMPTING_DOC="$(cd "$SCRIPT_DIR/.." && pwd)/docs/brief-prompting.md"
 print_prompting_hint() {
-  echo "optional: prompting ideas for the Firstmate spec: $FM_ROOT/docs/brief-prompting.md"
+  [ -f "$PROMPTING_DOC" ] || return 0
+  echo "optional: prompting ideas for the Firstmate spec: $PROMPTING_DOC"
 }
 
 # Append the include as the last section of a ship or scout scaffold.

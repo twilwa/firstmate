@@ -1226,11 +1226,35 @@ test_scaffold_output_points_at_optional_prompting_ideas() {
     [ "$(printf '%s\n' "$out" | sed -n 2p)" = "optional: prompting ideas for the Firstmate spec: $doc" ] \
       || fail "$kind scaffold output does not point the Firstmate spec at $doc on the line after scaffolded: ($out)"
   done
+  out=$(FM_HOME="$BRIEF_HOME" FM_ROOT_OVERRIDE=. "$ROOT/bin/fm-brief.sh" brief-hint-override alpha --scout 2>/dev/null)
+  expect_code 0 "$?" "scout scaffold with a relative FM_ROOT_OVERRIDE exited non-zero"
+  [ "$(printf '%s\n' "$out" | sed -n 2p)" = "optional: prompting ideas for the Firstmate spec: $doc" ] \
+    || fail "a relative FM_ROOT_OVERRIDE moved the hint off the docs shipped beside fm-brief.sh ($out)"
   out=$(FM_SECONDMATE_CHARTER=x FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-hint-sm --secondmate --no-projects 2>/dev/null)
+  expect_code 0 "$?" "secondmate charter scaffold exited non-zero"
+  case "$out" in
+    "scaffolded: $BRIEF_HOME/data/brief-hint-sm/brief.md"*) ;;
+    *) fail "secondmate charter output did not name the scaffolded charter: $out" ;;
+  esac
   case "$out" in
     *brief-prompting*) fail "secondmate charter output gained the prompting hint: $out" ;;
   esac
   pass "fm-brief: Task-bearing scaffolds point at the optional brief-prompting suggestions"
+}
+
+# Contract: a code root shipped without docs/brief-prompting.md prints no
+# dead-link hint, and its scaffold output is otherwise unchanged.
+test_scaffold_output_omits_prompting_hint_without_the_doc() {
+  local code="$TMP_ROOT/code-without-prompting-doc" out
+  mkdir -p "$code"
+  cp -R "$ROOT/bin" "$code/bin"
+  out=$(FM_HOME="$BRIEF_HOME" "$code/bin/fm-brief.sh" brief-hint-nodoc alpha --scout 2>/dev/null)
+  expect_code 0 "$?" "scout scaffold from a code root without the doc exited non-zero"
+  case "$out" in
+    "scaffolded: $BRIEF_HOME/data/brief-hint-nodoc/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})") ;;
+    *) fail "a code root without docs/brief-prompting.md still printed a hint or changed output: $out" ;;
+  esac
+  pass "fm-brief: no prompting hint when the doc is not shipped beside the script"
 }
 
 # Scout and secondmate paths still scaffold well-formed briefs.
@@ -1882,6 +1906,7 @@ test_scout_and_secondmate_load_decision_hold_policy
 test_scout_completion_write_exception_is_task_scoped
 test_scout_and_secondmate_scaffold
 test_scaffold_output_points_at_optional_prompting_ideas
+test_scaffold_output_omits_prompting_hint_without_the_doc
 test_landing_crew_scaffold
 test_landing_crew_refuses_delivery_flags
 test_scout_lavish_line_follows_presentation_floor
