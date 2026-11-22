@@ -1,0 +1,24 @@
+## Scaffold a ship and scout brief in a disposable lab home, then follow the printed prompting hint
+$ FM_HOME=$LAB bin/fm-brief.sh lab-ship demo-repo --mode no-mistakes
+rc=0
+scaffolded: $LAB/data/lab-ship/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+-- hinted doc exists: yes ; brief contains Repeated mistakes text: 0
+
+$ FM_HOME=$LAB bin/fm-brief.sh lab-scout demo-repo --scout
+rc=0
+scaffolded: $LAB/data/lab-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+optional: prompting ideas for the Firstmate spec: {run-worktree}/docs/brief-prompting.md
+-- hinted doc exists: yes ; brief contains Repeated mistakes text: 0
+
+## Repeated mistakes section of the hinted doc (as a brief writer reads it)
+## Repeated mistakes
+
+When a task fixes a mistake that has happened before, these optional asks can help keep it from coming back; they still never widen the captain's ask.
+
+- Highest rung: when the fix repeats a past mistake or touches a constraint that lives only in a "do not remove" comment, ask for the highest rung that makes it impossible - one owner or supported way, then a type or strict parse, then a lint whose message names the fix, then a test - with prose last.
+- Proven red: ask for proof that a new check fails on the actual pre-fix code.
+- Replayed bug: for a race, retry, or state-machine bug, ask for a small model or a scheduled property test that replays the past bug.
+- Two-edit test: when a test is in scope, ask that it fail if the behaviour breaks and pass if only internals change.
+
+Adapted from the `/correct` skill in the MIT-licensed [pstack](https://github.com/cursor/plugins/tree/main/pstack) skill pack.
