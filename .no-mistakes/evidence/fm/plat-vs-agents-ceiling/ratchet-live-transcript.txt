@@ -1,0 +1,29 @@
+### Scenario A: grow AGENTS.md by one line in a disposable copy
+55116 AGENTS.md
+1..3
+not ok - /tmp/fm-agents-ratchet.bxbbKL/AGENTS.md is 55116 bytes, over its recorded ceiling of 55105 bytes.
+The file must not grow: shrink it, or, if growth is unavoidable, raise AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh in the same change with a reason.
+Codex's default project_doc_max_bytes (32768) already truncates this file; every added byte lengthens the part a Codex supervisor never reads.
+exit=1
+
+### Scenario B: shrink AGENTS.md by deleting its last line
+55004 AGENTS.md
+1..3
+not ok - /tmp/fm-agents-ratchet.bxbbKL/AGENTS.md is 55004 bytes, under its recorded ceiling of 55105 bytes.
+Lower AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh to 55004 in the same change, so the ratchet keeps the file from regrowing.
+exit=1
+
+### Scenario B2: shrink + lower AGENTS_MD_MAX_BYTES to the new size as instructed
+1..3
+ok - AGENTS.md is at its 55004-byte ceiling
+ok - a file one byte over the ceiling is refused with growth guidance
+ok - a file one byte under the ceiling is refused until the ceiling is lowered
+FM_TEST_COMPLETE
+exit=0
+
+### Scenario B3: regrow by 1 byte after lowered ceiling (the regrowth the ratchet must catch)
+1..3
+not ok - /tmp/fm-agents-ratchet.bxbbKL/AGENTS.md is 55005 bytes, over its recorded ceiling of 55004 bytes.
+The file must not grow: shrink it, or, if growth is unavoidable, raise AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh in the same change with a reason.
+Codex's default project_doc_max_bytes (32768) already truncates this file; every added byte lengthens the part a Codex supervisor never reads.
+exit=1

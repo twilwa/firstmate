@@ -1,0 +1,75 @@
+### Scenario C: AGENTS.md changed -> bin/fm-test-run.sh --list --changed --base main
+tests/fm-agy-harness.test.sh
+tests/fm-arm-pretool-check.test.sh
+tests/fm-ask-user-authority.test.sh
+tests/fm-bearings-board.test.sh
+tests/fm-brief-test-scope.test.sh
+tests/fm-brief.test.sh
+tests/fm-calm-claude-mod.test.sh
+tests/fm-calm-pi-extension.test.sh
+tests/fm-captain-hold-lifecycle.test.sh
+tests/fm-cd-pretool-check.test.sh
+tests/fm-classify-decision-key.test.sh
+tests/fm-commandcode-harness.test.sh
+tests/fm-composer-ghost.test.sh
+tests/fm-composer-lib.test.sh
+tests/fm-cortex-harness.test.sh
+tests/fm-crew-state.test.sh
+tests/fm-devin-harness.test.sh
+tests/fm-documentation-audiences.test.sh
+tests/fm-dod-lib.test.sh
+tests/fm-ensure-agents-md.test.sh
+tests/fm-forge-detect.test.sh
+tests/fm-fork-free-helpers.test.sh
+tests/fm-grok-harness.test.sh
+tests/fm-harness-adapter-references.test.sh
+tests/fm-harness-precedence.test.sh
+tests/fm-herdr-lab.test.sh
+tests/fm-hermes-harness.test.sh
+tests/fm-install-herdr.test.sh
+tests/fm-kimi-harness.test.sh
+tests/fm-kiro-harness.test.sh
+tests/fm-lint-workflows.test.sh
+tests/fm-lint.test.sh
+tests/fm-merge-local.test.sh
+tests/fm-muse-harness.test.sh
+tests/fm-omp-harness.test.sh
+tests/fm-operational-input.test.sh
+tests/fm-pi-primary-types.test.sh
+tests/fm-polytoken-harness.test.sh
+tests/fm-project-mode.test.sh
+tests/fm-read-repetition.test.sh
+tests/fm-remote-inherit-generation.test.sh
+tests/fm-rovo-harness.test.sh
+tests/fm-send-popup-settle.test.sh
+tests/fm-send-settle.test.sh
+tests/fm-subagent-pretool-check.test.sh
+tests/fm-supervision-instructions.test.sh
+tests/fm-task-delivery.test.sh
+tests/fm-test-isolation-proof.test.sh
+tests/fm-test-linux.test.sh
+tests/fm-test-run.test.sh
+tests/fm-test-tap-verify.test.sh
+tests/fm-timeout-lib.test.sh
+tests/fm-tmux-submit-busy.test.sh
+tests/fm-trace-context-lib.test.sh
+tests/fm-transition-lib.test.sh
+tests/fm-vendor-auth-probe.test.sh
+tests/fm-agents-md-size.test.sh
+exit=0
+
+### Scenario D: CLAUDE.md changed only (still in the pure-contract-unit branch) -> size ratchet must NOT be listed
+exit=0
+listed_count=56
+fm-agents-md-size.test.sh NOT listed (expected)
+
+### Scenario E: docs/configuration.md changed only -> size ratchet must NOT be listed
+exit=0
+fm-agents-md-size.test.sh NOT listed (expected)
+
+### Scenario F: run the selected set for an AGENTS.md growth via --changed (real runner execution of the ratchet only)
+tests/fm-agents-md-size.test.sh
+not ok - /tmp/fm-agents-ratchet.bxbbKL/AGENTS.md is 55110 bytes, over its recorded ceiling of 55105 bytes.
+FM_TEST_END 2026-11-23T19:16:14Z tests/fm-agents-md-size.test.sh exit=1 duration_ms=2836 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=3178
+pipeline_exit=1
