@@ -1,0 +1,17 @@
+# HEAD tree copy with injected drift:
+#  - bin/fm-bootstrap.sh: echo "WIDGET_DRIFT: ..." (no owner anywhere)
+#  - bin/fm-startup-network.sh: printf 'QUEUE_STALL: ...' (no owner anywhere)
+#  - bin/fm-bootstrap.sh: echo -n "PARTIAL_ROW: ..." declared in header + skill description, no body row
+#  - SKILL.md body row renamed CONFIG_REREAD -> CONFIG_REREAD_X (lookalike must not count)
+$ bash tests/fm-bootstrap-diagnostics.test.sh
+1..1
+not ok - diagnostic tokens without a declared owner:
+  CONFIG_REREAD: missing from the bootstrap-diagnostics body
+  PARTIAL_ROW: missing from the bootstrap-diagnostics body
+  WIDGET_DRIFT: missing from the bin/fm-bootstrap.sh header
+  WIDGET_DRIFT: missing from the bootstrap-diagnostics description
+  WIDGET_DRIFT: missing from the bootstrap-diagnostics body
+  QUEUE_STALL: missing from the bin/fm-startup-network.sh header
+  QUEUE_STALL: missing from the bootstrap-diagnostics description
+  QUEUE_STALL: missing from the bootstrap-diagnostics body
+exit=1

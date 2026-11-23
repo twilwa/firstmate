@@ -1,0 +1,24 @@
+# Disposable clone at d0d1fc6c; each probe commits a one-line change on top and asks the runner which tests a PR touching that path selects.
+
+$ bin/fm-test-run.sh --list --changed --base d665cb87   # the change itself
+5:tests/fm-bootstrap-diagnostics.test.sh
+exit=0
+
+# later PR touching only bin/fm-startup-network.sh
+$ bin/fm-test-run.sh --list --changed --base d0d1fc6c | grep fm-bootstrap-diagnostics
+tests/fm-bootstrap-diagnostics.test.sh
+
+# later PR touching only bin/fm-bootstrap.sh
+$ bin/fm-test-run.sh --list --changed --base d0d1fc6c | grep fm-bootstrap-diagnostics
+tests/fm-bootstrap-diagnostics.test.sh
+
+# later PR touching only .agents/skills/bootstrap-diagnostics/SKILL.md
+$ bin/fm-test-run.sh --list --changed --base d0d1fc6c | grep fm-bootstrap-diagnostics
+tests/fm-bootstrap-diagnostics.test.sh
+
+$ bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=363 pool=26 pool_hint_ms=2444177 pool_modeled_ms=611805 pool_workers=4 pool_unhinted=0 pool_budget_ms=1400000 pool_timeout_min=50 serial=321 serial_shards=13 serial_unhinted=29 serial_max_ms=1176266 serial_budget_ms=1200000 herdr=16
+exit=0
+
+$ bin/fm-test-run.sh --list-scheduled --family workflow | grep diagnostics (family assignment)
+pure-contract-unit watcher-wake-lock real-herdr-gated secondmate session-bootstrap live-harness-optin backend-dispatch pr-forge afk snapshot-bearings cmux zellij orca paseo rex tern hc standalone unclassified 

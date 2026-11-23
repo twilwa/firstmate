@@ -1,0 +1,11 @@
+# HEAD tree (git archive) with bin/fm-bootstrap.sh, bin/fm-startup-network.sh, and SKILL.md reverted to base commit d665cb87
+$ bash tests/fm-bootstrap-diagnostics.test.sh
+1..1
+not ok - diagnostic tokens without a declared owner:
+  CONFIG_REREAD: missing from the bin/fm-bootstrap.sh header
+  CONFIG_REREAD: missing from the bootstrap-diagnostics description
+  CONFIG_REREAD: missing from the bootstrap-diagnostics body
+  NETWORK_CHECKS: missing from the bin/fm-bootstrap.sh header
+  TREEHOUSE_POOL_REPORT: missing from the bootstrap-diagnostics description
+  TREEHOUSE_POOL_REPORT: missing from the bootstrap-diagnostics body
+exit=1

@@ -1,0 +1,5 @@
+$ bash tests/fm-bootstrap-diagnostics.test.sh
+1..1
+ok - every bootstrap and startup-network diagnostic token has a header entry and a playbook row
+FM_TEST_COMPLETE
+exit=0

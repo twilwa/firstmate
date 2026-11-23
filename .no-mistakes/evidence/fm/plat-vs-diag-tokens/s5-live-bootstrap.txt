@@ -1,0 +1,14 @@
+# Real bin/fm-bootstrap.sh, detect-only, against disposable lab home (bin/fm-lab-home.sh create) with config/treehouse-pool-report opted in
+# and TREEHOUSE_ROOT pointing at a synthetic pool dir: leftover-pool (one unowned slot created 2025-01-01) + empty-pool
+$ FM_HOME=$LAB TREEHOUSE_ROOT=$T/treehouse FM_BOOTSTRAP_DETECT_ONLY=1 bin/fm-bootstrap.sh
+TREEHOUSE_POOL_REPORT: unowned slot older than 30d: $T/treehouse/leftover-pool/slot1 (age 691d)
+TREEHOUSE_POOL_REPORT: scanned 2 pools under $T/treehouse
+exit=0
+
+# Playbook lookup for each token the live run printed (HEAD skill vs base skill):
+## TREEHOUSE_POOL_REPORT
+HEAD .agents/skills/bootstrap-diagnostics/SKILL.md:
+74:- `TREEHOUSE_POOL_REPORT: <pool finding or scan summary>` - the opt-in, read-only Treehouse pool hygiene report ([`docs/configuration.md`](../../../docs/configuration.md) "Treehouse pool report") found an unregistered pool, a duplicate-clone pool, an unowned slot past the age threshold, or a test-leftover pool; the closing `scanned <n> pools under <root>` line is only its summary.
+HEAD description lists it: 1
+base d665cb87 SKILL.md:
+  (no row, not in description)
