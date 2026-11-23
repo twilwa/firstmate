@@ -1,0 +1,32 @@
+## disposable copy: git archive HEAD -> /tmp/fm-agents-ceiling.AHitBl
+## Scenario 2: grow AGENTS.md by one line (simulated new rule)
+AGENTS.md size: 55130
+1..3
+not ok - /tmp/fm-agents-ceiling.AHitBl/AGENTS.md is 55130 bytes, over its recorded ceiling of 55105 bytes.
+The file must not grow: shrink it, or, if growth is unavoidable, raise AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh in the same change with a reason.
+Codex's default project_doc_max_bytes (32768) already truncates this file; every added byte lengthens the part a Codex supervisor never reads.
+exit=1
+
+## Scenario 3a: shrink AGENTS.md (drop last line, as an upstream sync might)
+AGENTS.md size: 55004
+1..3
+not ok - /tmp/fm-agents-ceiling.AHitBl/AGENTS.md is 55004 bytes, under its recorded ceiling of 55105 bytes.
+Lower AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh to 55004 in the same change, so the ratchet keeps the file from regrowing.
+exit=1
+
+## Scenario 3b: follow the guidance - lower AGENTS_MD_MAX_BYTES to 55004
+AGENTS_MD_MAX_BYTES=55004
+1..3
+ok - AGENTS.md is at its 55004-byte ceiling
+ok - a file one byte over the ceiling is refused with growth guidance
+ok - a file one byte under the ceiling is refused until the ceiling is lowered
+FM_TEST_COMPLETE
+exit=0
+
+## Scenario 3c: regrow the shrunk file back to its old size after lowering - ratchet must refuse
+AGENTS.md size: 55105
+1..3
+not ok - /tmp/fm-agents-ceiling.AHitBl/AGENTS.md is 55105 bytes, over its recorded ceiling of 55004 bytes.
+The file must not grow: shrink it, or, if growth is unavoidable, raise AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh in the same change with a reason.
+Codex's default project_doc_max_bytes (32768) already truncates this file; every added byte lengthens the part a Codex supervisor never reads.
+exit=1
