@@ -9,19 +9,25 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Ratchet: when AGENTS.md shrinks, lower this to its new size in the same
-# change. Raise it only when growth is unavoidable, with the reason in that
-# change's commit message.
+# Ratchet: this must equal AGENTS.md's byte size. The test fails when the file
+# shrinks until this is lowered to its new size in the same change. Raise it
+# only when growth is unavoidable, with the reason in that change's commit
+# message.
 AGENTS_MD_MAX_BYTES=55105
 
 TMP_ROOT=$(fm_test_tmproot fm-agents-md-size)
 
 # check_agents_md_size <file> <ceiling>: print a failure explanation and
-# return 1 when <file> is larger than <ceiling> bytes.
+# return 1 when <file> is not exactly <ceiling> bytes.
 check_agents_md_size() {
   local file=$1 ceiling=$2 size
   size=$(wc -c < "$file" | tr -d ' ')
-  [ "$size" -le "$ceiling" ] && return 0
+  [ "$size" -eq "$ceiling" ] && return 0
+  if [ "$size" -lt "$ceiling" ]; then
+    printf '%s is %s bytes, under its recorded ceiling of %s bytes.\n' "$file" "$size" "$ceiling"
+    printf 'Lower AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh to %s in the same change, so the ratchet keeps the file from regrowing.\n' "$size"
+    return 1
+  fi
   printf '%s is %s bytes, over its recorded ceiling of %s bytes.\n' "$file" "$size" "$ceiling"
   printf 'The file must not grow: shrink it, or, if growth is unavoidable, raise AGENTS_MD_MAX_BYTES in tests/fm-agents-md-size.test.sh in the same change with a reason.\n'
   printf "Codex's default project_doc_max_bytes (32768) already truncates this file; every added byte lengthens the part a Codex supervisor never reads.\n"
@@ -31,7 +37,7 @@ check_agents_md_size() {
 test_agents_md_within_ceiling() {
   local out
   out=$(check_agents_md_size "$ROOT/AGENTS.md" "$AGENTS_MD_MAX_BYTES") || fail "$out"
-  pass "AGENTS.md is within its ${AGENTS_MD_MAX_BYTES}-byte ceiling"
+  pass "AGENTS.md is at its ${AGENTS_MD_MAX_BYTES}-byte ceiling"
 }
 
 test_oversized_file_is_refused_with_guidance() {
@@ -46,6 +52,18 @@ test_oversized_file_is_refused_with_guidance() {
   pass "a file one byte over the ceiling is refused with growth guidance"
 }
 
+test_shrunk_file_is_refused_until_ceiling_is_lowered() {
+  local fixture=$TMP_ROOT/AGENTS.md out
+  head -c "$((AGENTS_MD_MAX_BYTES - 1))" /dev/zero > "$fixture"
+  if out=$(check_agents_md_size "$fixture" "$AGENTS_MD_MAX_BYTES"); then
+    fail "a file one byte under the ceiling was accepted without lowering the ceiling"
+  fi
+  assert_contains "$out" "Lower AGENTS_MD_MAX_BYTES" "refusal did not ask to lower the ceiling"
+  assert_contains "$out" "to $((AGENTS_MD_MAX_BYTES - 1)) in the same change" "refusal did not name the new size"
+  pass "a file one byte under the ceiling is refused until the ceiling is lowered"
+}
+
 fm_test_run \
   test_agents_md_within_ceiling \
-  test_oversized_file_is_refused_with_guidance
+  test_oversized_file_is_refused_with_guidance \
+  test_shrunk_file_is_refused_until_ceiling_is_lowered
