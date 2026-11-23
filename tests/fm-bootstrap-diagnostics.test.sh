@@ -80,6 +80,7 @@ actionable_informational() {
 
 test_every_emitted_token_has_header_entry_and_playbook_row() {
   local rel script header description rows token message entry gaps="" seen=" " checked diagnostics
+  local informational_messages=""
   description=$(skill_description)
   rows=$(skill_rows)
   [ -n "$description" ] || fail "could not read the bootstrap-diagnostics skill description"
@@ -96,6 +97,8 @@ test_every_emitted_token_has_header_entry_and_playbook_row() {
       [ -n "$token" ] || continue
       case "$seen" in *" $token "*) ;; *) seen="$seen$token " ;; esac
       if informational "$token"; then
+        informational_messages="$informational_messages$message
+"
         if actionable_informational "$message" \
           && ! printf '%s\n' "$rows" | grep -Fxq "$message"; then
           gaps="$gaps
@@ -119,6 +122,10 @@ test_every_emitted_token_has_header_entry_and_playbook_row() {
       *) gaps="$gaps
   ${entry%%|*}: allowlisted as informational but no longer emitted" ;;
     esac
+  done
+  for entry in "${ACTIONABLE_INFORMATIONAL[@]}"; do
+    printf '%s' "$informational_messages" | grep -Eq "${entry%%|*}" || gaps="$gaps
+  ${entry%%|*}: declared actionable but matches no emitted informational message"
   done
   [ -z "$gaps" ] || fail "diagnostic tokens without a declared owner:$gaps"
   pass "every bootstrap and startup-network diagnostic token has a header entry and a playbook row"
