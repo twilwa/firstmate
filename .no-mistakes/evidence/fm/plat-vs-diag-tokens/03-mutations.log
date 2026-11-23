@@ -1,0 +1,63 @@
+=== M1: add new echo token NEW_WIDGET_DRIFT to bin/fm-bootstrap.sh without header/skill
+1..1
+not ok - diagnostic tokens without a declared owner:
+  NEW_WIDGET_DRIFT: missing from the bin/fm-bootstrap.sh header
+  NEW_WIDGET_DRIFT: missing from the bootstrap-diagnostics description
+  NEW_WIDGET_DRIFT: has no bootstrap-diagnostics playbook row
+exit=1
+
+=== M2: add new printf token NETNEW_TOKEN to bin/fm-startup-network.sh [VOID: the sed did not insert any line (no NETNEW match), so this ran the unmodified tree; see corrected M2 below]
+1..1
+ok - every bootstrap and startup-network diagnostic token has a header entry and a playbook row
+FM_TEST_COMPLETE
+exit=0
+
+=== M3: demote TREEHOUSE_POOL_REPORT row to prose (no backticked opener)
+1..1
+not ok - diagnostic tokens without a declared owner:
+  TREEHOUSE_POOL_REPORT: has no bootstrap-diagnostics playbook row
+exit=1
+
+=== M4: drop CONFIG_REREAD from skill trigger description only
+1..1
+not ok - diagnostic tokens without a declared owner:
+  CONFIG_REREAD: missing from the bootstrap-diagnostics description
+exit=1
+
+2
+=== M5: reword actionable BOOTSTRAP_INFO interrupted-cleanup message (recorded-decision guard)
+1..1
+not ok - diagnostic tokens without a declared owner:
+  may remain and should be reconciled$: declared actionable but matches no emitted informational message
+exit=1
+
+=== M6: remove an actionable interrupted-cleanup BOOTSTRAP_INFO row
+1..1
+not ok - diagnostic tokens without a declared owner:
+  BOOTSTRAP_INFO: closed the backlog item for <x> after interrupted cleanup; its endpoint or local copy may remain and should be reconciled: actionable but has no matching bootstrap-diagnostics row
+  BOOTSTRAP_INFO: kept the captain call for <x> open with its deliverable recorded after interrupted cleanup; its endpoint or local copy may remain and should be reconciled: actionable but has no matching bootstrap-diagnostics row
+exit=1
+
+=== M7: stop emitting the line-leading echo BOOTSTRAP_INFO literals (guarded `|| echo` ones remain, so the failure comes from the actionable-pattern check)
+1..1
+not ok - diagnostic tokens without a declared owner:
+  may remain and should be reconciled$: declared actionable but matches no emitted informational message
+exit=1
+
+=== M2 (corrected; first attempt's sed did not insert the line): append printf token NETNEW_TOKEN to bin/fm-startup-network.sh
+  printf 'NETNEW_TOKEN: probe %s failed\n' "$probe"
+1..1
+not ok - diagnostic tokens without a declared owner:
+  NETNEW_TOKEN: missing from the bin/fm-startup-network.sh header
+  NETNEW_TOKEN: missing from the bootstrap-diagnostics description
+  NETNEW_TOKEN: has no bootstrap-diagnostics playbook row
+exit=1
+=== M8 (control): add NEW_WIDGET_DRIFT with header entry, description token and playbook row
+bin/fm-bootstrap.sh:25:#                 "NEW_WIDGET_DRIFT: widget <id> drifted",
+bin/fm-bootstrap.sh:270:  echo "NEW_WIDGET_DRIFT: widget $id drifted"
+.agents/skills/bootstrap-diagnostics/SKILL.md:4:  Load when the session-start digest's bootstrap or network-checks section, or a standalone 
+.agents/skills/bootstrap-diagnostics/SKILL.md:74:- `NEW_WIDGET_DRIFT: widget <id> drifted` - report it.
+1..1
+ok - every bootstrap and startup-network diagnostic token has a header entry and a playbook row
+FM_TEST_COMPLETE
+exit=0

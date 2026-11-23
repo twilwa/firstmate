@@ -1,0 +1,5 @@
+$ FM_HOME=$LAB TREEHOUSE_ROOT=$LAB/pools bin/fm-bootstrap.sh   # disposable lab home with config/treehouse-pool-report and two fixture pools
+TREEHOUSE_POOL_REPORT: unregistered pool $LAB/pools/orphan (project path unavailable: $LAB/missing)
+TREEHOUSE_POOL_REPORT: test-leftover pool $LAB/pools/project-leftover
+TREEHOUSE_POOL_REPORT: scanned 2 pools under $LAB/pools
+exit=0
