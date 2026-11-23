@@ -305,6 +305,26 @@ test_shell_line_ending_policy_selects_runner_contract() {
   pass "shell line-ending policy selects runner coverage"
 }
 
+test_changed_agents_md_selects_size_ratchet() {
+  local tmp repo listed
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-agents-md.XXXXXX")
+  repo="$tmp/repo"
+  init_changed_fixture_repo "$repo"
+  printf '#!/usr/bin/env bash\n' >"$repo/tests/fm-agents-md-size.test.sh"
+  chmod +x "$repo/tests/fm-agents-md-size.test.sh"
+  printf '# Agents\n' >"$repo/AGENTS.md"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm agents-md-fixture
+  printf 'more\n' >>"$repo/AGENTS.md"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-agents-md-size.test.sh" \
+    "an AGENTS.md change must select its size ratchet"
+  assert_contains "$listed" "tests/fm-brief.test.sh" \
+    "an AGENTS.md change must keep its pure-contract-unit family"
+  rm -rf "$tmp"
+  pass "an AGENTS.md change selects its size ratchet alongside its curated family"
+}
+
 test_changed_remote_inheritance_selects_generation_contract() {
   local tmp repo listed source
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-inheritance.XXXXXX")
@@ -2300,6 +2320,7 @@ test_changed_file_selection_is_conservative
 test_task_marker_refuses_the_primary_checkout
 test_changed_runner_surfaces_select_their_family
 test_shell_line_ending_policy_selects_runner_contract
+test_changed_agents_md_selects_size_ratchet
 test_changed_remote_inheritance_selects_generation_contract
 test_changed_dependency_selection_and_unmapped_failure
 test_changed_bin_reference_selects_per_script_not_per_family

@@ -1499,6 +1499,7 @@ The first-start license dialog requires an operator decision and is never accept
 ### Verification and primary supervision
 
 New harnesses get verified through a supervised trial task before joining the set.
+Codex's default `project_doc_max_bytes` (32768) truncates the root `AGENTS.md`, and Kimi also cuts long context files, so a supervisor home on Codex or Kimi must first raise `project_doc_max_bytes` or that harness's equivalent context-file limit in the home's global config; [`tests/fm-agents-md-size.test.sh`](../tests/fm-agents-md-size.test.sh) keeps the file from growing.
 The verified adapter evidence - each harness's busy-state source, interrupt and exit behavior, skill-invocation syntax, and per-harness quirks - lives in the skill tree rooted at [`.agents/skills/harness-adapters/SKILL.md`](../.agents/skills/harness-adapters/SKILL.md).
 
 The executable interrupt and exit mechanics live in [`bin/fm-control-lib.sh`](../bin/fm-control-lib.sh), and [`docs/agent-control.md`](agent-control.md) owns their lifecycle-control architecture.
