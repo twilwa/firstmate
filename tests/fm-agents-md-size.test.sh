@@ -2,8 +2,8 @@
 # Fork-local size ceiling for the root AGENTS.md supervisor contract.
 # Codex's default project_doc_max_bytes (32768) silently truncates a larger
 # file, so a supervisor on such a harness never reads the tail of its contract.
-# The supervisor harness inventory lives in docs/configuration.md
-# "Verification and primary supervision".
+# docs/configuration.md "Verification and primary supervision" owns the rule
+# for supervisors on a truncating harness.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -15,7 +15,8 @@ set -u
 # message.
 AGENTS_MD_MAX_BYTES=55105
 
-TMP_ROOT=$(fm_test_tmproot fm-agents-md-size)
+TMP_ROOT=$(fm_test_tmproot fm-agents-md-size) && [ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ] \
+  || fail "could not create a temporary root for fixtures"
 
 # check_agents_md_size <file> <ceiling>: print a failure explanation and
 # return 1 when <file> is not exactly <ceiling> bytes.
