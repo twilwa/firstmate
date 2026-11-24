@@ -1,7 +1,7 @@
 ---
 name: bootstrap-diagnostics
 description: >-
-  Load when the session-start digest's bootstrap or network-checks section, or a standalone bin/fm-bootstrap.sh or bin/fm-startup-network.sh run, prints an actionable diagnostic line - MISSING, MISSING_MANUAL, OUTDATED, PRESENTATION_UNAVAILABLE, BACKEND_INVALID, NEEDS_GH_AUTH, TANGLE, STARTUP_MEMORY_BUDGET, CREW_DISPATCH invalid, FLEET_SYNC, NETWORK_CHECKS, HOME_SUMMARY, BACKLOG_RECONCILE, SECONDMATE_SYNC, SECONDMATE_LIVENESS, SECONDMATE_HANDOFF, NUDGE_SECONDMATES, RECORD_HYGIENE, or FMX - or reports that an interrupted backlog cleanup may have left an endpoint or local copy.
+  Load when the session-start digest's bootstrap or network-checks section, or a standalone bin/fm-bootstrap.sh or bin/fm-startup-network.sh run, prints an actionable diagnostic line - MISSING, MISSING_MANUAL, OUTDATED, PRESENTATION_UNAVAILABLE, BACKEND_INVALID, NEEDS_GH_AUTH, TANGLE, STARTUP_MEMORY_BUDGET, CREW_DISPATCH invalid, FLEET_SYNC, NETWORK_CHECKS, HOME_SUMMARY, BACKLOG_RECONCILE, SECONDMATE_SYNC, SECONDMATE_LIVENESS, SECONDMATE_HANDOFF, NUDGE_SECONDMATES, CONFIG_REREAD, RECORD_HYGIENE, TREEHOUSE_POOL_REPORT, or FMX - or reports that an interrupted backlog cleanup may have left an endpoint or local copy.
   A silent bootstrap section, or any other BOOTSTRAP_INFO fact, means no skill load.
 user-invocable: false
 metadata:
@@ -71,6 +71,8 @@ When any diagnostic needs captain attention, report the plain consequence and re
 - `RECORD_HYGIENE: <record inconsistency found in this home>` - report the finding to the captain.
   For an orphan status log, say whether it was archived to `data/<id>/status.log` by a mutating session start or only reported by a detect-only session start or heartbeat scan; `state/<id>.status` still existing means it was not archived.
   Leave any further cleanup for an explicit instruction.
+- `TREEHOUSE_POOL_REPORT: <pool finding or scan summary>` - the opt-in, read-only Treehouse pool hygiene report ([`docs/configuration.md`](../../../docs/configuration.md) "Treehouse pool report") found an unregistered pool, a duplicate-clone pool, an unowned slot past the age threshold, or a test-leftover pool; the closing `scanned <n> pools under <root>` line is only its summary.
+  Report the findings to the captain as cleanup candidates and leave every pool and slot untouched: the report proves only an absent owner or lease, not that a slot holds no unlanded work, and pool cleanup stays an explicit operator action.
 - `SECONDMATE_SYNC: secondmate <id>: skipped: <reason>` - secondmate convergence left a live home on its existing checkout because the home was dirty, diverged, unsafe, on the wrong branch, missing its placement-specific target commit, unreachable, or otherwise not fast-forwardable, or because inherited local-material propagation failed; bootstrap continued, but inspect the reason because the secondmate's tracked instructions, inherited settings, or shared captain preferences may be stale after a primary update.
 - `SECONDMATE_LIVENESS: secondmate <id>: skipped: <reason>|respawn failed after <cause>: <reason>` - the session-start liveness sweep could not guarantee that the registered secondmate is running a real agent process.
   Investigate the reason because that secondmate is not guaranteed live.
@@ -79,5 +81,9 @@ When any diagnostic needs captain attention, report the plain consequence and re
   An unsafe-outbox variant requires path and file-type inspection before any retry.
 - `NUDGE_SECONDMATES: secondmate <id>: send failed: <reason>` - secondmate convergence changed a running home's loaded instructions or inherited config, but the deterministic `fm-send.sh fm-<id>` re-read nudge failed.
   Inspect the reason, keep the pending marker under `state/.secondmate-nudge-pending/` intact, and rerun session start after the endpoint or metadata issue is fixed so bootstrap can retry the exact same marked send on the same local or remote route.
+- `CONFIG_REREAD: secondmate <id>: send failed: <reason>` - a reread pointer owed to a running secondmate, for inherited `config/*` this run changed or for an earlier generation still owed, could not be published or delivered, so the live mate may keep applying stale values until it rereads.
+  Only the `could not create state directory` and `per-home lock` reasons guarantee that bootstrap skipped that home's inheritance push this run; every other reason, including `retry instruction queue is full`, is a reread-delivery failure that can come before or after the push, so check the mate's config state separately rather than inferring it from this line.
+  A full queue means the owed rereads for that mate have reached their cap.
+  Keep the reread retry records in both homes' `state/` intact, and rerun session start or `bin/fm-config-push.sh` after the endpoint, lock, or metadata issue is fixed so the owed reread is retried.
 - `FMX: X mode on ...` / `FMX: X mode off ...` - bootstrap confirmed or removed the local Relay poll artifacts (`docs/configuration.md` "Relay (.env)"); the emitted line still carries Relay's former `X mode` wording.
   Only when a running watcher needs the cadence transition applied immediately, restart the home-scoped watcher through the emitted harness supervision protocol; bootstrap deliberately never restarts the watcher itself.

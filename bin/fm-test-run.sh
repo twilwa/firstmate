@@ -346,7 +346,7 @@ family_for_basename() {
   case "$1" in
     fm-arm-pretool-check.test.sh|fm-ask-user-authority.test.sh|\
     fm-bearings-board.test.sh|\
-    fm-brief.test.sh|fm-brief-test-scope.test.sh|fm-dod-lib.test.sh|fm-merge-local.test.sh|fm-vendor-auth-probe.test.sh|\
+    fm-bootstrap-diagnostics.test.sh|fm-brief.test.sh|fm-brief-test-scope.test.sh|fm-dod-lib.test.sh|fm-merge-local.test.sh|fm-vendor-auth-probe.test.sh|\
     fm-calm-pi-extension.test.sh|fm-cd-pretool-check.test.sh|\
     fm-classify-decision-key.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
@@ -826,6 +826,7 @@ tests/fm-bearings-board-lavish-live-e2e.test.sh 85
 tests/fm-bearings-board-render.test.sh 22759
 tests/fm-bearings-board.test.sh 49570
 tests/fm-bearings-snapshot.test.sh 159456
+tests/fm-bootstrap-diagnostics.test.sh 200
 tests/fm-bootstrap-network-parallel.test.sh 77251
 tests/fm-bootstrap.test.sh 98116
 tests/fm-branch-supervision.test.sh 28726
@@ -1775,13 +1776,18 @@ families_for_changed_path() {
       printf '%s\n' secondmate
       ;;
     bin/fm-session-start.sh|bin/fm-fleet-sync.sh|\
-    bin/fm-sessionstart-nudge.sh|bin/fm-startup-network.sh|bin/fm-tangle*|bin/fm-update.sh|\
+    bin/fm-sessionstart-nudge.sh|bin/fm-tangle*|bin/fm-update.sh|\
     bin/fm-gate-refuse*|bin/fm-lock*)
       printf '%s\n' session-bootstrap
+      ;;
+    bin/fm-startup-network.sh)
+      printf '%s\n' session-bootstrap
+      printf '%s\n' "__script__:fm-bootstrap-diagnostics.test.sh"
       ;;
     bin/fm-bootstrap.sh)
       printf '%s\n' session-bootstrap
       printf '%s\n' "__script__:fm-brief.test.sh"
+      printf '%s\n' "__script__:fm-bootstrap-diagnostics.test.sh"
       ;;
     bin/fm-quota-axi-lib.sh)
       printf '%s\n' session-bootstrap
