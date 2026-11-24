@@ -15,7 +15,7 @@
 #     admits ceilings up to 1440 s, but contended green fork-main runs already
 #     measure up to 1785 s on a serial shard the current hints model at
 #     1180 s, a factor of about 1.513. The budget applies that measured factor
-#     to the larger packing ceiling (pool, 1400 s): 1400 s x 1.513 = 2119 s,
+#     to the larger packing ceiling (pool, 1400 s): 1400 s x 1.513 ~= 2118 s,
 #     rounded up to 2120 s, above every measured green lane and 820 s short
 #     of the 2940 s where the job cap kills the command.
 #   - Lint partitions (normal tier, 1800 s job cap): 1200 s, below the cap
