@@ -2312,6 +2312,46 @@ SH
   pass "outer runner catches a nested run's ignored listener failure"
 }
 
+test_ci_budget_warn_annotates_over_budget_lanes_without_failing() {
+  local tmp out rc
+  tmp=$(fm_test_tmproot fm-ci-budget-warn)
+  cat >"$tmp/aggregate.json" <<'JSON'
+{
+  "kind": "aggregate",
+  "lanes": [
+    {"selection": "lane=portable-serial-1of18;fail-on-gate-skip=1", "summary": {"duration_ms": 1200000}},
+    {"selection": "lane=portable-parallel-1", "summary": {"duration_ms": 1199999}}
+  ]
+}
+JSON
+  mkdir -p "$tmp/lint"
+  printf 'partition\t2\nwall_seconds\t1200\n' >"$tmp/lint/partition-2.tsv"
+  printf 'partition\t1\nwall_seconds\t1199\n' >"$tmp/lint/partition-1.tsv"
+
+  rc=0
+  out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
+    "$tmp/aggregate.json" "$tmp/lint" 2>"$tmp/err") || rc=$?
+  [ "$rc" -eq 0 ] || fail "budget warn must not fail, got $rc"$'\n'"$out"$'\n'"$(cat "$tmp/err")"
+  assert_contains "$out" "::warning title=CI budget::lane portable-serial-1of18 command time was 20.0 minutes, above the 20-minute healthy budget" \
+    "over-budget lane did not emit a GitHub warning annotation"
+  printf '%s\n' "$out" | grep -q 'fail-on-gate-skip' \
+    && fail "budget warning printed runner flags instead of the lane name"$'\n'"$out"
+  assert_contains "$out" "::warning title=CI budget::lint partition 2 command time was 20.0 minutes, above the 20-minute healthy budget" \
+    "over-budget lint partition did not emit a GitHub warning annotation"
+  printf '%s\n' "$out" | grep -q 'portable-parallel-1' \
+    && fail "a lane one millisecond under budget was warned"
+  printf '%s\n' "$out" | grep -q 'lint partition 1' \
+    && fail "a lint partition under budget was warned"
+
+  rc=0
+  out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
+    "$tmp/missing.json" 2>"$tmp/missing.err") || rc=$?
+  [ "$rc" -eq 0 ] || fail "missing aggregate must still exit 0, got $rc"
+  assert_contains "$out" "::warning title=CI budget::no aggregate timing JSON" \
+    "missing aggregate did not warn"
+  pass "budget warn annotates 20-minute overruns and never fails the job"
+}
+
 test_json_preserves_timeouts_before_later_files_finish
 test_list_all_exact_suite_coverage
 test_family_selection
@@ -2364,3 +2404,4 @@ test_aggregate_json
 test_live_listener_guard
 test_listener_exited_during_scan
 test_nested_listener_guard
+test_ci_budget_warn_annotates_over_budget_lanes_without_failing

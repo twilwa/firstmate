@@ -879,7 +879,55 @@ RUBY
 }
 
 test_portable_ci_commands_bound_hung_files
+
+test_ci_keeps_the_timecap_safeguards() {
+  ruby -ryaml - "$CI_WORKFLOW" <<'RUBY' || fail "CI timecap safeguards"
+doc = YAML.load_file(ARGV[0])
+jobs = doc.fetch("jobs")
+lint = jobs.fetch("lint")
+steps = lint.fetch("steps")
+installer_hash = "hashFiles('bin/fm-install-shellcheck.sh', 'bin/fm-install-actionlint.sh')"
+cache = steps.find { |s| s["uses"].to_s.start_with?("actions/cache@") } or raise "lint must cache pinned tools"
+key = cache.dig("with", "key").to_s
+raise "lint tool cache key must hash the installer scripts" unless key.include?(installer_hash)
+raise "lint tool cache key must include runner.os and runner.arch" unless key.include?("runner.os") && key.include?("runner.arch")
+raise "lint tool cache key must not hardcode checksums" if key.match?(/[0-9a-f]{64}/)
+raise "lint checkout must fetch full history for --changed" unless steps.any? { |s|
+  s["uses"].to_s.include?("actions/checkout@") && s.dig("with", "fetch-depth") == 0
+}
+lint_run = steps.find { |s| s["name"] == "Lint canonical partition" } or raise "lint step missing"
+raise "PR lint must pass --changed" unless lint_run.fetch("run").include?("--changed")
+raise "lint must keep FM_LINT_JOBS=1" unless lint_run.dig("env", "FM_LINT_JOBS") == "1"
+
+%w[tests-portable-pool tests-portable-serial].each do |name|
+  job_steps = jobs.fetch(name).fetch("steps")
+  tool_cache = job_steps.find { |s|
+    s["uses"].to_s.start_with?("actions/cache@") && s.dig("with", "path").to_s.include?("fm-ci-tools")
+  } or raise "#{name} must cache pinned tools"
+  raise "#{name} tool cache key must hash the installer scripts" unless tool_cache.dig("with", "key").to_s.include?(installer_hash)
+end
+
+agg = jobs.fetch("tests-timing-aggregate")
+raise "timing aggregate must depend on lint" unless Array(agg["needs"]).include?("lint")
+agg_run = agg.fetch("steps").find { |s| s["run"].to_s.include?("fm-ci-budget-warn.sh") } or raise "budget warn step missing"
+raise "budget warn must stay a warning, not a failing gate" if agg_run["continue-on-error"]
+lint_up = lint.fetch("steps").find { |s| s["name"] == "Upload lint telemetry" } or raise "lint telemetry upload missing"
+raise "lint telemetry upload must not fail the lint job when a partition has no files" unless lint_up.dig("with", "if-no-files-found") == "warn"
+raise "lint telemetry download must stay a hard dependency of the aggregate" unless agg.fetch("steps").any? { |s| s["name"] == "Download lint telemetry" }
+
+jobs.each do |name, job|
+  next unless job.is_a?(Hash)
+  raise "#{name} must not set continue-on-error" if job["continue-on-error"]
+  Array(job["steps"]).each do |step|
+    raise "#{name} step must not set continue-on-error" if step.is_a?(Hash) && step["continue-on-error"]
+  end
+end
+RUBY
+  pass "CI keeps the PR changed-file lint, cached pinned tools, and warning-only budget check"
+}
+
 test_ci_matrices_match_executable_partitions
+test_ci_keeps_the_timecap_safeguards
 test_pr_pushes_supersede_within_one_pr
 test_separate_prs_do_not_cancel_each_other
 test_main_pushes_keep_only_the_newest_run
