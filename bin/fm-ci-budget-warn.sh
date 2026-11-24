@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
-# fm-ci-budget-warn.sh - emit a warning when a CI lane's measured command time
-# crosses the healthy ~20-minute budget. Never fails the job.
+# fm-ci-budget-warn.sh - emit a warning when a CI test lane or lint partition's
+# measured command time crosses its tier's healthy budget. Never fails the job.
 #
 # The timing-aggregate CI job runs this after combining per-lane timing JSON
 # and any lint telemetry sidecars. duration_ms and lint wall_seconds are the
 # test or lint command's own elapsed time, not the GitHub Actions job wall.
-# A value at or above 20 minutes prints a GitHub warning annotation (and a
+# A value at or above its budget prints a GitHub warning annotation (and a
 # plain warning line for local tests). Shorter lanes stay silent. Missing
 # inputs print a warning and still exit 0.
+#
+# Budgets (one per CI timeout tier in docs/fm-test-portable-shards.md):
+#   - Test lanes (portable tier, 3000 s job cap): 2120 s. The tier rule
+#     (60 s setup + packing ceiling + 1500 s per-file bound inside the cap)
+#     admits ceilings up to 1440 s, but contended green fork-main runs already
+#     measure up to 1785 s on a serial shard the current hints model at
+#     1180 s, a factor of about 1.513. The budget applies that measured factor
+#     to the larger packing ceiling (pool, 1400 s): 1400 s x 1.513 = 2119 s,
+#     rounded up to 2120 s, above every measured green lane and 820 s short
+#     of the 2940 s where the job cap kills the command.
+#   - Lint partitions (normal tier, 1800 s job cap): 1200 s, below the cap
+#     and above the slowest measured green partition (1021 s).
 #
 # Usage:
 #   fm-ci-budget-warn.sh <aggregate.json> [lint-telemetry-dir]
@@ -29,7 +41,8 @@ die() {
   exit 2
 }
 
-BUDGET_MS=1200000
+LANE_BUDGET_MS=2120000
+LINT_BUDGET_MS=1200000
 AGGREGATE=
 LINT_DIR=
 
@@ -74,7 +87,7 @@ minutes() {  # <ms>
 }
 
 if [ ! -f "$AGGREGATE" ]; then
-  warn "no aggregate timing JSON at $AGGREGATE; skipped the 20-minute budget check"
+  warn "no aggregate timing JSON at $AGGREGATE; skipped the lane budget check"
   exit 0
 fi
 
@@ -82,7 +95,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required to read timing JS
 
 tmp=$(mktemp "${TMPDIR:-/tmp}/fm-ci-budget-warn.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
-if ! python3 - "$AGGREGATE" "$BUDGET_MS" >"$tmp" <<'PY'
+if ! python3 - "$AGGREGATE" "$LANE_BUDGET_MS" >"$tmp" <<'PY'
 import json, sys
 from pathlib import Path
 
@@ -112,12 +125,12 @@ while IFS=$'\t' read -r kind selection duration || [ -n "$kind" ]; do
   [ -n "$kind" ] || continue
   case "$kind" in
     UNREADABLE)
-      warn "could not parse $AGGREGATE; skipped the 20-minute budget check"
+      warn "could not parse $AGGREGATE; skipped the lane budget check"
       ;;
     LANE)
       selection=${selection#lane=}
       selection=${selection%%;*}
-      warn "lane ${selection} command time was $(minutes "$duration") minutes, above the 20-minute healthy budget"
+      warn "lane ${selection} command time was $(minutes "$duration") minutes, above the $(minutes "$LANE_BUDGET_MS")-minute healthy lane budget"
       ;;
   esac
 done <"$tmp"
@@ -131,8 +144,8 @@ if [ -n "$LINT_DIR" ] && [ -d "$LINT_DIR" ]; then
       ''|*[!0-9.]*) continue ;;
     esac
     wall_ms=$(awk -v s="$wall" 'BEGIN { printf "%d", s * 1000 }')
-    if [ "$wall_ms" -ge "$BUDGET_MS" ]; then
-      warn "lint partition ${partition:-unknown} command time was $(minutes "$wall_ms") minutes, above the 20-minute healthy budget"
+    if [ "$wall_ms" -ge "$LINT_BUDGET_MS" ]; then
+      warn "lint partition ${partition:-unknown} command time was $(minutes "$wall_ms") minutes, above the $(minutes "$LINT_BUDGET_MS")-minute healthy lint budget"
     fi
   done < <(find "$LINT_DIR" -type f -name '*.tsv' ! -name '*.roots.tsv' | LC_ALL=C sort)
 fi

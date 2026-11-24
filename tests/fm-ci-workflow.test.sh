@@ -881,7 +881,7 @@ RUBY
 test_portable_ci_commands_bound_hung_files
 
 test_ci_keeps_the_timecap_safeguards() {
-  ruby -ryaml - "$CI_WORKFLOW" <<'RUBY' || fail "CI timecap safeguards"
+  ruby -ryaml -ropen3 -rtmpdir -rfileutils - "$CI_WORKFLOW" <<'RUBY' || fail "CI timecap safeguards"
 doc = YAML.load_file(ARGV[0])
 jobs = doc.fetch("jobs")
 lint = jobs.fetch("lint")
@@ -896,7 +896,49 @@ raise "lint checkout must fetch full history for --changed" unless steps.any? { 
   s["uses"].to_s.include?("actions/checkout@") && s.dig("with", "fetch-depth") == 0
 }
 lint_run = steps.find { |s| s["name"] == "Lint canonical partition" } or raise "lint step missing"
-raise "PR lint must pass --changed" unless lint_run.fetch("run").include?("--changed")
+eval_event_expr = lambda do |expr, event|
+  inner = expr.to_s.strip
+  m = inner.match(/\A\$\{\{(.*)\}\}\z/m) or raise "FM_LINT_CHANGED must be a GitHub expression, got #{expr.inspect}"
+  tokens = m[1].scan(/'[^']*'|==|&&|\|\||github\.event_name|\S+/)
+  tokens.each { |t| raise "unsupported token #{t.inspect} in #{expr.inspect}" unless t.match?(/\A('[^']*'|==|&&|\|\||github\.event_name)\z/) }
+  values = tokens.map { |t| t == "github.event_name" ? event : t.start_with?("'") ? t[1..-2] : t.to_sym }
+  truthy = ->(v) { !(v == false || v == "") }
+  %i[== && ||].each do |op|
+    while (i = values.index(op))
+      left, right = values[i - 1], values[i + 1]
+      raise "dangling #{op} in #{expr.inspect}" if i.zero? || right.nil? || left.is_a?(Symbol) || right.is_a?(Symbol)
+      values[i - 1, 3] = [case op
+                          when :== then left == right
+                          when :"&&" then truthy.call(left) ? right : left
+                          else truthy.call(left) ? left : right
+                          end]
+    end
+  end
+  raise "cannot evaluate #{expr.inspect}" unless values.length == 1 && values.first.is_a?(String)
+  values.first
+end
+changed_expr = lint_run.dig("env", "FM_LINT_CHANGED") or raise "lint step must set FM_LINT_CHANGED"
+{"pull_request" => "1", "push" => "0"}.each do |event, want|
+  got = eval_event_expr.call(changed_expr, event)
+  raise "FM_LINT_CHANGED must be #{want.inspect} on #{event}, got #{got.inspect}" unless got == want
+end
+script = lint_run.fetch("run").gsub("${{ matrix.partition }}", "2").gsub("${{ strategy.job-total }}", "4")
+raise "lint step run has an unrendered expression: #{script}" if script.include?("${{")
+Dir.mktmpdir("fm-ci-lint-step.") do |dir|
+  FileUtils.mkdir_p(["#{dir}/bin", "#{dir}/tmp"])
+  File.write("#{dir}/bin/fm-lint.sh", "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" >\"$FM_ARGV_LOG\"\n")
+  File.chmod(0o755, "#{dir}/bin/fm-lint.sh")
+  {"1" => true, "0" => false}.each do |flag, want_changed|
+    log = "#{dir}/argv-#{flag}"
+    env = {"RUNNER_TEMP" => "#{dir}/tmp", "FM_LINT_CHANGED" => flag, "FM_ARGV_LOG" => log}
+    out, st = Open3.capture2e(env, "bash", "--noprofile", "--norc", "-c", script, chdir: dir)
+    raise "lint step failed with FM_LINT_CHANGED=#{flag}: #{out}" unless st.success?
+    argv = File.read(log).lines.map(&:chomp)
+    raise "FM_LINT_CHANGED=#{flag} must #{want_changed ? "" : "not "}pass --changed, got #{argv.inspect}" unless argv.include?("--changed") == want_changed
+    raise "lint step lost its partition, got #{argv.inspect}" unless argv.each_cons(2).include?(["--partition", "2of4"])
+    raise "lint step lost its telemetry path, got #{argv.inspect}" unless argv.each_cons(2).include?(["--telemetry", "#{dir}/tmp/fm-lint/partition-2.tsv"])
+  end
+end
 raise "lint must keep FM_LINT_JOBS=1" unless lint_run.dig("env", "FM_LINT_JOBS") == "1"
 
 %w[tests-portable-pool tests-portable-serial].each do |name|

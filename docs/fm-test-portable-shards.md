@@ -21,10 +21,10 @@ Observed values are packing weights, not an upper bound on future durations.
 
 The supervision host cases run as four scripts on the shared fixture in `tests/supervision-host-helpers.sh`: `tests/fm-supervision-host-drain.test.sh` (report, dispatch, BRANCH OUTCOMES), `tests/fm-supervision-host-hook.test.sh` (Claude Stop-hook re-arm and hand-back), `tests/fm-supervision-host.test.sh` (host loop wakes, closes, mirror, return), and `tests/fm-supervision-host-park.test.sh` (latch, park boundary, compaction, lock ownership).
 The wake triage cases likewise run as four scripts on `tests/watch-triage-helpers.sh`: `tests/fm-watch-triage.test.sh`, which keeps the stock-Bash churn case the macOS lane runs by name, `tests/fm-watch-triage-pause.test.sh`, `tests/fm-watch-triage-wedge-defer.test.sh`, and `tests/fm-watch-triage-busy.test.sh`.
-Those seven scripts, and every script the 2026-10-30 upstream merge added, carry upstream's hints rather than samples from the fork refresh above, because the fork's earlier two-way splits of both suites were replaced; upstream derived the four supervision-host hints from local `duration_ms` scaled by about 2.3 for CI.
+The four supervision-host scripts, `tests/fm-watch-triage-pause.test.sh`, `tests/fm-watch-triage-wedge-defer.test.sh`, and every script the 2026-10-30 upstream merge added carry upstream's hints rather than samples from the fork refresh above, because the fork's earlier two-way splits of both suites were replaced; upstream derived the four supervision-host hints from local `duration_ms` scaled by about 2.3 for CI.
 Replace them with fork timing-artifact maxima at the next refresh.
 Upstream later moved part of `tests/fm-captain-hold-lifecycle.test.sh` into `tests/fm-captain-hold-teardown.test.sh` (shared fixtures in `tests/captain-hold-helpers.sh`) and part of `tests/fm-watch-triage.test.sh` into `tests/fm-watch-triage-busy.test.sh`.
-Until fork CI measures the four files, their hints divide the fork's measured parent hints (671795 ms and 592950 ms) by upstream's provisional split shares: 374540 ms and 297254 ms for the captain-hold pair, 395300 ms and 197650 ms for the watch-triage pair.
+Until fork CI measures the four files, their hints split the parent hints by upstream's provisional shares: the fork's measured 671795 ms for the captain-hold parent and the inherited upstream 592950 ms for the watch-triage parent, giving 374540 ms and 297254 ms for the captain-hold pair, 395300 ms and 197650 ms for the watch-triage pair.
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms Git Bash measurement instead of a portable capability skip.
 
 The upstream additions retain their provisional local serial measurements until a fork CI refresh replaces them with Ubuntu timing-artifact maxima:
@@ -145,7 +145,8 @@ Its serial hint-coverage and modeled-budget checks are described in [Portable se
 The portable pool, each portable serial shard, and the Herdr lane upload runner-generated timing JSON.
 The runner atomically checkpoints that JSON after each completed file, including timeouts, so completed-file evidence survives if the job is killed while later files are still running.
 `bin/fm-test-run.sh --aggregate-json` creates the combined summary artifact.
-The timing-aggregate job then runs `bin/fm-ci-budget-warn.sh`, which emits a GitHub warning annotation (never a failure) when any lane or lint partition's measured command time is at or above 20 minutes.
+The timing-aggregate job then runs `bin/fm-ci-budget-warn.sh`, which emits a GitHub warning annotation (never a failure) when a test lane's measured command time is at or above 2120 seconds or a lint partition's is at or above 20 minutes; the script header derives both budgets.
+The test-lane budget sits above the portable tier rule's 1440-second window on purpose: green fork-main runs 44968483637 and 45366808146 measured serial shards at up to 1785 and 1510 seconds against about 1180 modeled, so a contended shard's command time already exceeds the window that keeps the 1500-second per-file bound inside the 50-minute cap, and a file that starts late in such a shard is not guaranteed to fail by name before the job cap.
 `.github/workflows/ci.yml` owns the exact artifact names and aggregation wiring.
 
 ## Lint partitions and end-to-end latency

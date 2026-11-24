@@ -7,11 +7,12 @@
 # both use this owner without duplicating lint configuration.
 # The explicit --fast mode is local-only and disables ShellCheck's extended
 # dataflow analysis while preserving ordinary shell lint checks and source
-# following. CI, main, and merge-base-less runs attempt --norc
-# --external-sources with full dataflow for each canonical root. An ordinary
-# local branch (changed-file mode, including the no-mistakes lint step) drops
-# --external-sources, keeps dataflow, and excludes SC1091, SC2034, SC2153,
-# and SC2329, the codes that need library context. CI checks those codes
+# following. CI, main, merge-base-less runs, and any run upgraded to the full
+# canonical set attempt --norc --external-sources with full dataflow for each
+# canonical root. An ordinary local branch that stays in changed-file mode
+# (including the no-mistakes lint step) drops --external-sources, keeps
+# dataflow, and excludes SC1091, SC2034, SC2153, and SC2329, the codes that
+# need library context. CI checks those codes
 # on source-following attempts (see the memory fallback below). Explicit
 # paths attempt --external-sources with the selected dataflow mode.
 # Tests stop source analysis at imported production modules because CI analyzes
@@ -30,12 +31,7 @@
 #     the narrower retry below.
 #   - --changed (CI pull requests) lints only the canonical-set files changed
 #     since the merge-base, still with --external-sources and full dataflow, so
-#     the PR gate stays source-aware on the files it checks. If a lint-definition
-#     file changed (including a delete or rename of fm-lint.sh,
-#     fm-lint-workflows.sh, a pinned installer, or fm-timeout-lib.sh), or a
-#     changed, deleted, or renamed file is sourced by another canonical script
-#     (via `# shellcheck source=` on the merge-base tree), selection upgrades
-#     to the full canonical set.
+#     the PR gate stays source-aware on the files it checks.
 #   - Otherwise (an ordinary local branch with a real merge-base) it lints
 #     only the canonical-set files changed since that merge-base, including
 #     uncommitted local edits, via plain local `git diff` (no network, no
@@ -43,6 +39,14 @@
 #     SC2034, SC2153, and SC2329. A branch with zero matching changed files
 #     skips ShellCheck and prints a "no changed lint targets" note, then
 #     still runs the backend-purity check and validates workflows.
+#   - Both changed-file modes (--changed and the ordinary local branch)
+#     upgrade to the full canonical, source-aware set above when a
+#     lint-definition file changed (including a delete or rename of
+#     fm-lint.sh, fm-lint-workflows.sh, a pinned installer, or
+#     fm-timeout-lib.sh), or when a changed, deleted, or renamed file is
+#     sourced by another canonical script (via `# shellcheck source=` on the
+#     merge-base tree). Locally that turns the no-mistakes lint step into the
+#     full gate, which is much slower than the changed-file pass.
 # Explicit paths always bypass this file-set selection and lint exactly the
 # given paths, matching the same config, without the workflow YAML check.
 # Explicit core bin/ and bin/backends/ scripts still receive the

@@ -2320,8 +2320,10 @@ test_ci_budget_warn_annotates_over_budget_lanes_without_failing() {
 {
   "kind": "aggregate",
   "lanes": [
-    {"selection": "lane=portable-serial-1of18;fail-on-gate-skip=1", "summary": {"duration_ms": 1200000}},
-    {"selection": "lane=portable-parallel-1", "summary": {"duration_ms": 1199999}}
+    {"selection": "lane=portable-serial-1of13;fail-on-gate-skip=1", "summary": {"duration_ms": 2120000}},
+    {"selection": "lane=portable-pool", "summary": {"duration_ms": 2119999}},
+    {"selection": "lane=portable-serial-2of13", "summary": {"duration_ms": 1785194}},
+    {"selection": "lane=portable-serial-3of13", "summary": {"duration_ms": 1200000}}
   ]
 }
 JSON
@@ -2333,16 +2335,20 @@ JSON
   out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
     "$tmp/aggregate.json" "$tmp/lint" 2>"$tmp/err") || rc=$?
   [ "$rc" -eq 0 ] || fail "budget warn must not fail, got $rc"$'\n'"$out"$'\n'"$(cat "$tmp/err")"
-  assert_contains "$out" "::warning title=CI budget::lane portable-serial-1of18 command time was 20.0 minutes, above the 20-minute healthy budget" \
-    "over-budget lane did not emit a GitHub warning annotation"
+  assert_contains "$out" "::warning title=CI budget::lane portable-serial-1of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget" \
+    "a lane exactly at the 2120s lane budget did not emit a GitHub warning annotation"
   printf '%s\n' "$out" | grep -q 'fail-on-gate-skip' \
     && fail "budget warning printed runner flags instead of the lane name"$'\n'"$out"
-  assert_contains "$out" "::warning title=CI budget::lint partition 2 command time was 20.0 minutes, above the 20-minute healthy budget" \
-    "over-budget lint partition did not emit a GitHub warning annotation"
-  printf '%s\n' "$out" | grep -q 'portable-parallel-1' \
-    && fail "a lane one millisecond under budget was warned"
+  printf '%s\n' "$out" | grep -q 'portable-pool' \
+    && fail "a lane one millisecond under the lane budget was warned"$'\n'"$out"
+  printf '%s\n' "$out" | grep -q 'portable-serial-2of13' \
+    && fail "the slowest measured green fork lane (1785s) was warned"$'\n'"$out"
+  printf '%s\n' "$out" | grep -q 'portable-serial-3of13' \
+    && fail "a lane at its 1200s packing ceiling was warned"$'\n'"$out"
+  assert_contains "$out" "::warning title=CI budget::lint partition 2 command time was 20.0 minutes, above the 20.0-minute healthy lint budget" \
+    "a lint partition exactly at the 1200s lint budget did not emit a GitHub warning annotation"
   printf '%s\n' "$out" | grep -q 'lint partition 1' \
-    && fail "a lint partition under budget was warned"
+    && fail "a lint partition one second under the lint budget was warned"
 
   rc=0
   out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
@@ -2350,7 +2356,7 @@ JSON
   [ "$rc" -eq 0 ] || fail "missing aggregate must still exit 0, got $rc"
   assert_contains "$out" "::warning title=CI budget::no aggregate timing JSON" \
     "missing aggregate did not warn"
-  pass "budget warn annotates 20-minute overruns and never fails the job"
+  pass "budget warn annotates lane and lint overruns at their own budgets and never fails the job"
 }
 
 test_json_preserves_timeouts_before_later_files_finish

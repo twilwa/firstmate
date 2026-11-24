@@ -557,7 +557,7 @@ jobs:
           bin/fm-test-run.sh --aggregate-json \
             "$RUNNER_TEMP/fm-test/fm-test-timing-aggregate.json" \
             "${inputs[@]}"
-      - name: Warn when a lane exceeds the healthy 20-minute budget
+      - name: Warn when a lane or lint partition exceeds its healthy budget
         if: always()
         run: |
           set -eu
