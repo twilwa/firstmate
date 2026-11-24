@@ -1794,8 +1794,9 @@ SH
 # green but whose wall clock outgrew its caller's invocation budget. The caller
 # gets killed mid-run and retries invisibly, so an over-budget run has to be a
 # failure, not a note in the log.
-# tests/fm-watch-triage.test.sh is the slowest watcher-wake-lock member at about
-# 593s under CI load (pause and wedge-defer siblings are 467s and 527s), so the
+# tests/fm-watch-triage-wedge-defer.test.sh is the slowest watcher-wake-lock
+# member at about 527s under CI load (the pause and triage siblings are 467s and
+# 395s), so the
 # automatic --changed bound must leave a slow but healthy watcher-wake-lock
 # script room while still bounding a genuinely hung one
 # (upstream issue #3869). The stub records the bound the runner hands it.
