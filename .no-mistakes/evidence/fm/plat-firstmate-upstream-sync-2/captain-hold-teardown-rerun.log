@@ -1,0 +1,6 @@
+FM_TEST_BEGIN 2026-11-24T13:50:59Z tests/fm-captain-hold-teardown.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - new, active, and released holds publish origins after backend success with and without deferral
+Terminated
+Terminated
+Terminated
+Terminated

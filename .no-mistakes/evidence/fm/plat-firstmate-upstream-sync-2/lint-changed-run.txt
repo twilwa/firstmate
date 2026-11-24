@@ -1,0 +1,31 @@
+$ FM_LINT_JOBS=1 bin/fm-lint.sh 
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit=0]
+
+$ FM_LINT_JOBS=1 bin/fm-lint.sh --changed
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit=0]
+
+$ FM_LINT_JOBS=1 bin/fm-lint.sh --changed --partition 1of4 --telemetry /tmp/fm-budget.KoCdTf/p1.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: begin bin/fm-ci-budget-warn.sh (shard 0, full mode)
+fm-lint: end bin/fm-ci-budget-warn.sh reason=ok rc=0 duration_ms=117 rss_kib=unavailable
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit=0]
+
+$ FM_LINT_JOBS=1 bin/fm-lint.sh --changed --partition 2of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: no lint targets in this partition
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit=0]
+

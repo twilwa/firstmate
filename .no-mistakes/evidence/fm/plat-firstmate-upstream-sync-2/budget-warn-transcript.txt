@@ -1,0 +1,40 @@
+$ env GITHUB_ACTIONS=true bin/fm-ci-budget-warn.sh /tmp/fm-budget.KoCdTf/aggregate.json /tmp/fm-budget.KoCdTf/lintagg
+::warning title=CI budget::lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+::warning title=CI budget::lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+::warning title=CI budget::lint partition 1of4 command time was 20.8 minutes, above the 20.0-minute healthy lint budget
+fm-ci-budget-warn: warning: lint partition 1of4 command time was 20.8 minutes, above the 20.0-minute healthy lint budget
+::warning title=CI budget::lint partition 3of4 command time was 20.0 minutes, above the 20.0-minute healthy lint budget
+fm-ci-budget-warn: warning: lint partition 3of4 command time was 20.0 minutes, above the 20.0-minute healthy lint budget
+[exit=0]
+
+$ env -u GITHUB_ACTIONS bin/fm-ci-budget-warn.sh /tmp/fm-budget.KoCdTf/aggregate.json /tmp/fm-budget.KoCdTf/lintagg
+fm-ci-budget-warn: warning: lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lint partition 1of4 command time was 20.8 minutes, above the 20.0-minute healthy lint budget
+fm-ci-budget-warn: warning: lint partition 3of4 command time was 20.0 minutes, above the 20.0-minute healthy lint budget
+[exit=0]
+
+$ env GITHUB_ACTIONS=true bin/fm-ci-budget-warn.sh /tmp/fm-budget.KoCdTf/missing.json /tmp/fm-budget.KoCdTf/lintagg
+::warning title=CI budget::no aggregate timing JSON at /tmp/fm-budget.KoCdTf/missing.json; skipped the lane budget check
+fm-ci-budget-warn: warning: no aggregate timing JSON at /tmp/fm-budget.KoCdTf/missing.json; skipped the lane budget check
+[exit=0]
+
+$ env GITHUB_ACTIONS=true bin/fm-ci-budget-warn.sh /tmp/fm-budget.KoCdTf/broken.json
+::warning title=CI budget::could not parse /tmp/fm-budget.KoCdTf/broken.json; skipped the lane budget check
+fm-ci-budget-warn: warning: could not parse /tmp/fm-budget.KoCdTf/broken.json; skipped the lane budget check
+[exit=0]
+
+$ bin/fm-ci-budget-warn.sh
+fm-ci-budget-warn: need an aggregate timing JSON (see --help)
+[exit=2]
+
+$ bin/fm-ci-budget-warn.sh --bogus
+fm-ci-budget-warn: unknown argument: --bogus
+[exit=2]
+
+$ bin/fm-ci-budget-warn.sh /tmp/fm-budget.KoCdTf/aggregate.json /tmp/fm-budget.KoCdTf/lintagg extra
+fm-ci-budget-warn: unexpected argument: extra
+[exit=2]
+

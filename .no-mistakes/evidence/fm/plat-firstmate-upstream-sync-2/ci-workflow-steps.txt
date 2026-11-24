@@ -1,0 +1,16 @@
+lint step env: {'FM_LINT_REQUIRE_BOUNDS': '1', 'FM_LINT_JOBS': '1', 'FM_LINT_CHANGED': "${{ github.event_name == 'pull_request' && '1' || '0' }}"}
+event=pull_request: FM_LINT_CHANGED -> '1'
+event=push: FM_LINT_CHANGED -> '0'
+lint step body with FM_LINT_CHANGED=1: exit=0 argv: --partition 2of4 --telemetry /tmp/fm-ci-step.671yn9ma/tmp/fm-lint/partition-2.tsv --changed 
+lint step body with FM_LINT_CHANGED=0: exit=0 argv: --partition 2of4 --telemetry /tmp/fm-ci-step.671yn9ma/tmp/fm-lint/partition-2.tsv 
+timing-aggregate needs: ['lint', 'tests-portable-pool', 'tests-portable-serial', 'tests-herdr', 'tests-hc']
+budget step if: always()  continue-on-error: None
+budget step body: exit=0
+::warning title=CI budget::lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+::warning title=CI budget::lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+::warning title=CI budget::lint partition 1of4 command time was 20.8 minutes, above the 20.0-minute healthy lint budget
+::warning title=CI budget::lint partition 3of4 command time was 20.0 minutes, above the 20.0-minute healthy lint budget
+
+lint cache: {'path': '${{ runner.temp }}/fm-ci-tools', 'key': "fm-ci-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bin/fm-install-shellcheck.sh', 'bin/fm-install-actionlint.sh') }}"}
+tests-portable-pool cache: {'path': '${{ runner.temp }}/fm-ci-tools', 'key': "fm-ci-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bin/fm-install-shellcheck.sh', 'bin/fm-install-actionlint.sh') }}"}
+tests-portable-serial cache: {'path': '${{ runner.temp }}/fm-ci-tools', 'key': "fm-ci-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bin/fm-install-shellcheck.sh', 'bin/fm-install-actionlint.sh') }}"}

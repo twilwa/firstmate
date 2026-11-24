@@ -1,0 +1,6 @@
+# clone branch whose only change vs origin/main is bin/fm-ci-budget-warn.sh
+bin/fm-ci-budget-warn.sh
+$ bin/fm-test-run.sh --changed --base origin/main --list
+tests/fm-ci-workflow.test.sh
+tests/fm-test-run.test.sh
+[exit=0]

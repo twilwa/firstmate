@@ -1,0 +1,5 @@
+$ bin/fm-test-run.sh --aggregate-json agg-real.json watch-triage-split.json captain-hold-split.json
+FM_TEST_AGGREGATE lanes=2 total=2 failed=1 skipped_gate=0 critical_path_duration_ms=1473452
+[exit=0]
+$ GITHUB_ACTIONS=true bin/fm-ci-budget-warn.sh agg-real.json <real lint telemetry dir from the changed-mode partition runs>
+[exit=0] (no output = all real lanes and partitions under budget)

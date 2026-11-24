@@ -1,0 +1,17 @@
+$ FM_LINT_JOBS=1 bin/fm-lint.sh --changed --partition 2of4 --telemetry <dir>/partition-2.tsv   (empty partition)
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: no lint targets in this partition
+fm-lint.sh: telemetry directory does not exist: /tmp/fm-budget.KoCdTf/empty
+[exit=2]
+partition-2.roots.tsv
+partition-2.tsv
+partition	2of4
+wall_seconds	5
+
+$ GITHUB_ACTIONS=true bin/fm-ci-budget-warn.sh <aggregate> <nonexistent-lint-dir>
+::warning title=CI budget::lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lane portable-serial-3of13 command time was 36.7 minutes, above the 35.3-minute healthy lane budget
+::warning title=CI budget::lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+fm-ci-budget-warn: warning: lane portable-serial-5of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget
+[exit=0]

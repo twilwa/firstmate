@@ -1,0 +1,52 @@
+## 1. cache hit: destination already holds the pinned versions (simulates restored actions/cache)
+$ env RUNNER_TEMP=/tmp/fm-inst.PmxyXa bin/fm-install-shellcheck.sh /tmp/fm-inst.PmxyXa/cached
+fm-install-shellcheck.sh: ShellCheck 0.11.0 already at /tmp/fm-inst.PmxyXa/cached
+ShellCheck - shell script analysis tool
+version: 0.11.0
+license: GNU General Public License, version 3
+website: https://www.shellcheck.net
+[exit=0]
+
+$ env RUNNER_TEMP=/tmp/fm-inst.PmxyXa bin/fm-install-actionlint.sh /tmp/fm-inst.PmxyXa/cached
+fm-install-actionlint.sh: actionlint 1.7.12 already at /tmp/fm-inst.PmxyXa/cached
+1.7.12
+installed by downloading from release page
+built with go1.26.1 compiler for linux/amd64
+[exit=0]
+
+## 2. stale binary at destination (old pin restored): installer must re-download and re-verify
+$ env RUNNER_TEMP=/tmp/fm-inst.PmxyXa bin/fm-install-shellcheck.sh /tmp/fm-inst.PmxyXa/stale
+ShellCheck - shell script analysis tool
+version: 0.11.0
+license: GNU General Public License, version 3
+website: https://www.shellcheck.net
+[exit=0]
+
+$ env RUNNER_TEMP=/tmp/fm-inst.PmxyXa bin/fm-install-actionlint.sh /tmp/fm-inst.PmxyXa/stale
+1.7.12
+installed by downloading from release page
+built with go1.26.1 compiler for linux/amd64
+[exit=0]
+
+$ /tmp/fm-inst.PmxyXa/stale/shellcheck --version
+ShellCheck - shell script analysis tool
+version: 0.11.0
+license: GNU General Public License, version 3
+website: https://www.shellcheck.net
+[exit=0]
+
+$ /tmp/fm-inst.PmxyXa/stale/actionlint -version
+1.7.12
+installed by downloading from release page
+built with go1.26.1 compiler for linux/amd64
+[exit=0]
+
+## 3. second run against the now-fresh destination is a no-download hit
+$ env RUNNER_TEMP=/tmp/fm-inst.PmxyXa bin/fm-install-shellcheck.sh /tmp/fm-inst.PmxyXa/stale
+fm-install-shellcheck.sh: ShellCheck 0.11.0 already at /tmp/fm-inst.PmxyXa/stale
+ShellCheck - shell script analysis tool
+version: 0.11.0
+license: GNU General Public License, version 3
+website: https://www.shellcheck.net
+[exit=0]
+

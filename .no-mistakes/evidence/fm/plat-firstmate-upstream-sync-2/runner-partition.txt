@@ -1,0 +1,32 @@
+$ bin/fm-test-run.sh --check-coverage
+FM_TEST_COVERAGE ok total=366 pool=26 pool_hint_ms=2444177 pool_modeled_ms=611805 pool_workers=4 pool_unhinted=0 pool_budget_ms=1400000 pool_timeout_min=50 serial=324 serial_shards=13 serial_unhinted=30 serial_max_ms=1179723 serial_budget_ms=1200000 herdr=16
+[exit=0]
+tests/fm-captain-hold-teardown.test.sh -> family pure-contract-unit
+tests/fm-captain-hold-lifecycle.test.sh -> family pure-contract-unit
+tests/fm-watch-triage-busy.test.sh -> family watcher-wake-lock
+tests/fm-watch-triage.test.sh -> family watcher-wake-lock
+
+Serial shard where each split suite lands (13 shards) and the shard estimate:
+shard 1of13 est=1179723ms tests/fm-captain-hold-backend-compat.test.sh 
+shard 2of13 est=1179712ms tests/fm-watch-triage-wedge-defer.test.sh 
+shard 3of13 est=1179711ms tests/fm-watch-triage-pause.test.sh 
+shard 4of13 est=1179690ms tests/fm-watch-triage-busy.test.sh 
+shard 5of13 est=1179690ms 
+shard 6of13 est=1179688ms 
+shard 7of13 est=1179688ms 
+shard 8of13 est=1179712ms 
+shard 9of13 est=1179700ms tests/fm-watch-triage.test.sh 
+shard 10of13 est=1179723ms tests/fm-captain-hold-lifecycle.test.sh 
+shard 11of13 est=1179689ms 
+shard 12of13 est=1179688ms 
+shard 13of13 est=1179723ms tests/fm-captain-hold-teardown.test.sh 
+
+$ bin/fm-test-run.sh --list-scheduled --family watcher-wake-lock | head -6
+tests/fm-watch-triage-wedge-defer.test.sh
+tests/fm-watch-triage-pause.test.sh
+tests/fm-watch-wedge-cap.test.sh
+tests/fm-watch-triage.test.sh
+tests/fm-watch-arm.test.sh
+tests/fm-watch-triage-busy.test.sh
+
+$ bin/fm-test-run.sh --changed --list on a diff touching bin/fm-ci-budget-warn.sh is covered via families_for_changed_path (see clone run)
