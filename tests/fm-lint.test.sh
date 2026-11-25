@@ -405,11 +405,12 @@ SH
 }
 
 # fm_lint_bounds_supported: the platform pair the bounded per-root envelope
-# needs - a watchdog mechanism and an enforceable address-space limit. macOS
-# rejects ulimit -v, so bounded-mode tests run there only when this is true.
+# needs - a watchdog mechanism and an enforceable address-space limit at the
+# default 12 GiB per-root cap. macOS rejects ulimit -v, and a sandbox may hold
+# a lower hard limit, so bounded-mode tests run there only when this is true.
 fm_lint_bounds_supported() {
   [ -r "$ROOT/bin/fm-timeout-lib.sh" ] || return 1
-  ( ulimit -v 65536 ) 2>/dev/null || return 1
+  ( ulimit -v 12582912 ) 2>/dev/null || return 1
   command -v perl >/dev/null 2>&1 \
     || command -v timeout >/dev/null 2>&1 \
     || command -v gtimeout >/dev/null 2>&1 || return 1
