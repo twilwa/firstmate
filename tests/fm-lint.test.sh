@@ -168,11 +168,11 @@ test_help_reports_the_complete_interface() {
 
 test_list_files_reports_the_shell_inventory() {
   local listed expected
-  # CI=true forces the full canonical set regardless of the ambient branch or
-  # working-tree diff a local test run happens to have, so this stays a pure
-  # inventory check independent of fm-lint.sh's own changed-file mode below.
+  # The hosted workflow contract forces the full canonical set regardless of
+  # the ambient branch or working-tree diff a local test run happens to have,
+  # so this stays a pure inventory check independent of the changed-file mode.
   # Hidden scripts are outside the documented shell-glob inventory.
-  listed=$(CI=true "$LINT" --list-files)
+  listed=$(GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 "$LINT" --list-files)
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
     || fail "fm-lint.sh --list-files did not return the complete shell inventory"
@@ -184,7 +184,7 @@ test_canonical_partitions_preserve_full_lint() {
   tmp=$(fm_test_tmproot fm-lint-partitions)
   fakebin="$tmp/bin"
   mkdir -p "$fakebin"
-  all=$(CI=true "$LINT" --list-files | LC_ALL=C sort)
+  all=$(GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 "$LINT" --list-files | LC_ALL=C sort)
   : > "$tmp/union"
   for part in 1of4 2of4 3of4 4of4; do
     selected=$(CI=false GITHUB_ACTIONS=false "$LINT" --partition "$part" --list-files) \
@@ -512,6 +512,10 @@ SH
 }
 
 test_ci_defaults_to_full_analysis() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounds hosted CI requires): ${FUNCNAME[0]}"
+    return
+  fi
   local tmp fakebin log mode_log fixture out
   tmp=$(fm_test_tmproot fm-lint-ci-analysis)
   fakebin=$(fm_fakebin "$tmp")
@@ -525,7 +529,7 @@ SH
   chmod +x "$fixture"
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_FAST=1 FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_FAST=1 FM_LINT_JOBS=1 \
     FM_TEST_MODE_LOG="$mode_log" "$LINT" "$fixture" 2>&1) \
     || fail "CI full lint mode failed"$'\n'"$out"
   [ "$(cat "$mode_log")" = on ] \
@@ -547,7 +551,7 @@ SH
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
   rc=0
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
     "$LINT" --fast "$fixture" 2>&1) || rc=$?
   [ "$rc" -eq 2 ] \
     || fail "CI accepted explicit fast lint mode (exit $rc)"$'\n'"$out"
@@ -604,29 +608,31 @@ test_changed_mode_lints_only_the_changed_file() {
 
 test_ci_forces_full_lint_even_with_empty_diff() {
   local listed expected
-  # No git stub: CI=true must short-circuit fm-lint.sh's mode selection before
-  # it ever consults git, so this proves CI wins regardless of local diff state.
-  listed=$(CI=true "$LINT" --list-files)
+  # No git stub: hosted CI must short-circuit fm-lint.sh's mode selection
+  # before it ever consults git, so this proves CI wins regardless of local diff state.
+  listed=$(GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 "$LINT" --list-files)
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
-    || fail "CI=true did not force the full canonical file set"
+    || fail "hosted CI did not force the full canonical file set"
   pass "fm-lint.sh forces a full lint in CI even when the local diff would be empty"
 }
 
-test_main_branch_forces_full_lint() {
-  local tmp fakebin listed expected
-  tmp=$(fm_test_tmproot fm-lint-main-full)
+# A bare local run on main lints its changed files like any other branch; it
+# never defaults to the full source-following canonical set.
+test_local_main_lints_only_changed_files() {
+  local tmp fakebin diff_file listed
+  tmp=$(fm_test_tmproot fm-lint-main-changed)
   fakebin=$(fm_fakebin "$tmp")
   fm_lint_stub_git "$fakebin"
+  diff_file="$tmp/diff.nul"
+  fm_lint_write_diff_file "$diff_file" "bin/fm-afk-launch.sh" "README.md"
 
-  # Clear CI/GITHUB_ACTIONS so the on-main branch is what forces the full lint,
-  # not the ambient CI signal a real CI run would otherwise supply.
-  listed=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' \
-    FM_TEST_GIT_BRANCH=main "$LINT" --list-files)
-  expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
-  [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
-    || fail "fm-lint.sh did not force a full lint when HEAD is on main"
-  pass "fm-lint.sh forces a full lint when HEAD is on main"
+  listed=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' \
+    FM_TEST_GIT_BRANCH=main FM_TEST_GIT_DIFF_FILE="$diff_file" "$LINT" --list-files) \
+    || fail "a local run on main failed to select its changed files"
+  [ "$listed" = bin/fm-afk-launch.sh ] \
+    || fail "a local run on main did not stay on its changed files"$'\n'"listed: $(printf '%s\n' "$listed" | head -3)"
+  pass "fm-lint.sh on a local main lints only the changed canonical files"
 }
 
 test_explicit_path_bypasses_changed_logic() {
@@ -768,6 +774,10 @@ test_changed_mode_invokes_shellcheck_once_per_root() {
 }
 
 test_ci_keeps_external_sources_without_local_exclusions() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounds hosted CI requires): ${FUNCNAME[0]}"
+    return
+  fi
   local tmp fakebin log flag_log mode_log fixture out
   tmp=$(fm_test_tmproot fm-lint-ci-follow)
   fakebin=$(fm_fakebin "$tmp")
@@ -781,7 +791,7 @@ printf '%s\n' "${1:-ok}"
 SH
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
     FM_TEST_FLAG_LOG="$flag_log" FM_TEST_MODE_LOG="$mode_log" \
     "$LINT" "$fixture" 2>&1) \
     || fail "CI lint with explicit path failed"$'\n'"$out"
@@ -791,38 +801,95 @@ SH
   pass "fm-lint.sh CI keeps source following without the local exclusion list"
 }
 
-test_main_branch_keeps_external_sources() {
-  local tmp fakebin log flag_log out
+test_local_main_drops_external_sources() {
+  local tmp fakebin log flag_log diff_file out
   tmp=$(fm_test_tmproot fm-lint-main-follow)
   fakebin=$(fm_fakebin "$tmp")
   fm_lint_stub_git "$fakebin"
   log="$tmp/shellcheck.log"
   flag_log="$tmp/flags.log"
+  diff_file="$tmp/diff.nul"
+  fm_lint_write_diff_file "$diff_file" "bin/fm-afk-launch.sh"
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 \
-    FM_TEST_GIT_BRANCH=main \
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
+    FM_TEST_GIT_BRANCH=main FM_TEST_GIT_DIFF_FILE="$diff_file" \
     FM_TEST_FLAG_LOG="$flag_log" "$LINT" 2>&1) \
     || fail "main-branch lint failed"$'\n'"$out"
-  fm_lint_assert_flag_log "$flag_log" yes none
-  pass "fm-lint.sh on main keeps source following without the local exclusion list"
+  [ "$(cat "$log")" = bin/fm-afk-launch.sh ] \
+    || fail "main-branch lint did not run ShellCheck on exactly the changed file"$'\n'"logged: $(cat "$log")"
+  fm_lint_assert_flag_log "$flag_log" no SC1091,SC2034,SC2153,SC2329
+  pass "fm-lint.sh on a local main drops source following like any local branch"
 }
 
-test_merge_base_less_keeps_external_sources() {
-  local tmp fakebin log flag_log out
-  tmp=$(fm_test_tmproot fm-lint-nomergebase-follow)
+# When no changed set can be computed (no merge-base, no base ref, or outside a
+# Git work tree), a local run refuses and points to a capped sandbox or CI
+# instead of falling back to the full source-following canonical set.
+test_local_run_without_a_changed_set_refuses_the_full_set() {
+  local tmp fakebin log out rc case_env flag
+  tmp=$(fm_test_tmproot fm-lint-no-changed-set)
   fakebin=$(fm_fakebin "$tmp")
   fm_lint_stub_git "$fakebin"
   log="$tmp/shellcheck.log"
-  flag_log="$tmp/flags.log"
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 \
-    FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_MERGE_BASE_OK=0 \
-    FM_TEST_FLAG_LOG="$flag_log" "$LINT" 2>&1) \
-    || fail "merge-base-less lint failed"$'\n'"$out"
-  fm_lint_assert_flag_log "$flag_log" yes none
-  pass "fm-lint.sh without a merge-base keeps source following without the local exclusion list"
+  for case_env in FM_TEST_GIT_MERGE_BASE_OK=0 \
+    'FM_TEST_GIT_HAS_ORIGIN_MAIN=0 FM_TEST_GIT_HAS_MAIN=0' \
+    FM_TEST_GIT_INSIDE_WORKTREE=0; do
+    for flag in '' --list-files; do
+      : > "$log"
+      rc=0
+      # shellcheck disable=SC2086 # case_env holds deliberate VAR=value words.
+      out=$(env PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' \
+        FM_LINT_JOBS=1 FM_TEST_GIT_BRANCH=feature $case_env \
+        "$LINT" ${flag:+"$flag"} 2>&1) || rc=$?
+      [ "$rc" -eq 2 ] || fail "a local ${flag:-default} run with $case_env exited $rc, expected 2"$'\n'"$out"
+      assert_contains "$out" "refusing the full canonical lint locally" \
+        "the $case_env refusal did not explain itself"
+      assert_contains "$out" "--no-env" "the $case_env refusal did not point to a capped sandbox"
+      [ ! -s "$log" ] || fail "a local run with $case_env still invoked ShellCheck"
+    done
+  done
+  pass "fm-lint.sh refuses a local run that cannot compute a changed set instead of linting the full set"
+}
+
+# Only the hosted workflow contract (GITHUB_ACTIONS with required bounds)
+# counts as hosted: a bare CI=true, or GITHUB_ACTIONS without bounds, keeps the
+# local safeguards and never upgrades or defaults to the full set.
+test_bare_ci_marker_keeps_local_safeguards() {
+  local tmp fakebin log diff_file listed out rc marker
+  tmp=$(fm_test_tmproot fm-lint-bare-ci)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  diff_file="$tmp/diff.nul"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/alpha.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/beta.sh"
+  for marker in 'CI=true GITHUB_ACTIONS=' 'CI=true GITHUB_ACTIONS=true'; do
+    fm_lint_write_diff_file "$diff_file" bin/fm-lint.sh bin/fm-wake-lib.sh
+    # shellcheck disable=SC2086 # marker holds deliberate VAR=value words.
+    listed=$(env PATH="$fakebin:$PATH" $marker FM_LINT_REQUIRE_BOUNDS='' \
+      FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
+      "$LINT" --changed --list-files 2>"$tmp/err" | LC_ALL=C sort)
+    [ "$listed" = "$(printf 'bin/fm-lint.sh\nbin/fm-wake-lib.sh')" ] \
+      || fail "$marker --changed did not stay on the changed files"$'\n'"listed: $(printf '%s\n' "$listed" | head -3)"
+    assert_not_contains "$(cat "$tmp/err")" "using full canonical lint" \
+      "$marker --changed announced the full-set upgrade"
+    # shellcheck disable=SC2086 # marker holds deliberate VAR=value words.
+    listed=$(env PATH="$fakebin:$PATH" $marker FM_LINT_REQUIRE_BOUNDS='' \
+      FM_TEST_GIT_BRANCH=main FM_TEST_GIT_DIFF_FILE="$diff_file" "$LINT" --list-files | LC_ALL=C sort)
+    [ "$listed" = "$(printf 'bin/fm-lint.sh\nbin/fm-wake-lib.sh')" ] \
+      || fail "a bare $marker run on main did not stay on the changed files"
+    rc=0
+    # shellcheck disable=SC2086 # marker holds deliberate VAR=value words.
+    out=$(env PATH="$fakebin:$PATH" $marker FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=2 \
+      FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' "$LINT" "$tmp/alpha.sh" "$tmp/beta.sh" 2>&1) || rc=$?
+    [ "$rc" -eq 2 ] || fail "$marker skipped the local memory budget (exit $rc)"$'\n'"$out"
+    assert_contains "$out" "FM_LINT_LOCAL_MEMORY_BUDGET_GIB" "$marker budget refusal did not name its setting"
+    [ ! -s "$log" ] || fail "$marker budget-refused run still invoked ShellCheck"
+  done
+  pass "a bare CI marker keeps local safeguards and never upgrades to the full set"
 }
 
 test_explicit_path_keeps_external_sources() {
@@ -929,6 +996,10 @@ fm_lint_nox_one_root() {
 }
 
 test_changed_flag_keeps_source_following_in_ci() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounds hosted CI requires): ${FUNCNAME[0]}"
+    return
+  fi
   local tmp fakebin log flag_log mode_log diff_file out target
   tmp=$(fm_test_tmproot fm-lint-changed-flag)
   fakebin=$(fm_fakebin "$tmp")
@@ -941,7 +1012,7 @@ test_changed_flag_keeps_source_following_in_ci() {
   target="bin/fm-afk-launch.sh"
   fm_lint_write_diff_file "$diff_file" "$target" "README.md"
 
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
     FM_TEST_GIT_BRANCH=feature \
     FM_TEST_GIT_DIFF_FILE="$diff_file" \
     FM_TEST_FLAG_LOG="$flag_log" FM_TEST_MODE_LOG="$mode_log" \
@@ -964,7 +1035,7 @@ test_changed_flag_upgrades_when_lint_definition_changes() {
   fm_lint_write_diff_file "$diff_file" "bin/fm-lint.sh" "README.md"
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
 
-  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true \
+  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
     "$LINT" --changed --list-files 2>"$tmp/err")
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
@@ -986,7 +1057,7 @@ test_empty_changed_partition_is_a_successful_noop() {
   fm_lint_write_diff_file "$diff_file" "bin/fm-afk-launch.sh"
 
   rc=0
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
     "$LINT" --changed --partition 2of4 --telemetry "$telemetry" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "an empty changed partition must exit 0, got $rc"$'\n'"$out"
@@ -1015,7 +1086,7 @@ test_changed_flag_upgrades_when_a_sourced_helper_changes() {
   fm_lint_write_diff_file "$diff_file" "bin/fm-wake-lib.sh" "README.md"
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
 
-  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true \
+  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
     "$LINT" --changed --list-files 2>"$tmp/err")
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
@@ -1034,7 +1105,7 @@ test_changed_flag_upgrades_when_a_sourced_helper_is_deleted() {
   fm_lint_write_name_status "$status_file" $'D\tbin/fm-wake-lib.sh' $'M\tREADME.md'
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
 
-  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true \
+  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_NAME_STATUS_FILE="$status_file" \
     "$LINT" --changed --list-files 2>"$tmp/err")
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
@@ -1054,7 +1125,7 @@ test_changed_flag_upgrades_when_a_sourced_helper_is_renamed() {
     $'R100\tbin/fm-wake-lib.sh\tbin/fm-wake-lib-moved.sh'
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
 
-  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true \
+  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_NAME_STATUS_FILE="$status_file" \
     "$LINT" --changed --list-files 2>"$tmp/err")
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
@@ -1074,7 +1145,7 @@ test_changed_flag_upgrades_when_a_lint_definition_is_renamed() {
     $'R100\tbin/fm-timeout-lib.sh\tbin/fm-timeout-lib-moved.sh' $'M\tREADME.md'
   expected=$(find bin bin/backends tests -maxdepth 1 -type f -name '*.sh' ! -name '.*' -print | LC_ALL=C sort)
 
-  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true \
+  listed=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 \
     FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_NAME_STATUS_FILE="$status_file" \
     "$LINT" --changed --list-files 2>"$tmp/err")
   [ "$(printf '%s\n' "$listed" | LC_ALL=C sort)" = "$expected" ] \
@@ -1205,11 +1276,39 @@ test_local_workers_stay_within_the_memory_budget() {
     || fail "a raised local budget did not admit two workers"$'\n'"$out"
   assert_grep $'meta\tjobs\t2' "$tmp/raised.roots.tsv" "a raised local budget did not run two workers"
 
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS=true CI=true FM_LINT_JOBS='' \
-    FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' "$LINT" --telemetry "$tmp/ci.tsv" "$alpha" "$beta" 2>&1) \
-    || fail "a CI run failed"$'\n'"$out"
-  assert_grep $'meta\tjobs\t2' "$tmp/ci.roots.tsv" "the local budget changed CI's worker default"
+  if fm_lint_bounds_supported; then
+    out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS=true CI=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS='' \
+      FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' "$LINT" --telemetry "$tmp/ci.tsv" "$alpha" "$beta" 2>&1) \
+      || fail "a CI run failed"$'\n'"$out"
+    assert_grep $'meta\tjobs\t2' "$tmp/ci.roots.tsv" "the local budget changed CI's worker default"
+  fi
   pass "local runs hold workers x per-root cap within the memory budget; CI keeps its defaults"
+}
+
+# An out-of-range per-root cap is rejected before any budget arithmetic or
+# uncapped fallback, so it can neither overflow nor silently run unbounded.
+test_out_of_range_root_cap_is_rejected() {
+  local tmp fakebin log out rc cap lint
+  tmp=$(fm_test_tmproot fm-lint-cap-range)
+  fakebin=$(fm_fakebin "$tmp")
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/alpha.sh"
+  mkdir -p "$tmp/uncapped/bin"
+  cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
+  for lint in "$LINT" "$tmp/uncapped/bin/fm-lint.sh"; do
+    for cap in 18446744073709551616 18446744073709551617 1000000000000; do
+      rc=0
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' \
+        FM_LINT_JOBS='' FM_LINT_ROOT_MEMORY_KIB="$cap" "$lint" "$tmp/alpha.sh" 2>&1) || rc=$?
+      [ "$rc" -eq 2 ] || fail "per-root cap $cap via $lint exited $rc, expected 2"$'\n'"$out"
+      assert_contains "$out" "FM_LINT_ROOT_MEMORY_KIB must be a positive integer below" \
+        "per-root cap $cap was not rejected as out of range"
+      assert_not_contains "$out" "linting unbounded" "per-root cap $cap fell back to an uncapped run"
+      [ ! -s "$log" ] || fail "an out-of-range per-root cap still invoked ShellCheck"
+    done
+  done
+  pass "an out-of-range per-root memory cap is rejected before arithmetic or an uncapped fallback"
 }
 
 # A local host that cannot cap each root must not run the full canonical,
@@ -1232,8 +1331,8 @@ test_uncappable_local_host_refuses_the_full_set() {
 
   # Without its sibling watchdog library the copy cannot bound any root.
   rc=0
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_TEST_GIT_BRANCH=main \
-    "$repo/bin/fm-lint.sh" 2>&1) || rc=$?
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' \
+    "$repo/bin/fm-lint.sh" --partition 1of4 2>&1) || rc=$?
   [ "$rc" -eq 2 ] || fail "an uncappable local full-set lint exited $rc, expected 2"$'\n'"$out"
   assert_contains "$out" "sandbox" "the refusal did not point to a sandbox"
   [ ! -s "$log" ] || fail "an uncappable local full-set lint still invoked ShellCheck"
@@ -1285,7 +1384,7 @@ test_local_exclusion_list_covers_every_no_external_sources_code() {
   local -a files
   tmp=$(fm_test_tmproot fm-lint-nox-complete)
   files_file="$tmp/files"
-  CI=true "$LINT" --list-files > "$files_file"
+  GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 "$LINT" --list-files > "$files_file"
   [ -s "$files_file" ] || fail "CI --list-files returned no canonical lint roots"
   files=()
   while IFS= read -r path; do
@@ -1510,7 +1609,7 @@ test_missing_shellcheck_fails_closed() {
     ln -s "$(command -v "$tool")" "$fakebin/$tool"
   done
   rc=0
-  out=$(PATH="$fakebin" CI=true GITHUB_ACTIONS=true "$LINT" 2>&1) || rc=$?
+  out=$(PATH="$fakebin" CI=true GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 "$LINT" 2>&1) || rc=$?
   [ "$rc" -eq 1 ] || fail "missing ShellCheck expected exit 1, got $rc"$'\n'"$out"
   assert_contains "$out" "ShellCheck not found" \
     "missing ShellCheck did not name the required linter"
@@ -1576,6 +1675,10 @@ SH
 }
 
 test_rejects_direct_beads_cli_invocations() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounds hosted CI requires): ${FUNCNAME[0]}"
+    return
+  fi
   local tmp fakebin log lint_copy invocation out rc
   tmp=$(fm_test_tmproot fm-lint-backend-purity)
   fakebin=$(fm_fakebin "$tmp")
@@ -1596,6 +1699,7 @@ SH
 exit 0
 SH
   chmod +x "$lint_copy" "$tmp/repo/bin/fm-lint-workflows.sh"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$tmp/repo/bin/fm-timeout-lib.sh"
   fm_lint_stub_shellcheck "$fakebin" "$log"
 
   for invocation in \
@@ -1618,7 +1722,7 @@ SH
   do
     printf '#!/usr/bin/env bash\n%s\n' "$invocation" > "$tmp/repo/bin/direct-beads.sh"
     rc=0
-    out=$(cd "$tmp/repo" && CI=true PATH="$fakebin:$PATH" "$lint_copy" 2>&1) || rc=$?
+    out=$(cd "$tmp/repo" && GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 PATH="$fakebin:$PATH" "$lint_copy" 2>&1) || rc=$?
     [ "$rc" -ne 0 ] || fail "lint accepted a direct Beads CLI invocation: $invocation"
     assert_contains "$out" "direct Beads CLI invocation bypasses tasks-axi" \
       "lint did not identify the backend-boundary violation: $invocation"
@@ -1925,12 +2029,15 @@ test_root_memory_limit_reports_a_named_death() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$hoarder"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$ok"
 
-  # Control: with no memory limit (CI without required bounds) the same
-  # allocator succeeds, so a memory death below can only come from the cap.
+  # Control: with no memory limit (a local copy without its watchdog library
+  # cannot bound roots) the same allocator succeeds, so a memory death below
+  # can only come from the cap.
+  mkdir -p "$tmp/uncapped/bin"
+  cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
   rc=0
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
     FM_TEST_STUB_LOG="$stub_log" \
-    "$LINT" --telemetry "$tmp/control.tsv" "$ok" "$hoarder" 2>&1) || rc=$?
+    "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$tmp/control.tsv" "$ok" "$hoarder" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "the allocator failed without any memory limit"$'\n'"$out"
   grep -q $'^meta\tbounds_enforced\t0$' "$tmp/control.roots.tsv" \
     || fail "the control run was not unbounded"
@@ -1961,7 +2068,7 @@ test_root_memory_limit_reports_a_named_death() {
 }
 
 test_memory_failure_retries_without_external_sources() {
-  local tmp fakebin fixture out rc log rss_kib require_bounds=0 mode
+  local tmp fakebin fixture out rc log rss_kib require_bounds=0 mode lint_bin
   local -a modes=(0)
   if fm_lint_bounds_supported; then
     require_bounds=1
@@ -1997,12 +2104,17 @@ exit 0
 SH
   chmod +x "$fakebin/shellcheck"
 
+  # The unbounded mode is a local copy without its watchdog library, which
+  # cannot bound roots; required bounds is hosted CI's bounded mode.
+  mkdir -p "$tmp/uncapped/bin"
+  cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
   for mode in "${modes[@]}"; do
     : > "$log"
     rc=0
-    # CI without required bounds is the unbounded mode; local runs bound.
+    lint_bin=$LINT
+    [ "$mode" -eq 1 ] || lint_bin="$tmp/uncapped/bin/fm-lint.sh"
     out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS="$mode" \
-      FM_TEST_FALLBACK_LOG="$log" "$LINT" --telemetry "$tmp/pass.$mode.tsv" "$fixture" 2>&1) || rc=$?
+      FM_TEST_FALLBACK_LOG="$log" "$lint_bin" --telemetry "$tmp/pass.$mode.tsv" "$fixture" 2>&1) || rc=$?
     [ "$rc" -eq 0 ] || fail "a clean no-source fallback did not pass (bounded=$mode)"$'\n'"$out"
     assert_grep $'source_directives\t1' "$tmp/pass.$mode.tsv" "telemetry lost the root's source directive"
     assert_grep $'source_followed_directives\t0' "$tmp/pass.$mode.tsv" \
@@ -2310,6 +2422,10 @@ test_pinned_shellcheck_memory_limit() {
 }
 
 test_sidecar_result_exit_reflects_final_status() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounds hosted CI requires): ${FUNCNAME[0]}"
+    return
+  fi
   local tmp fakebin log telemetry roots_log out rc
   tmp=$(fm_test_tmproot fm-lint-sidecar-result)
   fakebin=$(fm_fakebin "$tmp")
@@ -2338,7 +2454,7 @@ SH
   # Every ShellCheck root passes, then the backend-purity check fails the run:
   # the retained records must carry that final status, not the clean lint exit.
   rc=0
-  out=$(cd "$tmp/repo" && CI=true PATH="$fakebin:$PATH" \
+  out=$(cd "$tmp/repo" && GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 PATH="$fakebin:$PATH" \
     "$tmp/repo/bin/fm-lint.sh" --telemetry "$telemetry" 2>&1) || rc=$?
   [ "$rc" -eq 1 ] || fail "a backend-purity failure did not fail the lint run (exit $rc)"$'\n'"$out"
   assert_contains "$out" "direct Beads CLI invocation bypasses tasks-axi" \
@@ -2364,9 +2480,13 @@ test_roots_sidecar_records_per_root_lifecycle() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$beta"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$gamma"
 
+  # A local copy without its watchdog library cannot bound roots, so this run
+  # records the unbounded state deterministically on any host.
+  mkdir -p "$tmp/uncapped/bin"
+  cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
   rc=0
-  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_TEST_STUB_LOG="$stub_log" \
-    "$LINT" --telemetry "$telemetry" "$alpha" "$beta" "$gamma" 2>&1) || rc=$?
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_TEST_STUB_LOG="$stub_log" \
+    "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$telemetry" "$alpha" "$beta" "$gamma" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "a clean bounded run failed"$'\n'"$out"
   [ -f "$roots_log" ] || fail "the run wrote no per-root sidecar beside telemetry"
   grep -q $'^format\tfm-lint-roots-v1$' "$roots_log" \
@@ -2494,15 +2614,16 @@ test_roots_sidecar_records_per_root_lifecycle
 test_seeded_module_boundary_parity
 test_changed_mode_lints_only_the_changed_file
 test_ci_forces_full_lint_even_with_empty_diff
-test_main_branch_forces_full_lint
+test_local_main_lints_only_changed_files
 test_explicit_path_bypasses_changed_logic
 test_zero_changed_files_exits_clean
 test_list_files_respects_changed_mode
 test_changed_mode_drops_external_sources_and_excludes_cross_file_codes
 test_changed_mode_invokes_shellcheck_once_per_root
 test_ci_keeps_external_sources_without_local_exclusions
-test_main_branch_keeps_external_sources
-test_merge_base_less_keeps_external_sources
+test_local_main_drops_external_sources
+test_local_run_without_a_changed_set_refuses_the_full_set
+test_bare_ci_marker_keeps_local_safeguards
 test_explicit_path_keeps_external_sources
 test_fast_mode_on_a_local_branch_keeps_source_following
 test_changed_mode_hides_cross_file_codes_that_ci_still_sees
@@ -2515,6 +2636,7 @@ test_changed_flag_upgrades_when_a_lint_definition_is_renamed
 test_local_mode_never_upgrades_to_the_full_set
 test_local_run_cannot_exceed_the_memory_cap
 test_local_workers_stay_within_the_memory_budget
+test_out_of_range_root_cap_is_rejected
 test_uncappable_local_host_refuses_the_full_set
 test_empty_changed_partition_is_a_successful_noop
 test_local_exclusion_list_covers_every_no_external_sources_code
