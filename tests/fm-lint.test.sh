@@ -2746,6 +2746,10 @@ SH
   pass "seeded dispatcher, adapter, production-owner, and test-local diagnostics preserve parity"
 }
 
+if ! fm_lint_bounds_supported; then
+  export FM_LINT_ALLOW_UNBOUNDED_LOCAL=1
+fi
+
 test_help_reports_the_complete_interface
 test_list_files_reports_the_shell_inventory
 test_canonical_partitions_preserve_full_lint
