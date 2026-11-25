@@ -1,0 +1,12 @@
+ok - home backend selector overrides tracked defaults without changing environment precedence
+#!/usr/bin/env bash
+printf 'root=%s\nbackend=%s\nbinary=%s\npath=%s\nprefix=%s\nfile=%s\n' \
+ok - home selector settings reach wrapper and shared automatic reads without markdown overrides
+#!/usr/bin/env bash
+printf 'mirror=%s\narchive=%s\n' "${TASKS_AXI_BEADS_MIRROR:-unset}" "${TASKS_AXI_BEADS_MIRROR_ARCHIVE:-unset}"
+ok - home selector beads mirror fields reach tasks-axi with home-rooted paths and environment precedence
+ok - malformed/unreadable home selectors stop safely and quoted workspace paths retain literal characters
+
+real	0m4.120s
+user	0m0.841s
+sys	0m2.677s

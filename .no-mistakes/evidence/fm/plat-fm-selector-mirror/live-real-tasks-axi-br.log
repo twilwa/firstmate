@@ -1,0 +1,65 @@
+--- selector
+backend = "beads"
+[beads]
+binary = "br"
+path = ".beads"
+prefix = "lab"
+mirror = "data/backlog.md"
+mirror_archive = "data/done-archive.md"
+$ fm-tasks-axi.sh add mirror-1 'mirror smoke'
+ok: added mirror-1 -> Queued
+task:
+  id: mirror-1
+  title: mirror smoke
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+  created: 2026-11-25
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+exit=0
+$ fm-tasks-axi.sh list
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  mirror-1,queued,task,"-",mirror smoke
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+$ fm-tasks-axi.sh start mirror-1
+ok: start mirror-1 -> In flight
+help[1]:
+  - Run `tasks-axi done mirror-1 --pr <url>` when it ships
+exit=0
+$ fm-tasks-axi.sh done mirror-1
+ok: done mirror-1 -> Done
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+exit=0
+$ fm-tasks-axi.sh list
+count: 1
+tasks[1]{id,state,kind,repo,title}:
+  mirror-1,done,task,"-",mirror smoke
+help[2]:
+  - Run `tasks-axi show <id>` for full notes on a task
+  - Run `tasks-axi ready` to see unblocked queued work
+exit=0
+--- home tree
+.
+./.beads
+./config
+./config/tasks.toml
+./data
+./data/backlog.md
+./data/done-archive.md
+./state

@@ -1,0 +1,79 @@
+=== S1 relative + absolute mirror fields, with binary/path/prefix
+--- selector:
+    backend = "beads"
+    [beads]
+    binary = "br"
+    path = ".beads"
+    prefix = "fm-home"
+    mirror = "data/backlog.md"
+    mirror_archive = "/srv/archive/done-archive.md"
+$ env
+  cwd=/tmp/fm-mirror-live.PXdC9U/my home argv=list
+  TASKS_AXI_BACKEND=beads
+  TASKS_AXI_BEADS_BINARY=br
+  TASKS_AXI_BEADS_MIRROR=/tmp/fm-mirror-live.PXdC9U/my home/data/backlog.md
+  TASKS_AXI_BEADS_MIRROR_ARCHIVE=/srv/archive/done-archive.md
+  TASKS_AXI_BEADS_PATH=/tmp/fm-mirror-live.PXdC9U/my home/.beads
+  TASKS_AXI_BEADS_PREFIX=fm-home
+  exit=0
+
+=== S2 explicit environment wins (nonempty and empty)
+$ env TASKS_AXI_BEADS_MIRROR=/env/mirror.md TASKS_AXI_BEADS_MIRROR_ARCHIVE=
+  cwd=/tmp/fm-mirror-live.PXdC9U/my home argv=list
+  TASKS_AXI_BACKEND=beads
+  TASKS_AXI_BEADS_BINARY=br
+  TASKS_AXI_BEADS_MIRROR=/env/mirror.md
+  TASKS_AXI_BEADS_MIRROR_ARCHIVE=
+  TASKS_AXI_BEADS_PATH=/tmp/fm-mirror-live.PXdC9U/my home/.beads
+  TASKS_AXI_BEADS_PREFIX=fm-home
+  exit=0
+
+=== S3 quoted literal paths with spaces and #
+--- selector:
+    backend = "beads"
+    [beads]
+    mirror = 'data/back log #1.md'
+    mirror_archive = "data/done \"q\".md"
+$ env
+  cwd=/tmp/fm-mirror-live.PXdC9U/my home argv=list
+  TASKS_AXI_BACKEND=beads
+  TASKS_AXI_BEADS_MIRROR=/tmp/fm-mirror-live.PXdC9U/my home/data/back log #1.md
+  TASKS_AXI_BEADS_MIRROR_ARCHIVE=/tmp/fm-mirror-live.PXdC9U/my home/data/done "q".md
+  exit=0
+
+=== S4 markdown backend: mirror fields ignored
+--- selector:
+    backend = "markdown"
+    [beads]
+    mirror = "data/backlog.md"
+    mirror_archive = "data/done-archive.md"
+$ env
+  cwd=/tmp/fm-mirror-live.PXdC9U/my home argv=list
+  TASKS_AXI_BACKEND=markdown
+  TASKS_AXI_FILE=/tmp/fm-mirror-live.PXdC9U/my home/data/backlog.md
+  exit=0
+
+=== S5 invalid mirror value refused (exit 2, nothing run)
+--- selector:
+    backend = "beads"
+    [beads]
+    mirror = 123
+$ env
+tasks-axi home selector has invalid beads.mirror at /tmp/fm-mirror-live.PXdC9U/my home/config/tasks.toml
+  exit=2
+
+--- selector:
+    backend = "beads"
+    [beads]
+    mirror_archive = data/x.md
+$ env
+tasks-axi home selector has invalid beads.mirror_archive at /tmp/fm-mirror-live.PXdC9U/my home/config/tasks.toml
+  exit=2
+
+=== S6 no selector: native config untouched
+--- selector: (absent)
+$ env
+  cwd=/tmp/fm-mirror-live.PXdC9U/my home argv=list
+  TASKS_AXI_FILE=/tmp/fm-mirror-live.PXdC9U/my home/data/backlog.md
+  exit=0
+
