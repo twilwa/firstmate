@@ -492,9 +492,11 @@ backend = "beads"
 binary = "br"
 path = ".beads"
 prefix = "fm-home" # optional, used only when initializing a workspace
+mirror = "data/backlog.md" # optional Markdown mirror of the Beads backlog
+mirror_archive = "data/done-archive.md" # optional Markdown mirror of the Done archive
 ```
 
-The selector requires a nonempty quoted root `backend`. Its optional `[beads]` string fields are `binary`, `path`, and `prefix`. Use single-quoted literal strings or double-quoted strings with escaped quotes and backslashes. Paths may contain spaces or `#`; shell variables are not expanded.
+The selector requires a nonempty quoted root `backend`. Its optional `[beads]` string fields are `binary`, `path`, `prefix`, `mirror`, and `mirror_archive`. Use single-quoted literal strings or double-quoted strings with escaped quotes and backslashes. Paths may contain spaces or `#`; shell variables are not expanded.
 A malformed or unreadable selector reports its path and stops the read or mutation rather than silently choosing markdown.
 
 Backend resolution follows this order:
@@ -505,7 +507,7 @@ Backend resolution follows this order:
 4. `$HOME/.tasks-axi/config.toml`.
 5. `markdown`.
 
-With no selector, Firstmate leaves tasks-axi's native configuration precedence unchanged. The wrapper, automatic lifecycle calls, and captain-hold mutations export a selector's backend as `TASKS_AXI_BACKEND` in the child process only. For Beads, `binary`, `path`, and `prefix` map to `TASKS_AXI_BEADS_BINARY`, `TASKS_AXI_BEADS_PATH`, and `TASKS_AXI_BEADS_PREFIX`. An explicit environment value wins over the corresponding selector field; unset fields retain tasks-axi's normal defaults. A relative selector `path` becomes absolute against the owning home, even when its data directory is relocated. `path` names a workspace directory, not an implicit parent-directory database search. The Rust adapter uses `<path>/beads.db`, or `path` itself when it names a `.db` file.
+With no selector, Firstmate leaves tasks-axi's native configuration precedence unchanged. The wrapper, automatic lifecycle calls, and captain-hold mutations export a selector's backend as `TASKS_AXI_BACKEND` in the child process only. For Beads, `binary`, `path`, `prefix`, `mirror`, and `mirror_archive` map to `TASKS_AXI_BEADS_BINARY`, `TASKS_AXI_BEADS_PATH`, `TASKS_AXI_BEADS_PREFIX`, `TASKS_AXI_BEADS_MIRROR`, and `TASKS_AXI_BEADS_MIRROR_ARCHIVE`. An explicit environment value wins over the corresponding selector field; unset fields retain tasks-axi's normal defaults. A relative selector `path`, `mirror`, or `mirror_archive` becomes absolute against the owning home, even when its data directory is relocated. The mirror fields take effect only with a tasks-axi build that reads those two variables. `path` names a workspace directory, not an implicit parent-directory database search. The Rust adapter uses `<path>/beads.db`, or `path` itself when it names a `.db` file.
 
 Selecting an adapter does not install it, initialize its database, migrate rows, or change a home's captain-hold configuration. Handoffs into or out of the home then address the selected store, and a handoff, remote receipt, or remote provisioning initializes a missing one ([Handoffs between homes](#handoffs-between-homes)). Use a tasks-axi build that supports the selected binary before switching an existing home.
 

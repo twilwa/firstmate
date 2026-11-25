@@ -23,7 +23,7 @@ TMP_ROOT=$(fm_test_tmproot fm-tasks-axi)
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 
 # The developer shell may pin any of these; each case states its own layout.
-unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX FM_HOME FM_ROOT_OVERRIDE \
+unset TASKS_AXI_FILE TASKS_AXI_BACKEND TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX TASKS_AXI_BEADS_MIRROR TASKS_AXI_BEADS_MIRROR_ARCHIVE FM_HOME FM_ROOT_OVERRIDE \
   FM_DATA_OVERRIDE FM_STATE_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE
 
 HAVE_TASKS_AXI=0
@@ -304,6 +304,37 @@ SH
   pass "home selector settings reach wrapper and shared automatic reads without markdown overrides"
 }
 
+test_home_selector_mirror_exports() {
+  local dir out
+  dir=$(make_split selector-mirror)
+  mkdir -p "$dir/fakebin"
+  printf 'backend = "beads"\n[beads]\npath = ".beads"\nmirror = "data/backlog.md"\nmirror_archive = "/abs/done-archive.md"\n' > "$dir/home/config/tasks.toml"
+  cat > "$dir/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+printf 'mirror=%s\narchive=%s\n' "${TASKS_AXI_BEADS_MIRROR:-unset}" "${TASKS_AXI_BEADS_MIRROR_ARCHIVE:-unset}"
+SH
+  chmod +x "$dir/fakebin/tasks-axi"
+  head -n2 "$dir/fakebin/tasks-axi" >&2
+  out=$(PATH="$dir/fakebin:$BASE_PATH" wrapper_from_code "$dir" ready)
+  assert_contains "$out" "mirror=$dir/home/data/backlog.md" "relative beads mirror was not rooted at the owning home"
+  assert_contains "$out" "archive=/abs/done-archive.md" "absolute beads mirror archive was not exported unchanged"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" TASKS_AXI_BEADS_MIRROR=/env/mirror.md TASKS_AXI_BEADS_MIRROR_ARCHIVE='' \
+    wrapper_from_code "$dir" ready)
+  assert_contains "$out" "mirror=/env/mirror.md" "explicit mirror override lost precedence"
+  assert_contains "$out" "archive=unset" "explicitly empty mirror archive override lost precedence"
+  printf 'backend = "markdown"\n[beads]\nmirror = "data/backlog.md"\nmirror_archive = "data/done-archive.md"\n' > "$dir/home/config/tasks.toml"
+  out=$(PATH="$dir/fakebin:$BASE_PATH" wrapper_from_code "$dir" ready)
+  assert_contains "$out" "mirror=unset" "markdown backend exported a beads mirror"
+  assert_contains "$out" "archive=unset" "markdown backend exported a beads mirror archive"
+  for field in mirror mirror_archive; do
+    printf 'backend = "beads"\n[beads]\n%s = 123\n' "$field" > "$dir/home/config/tasks.toml"
+    out=$(bash -c '. "$1/bin/fm-tasks-axi-lib.sh"; fm_tasks_axi_export_settings "$2" beads' _ "$ROOT" "$dir/home" 2>&1)
+    assert_equals 2 "$?" "invalid beads.$field was silently ignored"
+    assert_contains "$out" "invalid beads.$field at $dir/home/config/tasks.toml" "mirror configuration error did not identify beads.$field"
+  done
+  pass "home selector beads mirror fields reach tasks-axi with home-rooted paths and environment precedence"
+}
+
 test_home_selector_errors_and_quoted_paths() {
   local dir out rc value
   dir=$(make_split selector-errors)
@@ -339,12 +370,14 @@ test_home_selector_errors_and_quoted_paths() {
 if [ "${1:-}" = --selector-only ]; then
   test_home_selector_backend_resolution
   test_home_selector_exports
+  test_home_selector_mirror_exports
   test_home_selector_errors_and_quoted_paths
   exit 0
 fi
 
 test_home_selector_backend_resolution
 test_home_selector_exports
+test_home_selector_mirror_exports
 test_home_selector_errors_and_quoted_paths
 test_guard_reports_regular_code_root_backlog
 test_guard_reports_foreign_link_and_archive

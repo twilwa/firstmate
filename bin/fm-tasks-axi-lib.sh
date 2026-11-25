@@ -324,34 +324,30 @@ fm_tasks_axi_backend() {  # <tasks-axi-working-directory>
 # tasks-axi invocation (including lifecycle reads/mutations) must see the same
 # private overlay. Explicit adapter environment settings retain precedence.
 fm_tasks_axi_export_settings() {  # <tasks-axi-working-directory> <resolved-backend>
-  local root=$1 backend=$2 config binary path prefix status
+  local root=$1 backend=$2 config field var value status i
+  local -a values=()
+  local -a fields=(binary path prefix mirror mirror_archive)
   config=$(fm_tasks_axi_home_config "$root")
   if [ -f "$config" ] && [ "$backend" = beads ]; then
-    binary=$(fm_tasks_axi_home_string "$config" beads binary); status=$?
-    if [ "$status" -eq 2 ]; then
-      printf 'tasks-axi home selector has invalid beads.binary at %s\n' "$config" >&2
-      return 2
-    fi
-    path=$(fm_tasks_axi_home_string "$config" beads path); status=$?
-    if [ "$status" -eq 2 ]; then
-      printf 'tasks-axi home selector has invalid beads.path at %s\n' "$config" >&2
-      return 2
-    fi
-    prefix=$(fm_tasks_axi_home_string "$config" beads prefix); status=$?
-    if [ "$status" -eq 2 ]; then
-      printf 'tasks-axi home selector has invalid beads.prefix at %s\n' "$config" >&2
-      return 2
-    fi
-    if [ "${TASKS_AXI_BEADS_BINARY+x}" != x ] && [ -n "$binary" ]; then
-      export TASKS_AXI_BEADS_BINARY=$binary
-    fi
-    if [ "${TASKS_AXI_BEADS_PATH+x}" != x ] && [ -n "$path" ]; then
-      case "$path" in /*) ;; *) path="${FM_HOME:-$root}/$path" ;; esac
-      export TASKS_AXI_BEADS_PATH=$path
-    fi
-    if [ "${TASKS_AXI_BEADS_PREFIX+x}" != x ] && [ -n "$prefix" ]; then
-      export TASKS_AXI_BEADS_PREFIX=$prefix
-    fi
+    for field in "${fields[@]}"; do
+      value=$(fm_tasks_axi_home_string "$config" beads "$field"); status=$?
+      if [ "$status" -eq 2 ]; then
+        printf 'tasks-axi home selector has invalid beads.%s at %s\n' "$field" "$config" >&2
+        return 2
+      fi
+      values+=("$value")
+    done
+    for i in "${!fields[@]}"; do
+      field=${fields[$i]} value=${values[$i]}
+      var=TASKS_AXI_BEADS_$(printf '%s' "$field" | tr '[:lower:]' '[:upper:]')
+      [ -z "${!var+x}" ] && [ -n "$value" ] || continue
+      # Path-valued fields become absolute against the owning home.
+      case "$field:$value" in
+        binary:* | prefix:* | *:/*) ;;
+        *) value="${FM_HOME:-$root}/$value" ;;
+      esac
+      export "$var=$value"
+    done
   fi
   # With no private selector, leave tasks-axi's native configuration untouched.
   if [ -f "$config" ]; then

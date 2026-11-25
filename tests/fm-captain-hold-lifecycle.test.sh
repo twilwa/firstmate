@@ -241,8 +241,8 @@ test_verify_resolves_a_pre_collapse_key_through_its_derived_marker() {
 test_captain_hold_mutations_address_the_beads_backend() {
   local home id fb log decision config_source=${1:-native}
   # shellcheck disable=SC2034 # scopes the caller's tasks-axi settings to this case
-  local TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
-  unset TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX
+  local TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX TASKS_AXI_BEADS_MIRROR TASKS_AXI_BEADS_MIRROR_ARCHIVE
+  unset TASKS_AXI_BACKEND TASKS_AXI_FILE TASKS_AXI_BEADS_BINARY TASKS_AXI_BEADS_PATH TASKS_AXI_BEADS_PREFIX TASKS_AXI_BEADS_MIRROR TASKS_AXI_BEADS_MIRROR_ARCHIVE
   home="$TMP_ROOT/captain-stub-$config_source-beads/home"
   mkdir -p "$home/data" "$home/config" "$home/projects" "$home/state"
   cat > "$home/.tasks.toml" <<'EOF'
