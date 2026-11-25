@@ -1,0 +1,15 @@
+# a local run that cannot compute a changed set must refuse instead of falling back to the full canonical lint
+$ (copy of repo without .git) bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (not inside a Git work tree); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+exit=2
+
+$ (git repo with no origin/main and no main) bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (no merge-base against origin/main or main); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+exit=2
+
+$ (on main, origin/main == HEAD, nothing changed) bin/fm-lint.sh --list-files; bin/fm-lint.sh
+0
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: no changed lint targets
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0

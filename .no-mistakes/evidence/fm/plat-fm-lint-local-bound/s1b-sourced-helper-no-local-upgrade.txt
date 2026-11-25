@@ -1,0 +1,7 @@
+# branch commit touches only bin/fm-gate-refuse-lib.sh (sourced by other canonical scripts); origin/main = bcb63755
+$ bin/fm-lint.sh --list-files   # local
+bin/fm-gate-refuse-lib.sh
+exit=0
+$ GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files   # hosted
+fm-lint.sh: a sourced helper changed; using full canonical lint
+exit=0 files listed: 651

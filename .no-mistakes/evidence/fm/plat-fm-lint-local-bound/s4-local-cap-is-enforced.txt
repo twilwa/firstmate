@@ -1,0 +1,19 @@
+# adversarial: shrink the per-root cap below the measured peak RSS (bin/fm-lint.sh ~340 MB, tests/fm-lint.test.sh ~300 MB, tests/fm-ci-workflow.test.sh ~60 MB) on a plain local run.
+# Expected: the two large roots are stopped by the cap and named as memory failures; the small root still passes.
+$ FM_LINT_ROOT_MEMORY_KIB=262144 bin/fm-lint.sh --telemetry $W/tiny.tsv
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint: end bin/fm-lint.sh reason=memory rc=251 duration_ms=1813 rss_kib=181632
+fm-lint: end tests/fm-lint.test.sh reason=memory rc=251 duration_ms=2921 rss_kib=181632
+shellcheck: out of memory
+shellcheck: out of memory
+fm-lint-workflows.sh: 4 workflow files valid
+exit=251
+
+# roots log:
+meta	mode	local
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	262144
+end	1	bin/fm-lint.sh	1	local	1795617332889	1795617334702	1813	251	memory	181632	0
+end	2	tests/fm-ci-workflow.test.sh	1	local	1795617334704	1795617335463	759	0	ok	59776	0
+end	3	tests/fm-lint.test.sh	0	local	1795617332890	1795617335811	2921	251	memory	181632	0
+meta	result_exit	251

@@ -1,0 +1,23 @@
+# simulate a host where ulimit -v cannot apply the 12 GiB cap: the shell starts under a lower HARD address-space limit (8 GiB), so `ulimit -v 12582912` fails with EPERM.
+$ prlimit --as=8589934592:8589934592 bash -c "ulimit -v 12582912"
+bash: line 1: ulimit: virtual memory: cannot modify limit: Operation not permitted
+exit=1
+
+$ prlimit --as=8G:8G bin/fm-lint.sh --partition 1of4   # local full canonical partition
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+exit=2
+
+$ prlimit --as=8G:8G bin/fm-lint.sh   # local changed set (3 roots), not the full set
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+meta	bounds_enforced	0
+meta	root_memory_limit_kib	unbounded
+
+# control: same partition under the hosted contract on an uncappable host also refuses (pre-existing required-bounds guard):
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: bounds required but per-root memory limit FM_LINT_ROOT_MEMORY_KIB=12582912 KiB is not enforceable on this host (ulimit -v).
+fm-lint.sh: refusing to lint uncapped under FM_LINT_REQUIRE_BOUNDS=1.
+exit=2

@@ -1,0 +1,36 @@
+# local run (branch changes 3 canonical roots), default budget 16 GiB, default per-root cap 12 GiB
+$ bin/fm-lint.sh --jobs 2
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+
+$ env FM_LINT_JOBS=2 bin/fm-lint.sh
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+
+$ env FM_LINT_ROOT_MEMORY_KIB=20971520 bin/fm-lint.sh
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=20971520 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16.
+exit=2
+
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=0 bin/fm-lint.sh
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 0.
+exit=2
+
+# explicit opt-ins that stay inside the budget are accepted:
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 bin/fm-lint.sh --jobs 2 --telemetry /tmp/fmlint-live.dnBwIT/t24.tsv
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+exit=0
+
+meta	jobs	2
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	12582912
+$ env FM_LINT_ROOT_MEMORY_KIB=8388608 bin/fm-lint.sh --jobs 2 --telemetry /tmp/fmlint-live.dnBwIT/t8.tsv
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+exit=0
+
+meta	jobs	2
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	8388608

@@ -1,0 +1,36 @@
+$ systemd-run --user --scope -p MemoryMax=8G env -u CI -u GITHUB_ACTIONS -u FM_LINT_REQUIRE_BOUNDS bin/fm-lint.sh --telemetry $W/tel.tsv   # local default run (like the gate lint)
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+
+# live /proc samples of this run's ShellCheck processes (niceness and RLIMIT_AS):
+pid=1512834 ni= 10 Max address space         12884901888          12884901888          bytes      args=~/.local/bin/shellcheck --norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-lint.test.sh 
+pid=1518517 ni= 10 Max address space         12884901888          12884901888          bytes      args=~/.local/bin/shellcheck --norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-lint.sh 
+pid=1521694 ni= 10 Max address space         12884901888          12884901888          bytes      args=~/.local/bin/shellcheck --norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-ci-workflow.test.sh 
+
+# roots log
+format	fm-lint-roots-v1
+meta	shellcheck_version	0.11.0
+meta	platform	Linux x86_64
+meta	image_os	unknown
+meta	image_version	unknown
+meta	mode	local
+meta	partition	all
+meta	jobs	1
+meta	bounds_enforced	1
+meta	root_deadline_seconds	1200
+meta	root_kill_grace_seconds	5
+meta	root_memory_limit_kib	12582912
+meta	timing_mechanism	perl
+begin	3	tests/fm-lint.test.sh	0	local	1795617251751
+end	3	tests/fm-lint.test.sh	0	local	1795617251751	1795617256294	4543	0	ok	298880	0
+begin	1	bin/fm-lint.sh	1	local	1795617256323
+end	1	bin/fm-lint.sh	1	local	1795617256323	1795617259045	2722	0	ok	340352	0
+begin	2	tests/fm-ci-workflow.test.sh	1	local	1795617259047
+end	2	tests/fm-ci-workflow.test.sh	1	local	1795617259047	1795617259853	806	0	ok	59776	0
+meta	roots_begun	3
+meta	roots_completed	3
+meta	roots_unfinished	0
+meta	result_exit	0
