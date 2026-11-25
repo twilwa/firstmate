@@ -15,7 +15,7 @@
 # Usage:
 #   fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch]
 #     [--expected-head <full-sha>]
-#     [--allow-red <check>] [--allow-missing <check>] [--allow-no-pipeline]
+#     [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
 #     [-- <forge merge flags>]
 #   fm-pr-merge.sh -h | --help
 #
@@ -66,9 +66,11 @@
 # does not replace it with a newly read head. Omitting the flag keeps the
 # previous behavior: the live head read at verification is the matched value.
 # Reading that state needs gh and jq, and either one absent stops the merge before any
-# state is recorded. An attended --allow-red <check-name> may be passed once,
-# with the name as a separate argument; it waives only checks with that exact
-# name, still requires every other check green, and still binds the head. Its
+# state is recorded. An attended --allow-red <check-name> may be repeated for up
+# to four distinct names, each as a separate argument; a duplicate name or a
+# fifth one refuses before any forge call. Each occurrence waives only checks
+# with that exact name, every check not named must still be green, and the head
+# is still bound. Its single-use
 # twin, an attended --allow-missing <check-name>, follows the same rules for one
 # required check that has not reported: it waives only that exact name, still
 # requires every other required check to have reported and every check to be
@@ -236,7 +238,7 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>] [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
 # The repository policy in .github/firstmate-review-policy.json may set
 # require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
 # from fm-pr-review.sh for GitHub merges.
@@ -395,7 +397,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --allow-red)
       [ -n "${2:-}" ] || { echo "error: --allow-red requires a check name" >&2; exit 2; }
-      [ "${#ALLOW_RED[@]}" -eq 0 ] || { echo "error: --allow-red may be specified only once" >&2; exit 2; }
+      for check in ${ALLOW_RED[@]+"${ALLOW_RED[@]}"}; do
+        [ "$check" != "$2" ] || { echo "error: --allow-red names check '$2' more than once" >&2; exit 2; }
+      done
+      [ "${#ALLOW_RED[@]}" -lt 4 ] || { echo "error: --allow-red may name at most 4 checks" >&2; exit 2; }
       ALLOW_RED+=("$2")
       shift 2
       ;;
@@ -451,7 +456,7 @@ if [ -n "$EXPECTED_HEAD" ] && ! fm_pr_head_valid "$EXPECTED_HEAD"; then
   echo "error: --expected-head requires a full lowercase commit sha" >&2
   exit 2
 fi
-# --allow-red names one check run to waive, which only GitHub's per-check
+# --allow-red names check runs to waive, which only GitHub's per-check
 # reading can match. GitLab and Forgejo each collapse their checks into a
 # single head verdict - a head pipeline status and a combined commit status -
 # so there is no per-check name to waive there; GitLab's only waiver is the
@@ -1227,12 +1232,21 @@ github_checks_not_green() {
 }
 
 
+# True when one --allow-red occurrence names exactly this check.
+allow_red_names() {
+  local check
+  for check in ${ALLOW_RED[@]+"${ALLOW_RED[@]}"}; do
+    [ "$check" != "$1" ] || return 0
+  done
+  return 1
+}
+
 # Pre-merge conditions from a live PR view, base requirements, and head producers.
 # Sets FM_PR_MERGE_HEAD to the verified head on success. Returns 3, rather than
 # the usual 1, when mergeable=UNKNOWN is the only failing condition, so the
 # caller can retry a still-computing mergeability read instead of refusing.
 github_verify_mergeable() {
-  local json fields line red failed name covered missing unreported producers pending
+  local json fields line red failed name missing unreported producers pending
   local total=0 named=0 refusals='' mergeable_refusal=''
   local state='' draft='' mergeable='' merge_state='' live_head='' base=''
   FM_PR_GITHUB_BEHIND=false
@@ -1302,7 +1316,7 @@ FIELDS
   fi
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    [ "${#ALLOW_RED[@]}" -eq 0 ] || [ "${ALLOW_RED[0]}" != "$name" ] || continue
+    allow_red_names "$name" && continue
     FM_PR_GITHUB_CHECKS_FAILED=true
   done <<EOF
 $failed
@@ -1340,13 +1354,7 @@ EOF
   uncovered=''
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    covered=0
-    if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
-      for check in "${ALLOW_RED[@]}"; do
-        [ "$check" = "$name" ] && covered=1
-      done
-    fi
-    [ "$covered" -eq 1 ] || {
+    allow_red_names "$name" || {
       refusals="$refusals  - check '$name' is not green
 "
       uncovered="${uncovered:+$uncovered, }$name"

@@ -18,13 +18,19 @@
 #   fm-pr-review.sh hold <pr-url> <head> <reason>
 #   fm-pr-review.sh release-hold <pr-url> <head> <evidence>
 #   fm-pr-review.sh ready <pr-url> <head>
-#   fm-pr-review.sh merge-decision <pr-url> [--snapshot <snapshot.json>]
+#   fm-pr-review.sh merge-decision <pr-url> [--allowed-red-check <check>]... [--snapshot <snapshot.json>]
 #   fm-pr-review.sh merge <task-id> <pr-url> [fm-pr-merge args...]
 #   fm-pr-review.sh post-merge <pr-url> <head> <evidence.json>
 #   fm-pr-review.sh ready-for-qa <pr-url> <head>
 #   fm-pr-review.sh show <pr-url>
 #   fm-pr-review.sh poll
 #   fm-pr-review.sh arm|disarm
+#
+# `merge` passes each `--allow-red <check>` it forwards to fm-pr-merge.sh to
+# `merge-decision` as one `--allowed-red-check <check>`, which accepts at most
+# four distinct names. The review gate waives only those exact checks, and the
+# merge decision records them in order as `allowed_red_checks`, with
+# `allowed_red_check` holding the name only when exactly one was given.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
 # records its actual merge commit separately from the reviewed head.
@@ -231,9 +237,9 @@ checkpoint_apply() {
   mv -f -- "$work.next" "$work"
 }
 ready_check() {
-  local head=$1 allowed_red=${2:-} errors model independent risk
+  local head=$1 allowed_red=${2:-[]} errors model independent risk
   ledger_valid || die 'review ledger is unavailable'
-  errors=$(jq -r --arg head "$head" --arg allowed_red "$allowed_red" --slurpfile policy "$POLICY" '
+  errors=$(jq -r --arg head "$head" --argjson allowed_red "$allowed_red" --slurpfile policy "$POLICY" '
     .generations[-1] as $g
     | ($policy[0].high_stakes.no_mistakes_model) as $model
     | ($policy[0].high_stakes.independent_agent_reviews) as $needed
@@ -244,7 +250,7 @@ ready_check() {
       (if ($g.checkpoints | length) > 0 and ($g.checkpoints[-1].pending_reviews | length) == 0 then empty else "an explicitly pending review still needs bounded-backoff retry" end),
       (if ($g.checkpoints | length) > 0 and all($g.checkpoints[-1].checks[];
           (.status == "COMPLETED" and (.conclusion == "pass" or .conclusion == "skipping")) or
-          ($allowed_red != "" and .name == $allowed_red))
+          (.name as $name | any($allowed_red[]; . == $name)))
         then empty else "a required check is not green on this head" end),
       (if all($g.review_items[]; (.disposition == "addressed" or .disposition == "rejected") and (.evidence | type == "string" and length > 0)) then empty else "a reviewer comment, submitted review, or inline thread lacks a disposition with evidence" end),
       (if $g.final_disposition != null
@@ -268,17 +274,20 @@ ready_check() {
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
 }
 
+# Collects every --allow-red name from fm-pr-merge arguments as repeated
+# --allowed-red-check arguments for merge-decision, which owns their limits.
 find_merge_allowed_red() {
-  MERGE_ALLOWED_RED=
+  MERGE_ALLOWED_RED=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --attended-override) shift ;;
       --allow-red)
         [ -n "${2:-}" ] || return 0
-        MERGE_ALLOWED_RED=$2
-        return 0
+        MERGE_ALLOWED_RED+=(--allowed-red-check "$2")
+        shift 2
         ;;
-      --|*) return 0 ;;
+      --allow-missing|--expected-head) [ "$#" -ge 2 ] || return 0; shift 2 ;;
+      --) return 0 ;;
+      *) shift ;;
     esac
   done
 }
@@ -529,23 +538,29 @@ case "$cmd" in
     [ "$#" -ge 1 ] || die 'merge-decision requires pull-request URL'
     parse_url "$1"; shift
     ledger_valid || die 'review ledger is unavailable'
-    ALLOWED_RED_CHECK=
-    if [ "${1:-}" = --allowed-red-check ]; then
+    ALLOWED_RED_CHECKS='[]'
+    while [ "${1:-}" = --allowed-red-check ]; do
       [ -n "${2:-}" ] || die '--allowed-red-check requires a check name'
-      ALLOWED_RED_CHECK=$2
+      jq -en --argjson names "$ALLOWED_RED_CHECKS" --arg name "$2" 'any($names[]; . == $name) | not' >/dev/null \
+        || die "--allowed-red-check names check '$2' more than once"
+      [ "$(jq -n --argjson names "$ALLOWED_RED_CHECKS" '$names | length')" -lt 4 ] \
+        || die '--allowed-red-check may name at most 4 checks'
+      ALLOWED_RED_CHECKS=$(jq -cn --argjson names "$ALLOWED_RED_CHECKS" --arg name "$2" '$names + [$name]')
       shift 2
-    fi
+    done
     snapshot_arg "$@"
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX"); cp "$LEDGER" "$WORK"
     checkpoint_apply "$(jq -r .task "$WORK")" "$SNAPSHOT" "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
     HEAD=$(jq -r .head "$SNAPSHOT")
-    ready_check "$HEAD" "$ALLOWED_RED_CHECK" >/dev/null
+    ready_check "$HEAD" "$ALLOWED_RED_CHECKS" >/dev/null
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
     jq --arg head "$HEAD" --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
-      --arg allowed_red "$ALLOWED_RED_CHECK" '
+      --argjson allowed_red "$ALLOWED_RED_CHECKS" '
       .generations[-1].merge_decision={decision:"merge",reviewed_head:$head,verified_head:$head,
-        verified_at:$at,verified_epoch:$epoch,allowed_red_check:(if $allowed_red == "" then null else $allowed_red end)}' \
+        verified_at:$at,verified_epoch:$epoch,
+        allowed_red_check:(if ($allowed_red | length) == 1 then $allowed_red[0] else null end),
+        allowed_red_checks:$allowed_red}' \
       "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"
     printf 'merge-decision: %s verified_head=%s verified_at=%s\n' "$URL" "$HEAD" "$(jq -r '.generations[-1].merge_decision.verified_at' "$LEDGER")"
@@ -557,11 +572,7 @@ case "$cmd" in
     ledger_valid || die 'review ledger is unavailable'
     [ "$(jq -r .task "$LEDGER")" = "$TASK" ] || die 'merge task does not match the review ledger task'
     find_merge_allowed_red "$@"
-    if [ -n "$MERGE_ALLOWED_RED" ]; then
-      "$0" merge-decision "$URL" --allowed-red-check "$MERGE_ALLOWED_RED"
-    else
-      "$0" merge-decision "$URL"
-    fi
+    "$0" merge-decision "$URL" ${MERGE_ALLOWED_RED[@]+"${MERGE_ALLOWED_RED[@]}"}
     FM_PR_REVIEW_EXPECTED_HEAD=$(jq -er '.generations[-1].merge_decision.verified_head' "$LEDGER") \
       || die 'reviewed-head merge handoff is unavailable'
     export FM_PR_REVIEW_EXPECTED_HEAD

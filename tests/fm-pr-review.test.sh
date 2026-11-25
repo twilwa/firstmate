@@ -691,7 +691,41 @@ SH
   assert_grep 'review gate: a required check is not green on this head' \
     "$TMP_ROOT/merge-forward-two-red.stderr" \
     'merge forwarding: naming one red check also waived another red check'
-  pass 'the review wrapper applies one named red-check waiver and forwards guarded options'
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-107" "$initial"
+  set +e
+  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-107" \
+    FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
+    review merge task-forward "$URL" --update-branch --allow-red lint --allow-red unit --attended-override=bad \
+      > "$TMP_ROOT/merge-forward-two-waivers.stdout" 2> "$TMP_ROOT/merge-forward-two-waivers.stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" 'merge forwarding: two named waivers should reach the merge parser'
+  assert_grep 'error: --attended-override takes no value' "$TMP_ROOT/merge-forward-two-waivers.stderr" \
+    'merge forwarding: the wrapper did not apply both named waivers'
+  [ "$(jq -c '.generations[-1].merge_decision.allowed_red_checks' "$(ledger)")" = '["lint","unit"]' ] \
+    || fail 'merge forwarding: the ledger did not record every waived check'
+
+  rm -rf "$HOME_DIR/data/pr-review-ledger"
+  FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
+  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
+  bind_final_disposition "$HEAD_A" "$URL#issuecomment-107" "$initial"
+  set +e
+  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-107" \
+    FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
+    review merge task-forward "$URL" --allow-red lint --allow-red lint --allow-red unit \
+      > "$TMP_ROOT/merge-forward-duplicate.stdout" 2> "$TMP_ROOT/merge-forward-duplicate.stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" 'merge forwarding: a duplicate waiver must refuse'
+  assert_grep "names check 'lint' more than once" "$TMP_ROOT/merge-forward-duplicate.stderr" \
+    'merge forwarding: the duplicate waiver was not reported'
+  [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$(ledger)")" != merge ] \
+    || fail 'merge forwarding: a duplicate waiver still recorded a merge decision'
+  pass 'the review wrapper applies each named red-check waiver and forwards guarded options'
 }
 
 test_merge_rejects_a_task_that_does_not_own_the_ledger() {

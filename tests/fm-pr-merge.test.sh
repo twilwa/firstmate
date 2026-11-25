@@ -4612,6 +4612,62 @@ test_github_red_checks_refuse_and_allow_red_waives_named() {
   pass "fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check"
 }
 
+# Each --allow-red occurrence waives exactly one named check; up to four may be
+# given, a named check that is already green is harmless, and any red check not
+# named still refuses.
+test_allow_red_waives_each_named_check() {
+  local case_dir rc head
+  head=a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+
+  case_dir=$(make_case github-allow-red-two)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run build COMPLETED SUCCESS)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/101 \
+    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-two: two named waivers should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 101 example/repo --squash
+
+  case_dir=$(make_case github-allow-red-three-and-green)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)" \
+    "$(check_run build COMPLETED SUCCESS)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/102 \
+    --allow-red lint --allow-red unit --allow-red e2e --allow-red build \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-three: three red waivers beside a named green check should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 102 example/repo --squash
+
+  case_dir=$(make_case github-allow-red-fourth-unnamed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)" \
+    "$(check_run docs COMPLETED FAILURE)"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/103 \
+    --allow-red lint --allow-red unit --allow-red e2e > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-allow-red-fourth-unnamed: an unnamed red check must refuse"
+  assert_grep "check 'docs' is not green" "$case_dir/stderr" \
+    "github-allow-red-fourth-unnamed: the unnamed red check was not named"
+  assert_no_grep "check 'lint' is not green" "$case_dir/stderr" \
+    "github-allow-red-fourth-unnamed: a named check was reported red"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-fourth-unnamed: gh pr merge ran with an unnamed red check"
+  pass "fm-pr-merge waives each separately named red check and still refuses an unnamed one"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -4923,6 +4979,25 @@ test_allow_red_is_refused_while_away() {
     "github-allow-red-away-after-view: late refusal did not name attended-only"
   assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "github-allow-red-away-after-view: gh pr merge ran after late away publication"
+
+  case_dir=$(make_case github-allow-red-away-several)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)"
+  write_away_record "$case_dir" --words 'merge task-x1 when green'
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/82 \
+    --allow-red lint --allow-red unit \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "github-allow-red-away-several: several waivers must be refused while away"
+  assert_grep '--allow-red is attended-only' "$case_dir/stderr" \
+    "github-allow-red-away-several: refusal did not name attended-only"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-away-several: gh pr merge ran despite away waivers"
   pass "fm-pr-merge rechecks away presence before an attended red merge"
 }
 
@@ -4948,7 +5023,7 @@ test_quiet_record_keeps_merges_attended() {
   pass "fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included"
 }
 
-test_allow_red_requires_one_separate_name() {
+test_allow_red_requires_distinct_separate_names() {
   local case_dir rc head
   head=afafafafafafafafafafafafafafafafafafafaf
 
@@ -4971,13 +5046,31 @@ test_allow_red_requires_one_separate_name() {
   write_github_red_json "$case_dir" "$head" lint
   set +e
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/88 \
-    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+    --allow-red lint --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
   expect_code 2 "$rc" "github-allow-red-duplicate: duplicate waiver must be refused"
-  assert_no_grep 'pr merge' "$case_dir/gh.log" \
-    "github-allow-red-duplicate: gh pr merge ran for duplicate waivers"
-  pass "fm-pr-merge accepts exactly one separately named red-check waiver"
+  assert_grep "--allow-red names check 'lint' more than once" "$case_dir/stderr" \
+    "github-allow-red-duplicate: the duplicate name was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "github-allow-red-duplicate: a forge call ran before the duplicate refusal: $(cat "$case_dir/gh.log")"
+
+  case_dir=$(make_case github-allow-red-five)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" lint
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/89 \
+    --allow-red a --allow-red b --allow-red c --allow-red d --allow-red lint \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "github-allow-red-five: a fifth waiver must be refused"
+  assert_grep '--allow-red may name at most 4 checks' "$case_dir/stderr" \
+    "github-allow-red-five: the waiver limit was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "github-allow-red-five: a forge call ran before the limit refusal: $(cat "$case_dir/gh.log")"
+  pass "fm-pr-merge accepts only distinct, separately named red-check waivers, at most four"
 }
 
 test_away_record_permits_a_reviewed_green_merge_under_away_authority() {
@@ -6045,7 +6138,7 @@ test_allow_missing_follows_the_allow_red_rules() {
   assert_grep '--allow-no-pipeline waives only a merge request with no head pipeline' "$case_dir/stderr" \
     "gitlab-allow-missing: the refusal did not point at the GitLab no-pipeline waiver"
   [ ! -s "$case_dir/glab.log" ] || fail "gitlab-allow-missing: glab ran despite the waiver"
-  pass "fm-pr-merge --allow-missing is single use, attended-only, and GitHub-only like --allow-red"
+  pass "fm-pr-merge --allow-missing is single use, and attended-only and GitHub-only like --allow-red"
 }
 
 test_allow_red_refused_on_forgejo() {
@@ -6232,6 +6325,7 @@ test_github_behind_update_keeps_expected_head_pin
 test_github_updated_head_failure_refuses_without_waiting_for_pending
 test_github_behind_updates_and_rechecks_before_merge
 test_github_red_checks_refuse_and_allow_red_waives_named
+test_allow_red_waives_each_named_check
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts
@@ -6244,7 +6338,7 @@ test_undated_runs_never_supersede
 test_allow_red_still_waives_only_the_current_failure
 test_allow_red_is_refused_while_away
 test_quiet_record_keeps_merges_attended
-test_allow_red_requires_one_separate_name
+test_allow_red_requires_distinct_separate_names
 test_away_record_permits_a_reviewed_green_merge_under_away_authority
 test_away_github_merge_requires_the_review_ledger_merge_decision
 test_away_review_merge_lands_only_a_ledger_that_passes_every_gate
