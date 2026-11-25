@@ -1,0 +1,57 @@
+main=817a54d0 (= change under test)
+sourced-by check: tests/fm-commandcode-harness.test.sh tests/fm-cortex-harness.test.sh tests/fm-devin-harness.test.sh 
+changed vs main: bin/fm-agent-process-lib.sh 
+
+===== S1e local --list-files, sourced helper changed
+$ bin/fm-lint.sh --list-files
+bin/fm-agent-process-lib.sh
+-> exit 0
+
+===== S1f local --changed --list-files, sourced helper changed
+$ bin/fm-lint.sh --changed --list-files
+bin/fm-agent-process-lib.sh
+-> exit 0
+
+===== S2c hosted --changed --list-files, sourced helper changed
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files
+fm-lint.sh: a sourced helper changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+-> exit 0
+
+changed vs main: bin/fm-timeout-lib.sh 
+
+===== S1g local --list-files, lint-definition fm-timeout-lib.sh changed
+$ bin/fm-lint.sh --list-files
+bin/fm-timeout-lib.sh
+-> exit 0
+
+===== S1h local --changed --list-files, lint-definition changed
+$ bin/fm-lint.sh --changed --list-files
+bin/fm-timeout-lib.sh
+-> exit 0
+
+===== S2d hosted --changed --list-files, lint-definition changed
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+-> exit 0
+
+===== S1i local run on main with no changes
+$ bin/fm-lint.sh --list-files
+
+-> exit 0
+
+===== S1j local real run on main with no changes
+$ bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: no changed lint targets
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+-> exit 0

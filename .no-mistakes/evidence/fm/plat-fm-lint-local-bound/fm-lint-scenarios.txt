@@ -1,0 +1,265 @@
+repo branch: feature head=817a54d0 main=78e5cce4
+changed vs main: .github/workflows/ci.yml CONTRIBUTING.md bin/fm-lint.sh docs/configuration.md tests/fm-ci-workflow.test.sh tests/fm-lint.test.sh 
+full canonical inventory size (hosted --list-files): 651
+
+######## S1 local run never upgrades to the full set (branch changes lint-definition bin/fm-lint.sh)
+
+===== S1a local default --list-files
+$ bin/fm-lint.sh --list-files
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+-> exit 0
+
+===== S1b local --changed --list-files
+$ bin/fm-lint.sh --changed --list-files
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+-> exit 0
+
+===== S1c bare CI=true is local
+$ env CI=true bin/fm-lint.sh --list-files
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+-> exit 0
+
+===== S1d GITHUB_ACTIONS=true without required bounds is local
+$ env GITHUB_ACTIONS=true bin/fm-lint.sh --list-files
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+-> exit 0
+
+######## S2 hosted --changed still upgrades
+
+===== S2a hosted --changed --list-files
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+bin/fm-afk-start.sh
+bin/fm-agent-process-lib.sh
+bin/fm-agy-trust.sh
+bin/fm-approval-failover.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+tests/wake-helpers.sh
+tests/watch-triage-helpers.sh
+tests/zellij-test-safety.sh
+-> exit 0
+
+===== S2b hosted no --changed (main push) --list-files
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --list-files
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+bin/fm-afk-start.sh
+bin/fm-agent-process-lib.sh
+bin/fm-agy-trust.sh
+bin/fm-approval-failover.sh
+bin/fm-arm-pretool-check.sh
+... (651 lines total; 651 lines matching ^bin/|^tests/)
+tests/wake-helpers.sh
+tests/watch-triage-helpers.sh
+tests/zellij-test-safety.sh
+-> exit 0
+
+######## S1e/S2c sourced-helper branch: only a sourced helper changed
+[NOTE: SETUP ERROR - this branch was cut from main (78e5cce4), so it ran the PRE-change fm-lint.sh; superseded by fm-lint-upgrade-scenarios.txt, which reruns S1e-S2d with the change under test.]
+changed vs main: bin/fm-timeout-lib.sh 
+
+===== S1e local --list-files on helper-only branch (old code would upgrade here)
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+bin/fm-afk-start.sh
+bin/fm-agent-process-lib.sh
+bin/fm-agy-trust.sh
+bin/fm-approval-failover.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+tests/wake-helpers.sh
+tests/watch-triage-helpers.sh
+tests/zellij-test-safety.sh
+-> exit 0
+
+===== S1f local --changed on helper-only branch
+$ bin/fm-lint.sh --changed --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+bin/fm-afk-start.sh
+bin/fm-agent-process-lib.sh
+bin/fm-agy-trust.sh
+bin/fm-approval-failover.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+tests/wake-helpers.sh
+tests/watch-triage-helpers.sh
+tests/zellij-test-safety.sh
+-> exit 0
+
+===== S2c hosted --changed on helper-only branch
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/fm-afk-contract.sh
+bin/fm-afk-launch.sh
+bin/fm-afk-return.sh
+bin/fm-afk-start.sh
+bin/fm-agent-process-lib.sh
+bin/fm-agy-trust.sh
+bin/fm-approval-failover.sh
+... (652 lines total; 651 lines matching ^bin/|^tests/)
+tests/wake-helpers.sh
+tests/watch-triage-helpers.sh
+tests/zellij-test-safety.sh
+-> exit 0
+
+######## S3/S5 local real lint: per-root cap applied, workers at nice 10, default one worker
+
+===== S3a local real lint of changed roots with telemetry
+$ bin/fm-lint.sh --telemetry /tmp/fmlint-lab.3hfoF8/t1.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+-> exit 0
+--- shim observations (inside real ShellCheck processes):
+shellcheck pid=3448652 nice=10 ulimit_v_kib=12582912 args_last=tests/fm-lint.test.sh
+shellcheck pid=3456450 nice=10 ulimit_v_kib=12582912 args_last=bin/fm-lint.sh
+shellcheck pid=3458624 nice=10 ulimit_v_kib=12582912 args_last=tests/fm-ci-workflow.test.sh
+--- telemetry excerpt:
+jobs	1
+root_timing_mechanism	perl
+
+===== S3b local lint with a 64 MiB per-root cap -> root exceeds its cap
+$ env FM_LINT_ROOT_MEMORY_KIB=65536 bin/fm-lint.sh bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: end bin/fm-lint.sh reason=memory rc=251 duration_ms=1938 rss_kib=50560
+fm-lint: bin/fm-lint.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback reason=memory rc=251
+shellcheck: out of memory
+-> exit 251
+--- shim observations:
+shellcheck pid=3465345 nice=10 ulimit_v_kib=65536 args_last=bin/fm-lint.sh
+shellcheck pid=3466625 nice=10 ulimit_v_kib=65536 args_last=bin/fm-lint.sh
+
+===== S5b hosted bounded lint of one root (contrast: no nice)
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh bin/fm-timeout-lib.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+-> exit 0
+--- shim observations:
+shellcheck pid=3471030 nice=0 ulimit_v_kib=12582912 args_last=bin/fm-timeout-lib.sh
+
+######## S4 local memory budget
+
+===== S4a explicit --jobs 2 under default 16 GiB budget refuses
+$ bin/fm-lint.sh --jobs 2
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+-> exit 2
+
+===== S4b FM_LINT_JOBS=2 refuses
+$ env FM_LINT_JOBS=2 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+-> exit 2
+
+===== S4c raised budget 24 GiB allows --jobs 2
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 bin/fm-lint.sh --jobs 2 --telemetry /tmp/fmlint-lab.3hfoF8/t2.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+-> exit 0
+jobs	2
+
+===== S4d per-root cap above budget refuses
+$ env FM_LINT_ROOT_MEMORY_KIB=20971520 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=20971520 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16.
+-> exit 2
+
+===== S4e smaller cap 6 GiB lets default 2 workers fit
+$ env FM_LINT_ROOT_MEMORY_KIB=6291456 bin/fm-lint.sh --telemetry /tmp/fmlint-lab.3hfoF8/t3.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+-> exit 0
+jobs	2
+
+===== S4f malformed budget refuses
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=0 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 0.
+-> exit 2
+
+===== S4g huge budget refuses
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=99999999 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 99999999.
+-> exit 2
+
+######## S6 host that cannot apply ulimit -v (hard RLIMIT_AS 8 GiB < 12 GiB cap)
+
+===== S6a local --partition 1of4 refuses uncapped full canonical lint
+$ prlimit --as=8589934592 bin/fm-lint.sh --partition 1of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+-> exit 2
+
+===== S6b local changed-file lint notes and runs unbounded
+$ prlimit --as=8589934592 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+-> exit 0
+
+===== S6c hosted required-bounds refuses too
+$ prlimit --as=8589934592 env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --partition 1of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: bounds required but per-root memory limit FM_LINT_ROOT_MEMORY_KIB=12582912 KiB is not enforceable on this host (ulimit -v).
+fm-lint.sh: refusing to lint uncapped under FM_LINT_REQUIRE_BOUNDS=1.
+-> exit 2
+
+######## S7 no changed set computable -> refuse, never full set
+
+===== S7a no merge-base (no main / origin/main)
+$ bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (no merge-base against origin/main or main); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+-> exit 2
+
+===== S7b no merge-base --list-files
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: cannot compute a local changed-file set (no merge-base against origin/main or main); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+-> exit 2
+
+===== S7c outside a Git work tree
+$ env GIT_CEILING_DIRECTORIES=/tmp/fmlint-lab.3hfoF8 bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (not inside a Git work tree); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+-> exit 2
+
+######## S8 failed diff refuses instead of empty lint
+
+===== S8a corrupt index
+$ bin/fm-lint.sh
+fm-lint.sh: git diff against merge-base 78e5cce465b436e42f40750237e1ff85ad1a1c8b failed (exit 128), so the changed lint targets are unknown; refusing to report an empty lint. Repair the repository state (see git status) and rerun.
+fm-lint.sh: git: fatal: .git/index: index file smaller than expected
+-> exit 2
+
+######## S9 hosted partitions cover the full inventory
+hosted partition union=651 local partition --list-files union=651 full=651
