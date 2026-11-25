@@ -7,9 +7,9 @@
 # both use this owner without duplicating lint configuration.
 # The explicit --fast mode is local-only and disables ShellCheck's extended
 # dataflow analysis while preserving ordinary shell lint checks and source
-# following. CI, main, merge-base-less runs, and any run upgraded to the full
-# canonical set attempt --norc --external-sources with full dataflow for each
-# canonical root. An ordinary local branch that stays in changed-file mode
+# following. CI, main, merge-base-less runs, and any CI run upgraded to the
+# full canonical set attempt --norc --external-sources with full dataflow for
+# each canonical root. An ordinary local branch that stays in changed-file mode
 # (including the no-mistakes lint step) drops --external-sources, keeps
 # dataflow, and excludes SC1091, SC2034, SC2153, and SC2329, the codes that
 # need library context. CI checks those codes
@@ -31,7 +31,8 @@
 #     the narrower retry below.
 #   - --changed (CI pull requests) lints only the canonical-set files changed
 #     since the merge-base, still with --external-sources and full dataflow, so
-#     the PR gate stays source-aware on the files it checks.
+#     the PR gate stays source-aware on the files it checks. Outside hosted
+#     CI, --changed keeps that source-aware changed set but never upgrades.
 #   - Otherwise (an ordinary local branch with a real merge-base) it lints
 #     only the canonical-set files changed since that merge-base, including
 #     uncommitted local edits, via plain local `git diff` (no network, no
@@ -39,14 +40,14 @@
 #     SC2034, SC2153, and SC2329. A branch with zero matching changed files
 #     skips ShellCheck and prints a "no changed lint targets" note, then
 #     still runs the backend-purity check and validates workflows.
-#   - Both changed-file modes (--changed and the ordinary local branch)
-#     upgrade to the full canonical, source-aware set above when a
-#     lint-definition file changed (including a delete or rename of
-#     fm-lint.sh, fm-lint-workflows.sh, a pinned installer, or
-#     fm-timeout-lib.sh), or when a changed, deleted, or renamed file is
-#     sourced by another canonical script (via `# shellcheck source=` on the
-#     merge-base tree). Locally that turns the no-mistakes lint step into the
-#     full gate, which is much slower than the changed-file pass.
+#   - Only hosted CI's --changed run upgrades to the full canonical,
+#     source-aware set above when a lint-definition file changed (including a
+#     delete or rename of fm-lint.sh, fm-lint-workflows.sh, a pinned
+#     installer, or fm-timeout-lib.sh), or when a changed, deleted, or renamed
+#     file is sourced by another canonical script (via `# shellcheck source=`
+#     on the merge-base tree). Local runs, including the no-mistakes lint step
+#     and a worker's own lint, never take that upgrade: the source-following
+#     full set needs many GiB per root and exhausts a shared dev host.
 # Explicit paths always bypass this file-set selection and lint exactly the
 # given paths, matching the same config, without the workflow YAML check.
 # Explicit core bin/ and bin/backends/ scripts still receive the
@@ -84,10 +85,12 @@
 # removes the owned process group. Bounds mode proves the watchdog can
 # actually bound a probe command and that the host accepts the memory limit
 # BEFORE any root starts; when either check fails the run refuses with a
-# named error, so a required-bounds run never lints uncapped. Without
-# FM_LINT_REQUIRE_BOUNDS (a local developer lint, where hosts like macOS
-# cannot apply the address-space limit at all) each root still runs in its
-# own ShellCheck process with identical diagnostics, just unbounded.
+# named error, so a required-bounds run never lints uncapped. A local run
+# (outside hosted CI) without FM_LINT_REQUIRE_BOUNDS applies the same
+# envelope whenever the host accepts ulimit -v and the watchdog runs; a host
+# that cannot (macOS rejects the address-space limit) prints one note and lints
+# each root unbounded in its own ShellCheck process with identical
+# diagnostics. Local lint workers run under nice -n 10.
 #
 # If a source-following root exits with a memory failure, it is retried once
 # without --external-sources under the same memory limit and only the time
@@ -844,7 +847,14 @@ case "$PARTITION" in
   *) fm_lint_partition_refuse "$PARTITION" ;;
 esac
 
-if [ "$FAST" -eq 1 ] && { [ "${GITHUB_ACTIONS:-}" = true ] || [ "${CI:-}" = true ]; }; then
+# A local run is any run outside hosted CI: a developer lint, the no-mistakes
+# gate, or a worker's own lint. Local runs never take the full-set upgrade,
+# apply the per-root bounds when the host can, and run workers at low priority.
+LOCAL_RUN=1
+if [ "${GITHUB_ACTIONS:-}" = true ] || [ "${CI:-}" = true ]; then
+  LOCAL_RUN=0
+fi
+if [ "$FAST" -eq 1 ] && [ "$LOCAL_RUN" -eq 0 ]; then
   printf 'fm-lint.sh: --fast is local-only; CI uses full ShellCheck analysis.\n' >&2
   exit 2
 fi
@@ -1007,7 +1017,7 @@ else
   want_changed=0
   if [ "$FORCE_CHANGED" -eq 1 ]; then
     want_changed=1
-  elif [ -z "$PARTITION" ] && [ "${GITHUB_ACTIONS:-}" != true ] && [ "${CI:-}" != true ] \
+  elif [ -z "$PARTITION" ] && [ "$LOCAL_RUN" -eq 1 ] \
     && command -v git >/dev/null 2>&1 \
     && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
     && [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]; then
@@ -1017,14 +1027,17 @@ else
     base_ref=$(fm_lint_changed_base_ref) || base_ref=
     [ -z "$base_ref" ] || merge_base=$(git merge-base "$base_ref" HEAD 2>/dev/null) || merge_base=
     if [ -n "$merge_base" ]; then
-      if fm_lint_definition_changed "$merge_base"; then
+      # Only hosted CI's --changed run upgrades; a local run keeps its changed
+      # files because the full source-following set exhausts dev-host memory.
+      full_lint=0
+      may_upgrade=0
+      [ "$FORCE_CHANGED" -eq 0 ] || [ "$LOCAL_RUN" -eq 1 ] || may_upgrade=1
+      if [ "$may_upgrade" -eq 1 ] && fm_lint_definition_changed "$merge_base"; then
         printf 'fm-lint.sh: lint definition files changed; using full canonical lint\n' >&2
         full_lint=1
-      elif fm_lint_sourced_helper_changed "$merge_base"; then
+      elif [ "$may_upgrade" -eq 1 ] && fm_lint_sourced_helper_changed "$merge_base"; then
         printf 'fm-lint.sh: a sourced helper changed; using full canonical lint\n' >&2
         full_lint=1
-      else
-        full_lint=0
       fi
     elif [ "$FORCE_CHANGED" -eq 1 ]; then
       printf 'fm-lint.sh: --changed needs a merge-base against origin/main or main.\n' >&2
@@ -1737,8 +1750,8 @@ fi
 # Per-root bounded-execution envelope. Under FM_LINT_REQUIRE_BOUNDS=1 the
 # watchdog is probed and the host's acceptance of ulimit -v is checked before
 # any root starts; failed checks refuse with a named error. A required-bounds run
-# never lints uncapped. Without it each root still runs alone in its own
-# ShellCheck process, unbounded, for local developer lint.
+# never lints uncapped. Without it a local run applies the envelope when the
+# host can and otherwise notes once and runs each root unbounded.
 ROOT_SECONDS=${FM_LINT_ROOT_SECONDS:-1200}
 ROOT_GRACE=${FM_LINT_ROOT_GRACE:-5}
 # 12 GiB of virtual address space per analysis process. ulimit -v caps
@@ -1807,6 +1820,21 @@ if [ "$ROOT_COUNT" -gt 0 ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
     printf 'fm-lint.sh: refusing to lint uncapped under FM_LINT_REQUIRE_BOUNDS=1.\n' >&2
     exit 2
   fi
+elif [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
+  # Best effort locally: bound every root when the host can, else note once
+  # and lint unbounded as before.
+  if declare -F fm_exec_timed >/dev/null 2>&1 \
+    && ( fm_exec_timed 30 1 true ) >/dev/null 2>&1 \
+    && ( ulimit -v "$ROOT_MEMORY_KIB" ) 2>/dev/null; then
+    BOUND_MECH=perl
+  else
+    printf 'fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.\n' >&2
+  fi
+fi
+
+WORKER_NICE=()
+if [ "$LOCAL_RUN" -eq 1 ] && NICE_BIN=$(type -P nice); then
+  WORKER_NICE=("$NICE_BIN" -n 10)
 fi
 
 PROGRESS=0
@@ -1968,19 +1996,19 @@ fm_lint_run_worker() {  # <worker-index>
   if [ -n "$TELEMETRY" ] && [ -x /usr/bin/time ]; then
     if [ "$(uname)" = Darwin ]; then
       exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-        /usr/bin/time -lp -o "$timing" \
+        ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} /usr/bin/time -lp -o "$timing" \
         env "${worker_env[@]}" \
         "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
     else
       exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-        /usr/bin/time -f 'wall_seconds=%e\nuser_seconds=%U\nsystem_seconds=%S\nmax_rss_kib=%M' -o "$timing" \
+        ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} /usr/bin/time -f 'wall_seconds=%e\nuser_seconds=%U\nsystem_seconds=%S\nmax_rss_kib=%M' -o "$timing" \
         env "${worker_env[@]}" \
         "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
     fi
   else
     [ -z "$TELEMETRY" ] || printf 'timing_unavailable=1\n' > "$timing"
     exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-      env "${worker_env[@]}" \
+      ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} env "${worker_env[@]}" \
       "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
   fi
 }

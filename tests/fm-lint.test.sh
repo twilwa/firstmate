@@ -1084,6 +1084,83 @@ test_changed_flag_upgrades_when_a_lint_definition_is_renamed() {
   pass "fm-lint.sh --changed upgrades to full lint when a lint definition file is renamed"
 }
 
+# Only hosted CI's --changed run may upgrade to the full source-following set;
+# a local branch run (the no-mistakes gate, a worker's own lint) keeps the
+# changed files, because the full set needs many GiB per root on a dev host.
+test_local_mode_never_upgrades_to_the_full_set() {
+  local tmp fakebin listed diff_file changed flag
+  tmp=$(fm_test_tmproot fm-lint-local-no-upgrade)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  diff_file="$tmp/diff.nul"
+  for changed in bin/fm-wake-lib.sh bin/fm-lint.sh; do
+    for flag in '' --changed; do
+      fm_lint_write_diff_file "$diff_file" "$changed" "README.md"
+      listed=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' \
+        FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
+        "$LINT" ${flag:+"$flag"} --list-files 2>"$tmp/err")
+      [ "$listed" = "$changed" ] \
+        || fail "a local ${flag:-default} run changing $changed did not stay on the changed file"$'\n'"listed: $(printf '%s\n' "$listed" | head -3)"
+      assert_not_contains "$(cat "$tmp/err")" "using full canonical lint" \
+        "a local ${flag:-default} run changing $changed announced the full-set upgrade"
+    done
+  done
+  pass "fm-lint.sh local runs keep changed files when a sourced helper or lint tooling changes"
+}
+
+# A local run applies the per-root address-space cap without
+# FM_LINT_REQUIRE_BOUNDS: a source-following root that allocates past the cap
+# is stopped by it and retried without sources, and workers run deprioritized.
+test_local_run_cannot_exceed_the_memory_cap() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounded envelope): local memory-cap check"
+    return
+  fi
+  local tmp fakebin fixture out rc roots_log nice_log base_nice expected_nice
+  tmp=$(fm_test_tmproot fm-lint-local-cap)
+  fakebin=$(fm_fakebin "$tmp")
+  fixture="$tmp/heavy.sh"
+  roots_log="$tmp/lint.roots.tsv"
+  nice_log="$tmp/nice.log"
+  printf '#!/usr/bin/env bash\n# shellcheck source=lib.sh\nexit 0\n' > "$fixture"
+  cat > "$fakebin/shellcheck" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+  printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
+  exit 0
+fi
+nice >> "$FM_TEST_NICE_LOG"
+for arg in "$@"; do
+  [ "$arg" = --external-sources ] || continue
+  alloc_err=$(perl -e 'my $s = ""; for (1..512) { $s .= "x" x 1048576 }' 2>&1 >/dev/null) \
+    || { printf '%s\n' "$alloc_err" >&2; exit 251; }
+  printf 'allocated past the cap\n' >&2
+  exit 3
+done
+exit 0
+SH
+  chmod +x "$fakebin/shellcheck"
+  base_nice=$(nice)
+  expected_nice=$((base_nice + 10))
+  [ "$expected_nice" -le 19 ] || expected_nice=19
+
+  rc=0
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' \
+    FM_LINT_JOBS=1 FM_LINT_ROOT_MEMORY_KIB=262144 FM_TEST_NICE_LOG="$nice_log" \
+    "$LINT" --telemetry "$tmp/lint.tsv" "$fixture" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "a local over-cap root was not stopped and retried cleanly (exit $rc)"$'\n'"$out"
+  assert_not_contains "$out" "allocated past the cap" "a local root allocated past the memory cap"
+  assert_contains "$out" "hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it" \
+    "the local over-cap root was not retried without sources"
+  assert_grep $'meta\tbounds_enforced\t1' "$roots_log" "the local run did not enforce bounds"
+  assert_grep $'meta\troot_memory_limit_kib\t262144' "$roots_log" "the local run did not apply the memory cap"
+  awk -F '\t' '$1 == "end" && $3 ~ /heavy\.sh$/ && $10 == "memory-fallback" { found=1 } END { exit !found }' \
+    "$roots_log" || fail "the local over-cap root was not recorded as a memory fallback"
+  [ "$(LC_ALL=C sort -u "$nice_log")" = "$expected_nice" ] \
+    || fail "local lint workers did not run at niceness $expected_nice"$'\n'"seen: $(cat "$nice_log")"
+  pass "a local run cannot exceed the per-root memory cap and runs its workers at low priority"
+}
+
 test_installer_skips_download_when_pinned_binary_is_present() {
   local tmp fakebin destination out
   tmp=$(fm_test_tmproot fm-shellcheck-cached)
@@ -1760,10 +1837,10 @@ test_root_memory_limit_reports_a_named_death() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$hoarder"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$ok"
 
-  # Control: with no memory limit the same allocator succeeds, so a memory
-  # death below can only come from the enforced cap.
+  # Control: with no memory limit (CI without required bounds) the same
+  # allocator succeeds, so a memory death below can only come from the cap.
   rc=0
-  out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 \
     FM_TEST_STUB_LOG="$stub_log" \
     "$LINT" --telemetry "$tmp/control.tsv" "$ok" "$hoarder" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "the allocator failed without any memory limit"$'\n'"$out"
@@ -1835,7 +1912,8 @@ SH
   for mode in "${modes[@]}"; do
     : > "$log"
     rc=0
-    out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS="$mode" \
+    # CI without required bounds is the unbounded mode; local runs bound.
+    out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS="$mode" \
       FM_TEST_FALLBACK_LOG="$log" "$LINT" --telemetry "$tmp/pass.$mode.tsv" "$fixture" 2>&1) || rc=$?
     [ "$rc" -eq 0 ] || fail "a clean no-source fallback did not pass (bounded=$mode)"$'\n'"$out"
     assert_grep $'source_directives\t1' "$tmp/pass.$mode.tsv" "telemetry lost the root's source directive"
@@ -2199,7 +2277,7 @@ test_roots_sidecar_records_per_root_lifecycle() {
   printf '#!/usr/bin/env bash\nexit 0\n' > "$gamma"
 
   rc=0
-  out=$(PATH="$fakebin:$PATH" FM_TEST_STUB_LOG="$stub_log" \
+  out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_TEST_STUB_LOG="$stub_log" \
     "$LINT" --telemetry "$telemetry" "$alpha" "$beta" "$gamma" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "a clean bounded run failed"$'\n'"$out"
   [ -f "$roots_log" ] || fail "the run wrote no per-root sidecar beside telemetry"
@@ -2346,5 +2424,7 @@ test_changed_flag_upgrades_when_a_sourced_helper_changes
 test_changed_flag_upgrades_when_a_sourced_helper_is_deleted
 test_changed_flag_upgrades_when_a_sourced_helper_is_renamed
 test_changed_flag_upgrades_when_a_lint_definition_is_renamed
+test_local_mode_never_upgrades_to_the_full_set
+test_local_run_cannot_exceed_the_memory_cap
 test_empty_changed_partition_is_a_successful_noop
 test_local_exclusion_list_covers_every_no_external_sources_code
