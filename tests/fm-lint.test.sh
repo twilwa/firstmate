@@ -204,8 +204,14 @@ test_canonical_partitions_preserve_full_lint() {
     assert_grep $'jobs\t1' "$tmp/$part.tsv" "partition $part must default to sequential workers"
     [ "$(LC_ALL=C sort "$log")" = "$(printf '%s\n' "$selected" | LC_ALL=C sort)" ] \
       || fail "partition $part executed a different root set than it listed"
-    [ "$(LC_ALL=C sort -u "$flags")" = "$(printf 'exclude=none\nexternal-sources=yes')" ] \
-      || fail "partition $part weakened source-aware analysis"
+    # Only roots the run discloses as known memory-ceiling roots may skip
+    # source following, and only with the memory retry's flags.
+    paste "$log" <(paste - - < "$flags") > "$tmp/$part.calls"
+    [ "$(awk -F '\t' '$2 != "external-sources=yes" || $3 != "exclude=none" { print $1 }' "$tmp/$part.calls" | LC_ALL=C sort)" \
+      = "$(sed -n 's/^fm-lint: \(.*\) is a known memory-ceiling root; .*/\1/p' "$tmp/$part.out" | LC_ALL=C sort)" ] \
+      || fail "partition $part weakened source-aware analysis beyond its disclosed known-heavy roots"
+    awk -F '\t' '$2 != "external-sources=yes" && ($2 != "external-sources=no" || $3 != "exclude=SC1091,SC2034,SC2153,SC2329") { bad=1 } END { exit bad }' \
+      "$tmp/$part.calls" || fail "partition $part linted a known-heavy root with other than the memory retry's flags"
     [ "$(LC_ALL=C sort -u "$mode")" = on ] || fail "partition $part disabled full analysis"
     root_count=$(printf '%s\n' "$selected" | grep -c .)
     invocation_count=$(grep -c '^external-sources=' "$flags" || true)
@@ -2408,6 +2414,74 @@ SH
   pass "a memory fallback runs only within the time left in its root's original deadline"
 }
 
+test_known_heavy_roots_skip_the_failing_source_attempt() {
+  if ! fm_lint_bounds_supported; then
+    pass "SKIP (host cannot enforce the bounded envelope): known-heavy root check"
+    return
+  fi
+  local tmp fakebin repo log out rc heavy_args retry_args
+  tmp=$(fm_test_tmproot fm-lint-known-heavy)
+  fakebin=$(fm_fakebin "$tmp")
+  mkdir -p "$tmp/repo/bin"
+  repo=$(cd "$tmp/repo" && pwd -P)
+  cp "$LINT" "$ROOT/bin/fm-timeout-lib.sh" "$repo/bin/"
+  log="$tmp/attempts.log"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-spawn.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-new-heavy.sh"
+  cat > "$fakebin/shellcheck" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+  printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
+  exit 0
+fi
+args=
+follow=no
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
+  args="$args $1"
+  [ "$1" != --external-sources ] || follow=yes
+  shift
+done
+printf '%s\t%s\n' "${2##*/}" "${args# }" >> "$FM_TEST_ATTEMPT_LOG"
+if [ "$follow" = yes ]; then
+  printf 'shellcheck: Heap exhausted;\n' >&2
+  exit 251
+fi
+exit 0
+SH
+  chmod +x "$fakebin/shellcheck"
+
+  : > "$log"
+  rc=0
+  out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS=1 FM_TEST_ATTEMPT_LOG="$log" \
+    "$repo/bin/fm-lint.sh" --telemetry "$tmp/run.tsv" "$repo/bin/fm-spawn.sh" "$repo/bin/fm-new-heavy.sh" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "known-heavy and retried roots did not pass (exit $rc)"$'\n'"$out"
+  [ "$(grep -c '^fm-spawn\.sh' "$log")" -eq 1 ] \
+    || fail "the known-heavy root did not run exactly once"$'\n'"$(cat "$log")"
+  heavy_args=$(awk -F '\t' '$1 == "fm-spawn.sh" { print $2 }' "$log")
+  retry_args=$(awk -F '\t' '$1 == "fm-new-heavy.sh" { last = $2 } END { print last }' "$log")
+  [ "$(grep -c '^fm-new-heavy\.sh' "$log")" -eq 2 ] \
+    || fail "an unlisted root past the ceiling lost its source attempt and retry"$'\n'"$(cat "$log")"
+  [ "$heavy_args" = "$retry_args" ] \
+    || fail "the known-heavy root did not run with the memory retry's exact flags"$'\n'"$(cat "$log")"
+  assert_contains "$heavy_args" "--exclude=SC1091,SC2034,SC2153,SC2329" \
+    "the known-heavy root did not exclude the cross-file codes"
+  assert_contains "$out" "bin/fm-spawn.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)" \
+    "the known-heavy no-source run was not disclosed"
+  awk -F '\t' '$1 == "end" && $3 ~ /fm-spawn\.sh$/ && $9 == 0 && $10 == "known-heavy" && $12 == 0 { found=1 } END { exit !found }' \
+    "$tmp/run.roots.tsv" || fail "the known-heavy root was not recorded as a no-source pass"
+  awk -F '\t' '$1 == "end" && $3 ~ /fm-new-heavy\.sh$/ && $10 == "memory-fallback" { found=1 } END { exit !found }' \
+    "$tmp/run.roots.tsv" || fail "the unlisted root did not take the memory retry"
+
+  : > "$log"
+  rc=0
+  out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS=1 FM_TEST_ATTEMPT_LOG="$log" \
+    FM_LINT_ROOT_MEMORY_KIB=16777216 FM_LINT_LOCAL_MEMORY_BUDGET_GIB=32 \
+    "$repo/bin/fm-lint.sh" "$repo/bin/fm-spawn.sh" 2>&1) || rc=$?
+  [ "$(head -n1 "$log")" = "$(printf 'fm-spawn.sh\t--norc --external-sources')" ] \
+    || fail "a cap above the measured ceiling skipped the known-heavy root's source attempt"$'\n'"$(cat "$log")"$'\n'"$out"
+  pass "known-heavy roots lint directly in the memory retry's no-source mode while unlisted roots keep the retry"
+}
+
 test_memory_evidence_outranks_findings_and_signal_reasons() {
   local tmp fakebin roots_log out rc name reason bounded
   local -a roots modes
@@ -2780,6 +2854,7 @@ test_root_deadline_names_the_root_and_reaps_the_tree
 test_root_memory_limit_reports_a_named_death
 test_memory_failure_retries_without_external_sources
 test_memory_fallback_spends_only_the_remaining_root_deadline
+test_known_heavy_roots_skip_the_failing_source_attempt
 test_memory_evidence_outranks_findings_and_signal_reasons
 test_source_excerpt_with_oom_text_stays_findings
 test_require_bounds_refuses_when_enforcement_is_missing

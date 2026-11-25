@@ -151,11 +151,12 @@ The test-lane budget sits above the portable tier rule's 1440-second window on p
 
 ## Lint partitions and end-to-end latency
 
-`bin/fm-lint.sh` owns four canonical CI partitions, each attempting full source-aware ShellCheck analysis with one worker by default and running workflow validation and backend-purity checks.
+`bin/fm-lint.sh` owns four canonical CI partitions, each attempting full source-aware ShellCheck analysis on every root but the header's known-heavy list with one worker by default and running workflow validation and backend-purity checks.
 Partition packing is longest-first over measured per-root durations in `fm_lint_root_duration_hints`, refreshed from the `*.roots.tsv` telemetry sidecars uploaded as `fm-lint-telemetry-*` artifacts; a root without a measurement packs on `FM_LINT_DEFAULT_ROOT_WEIGHT_MS`.
-The current table was refreshed on 2026-10-29 from the sidecars of the same four main runs as the serial hints: [40664798225](https://github.com/twilwa/firstmate/actions/runs/40664798225), [40673507764](https://github.com/twilwa/firstmate/actions/runs/40673507764), [40703025845](https://github.com/twilwa/firstmate/actions/runs/40703025845), and [40796972623](https://github.com/twilwa/firstmate/actions/runs/40796972623).
-Each value is the root's slowest completed duration across them: an `end` record with rc 0 and reason `ok` or `memory-fallback`, because a fallback root's real cost includes its retry.
-All 560 canonical roots have a sample.
+The current table was refreshed on 2026-11-25 from the sidecars of four full-set runs: [45668223859](https://github.com/twilwa/firstmate/actions/runs/45668223859), [45544062045](https://github.com/twilwa/firstmate/actions/runs/45544062045), [45529459572](https://github.com/twilwa/firstmate/actions/runs/45529459572), and [45532696616](https://github.com/twilwa/firstmate/actions/runs/45532696616).
+Each value is the root's median completed duration across them: an `end` record with rc 0 and reason `ok` or `memory-fallback`; the median keeps one slow runner from inflating a root's weight.
+A known-heavy root (the script header owns that list) skips its source-following attempt, so its value is that median scaled by its sandboxed no-source share of both attempts until telemetry records it running alone.
+All 651 canonical roots have a sample.
 The smaller root sets and sequential workers limit peak ShellCheck memory without dropping any checks.
 Pull requests pass `--changed` so only the canonical-set files changed since the merge-base are analyzed, still with `--external-sources` and full dataflow.
 A change to lint definition files (`bin/fm-lint.sh`, `bin/fm-lint-workflows.sh`, the pinned installers, or `bin/fm-timeout-lib.sh`), including a delete or rename of any of those paths, upgrades that PR to the full canonical set.
@@ -163,7 +164,7 @@ A change to a file that another canonical script sources, found from `# shellche
 A delete or rename of that helper counts, including the old path of a rename.
 Main pushes keep the full canonical gate.
 CI caches the pinned ShellCheck and actionlint binaries and skips the download when the pin is already present.
-CI requires its per-root bounds, so an unenforceable deadline or address-space limit refuses lint rather than running uncapped; the script header owns the envelope, per-root execution contract, and memory fallback.
+CI requires its per-root bounds, so an unenforceable deadline or address-space limit refuses lint rather than running uncapped; the script header owns the envelope, per-root execution contract, memory fallback, and known-heavy list.
 Its `--list-files` interface exposes partition membership; `tests/fm-lint.test.sh` verifies complete/disjoint executed roots, `--changed` source-aware analysis, definition-file upgrades, and fallback reporting.
 The workflow uploads each partition's quiet telemetry plus its per-root lifecycle sidecar to distinguish analysis cost, memory use, and host contention.
 No fast mode or paid runner provisioning is part of this layout.
