@@ -1,0 +1,27 @@
+$ FM_LINT_ROOT_MEMORY_KIB=262144 bin/fm-lint.sh --telemetry cap.tsv tests/fm-lint.test.sh   # local run, real ShellCheck 0.11.0, 256 MiB per-root cap
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: end tests/fm-lint.test.sh reason=memory rc=251 duration_ms=6362 rss_kib=181632
+fm-lint: tests/fm-lint.test.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback reason=memory rc=251
+shellcheck: out of memory
+exit=251
+--- roots log (cap.roots.tsv)
+format	fm-lint-roots-v1
+meta	shellcheck_version	0.11.0
+meta	platform	Linux x86_64
+meta	image_os	unknown
+meta	image_version	unknown
+meta	mode	full
+meta	partition	all
+meta	jobs	2
+meta	bounds_enforced	1
+meta	root_deadline_seconds	1200
+meta	root_kill_grace_seconds	5
+meta	root_memory_limit_kib	262144
+meta	timing_mechanism	perl
+begin	1	tests/fm-lint.test.sh	0	full	1795622845510
+end	1	tests/fm-lint.test.sh	0	full	1795622845510	1795622851872	6362	251	memory	181632	0
+meta	roots_begun	1
+meta	roots_completed	1
+meta	roots_unfinished	0
+meta	result_exit	251

@@ -1,0 +1,16 @@
+$ bin/fm-lint.sh --telemetry default.tsv   # local default run (what the no-mistakes lint step runs), real ShellCheck
+--- ps sample during run (pid ni rss args):
+2307646  10 45540 ~/.local/bin/shellcheck --norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-ci-workflow.test.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+--- roots log meta
+meta	jobs	1
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	12582912
+end	3	tests/fm-lint.test.sh	0	local	1795622861495	1795622866400	4905	0	ok	293248	0
+end	1	bin/fm-lint.sh	1	local	1795622866426	1795622869512	3086	0	ok	337280	0
+end	2	tests/fm-ci-workflow.test.sh	1	local	1795622869514	1795622870591	1077	0	ok	59776	0
+meta	result_exit	0

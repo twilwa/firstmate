@@ -1,0 +1,51 @@
+## Budget (workers x per-root cap <= FM_LINT_LOCAL_MEMORY_BUDGET_GIB, default 16)
+$ bin/fm-lint.sh --jobs 2 bin/fm-lint.sh        # 2 x 12 GiB > 16 GiB default
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+$ FM_LINT_JOBS=2 bin/fm-lint.sh bin/fm-lint.sh  # env worker count
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+$ FM_LINT_ROOT_MEMORY_KIB=20971520 bin/fm-lint.sh bin/fm-lint.sh  # 20 GiB cap > 16 GiB budget
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=20971520 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16.
+exit=2
+$ FM_LINT_LOCAL_MEMORY_BUDGET_GIB=0 bin/fm-lint.sh bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 0.
+exit=2
+$ FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 bin/fm-lint.sh --jobs 2 --telemetry budget24.tsv tests/fm-ci-workflow.test.sh  # raised named budget admits 2 workers
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+exit=0
+meta	jobs	2
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	12582912
+
+## Uncappable host (hard RLIMIT_AS 8 GiB, so ulimit -v 12 GiB cannot apply)
+$ prlimit --as=8GiB:8GiB bin/fm-lint.sh --partition 1of4   # local full canonical partition
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+exit=2
+$ prlimit ... FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 bin/fm-lint.sh --partition 1of4   # override cannot unlock full set
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+exit=2
+$ prlimit ... bin/fm-lint.sh   # local changed-file default
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing to lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI, or set FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 to accept an unbounded local run.
+exit=2
+$ prlimit ... GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --partition 1of4   # hosted required bounds
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: bounds required but per-root memory limit FM_LINT_ROOT_MEMORY_KIB=12582912 KiB is not enforceable on this host (ulimit -v).
+fm-lint.sh: refusing to lint uncapped under FM_LINT_REQUIRE_BOUNDS=1.
+exit=2

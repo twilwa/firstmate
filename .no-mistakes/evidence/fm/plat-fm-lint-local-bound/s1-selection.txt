@@ -1,0 +1,25 @@
+$ env -u CI -u GITHUB_ACTIONS bin/fm-lint.sh --list-files   # local default, branch changes bin/fm-lint.sh (lint-definition file)
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+exit=0
+
+$ env -u CI -u GITHUB_ACTIONS bin/fm-lint.sh --changed --list-files   # local --changed
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+exit=0
+
+$ CI=true bin/fm-lint.sh --changed --list-files   # bare CI=true is still local
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+exit=0
+
+$ GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files | wc -l   # hosted --changed upgrades
+fm-lint.sh: lint definition files changed; using full canonical lint
+651
+exit=0
+
+$ git ls-files bin/*.sh bin/backends/*.sh tests/*.sh | wc -l   # independent canonical count
+651

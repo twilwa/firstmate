@@ -1,0 +1,10 @@
+$ (exported tree, not a Git work tree) bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (not inside a Git work tree); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+exit=2
+$ (exported tree) bin/fm-lint.sh --list-files
+fm-lint.sh: cannot compute a local changed-file set (not inside a Git work tree); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+exit=2
+
+$ (fresh repo on main, sourced helper bin/fm-timeout-lib.sh edited, uncommitted) bin/fm-lint.sh --list-files
+bin/fm-timeout-lib.sh
+exit=0

@@ -26,4 +26,43 @@ ok - jobs=1 and jobs=2 stop complete worker trees with and without telemetry
 ok - a root pinned at the wall deadline fails by name, reaps its tree, and leaves the sentinel alive
 ok - a root refused by its enforced memory limit fails by name with a memory reason
 ok - memory failures retry without source following, exclude cross-file codes, and preserve a real fallback finding
-STOPPED: focused suite interrupted by the gate's structured-output deadline before completion (no failures recorded up to this point)
+ok - a memory fallback runs only within the time left in its root's original deadline
+ok - explicit memory evidence outranks findings and signal reasons (modes: 0 1)
+ok - OOM words in a source excerpt or a root path never classify a root as memory
+ok - FM_LINT_REQUIRE_BOUNDS refuses missing enforcement and proceeds when enforceable
+ok - the pinned ShellCheck both respects and survives under the memory envelope
+ok - the roots sidecar and telemetry record the run's final exit status
+ok - the retained sidecar records each root's lifecycle with a mode, reason, and duration
+ok - seeded dispatcher, adapter, production-owner, and test-local diagnostics preserve parity
+ok - fm-lint.sh changed mode lints only the changed canonical file
+ok - fm-lint.sh forces a full lint in CI even when the local diff would be empty
+ok - fm-lint.sh on a local main lints only the changed canonical files
+ok - fm-lint.sh explicit paths bypass changed-file mode selection
+ok - fm-lint.sh exits 0 with a note when the local branch has no changed lint targets
+ok - fm-lint.sh --list-files reports the would-be changed set in changed mode
+ok - fm-lint.sh changed mode drops source following and excludes cross-file codes
+ok - fm-lint.sh changed mode invokes ShellCheck once per root
+ok - fm-lint.sh CI keeps source following without the local exclusion list
+ok - fm-lint.sh on a local main drops source following like any local branch
+ok - fm-lint.sh refuses a local run that cannot compute a changed set instead of linting the full set
+ok - a failed changed-file diff refuses with git's error instead of passing as an empty lint
+ok - cancelling lint during the changed-file diff leaves no capture files in TMPDIR
+ok - a failed sort of the changed names refuses instead of passing as an empty lint
+ok - a bare CI marker keeps local safeguards and never upgrades to the full set
+ok - fm-lint.sh explicit paths keep source following
+ok - fm-lint.sh --fast on a local branch keeps source following
+ok - fm-lint.sh changed mode excludes cross-file codes that explicit paths still report
+ok - fm-lint.sh --changed in CI keeps source-aware analysis on the changed set
+ok - fm-lint.sh --changed upgrades to full lint when lint definition files change
+ok - fm-lint.sh --changed upgrades to full lint when a sourced helper changes
+ok - fm-lint.sh --changed upgrades to full lint when a sourced helper is deleted
+ok - fm-lint.sh --changed upgrades to full lint when a sourced helper is renamed
+ok - fm-lint.sh --changed upgrades to full lint when a lint definition file is renamed
+ok - fm-lint.sh local runs keep changed files when a sourced helper or lint tooling changes
+ok - a local run cannot exceed the per-root memory cap and runs its workers at low priority
+ok - local runs hold workers x per-root cap within the memory budget; CI keeps its defaults
+ok - an out-of-range per-root memory cap is rejected before arithmetic or an uncapped fallback
+ok - an uncappable local host refuses to lint uncapped unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 is set
+ok - fm-lint.sh treats an empty --changed partition as a successful no-op that still writes telemetry
+ok - local exclusion list covers every no-external-sources ShellCheck code
+exit=0
