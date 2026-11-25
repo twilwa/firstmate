@@ -1,0 +1,45 @@
+--- live snapshot checks:
+{"name":"dev-browser (shard 1) / check","bucket":"fail"}
+{"name":"dev-browser (shard 2) / check","bucket":"fail"}
+{"name":"dev-gate / lint","bucket":"fail"}
+{"name":"dev-gate / unit","bucket":"pass"}
+################ three-waived-rest-green
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/401 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint
+--- stdout
+merge-decision: https://github.com/example/repo/pull/401 verified_head=c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0 verified_at=2026-11-25T23:19:40Z
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/401 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+--- stderr
+verified: https://github.com/example/repo/pull/401 is open and mergeable, with every unwaived required check reported and every unwaived check green at head c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0
+--- forge merge calls:
+pr merge 401 --repo example/repo --match-head-commit c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0 --squash
+--- ledger merge_decision:
+{
+  "decision": "merge",
+  "reviewed_head": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+  "verified_head": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+  "verified_at": "2026-11-25T23:19:40Z",
+  "verified_epoch": 1795648780,
+  "allowed_red_check": null,
+  "allowed_red_checks": [
+    "dev-browser (shard 1) / check",
+    "dev-browser (shard 2) / check",
+    "dev-gate / lint"
+  ]
+}
+exit=0
+--- live snapshot checks:
+{"name":"dev-browser (shard 1) / check","bucket":"fail"}
+{"name":"dev-browser (shard 2) / check","bucket":"fail"}
+{"name":"dev-gate / lint","bucket":"fail"}
+{"name":"dev-gate / unit","bucket":"fail"}
+################ fourth-red-unwaived
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/402 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint
+--- stdout
+--- stderr
+review gate: a required check is not green on this head
+--- forge merge calls:
+(none)
+--- ledger merge_decision:
+null
+exit=1

@@ -1,0 +1,38 @@
+################ missing-required-check-named-in-waivers (required 'dev-gate / web-tests' never reported)
+--- stderr
+error: refusing to merge https://github.com/example/repo/pull/501
+  - check 'dev-gate / lint' is not green
+  - required check 'dev-gate / web-tests' has not reported at head d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0
+error: these checks are not green: dev-gate / lint
+error: these required checks have not reported: dev-gate / web-tests
+--- forge merge calls:
+(none)
+exit=1 expected=nonzero-and-no-merge => OK
+################ unreadable-required-source-branch with three waivers
+--- stderr
+error: refusing to merge https://github.com/example/repo/pull/502
+  - the branch protection summary for base branch main could not be read, so a required check that has not reported cannot be ruled out
+--- forge merge calls:
+(none)
+exit=1 expected=nonzero-and-no-merge => OK
+################ unreadable-required-source-rules with three waivers
+--- stderr
+error: refusing to merge https://github.com/example/repo/pull/503
+  - the branch rules for base branch main could not be read, so a required check that has not reported cannot be ruled out
+--- forge merge calls:
+(none)
+exit=1 expected=nonzero-and-no-merge => OK
+################ expected-head-mismatch with three waivers (live head d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0, expected e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0)
+--- stderr
+error: refusing to merge https://github.com/example/repo/pull/504
+  - the live head is "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0", not the expected head e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0
+--- forge merge calls:
+(none)
+exit=1 expected=nonzero-and-no-merge => OK
+################ review-wrapper-five-names
+--- stderr
+fm-pr-review: --allowed-red-check may name at most 4 checks
+--- forge merge calls:
+(none)
+exit=1 expected=nonzero-and-no-merge => OK
+--- ledger merge_decision: null

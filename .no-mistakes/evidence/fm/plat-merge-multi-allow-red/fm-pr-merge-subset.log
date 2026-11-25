@@ -1,0 +1,36 @@
+=== test_allow_red_waives_each_named_check
+ok - fm-pr-merge waives each separately named red check and still refuses an unnamed one
+=== test_allow_red_requires_distinct_separate_names
+ok - fm-pr-merge accepts only distinct, separately named red-check waivers, at most four
+=== test_allow_red_is_refused_while_away
+ok - fm-pr-merge rechecks away presence before an attended red merge
+=== test_github_red_checks_refuse_and_allow_red_waives_named
+ok - fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check
+=== test_allow_red_still_waives_only_the_current_failure
+ok - fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure
+=== test_quiet_record_keeps_merges_attended
+ok - fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included
+=== test_allow_red_refused_on_gitlab
+ok - fm-pr-merge refuses --allow-red on GitLab
+=== test_allow_red_refused_on_forgejo
+ok - fm-pr-merge refuses --allow-red on Forgejo
+=== test_allow_missing_follows_the_allow_red_rules
+ok - fm-pr-merge --allow-missing is single use, and attended-only and GitHub-only like --allow-red
+=== test_allow_missing_waives_only_the_named_unreported_check
+ok - fm-pr-merge --allow-missing waives only its named unreported check
+=== test_allow_missing_refused_on_forgejo
+ok - fm-pr-merge refuses --allow-missing on Forgejo
+=== test_allow_no_pipeline_is_attended_only_and_gitlab_only
+ok - fm-pr-merge --allow-no-pipeline is attended-only, takes no value, and applies only to GitLab
+=== test_red_and_unreported_checks_are_reported_together
+ok - fm-pr-merge reports a red check and an unreported required check together with every other failure
+=== test_expected_head_keeps_existing_refusals
+ok - fm-pr-merge keeps draft, hold, review, check, authority, and identity refusals when --expected-head matches
+=== test_github_behind_updates_and_rechecks_before_merge
+ok - fm-pr-merge updates a green behind branch and merges only after the new head is green
+=== test_away_branch_actor_merges_green_under_the_record
+ok - under the away-posture record the branch merges a green task, is refused on a red check with or without --allow-red, and is refused at the partition while attended
+=== test_away_record_does_not_bypass_red_or_identity
+ok - the away record does not bypass red checks, and a recorded pr= must match the URL
+ALL SELECTED PASSED
+exit=0
