@@ -1,0 +1,40 @@
+# real ShellCheck 0.11.0 behind the logging pass-through shim (source-following attempts capped at 2 GiB AS so a doomed attempt fails fast on this host)
+### s3-cap-above-default
+$ -E FM_LINT_ROOT_MEMORY_KIB=16777216 -E FM_LINT_LOCAL_MEMORY_BUDGET_GIB=32  bin/fm-lint.sh --telemetry $T/s3-cap-above-default.tsv bin/fm-teardown.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-teardown.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+exit=0
+--- shellcheck invocations (root, source-following, argv) ---
+bin/fm-teardown.sh	yes	--norc --external-sources -- bin/fm-teardown.sh
+bin/fm-teardown.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-teardown.sh
+--- roots sidecar ---
+meta	mode	full
+meta	root_memory_limit_kib	16777216
+end	1	bin/fm-teardown.sh	0	full	1795641562687	1795641614753	52066	0	memory-fallback	1403392	0
+
+### s3-fast-mode
+$   bin/fm-lint.sh --telemetry $T/s3-fast-mode.tsv --fast bin/fm-teardown.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: fast local mode; ShellCheck extended analysis disabled
+exit=0
+--- shellcheck invocations (root, source-following, argv) ---
+bin/fm-teardown.sh	yes	--norc --external-sources --extended-analysis=false -- bin/fm-teardown.sh
+--- roots sidecar ---
+meta	mode	fast
+meta	root_memory_limit_kib	12582912
+end	1	bin/fm-teardown.sh	0	fast	1795641615680	1795641680955	65275	0	ok	976256	1
+
+### s3-cap-below-default
+$ -E FM_LINT_ROOT_MEMORY_KIB=10485760  bin/fm-lint.sh --telemetry $T/s3-cap-below-default.tsv bin/fm-teardown.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-teardown.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+exit=0
+--- shellcheck invocations (root, source-following, argv) ---
+bin/fm-teardown.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-teardown.sh
+--- roots sidecar ---
+meta	mode	full
+meta	root_memory_limit_kib	10485760
+end	1	bin/fm-teardown.sh	0	full	1795641681955	1795641693288	11333	0	known-heavy	954496	0
+

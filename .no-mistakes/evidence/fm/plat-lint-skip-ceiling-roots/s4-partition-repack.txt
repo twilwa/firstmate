@@ -1,0 +1,17 @@
+# --list-files --partition kof4, head (d3486969) vs base (0d42a474)
+head union=651 unique=651  base union=651 unique=651
+head union == base union: yes
+head hint entries=651; canonical roots without a head hint: 0; hint entries not canonical: 0
+roots in a different partition than base: 492
+head packing, hinted weights per partition (s): p1=614 p2=614 p3=614 p4=614
+base packing, hinted weights per partition (s): p1=1087 p2=1087 p3=1087 p4=1087
+base packing evaluated with head hints (s): p1=628 p2=617 p3=551 p4=658
+--- head hints for the eight known-heavy roots (ms) vs base ---
+tests/fm-pending-reply.test.sh                     head=1697 base=93816
+tests/fm-daemon.test.sh                            head=2942 base=40434
+tests/fm-launch-prompt-signals-live-e2e.test.sh    head=158 base=68703
+bin/fm-spawn.sh                                    head=14413 base=65209
+bin/fm-teardown.sh                                 head=3528 base=76818
+bin/fm-watch.sh                                    head=3938 base=60128
+tests/fm-watch-open-decisions.test.sh              head=163 base=
+tests/fm-stat-shadowing.test.sh                    head=54 base=72124

@@ -1,0 +1,9 @@
+ok - known-heavy roots lint directly in the memory retry's no-source mode while unlisted roots keep the retry
+ok - four canonical lint partitions preserve complete source-aware coverage and reject weakened modes
+ok - memory failures retry without source following, exclude cross-file codes, and preserve a real fallback finding
+ok - a memory fallback runs only within the time left in its root's original deadline
+ok - the retained sidecar records each root's lifecycle with a mode, reason, and duration
+ok - fm-lint.sh explicit paths keep source following
+ok - fm-lint.sh --fast on a local branch keeps source following
+ok - a local run cannot exceed the per-root memory cap and runs its workers at low priority
+exit=0

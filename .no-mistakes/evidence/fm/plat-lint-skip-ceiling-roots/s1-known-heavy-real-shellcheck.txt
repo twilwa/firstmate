@@ -1,0 +1,28 @@
+$ bin/fm-lint.sh --telemetry $T/s1.tsv bin/fm-spawn.sh bin/fm-env-lib.sh   # real ShellCheck 0.11.0, capped scope MemoryMax=4G
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-spawn.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+wall=37.23s maxrss_kib=3275520
+exit=0
+--- roots sidecar (s1.roots.tsv) ---
+format	fm-lint-roots-v1
+meta	shellcheck_version	0.11.0
+meta	platform	Linux x86_64
+meta	image_os	unknown
+meta	image_version	unknown
+meta	mode	full
+meta	partition	all
+meta	jobs	1
+meta	bounds_enforced	1
+meta	root_deadline_seconds	1200
+meta	root_kill_grace_seconds	5
+meta	root_memory_limit_kib	12582912
+meta	timing_mechanism	perl
+begin	1	bin/fm-spawn.sh	0	full	1795641445190
+end	1	bin/fm-spawn.sh	0	full	1795641445190	1795641480936	35746	0	known-heavy	3275520	0
+begin	2	bin/fm-env-lib.sh	1	full	1795641480985
+end	2	bin/fm-env-lib.sh	1	full	1795641480985	1795641481164	179	0	ok	15104	1
+meta	roots_begun	2
+meta	roots_completed	2
+meta	roots_unfinished	0
+meta	result_exit	0

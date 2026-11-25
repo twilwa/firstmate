@@ -1,0 +1,16 @@
+$ FM_SHIM_SOURCE_AS_KIB=1048576 bin/fm-lint.sh --telemetry $T/s2.tsv bin/fm-teardown.sh bin/fm-bootstrap.sh
+# real ShellCheck 0.11.0 behind a logging pass-through shim; the shim caps source-following attempts at 1 GiB AS to emulate an unlisted root outgrowing the ceiling
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-teardown.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: bin/fm-bootstrap.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+exit=0
+--- shellcheck invocations (root, source-following, argv) ---
+bin/fm-teardown.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-teardown.sh
+bin/fm-bootstrap.sh	yes	--norc --external-sources -- bin/fm-bootstrap.sh
+bin/fm-bootstrap.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-bootstrap.sh
+--- roots sidecar end records ---
+meta	root_memory_limit_kib	12582912
+end	1	bin/fm-teardown.sh	0	full	1795641510854	1795641522363	11509	0	known-heavy	954752	0
+end	2	bin/fm-bootstrap.sh	1	full	1795641522396	1795641552545	30149	0	memory-fallback	704512	0
+meta	result_exit	0

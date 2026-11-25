@@ -1,0 +1,31 @@
+$ bin/fm-lint.sh --telemetry $T/s5.tsv <all eight known-heavy roots>   # real ShellCheck 0.11.0 via logging pass-through shim (no extra cap), scope MemoryMax=6G
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-spawn.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: bin/fm-teardown.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: tests/fm-pending-reply.test.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: tests/fm-daemon.test.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: tests/fm-launch-prompt-signals-live-e2e.test.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: bin/fm-watch.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: tests/fm-watch-open-decisions.test.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+fm-lint: tests/fm-stat-shadowing.test.sh is a known memory-ceiling root; linted without --external-sources; passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+exit=0
+--- shellcheck invocations (root, source-following, argv) ---
+bin/fm-spawn.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-spawn.sh
+bin/fm-teardown.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-teardown.sh
+tests/fm-pending-reply.test.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-pending-reply.test.sh
+tests/fm-daemon.test.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-daemon.test.sh
+tests/fm-launch-prompt-signals-live-e2e.test.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-launch-prompt-signals-live-e2e.test.sh
+bin/fm-watch.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-watch.sh
+tests/fm-watch-open-decisions.test.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-watch-open-decisions.test.sh
+tests/fm-stat-shadowing.test.sh	no	--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- tests/fm-stat-shadowing.test.sh
+--- roots sidecar end records (duration_ms, rc, reason, rss_kib, follow_sources) ---
+bin/fm-spawn.sh	36351	0	known-heavy	3276032	0
+bin/fm-teardown.sh	11666	0	known-heavy	954752	0
+tests/fm-pending-reply.test.sh	4908	0	known-heavy	249216	0
+tests/fm-daemon.test.sh	9600	0	known-heavy	509312	0
+tests/fm-launch-prompt-signals-live-e2e.test.sh	412	0	known-heavy	34176	0
+bin/fm-watch.sh	11267	0	known-heavy	1145216	0
+tests/fm-watch-open-decisions.test.sh	606	0	known-heavy	43776	0
+tests/fm-stat-shadowing.test.sh	208	0	known-heavy	17792	0
+total no-source duration: 75.0s
