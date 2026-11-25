@@ -1161,6 +1161,94 @@ SH
   pass "a local run cannot exceed the per-root memory cap and runs its workers at low priority"
 }
 
+# Local runs hold workers x per-root cap within a total memory budget (16 GiB
+# by default) so concurrent capped roots cannot together exhaust a dev host;
+# hosted CI keeps its own worker defaults.
+test_local_workers_stay_within_the_memory_budget() {
+  local tmp fakebin log alpha beta out rc jobs limit
+  tmp=$(fm_test_tmproot fm-lint-local-budget)
+  fakebin=$(fm_fakebin "$tmp")
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  alpha="$tmp/alpha.sh"; beta="$tmp/beta.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$alpha"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$beta"
+
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS='' \
+    FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' FM_LINT_ROOT_MEMORY_KIB='' \
+    "$LINT" --telemetry "$tmp/default.tsv" "$alpha" "$beta" 2>&1) \
+    || fail "a default local run failed"$'\n'"$out"
+  jobs=$(awk -F '\t' '$1 == "meta" && $2 == "jobs" { print $3 }' "$tmp/default.roots.tsv")
+  [ "$jobs" = 1 ] || fail "a default local run used $jobs workers, expected 1 under the 16 GiB budget"
+  if fm_lint_bounds_supported; then
+    limit=$(awk -F '\t' '$1 == "meta" && $2 == "root_memory_limit_kib" { print $3 }' "$tmp/default.roots.tsv")
+    [ "$limit" = 12582912 ] || fail "a default local run did not cap each root at 12 GiB: $limit"
+    [ $((jobs * limit)) -le $((16 * 1048576)) ] \
+      || fail "a default local run allows $((jobs * limit)) KiB, above the 16 GiB budget"
+  fi
+
+  : > "$log"
+  rc=0
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=2 \
+    FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' "$LINT" "$alpha" "$beta" 2>&1) || rc=$?
+  [ "$rc" -eq 2 ] || fail "two local 12 GiB workers above the default budget exited $rc, expected 2"$'\n'"$out"
+  assert_contains "$out" "FM_LINT_LOCAL_MEMORY_BUDGET_GIB" "the budget refusal did not name its setting"
+  [ ! -s "$log" ] || fail "a budget-refused run still invoked ShellCheck"
+
+  rc=0
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS='' \
+    FM_LINT_LOCAL_MEMORY_BUDGET_GIB=8 "$LINT" "$alpha" 2>&1) || rc=$?
+  [ "$rc" -eq 2 ] || fail "a 12 GiB per-root cap above an 8 GiB budget exited $rc, expected 2"$'\n'"$out"
+
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=2 \
+    FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 "$LINT" --telemetry "$tmp/raised.tsv" "$alpha" "$beta" 2>&1) \
+    || fail "a raised local budget did not admit two workers"$'\n'"$out"
+  assert_grep $'meta\tjobs\t2' "$tmp/raised.roots.tsv" "a raised local budget did not run two workers"
+
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS=true CI=true FM_LINT_JOBS='' \
+    FM_LINT_LOCAL_MEMORY_BUDGET_GIB='' "$LINT" --telemetry "$tmp/ci.tsv" "$alpha" "$beta" 2>&1) \
+    || fail "a CI run failed"$'\n'"$out"
+  assert_grep $'meta\tjobs\t2' "$tmp/ci.roots.tsv" "the local budget changed CI's worker default"
+  pass "local runs hold workers x per-root cap within the memory budget; CI keeps its defaults"
+}
+
+# A local host that cannot cap each root must not run the full canonical,
+# source-following lint uncapped; the changed-file pass still runs with a note.
+test_uncappable_local_host_refuses_the_full_set() {
+  local tmp fakebin repo log diff_file out rc
+  tmp=$(fm_test_tmproot fm-lint-uncappable)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  repo="$tmp/repo"
+  mkdir -p "$repo/bin/backends" "$repo/tests"
+  cp "$LINT" "$repo/bin/fm-lint.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-lint-workflows.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/noop.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/backends/noop.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/tests/noop.test.sh"
+  chmod +x "$repo/bin/fm-lint.sh" "$repo/bin/fm-lint-workflows.sh"
+
+  # Without its sibling watchdog library the copy cannot bound any root.
+  rc=0
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_TEST_GIT_BRANCH=main \
+    "$repo/bin/fm-lint.sh" 2>&1) || rc=$?
+  [ "$rc" -eq 2 ] || fail "an uncappable local full-set lint exited $rc, expected 2"$'\n'"$out"
+  assert_contains "$out" "sandbox" "the refusal did not point to a sandbox"
+  [ ! -s "$log" ] || fail "an uncappable local full-set lint still invoked ShellCheck"
+
+  diff_file="$tmp/diff.nul"
+  fm_lint_write_diff_file "$diff_file" "bin/noop.sh"
+  rc=0
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_TEST_GIT_BRANCH=feature \
+    FM_TEST_GIT_DIFF_FILE="$diff_file" "$repo/bin/fm-lint.sh" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "an uncappable local changed-file lint failed"$'\n'"$out"
+  [ "$(cat "$log")" = bin/noop.sh ] || fail "the uncappable changed-file lint did not lint the changed file"
+  assert_contains "$out" "linting unbounded" "the uncappable changed-file lint did not note it runs unbounded"
+  pass "an uncappable local host refuses the full set and notes the unbounded changed-file pass"
+}
+
 test_installer_skips_download_when_pinned_binary_is_present() {
   local tmp fakebin destination out
   tmp=$(fm_test_tmproot fm-shellcheck-cached)
@@ -1641,16 +1729,16 @@ SH
   rc_clean_1=0
   out_clean_1=$(FM_LINT_JOBS=1 "$LINT" "$good" 2>&1) || rc_clean_1=$?
   rc_clean_2=0
-  out_clean_2=$(FM_LINT_JOBS=2 "$LINT" "$good" 2>&1) || rc_clean_2=$?
+  out_clean_2=$(FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 "$LINT" "$good" 2>&1) || rc_clean_2=$?
   [ "$rc_clean_1" -eq 0 ] && [ "$rc_clean_2" -eq 0 ] || fail "clean jobs=1/jobs=2 paths must both pass"
   [ "$out_clean_1" = "$out_clean_2" ] || fail "clean jobs=1/jobs=2 output differs"
 
   rc_fail_1=0
   out_fail_1=$(FM_LINT_JOBS=1 "$LINT" "$bad_a" "$bad_b" 2>&1) || rc_fail_1=$?
   rc_fail_2=0
-  out_fail_2=$(FM_LINT_JOBS=2 "$LINT" "$bad_a" "$bad_b" 2>&1) || rc_fail_2=$?
+  out_fail_2=$(FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 "$LINT" "$bad_a" "$bad_b" 2>&1) || rc_fail_2=$?
   rc_fail_2b=0
-  out_fail_2b=$(FM_LINT_JOBS=2 "$LINT" "$bad_a" "$bad_b" 2>&1) || rc_fail_2b=$?
+  out_fail_2b=$(FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 "$LINT" "$bad_a" "$bad_b" 2>&1) || rc_fail_2b=$?
   [ "$rc_fail_1" -ne 0 ] && [ "$rc_fail_1" -eq "$rc_fail_2" ] && [ "$rc_fail_2" -eq "$rc_fail_2b" ] \
     || fail "failing jobs=1/jobs=2 exit results differ: $rc_fail_1/$rc_fail_2/$rc_fail_2b"
   [ "$out_fail_1" = "$out_fail_2" ] && [ "$out_fail_2" = "$out_fail_2b" ] \
@@ -1661,7 +1749,7 @@ SH
   FM_LINT_JOBS=3 "$LINT" "$good" >/dev/null 2>&1 || rc_bad_jobs=$?
   [ "$rc_bad_jobs" -eq 2 ] || fail "the lint owner must reject unbounded worker counts"
 
-  telemetry_out=$(FM_LINT_JOBS=2 FM_LINT_TELEMETRY="$telemetry" "$LINT" "$good" 2>&1) \
+  telemetry_out=$(FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 FM_LINT_TELEMETRY="$telemetry" "$LINT" "$good" 2>&1) \
     || fail "telemetry-enabled clean lint failed"
   [ "$telemetry_out" = "$out_clean_2" ] || fail "quiet telemetry changed routine lint output"
   assert_grep $'format\tfm-lint-telemetry-v1' "$telemetry" "telemetry format marker is missing"
@@ -1677,7 +1765,7 @@ SH
 
   cleanup_tmp="$tmp/lint-tmp"
   mkdir -p "$cleanup_tmp"
-  cleanup_out=$(TMPDIR="$cleanup_tmp" FM_LINT_JOBS=2 "$LINT" "$good" 2>&1) \
+  cleanup_out=$(TMPDIR="$cleanup_tmp" FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 "$LINT" "$good" 2>&1) \
     || fail "cleanup fixture lint failed"
   [ "$cleanup_out" = "$out_clean_2" ] || fail "cleanup fixture changed routine diagnostics"
   [ -z "$(find "$cleanup_tmp" -mindepth 1 -maxdepth 1 -name 'fm-lint.*' -print -quit)" ] \
@@ -1720,7 +1808,7 @@ SH
       if [ "$telemetry" = on ]; then
         telemetry_file="$tmp/telemetry-$jobs.tsv"
       fi
-      PATH="$fakebin:$PATH" TMPDIR="$lint_tmp" FM_LINT_JOBS="$jobs" \
+      PATH="$fakebin:$PATH" TMPDIR="$lint_tmp" FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS="$jobs" \
         FM_LINT_TELEMETRY="$telemetry_file" FM_TEST_SHELLCHECK_PID="$pid_file" \
         "$LINT" "$fixture" > "$out_file" 2>&1 &
       parent_pid=$!
@@ -2354,7 +2442,7 @@ test_local_bad() {
 SH
 
   rc=0
-  out=$(FM_LINT_JOBS=2 "$LINT" "$dispatcher" "$adapter" "$owner" "$test_root" 2>&1) || rc=$?
+  out=$(FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 FM_LINT_JOBS=2 "$LINT" "$dispatcher" "$adapter" "$owner" "$test_root" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "seeded module-boundary defects unexpectedly passed"
   assert_contains "$out" "SC1007" "representative dispatcher defect was hidden"
   assert_contains "$out" "SC2086" "representative canonical adapter defect was hidden"
@@ -2426,5 +2514,7 @@ test_changed_flag_upgrades_when_a_sourced_helper_is_renamed
 test_changed_flag_upgrades_when_a_lint_definition_is_renamed
 test_local_mode_never_upgrades_to_the_full_set
 test_local_run_cannot_exceed_the_memory_cap
+test_local_workers_stay_within_the_memory_budget
+test_uncappable_local_host_refuses_the_full_set
 test_empty_changed_partition_is_a_successful_noop
 test_local_exclusion_list_covers_every_no_external_sources_code

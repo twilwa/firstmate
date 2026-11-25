@@ -59,7 +59,11 @@
 # shards, and each worker runs ONE canonical root per ShellCheck process, so a
 # run holds at most JOBS concurrent ShellCheck processes. CI partitions default
 # to one worker so large source-aware ShellCheck processes cannot overlap on a
-# memory-limited runner. Diagnostics replay in stable shard/root order.
+# memory-limited runner. A local run (outside hosted CI) also holds workers x
+# FM_LINT_ROOT_MEMORY_KIB within FM_LINT_LOCAL_MEMORY_BUDGET_GIB (default 16):
+# the default drops to one worker under the 12 GiB cap, and an explicit worker
+# count or per-root cap above the budget refuses. Diagnostics replay in stable
+# shard/root order.
 # FM_LINT_JOBS/--jobs change concurrency, not diagnostics or exit selection.
 # --partition <k>of<N> splits the selected inventory across N CI runners,
 # where N is the owned partition count below. Partitions of the full
@@ -87,10 +91,12 @@
 # BEFORE any root starts; when either check fails the run refuses with a
 # named error, so a required-bounds run never lints uncapped. A local run
 # (outside hosted CI) without FM_LINT_REQUIRE_BOUNDS applies the same
-# envelope whenever the host accepts ulimit -v and the watchdog runs; a host
-# that cannot (macOS rejects the address-space limit) prints one note and lints
-# each root unbounded in its own ShellCheck process with identical
-# diagnostics. Local lint workers run under nice -n 10.
+# envelope whenever the host accepts ulimit -v and the watchdog runs. On a
+# host that cannot (macOS rejects the address-space limit) a local full
+# canonical lint refuses and points to a capped sandbox or CI, while a smaller
+# local selection prints one note and lints each root unbounded in its own
+# ShellCheck process with identical diagnostics. Local lint workers run under
+# nice -n 10.
 #
 # If a source-following root exits with a memory failure, it is retried once
 # without --external-sources under the same memory limit and only the time
@@ -806,8 +812,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+JOBS_EXPLICIT=0
 if [ -z "$JOBS" ]; then
   if [ -n "$PARTITION" ]; then JOBS=1; else JOBS=2; fi
+else
+  JOBS_EXPLICIT=1
 fi
 case "$JOBS" in
   1|2) ;;
@@ -895,6 +904,7 @@ fm_lint_is_canonical_root() {
 }
 
 CHANGED_MODE=0
+CANONICAL_SET=0
 EXPLICIT_PATHS=0
 FOLLOW_SOURCES=1
 EXCLUDE_CODES=
@@ -1046,6 +1056,7 @@ else
   fi
 
   if [ "$full_lint" -eq 1 ]; then
+    CANONICAL_SET=1
     ROOTS=(bin/*.sh bin/backends/*.sh tests/*.sh)
   else
     CHANGED_MODE=1
@@ -1762,9 +1773,9 @@ ROOT_GRACE=${FM_LINT_ROOT_GRACE:-5}
 # tests/fm-pending-reply.test.sh, and
 # tests/fm-launch-prompt-signals-live-e2e.test.sh. CI runs one root per
 # lint job, so worst-case resident demand is ~8 GiB plus runner overhead,
-# inside the 16 GiB runner. Local lint defaults to two workers; two such
-# caps allow ~16 GiB resident plus host overhead, so use FM_LINT_JOBS=1 on
-# smaller local machines. A root that exceeds its cap fails by name.
+# inside the 16 GiB runner. Local runs fit workers x cap into
+# FM_LINT_LOCAL_MEMORY_BUDGET_GIB, so the 12 GiB cap means one local worker
+# under the 16 GiB default. A root that exceeds its cap fails by name.
 # Never disable, narrow, or redirect source-following to fit a root under
 # the cap. The roots sidecar records each root's peak RSS; roots peaking
 # above about 3 GiB resident are reduction candidates,
@@ -1782,6 +1793,34 @@ for bound_pair in \
       ;;
   esac
 done
+
+# A local run holds JOBS x ROOT_MEMORY_KIB within a total budget
+# (FM_LINT_LOCAL_MEMORY_BUDGET_GIB, default 16 GiB): the default worker count
+# drops to fit, and an explicit count or a per-root cap above it refuses.
+if [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
+  LOCAL_BUDGET_GIB=${FM_LINT_LOCAL_MEMORY_BUDGET_GIB:-16}
+  case "$LOCAL_BUDGET_GIB" in
+    ''|0*|*[!0-9]*|????????*)
+      printf 'fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got %s.\n' \
+        "$LOCAL_BUDGET_GIB" >&2
+      exit 2
+      ;;
+  esac
+  local_jobs_max=$((LOCAL_BUDGET_GIB * 1048576 / ROOT_MEMORY_KIB))
+  if [ "$local_jobs_max" -lt 1 ]; then
+    printf 'fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=%s exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=%s.\n' \
+      "$ROOT_MEMORY_KIB" "$LOCAL_BUDGET_GIB" >&2
+    exit 2
+  fi
+  if [ "$JOBS" -gt "$local_jobs_max" ]; then
+    if [ "$JOBS_EXPLICIT" -eq 1 ]; then
+      printf 'fm-lint.sh: %s local workers x FM_LINT_ROOT_MEMORY_KIB=%s exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=%s; use --jobs %s or raise the budget.\n' \
+        "$JOBS" "$ROOT_MEMORY_KIB" "$LOCAL_BUDGET_GIB" "$local_jobs_max" >&2
+      exit 2
+    fi
+    JOBS=$local_jobs_max
+  fi
+fi
 
 BOUND_MECH=none
 if [ "$ROOT_COUNT" -gt 0 ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
@@ -1827,6 +1866,9 @@ elif [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
     && ( fm_exec_timed 30 1 true ) >/dev/null 2>&1 \
     && ( ulimit -v "$ROOT_MEMORY_KIB" ) 2>/dev/null; then
     BOUND_MECH=perl
+  elif [ "$CANONICAL_SET" -eq 1 ]; then
+    printf 'fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.\n' >&2
+    exit 2
   else
     printf 'fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.\n' >&2
   fi
