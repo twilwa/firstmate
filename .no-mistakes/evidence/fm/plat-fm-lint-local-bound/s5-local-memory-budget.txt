@@ -1,0 +1,33 @@
+### S5: local workers x per-root cap held within the 16 GiB budget
+$ local default (no settings)
+exit=0
+  jobs=1 root_memory_limit_kib=12582912 shellcheck_calls=2
+
+$ local FM_LINT_JOBS=2 (explicit 2 x 12 GiB = 24 GiB > 16)
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+
+$ local --jobs 2 via env FM_LINT_JOBS=2 + FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 (raised budget)
+exit=0
+  jobs=2 root_memory_limit_kib=12582912 shellcheck_calls=2
+
+$ local FM_LINT_ROOT_MEMORY_KIB=20971520 (20 GiB cap > 16 GiB budget)
+fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=20971520 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16.
+exit=2
+
+$ local FM_LINT_ROOT_MEMORY_KIB=8388608 (8 GiB cap -> default 2 workers fit 16 GiB)
+exit=0
+  jobs=2 root_memory_limit_kib=8388608 shellcheck_calls=2
+
+$ local FM_LINT_LOCAL_MEMORY_BUDGET_GIB=0 (invalid budget)
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 0.
+exit=2
+
+$ local FM_LINT_LOCAL_MEMORY_BUDGET_GIB=abc (invalid budget)
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got abc.
+exit=2
+
+$ hosted CI default (GITHUB_ACTIONS=true CI=true) keeps its own worker default
+exit=0
+  jobs=2 root_memory_limit_kib=unbounded shellcheck_calls=2
+

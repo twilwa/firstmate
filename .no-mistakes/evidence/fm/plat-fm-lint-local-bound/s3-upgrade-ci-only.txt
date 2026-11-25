@@ -1,0 +1,30 @@
+### S3: hosted CI --changed (GITHUB_ACTIONS=true CI=true), sourced helper changed -> full-set upgrade kept
+exit=0
+fm-lint.sh: a sourced helper changed; using full canonical lint
+files listed: 651 (canonical set bin/*.sh bin/backends/*.sh tests/*.sh = 651)
+
+### S1 contrast: local default --list-files on same branch
+bin/fm-wake-lib.sh
+exit=0
+
+### Pre-change behaviour (base 78e5cce4 fm-lint.sh) for the same local run, for contrast
+exit=0
+fm-lint.sh: lint definition files changed; using full canonical lint
+files listed by base: 651
+?? s1.log
+?? s2.log
+
+### S2b: branch that changes the lint definition (bin/fm-lint.sh) - local default and local --changed
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+$ fm-lint.sh  --list-files (local)
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+exit=0
+$ fm-lint.sh --changed --list-files (local)
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+exit=0
+$ GITHUB_ACTIONS=true CI=true fm-lint.sh --changed --list-files (hosted CI)
+fm-lint.sh: lint definition files changed; using full canonical lint
+listed: 651

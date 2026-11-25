@@ -1,0 +1,38 @@
+$ git diff --name-only main...HEAD
+bin/fm-wake-lib.sh
+
+### S1: local default run (no-mistakes gate path), sourced helper bin/fm-wake-lib.sh changed
+$ env -u CI -u GITHUB_ACTIONS bin/fm-lint.sh --telemetry t1.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+--- shellcheck invocations seen by shim:
+ulimit_v=12582912 nice=10 args=--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-wake-lib.sh
+--- roots sidecar meta:
+meta	shellcheck_version	0.11.0
+meta	platform	Linux x86_64
+meta	image_os	unknown
+meta	image_version	unknown
+meta	mode	local
+meta	partition	all
+meta	jobs	1
+meta	bounds_enforced	1
+meta	root_deadline_seconds	1200
+meta	root_kill_grace_seconds	5
+meta	root_memory_limit_kib	12582912
+meta	timing_mechanism	perl
+meta	roots_begun	1
+meta	roots_completed	1
+meta	roots_unfinished	0
+meta	result_exit	0
+
+### S2: local --changed run, same branch
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+--- shellcheck invocations seen by shim:
+ulimit_v=12582912 nice=10 args=--norc --external-sources -- bin/fm-wake-lib.sh

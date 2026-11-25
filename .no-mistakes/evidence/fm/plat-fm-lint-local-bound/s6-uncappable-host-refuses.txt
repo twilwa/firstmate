@@ -1,0 +1,27 @@
+### S6: host where ulimit -v cannot apply the 12 GiB cap (simulated with an 8 GiB hard RLIMIT_AS via prlimit), local full canonical lint on main
+$ prlimit --as=8589934592 bash -c 'ulimit -v 12582912'
+bash: line 1: ulimit: virtual memory: cannot modify limit: Operation not permitted
+rc=1
+$ git branch --show-current; prlimit --as=8GiB env -u CI -u GITHUB_ACTIONS bin/fm-lint.sh
+main
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+exit=2
+shellcheck invocations before refusal: 0
+
+### S6b: same uncappable host, local changed-file selection (feature branch) -> one note, lints unbounded
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+exit=0
+ulimit_v=8388608 nice=10 args=--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-wake-lib.sh
+
+### S6c: same uncappable host, local --partition 1of4 (partition of the full canonical set) on a feature branch -> refuses
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+exit=2
+shellcheck invocations before refusal: 0

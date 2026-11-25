@@ -1,0 +1,27 @@
+### --jobs 2 CLI flag locally (default budget)
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+exit=2
+
+### S4: local run (no FM_LINT_REQUIRE_BOUNDS) - a source-following root that tries to allocate 1 GiB under a 512 MiB per-root cap
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: bin/fm-wake-lib.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback passed with cross-file codes excluded (SC1091,SC2034,SC2153,SC2329)
+exit=0
+--- shellcheck invocations seen by shim:
+ulimit_v=524288 nice=10 args=--norc --external-sources -- bin/fm-wake-lib.sh
+ulimit_v=524288 nice=10 args=--norc --exclude=SC1091,SC2034,SC2153,SC2329 -- bin/fm-wake-lib.sh
+--- roots sidecar:
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	524288
+begin	1	bin/fm-wake-lib.sh	0	full	1795598273809
+end	1	bin/fm-wake-lib.sh	0	full	1795598273809	1795598280686	6877	0	memory-fallback	475340	0
+
+### S4 control: same over-allocating root in hosted CI without required bounds (uncapped path)
+/usr/bin/env: ‘-u’: No such file or directory
+exit=127
+### S4 control: same over-allocating root in hosted CI without required bounds (uncapped path)
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+shim: allocated 1024MiB past the cap
+exit=0
+ulimit_v=unlimited nice=0 args=--norc --external-sources -- bin/fm-wake-lib.sh
