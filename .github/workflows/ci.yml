@@ -594,7 +594,7 @@ jobs:
           command -v jq >/dev/null || { echo "::error::jq is required"; exit 1; }
 
           shell_inventory="$RUNNER_TEMP/fm-shell-inventory"
-          bin/fm-lint.sh --list-files > "$shell_inventory"
+          FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --list-files > "$shell_inventory"
           parse_fail=0
           while IFS= read -r f; do
             /bin/bash -n "$f" || { echo "::error::stock macOS Bash 3.2 failed to parse $f"; parse_fail=1; }

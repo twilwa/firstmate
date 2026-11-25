@@ -778,7 +778,7 @@ roots = parts.flat_map do |p|
   raise "unsupported lint partition" unless result.success?
   output.lines.map(&:strip)
 end
-canonical, result = Open3.capture2({"CI" => "true"}, File.join(root, "bin/fm-lint.sh"), "--list-files")
+canonical, result = Open3.capture2({"GITHUB_ACTIONS" => "true", "FM_LINT_REQUIRE_BOUNDS" => "1"}, File.join(root, "bin/fm-lint.sh"), "--list-files")
 raise "lint matrix loses or duplicates canonical roots" unless result.success? && roots.sort == canonical.lines.map(&:strip).sort
 
 # The two folded standalone guards must still execute inside existing jobs:

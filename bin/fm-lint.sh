@@ -7,10 +7,10 @@
 # both use this owner without duplicating lint configuration.
 # The explicit --fast mode is local-only and disables ShellCheck's extended
 # dataflow analysis while preserving ordinary shell lint checks and source
-# following. CI, main, merge-base-less runs, and any run upgraded to the full
-# canonical set attempt --norc --external-sources with full dataflow for each
-# canonical root. An ordinary local branch that stays in changed-file mode
-# (including the no-mistakes lint step) drops --external-sources, keeps
+# following. Hosted CI's full canonical set (main pushes and upgraded
+# pull-request runs) and every --partition attempt --norc --external-sources
+# with full dataflow for each canonical root. A local run's default
+# changed-file mode (including the no-mistakes lint step) drops --external-sources, keeps
 # dataflow, and excludes SC1091, SC2034, SC2153, and SC2329, the codes that
 # need library context. CI checks those codes
 # on source-following attempts (see the memory fallback below). Explicit
@@ -23,30 +23,40 @@
 #
 # With no explicit paths, the file set and source-following posture depend
 # on context:
-#   - In CI without --changed, on the main branch, or when no merge-base
-#     against origin/main (or local main) can be found, it lints the full
-#     canonical set: bin/*.sh bin/backends/*.sh tests/*.sh, with
-#     --external-sources and full dataflow first. Main-push CI and any run
-#     that changes lint tooling keep this full gate; memory failures may take
-#     the narrower retry below.
+#   - A run is hosted only under the hosted workflow contract: GITHUB_ACTIONS=true
+#     together with FM_LINT_REQUIRE_BOUNDS=1, as .github/workflows/ci.yml sets
+#     them. A bare CI=true, or GITHUB_ACTIONS without required bounds, is a
+#     local run.
+#   - Hosted CI without --changed (main pushes) lints the full canonical set:
+#     bin/*.sh bin/backends/*.sh tests/*.sh, with --external-sources and full
+#     dataflow first; memory failures may take the narrower retry below.
 #   - --changed (CI pull requests) lints only the canonical-set files changed
 #     since the merge-base, still with --external-sources and full dataflow, so
-#     the PR gate stays source-aware on the files it checks.
-#   - Otherwise (an ordinary local branch with a real merge-base) it lints
-#     only the canonical-set files changed since that merge-base, including
-#     uncommitted local edits, via plain local `git diff` (no network, no
-#     `gh`). That local pass drops --external-sources and excludes SC1091,
-#     SC2034, SC2153, and SC2329. A branch with zero matching changed files
-#     skips ShellCheck and prints a "no changed lint targets" note, then
-#     still runs the backend-purity check and validates workflows.
-#   - Both changed-file modes (--changed and the ordinary local branch)
-#     upgrade to the full canonical, source-aware set above when a
-#     lint-definition file changed (including a delete or rename of
-#     fm-lint.sh, fm-lint-workflows.sh, a pinned installer, or
-#     fm-timeout-lib.sh), or when a changed, deleted, or renamed file is
-#     sourced by another canonical script (via `# shellcheck source=` on the
-#     merge-base tree). Locally that turns the no-mistakes lint step into the
-#     full gate, which is much slower than the changed-file pass.
+#     the PR gate stays source-aware on the files it checks. Outside hosted
+#     CI, --changed keeps that source-aware changed set but never upgrades.
+#   - Otherwise a local run, on any branch including main, lints only the
+#     canonical-set files changed since the merge-base against origin/main
+#     (or local main), including uncommitted local edits, via plain local
+#     `git diff` (no network, no `gh`). That local pass drops
+#     --external-sources and excludes SC1091, SC2034, SC2153, and SC2329. A
+#     branch with zero matching changed files skips ShellCheck and prints a
+#     "no changed lint targets" note, then still runs the backend-purity
+#     check and validates workflows. When no changed set can be computed
+#     (outside a Git work tree, or no merge-base) a local run refuses with
+#     exit 2 instead of falling back to the full canonical set; lint the full
+#     set in a capped sandbox (for example a Boat sandbox started with
+#     --no-env, one --partition at a time) or in CI.
+#   - Only hosted CI's --changed run upgrades to the full canonical,
+#     source-aware set above when a lint-definition file changed (including a
+#     delete or rename of fm-lint.sh, fm-lint-workflows.sh, a pinned
+#     installer, or fm-timeout-lib.sh), or when a changed, deleted, or renamed
+#     file is sourced by another canonical script (via `# shellcheck source=`
+#     on the merge-base tree). Local runs, including the no-mistakes lint step
+#     and a worker's own lint, never take that upgrade: the source-following
+#     full set needs many GiB per root and exhausts a shared dev host.
+#   - In either changed-file mode, a failed `git diff` against the merge-base,
+#     or a failed sort of its paths, refuses with exit 2 rather than reading as
+#     an empty changed set.
 # Explicit paths always bypass this file-set selection and lint exactly the
 # given paths, matching the same config, without the workflow YAML check.
 # Explicit core bin/ and bin/backends/ scripts still receive the
@@ -58,7 +68,11 @@
 # shards, and each worker runs ONE canonical root per ShellCheck process, so a
 # run holds at most JOBS concurrent ShellCheck processes. CI partitions default
 # to one worker so large source-aware ShellCheck processes cannot overlap on a
-# memory-limited runner. Diagnostics replay in stable shard/root order.
+# memory-limited runner. A local run (outside hosted CI) also holds workers x
+# FM_LINT_ROOT_MEMORY_KIB within FM_LINT_LOCAL_MEMORY_BUDGET_GIB (default 16):
+# the default drops to one worker under the 12 GiB cap, and an explicit worker
+# count or per-root cap above the budget refuses. Diagnostics replay in stable
+# shard/root order.
 # FM_LINT_JOBS/--jobs change concurrency, not diagnostics or exit selection.
 # --partition <k>of<N> splits the selected inventory across N CI runners,
 # where N is the owned partition count below. Partitions of the full
@@ -84,10 +98,17 @@
 # removes the owned process group. Bounds mode proves the watchdog can
 # actually bound a probe command and that the host accepts the memory limit
 # BEFORE any root starts; when either check fails the run refuses with a
-# named error, so a required-bounds run never lints uncapped. Without
-# FM_LINT_REQUIRE_BOUNDS (a local developer lint, where hosts like macOS
-# cannot apply the address-space limit at all) each root still runs in its
-# own ShellCheck process with identical diagnostics, just unbounded.
+# named error, so a required-bounds run never lints uncapped. A local run
+# (outside hosted CI) without FM_LINT_REQUIRE_BOUNDS applies the same
+# envelope whenever the host accepts ulimit -v and the watchdog runs. On a
+# host that cannot (macOS rejects the address-space limit) a local full
+# canonical selection (a --partition) refuses and points to a capped sandbox
+# or CI, and a smaller local selection refuses the same way before ShellCheck
+# unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 is set, in which case it prints a
+# warning and lints each root unbounded in its own ShellCheck process; the
+# local memory budget is enforceable only where that per-root limit is
+# active. Local lint workers run under nice -n 10 when an external nice is on
+# PATH, and at normal priority otherwise.
 #
 # If a source-following root exits with a memory failure, it is retried once
 # without --external-sources under the same memory limit and only the time
@@ -125,7 +146,7 @@
 #   fm-lint.sh <path>...               lint explicit roots with the same config
 #   fm-lint.sh --jobs <1|2> [path]...  override concurrent worker count
 #   fm-lint.sh --partition <k>of<N>      lint one canonical CI partition (see fallback above)
-#   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; sourced helpers and lint-definition files upgrade to the full set)
+#   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; in hosted CI only, sourced helpers and lint-definition files upgrade to the full set)
 #   fm-lint.sh --telemetry <path> ...  write a quiet metrics snapshot
 #   fm-lint.sh --required-version      print the ShellCheck pin
 #   fm-lint.sh --list-files            print the file set that would be linted
@@ -154,8 +175,10 @@ ROOT="$(cd "$SELF_DIR/.." && pwd -P)"
 cd "$ROOT" || exit 1
 
 # The sibling timeout library supplies the shared group-kill watchdog that
-# bounds each root when FM_LINT_REQUIRE_BOUNDS=1 requires it; without the
-# library a required-bounds run refuses in preflight rather than lint uncapped.
+# bounds each root when FM_LINT_REQUIRE_BOUNDS=1 requires it and, where the
+# host allows, in local runs; without the library a required-bounds run or a
+# local full canonical lint refuses rather than lint uncapped, and any other
+# local lint refuses too unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1.
 if [ -r "$SELF_DIR/fm-timeout-lib.sh" ]; then
   # shellcheck source=bin/fm-timeout-lib.sh
   . "$SELF_DIR/fm-timeout-lib.sh"
@@ -803,8 +826,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+JOBS_EXPLICIT=0
 if [ -z "$JOBS" ]; then
   if [ -n "$PARTITION" ]; then JOBS=1; else JOBS=2; fi
+else
+  JOBS_EXPLICIT=1
 fi
 case "$JOBS" in
   1|2) ;;
@@ -844,7 +870,16 @@ case "$PARTITION" in
   *) fm_lint_partition_refuse "$PARTITION" ;;
 esac
 
-if [ "$FAST" -eq 1 ] && { [ "${GITHUB_ACTIONS:-}" = true ] || [ "${CI:-}" = true ]; }; then
+# A local run is any run outside the hosted workflow contract (GITHUB_ACTIONS
+# with required bounds, as ci.yml sets them; a bare CI=true does not count): a
+# developer lint, the no-mistakes gate, or a worker's own lint. Local runs
+# never take the full-set upgrade or default to the full canonical set, apply
+# the per-root bounds when the host can, and run workers at low priority.
+LOCAL_RUN=1
+if [ "${GITHUB_ACTIONS:-}" = true ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
+  LOCAL_RUN=0
+fi
+if [ "$FAST" -eq 1 ] && [ "$LOCAL_RUN" -eq 0 ]; then
   printf 'fm-lint.sh: --fast is local-only; CI uses full ShellCheck analysis.\n' >&2
   exit 2
 fi
@@ -852,7 +887,7 @@ fi
 # fm_lint_changed_base_ref prints the ref to diff the working branch against:
 # the local origin/main tracking ref when present, else local main. Returns
 # nonzero when neither is resolvable, which the caller treats as "no
-# merge-base found" and falls back to a full lint.
+# merge-base found" (a --changed or local run then refuses).
 fm_lint_changed_base_ref() {
   if git rev-parse --verify -q origin/main >/dev/null 2>&1; then
     printf 'origin/main\n'
@@ -885,17 +920,58 @@ fm_lint_is_canonical_root() {
 }
 
 CHANGED_MODE=0
+CANONICAL_SET=0
 EXPLICIT_PATHS=0
 FOLLOW_SOURCES=1
 EXCLUDE_CODES=
+# A failed diff (a corrupt index, say) must never read as an empty changed set
+# that skips every root, nor fall back to the canonical set: it refuses.
+# Both captures live in one private directory whose scoped cleanup covers exit
+# and catchable signals until the later worker traps take over; Git runs as a
+# waited child so a trapped signal interrupts the wait instead of queueing.
+DIFF_CAPTURE_DIR=
+DIFF_CAPTURE_PID=
+# shellcheck disable=SC2329 # Registered by the collector's scoped traps.
+fm_lint_diff_capture_cleanup() {
+  [ -z "$DIFF_CAPTURE_PID" ] || kill -TERM "$DIFF_CAPTURE_PID" 2>/dev/null || true
+  [ -z "$DIFF_CAPTURE_DIR" ] || rm -rf "$DIFF_CAPTURE_DIR"
+  DIFF_CAPTURE_PID=
+  DIFF_CAPTURE_DIR=
+}
 fm_lint_collect_changed_roots() {  # <merge-base>
-  local merge_base=$1 changed_path
+  local merge_base=$1 changed_path diff_file diff_rc=0
+  trap fm_lint_diff_capture_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  DIFF_CAPTURE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-lint-diff.XXXXXX") || exit 1
+  diff_file="$DIFF_CAPTURE_DIR/names"
+  git diff --name-only --diff-filter=ACMR -z "$merge_base" -- >"$diff_file" 2>"$diff_file.err" &
+  DIFF_CAPTURE_PID=$!
+  wait "$DIFF_CAPTURE_PID" || diff_rc=$?
+  DIFF_CAPTURE_PID=
+  if [ "$diff_rc" -ne 0 ]; then
+    printf 'fm-lint.sh: git diff against merge-base %s failed (exit %s), so the changed lint targets are unknown; refusing to report an empty lint. Repair the repository state (see git status) and rerun.\n' \
+      "$merge_base" "$diff_rc" >&2
+    sed 's/^/fm-lint.sh: git: /' "$diff_file.err" >&2
+    exit 2
+  fi
+  diff_rc=0
+  LC_ALL=C sort -z "$diff_file" >"$diff_file.sorted" 2>"$diff_file.err" || diff_rc=$?
+  if [ "$diff_rc" -ne 0 ]; then
+    printf 'fm-lint.sh: sorting the changed paths failed (exit %s), so the changed lint targets are unknown; refusing to report an empty lint.\n' \
+      "$diff_rc" >&2
+    sed 's/^/fm-lint.sh: sort: /' "$diff_file.err" >&2
+    exit 2
+  fi
   ROOTS=()
   while IFS= read -r -d '' changed_path; do
     fm_lint_is_canonical_root "$changed_path" || continue
     [ -f "$changed_path" ] || continue
     ROOTS+=("$changed_path")
-  done < <(git diff --name-only --diff-filter=ACMR -z "$merge_base" -- 2>/dev/null | LC_ALL=C sort -z)
+  done < "$diff_file.sorted"
+  fm_lint_diff_capture_cleanup
+  trap - EXIT HUP INT TERM
 }
 
 # git diff --name-only drops a rename's old path, and --diff-filter=ACMR drops
@@ -1005,34 +1081,44 @@ else
   full_lint=1
   merge_base=
   want_changed=0
-  if [ "$FORCE_CHANGED" -eq 1 ]; then
-    want_changed=1
-  elif [ -z "$PARTITION" ] && [ "${GITHUB_ACTIONS:-}" != true ] && [ "${CI:-}" != true ] \
-    && command -v git >/dev/null 2>&1 \
-    && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    && [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != main ]; then
+  if [ "$FORCE_CHANGED" -eq 1 ] || { [ -z "$PARTITION" ] && [ "$LOCAL_RUN" -eq 1 ]; }; then
     want_changed=1
   fi
   if [ "$want_changed" -eq 1 ]; then
-    base_ref=$(fm_lint_changed_base_ref) || base_ref=
-    [ -z "$base_ref" ] || merge_base=$(git merge-base "$base_ref" HEAD 2>/dev/null) || merge_base=
+    no_changed_set=
+    if ! command -v git >/dev/null 2>&1 \
+      || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      no_changed_set='not inside a Git work tree'
+    else
+      base_ref=$(fm_lint_changed_base_ref) || base_ref=
+      [ -z "$base_ref" ] || merge_base=$(git merge-base "$base_ref" HEAD 2>/dev/null) || merge_base=
+      [ -n "$merge_base" ] || no_changed_set='no merge-base against origin/main or main'
+    fi
     if [ -n "$merge_base" ]; then
-      if fm_lint_definition_changed "$merge_base"; then
+      # Only hosted CI's --changed run upgrades; a local run keeps its changed
+      # files because the full source-following set exhausts dev-host memory.
+      full_lint=0
+      may_upgrade=0
+      [ "$FORCE_CHANGED" -eq 0 ] || [ "$LOCAL_RUN" -eq 1 ] || may_upgrade=1
+      if [ "$may_upgrade" -eq 1 ] && fm_lint_definition_changed "$merge_base"; then
         printf 'fm-lint.sh: lint definition files changed; using full canonical lint\n' >&2
         full_lint=1
-      elif fm_lint_sourced_helper_changed "$merge_base"; then
+      elif [ "$may_upgrade" -eq 1 ] && fm_lint_sourced_helper_changed "$merge_base"; then
         printf 'fm-lint.sh: a sourced helper changed; using full canonical lint\n' >&2
         full_lint=1
-      else
-        full_lint=0
       fi
     elif [ "$FORCE_CHANGED" -eq 1 ]; then
       printf 'fm-lint.sh: --changed needs a merge-base against origin/main or main.\n' >&2
+      exit 2
+    else
+      printf 'fm-lint.sh: cannot compute a local changed-file set (%s); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.\n' \
+        "$no_changed_set" >&2
       exit 2
     fi
   fi
 
   if [ "$full_lint" -eq 1 ]; then
+    CANONICAL_SET=1
     ROOTS=(bin/*.sh bin/backends/*.sh tests/*.sh)
   else
     CHANGED_MODE=1
@@ -1737,8 +1823,9 @@ fi
 # Per-root bounded-execution envelope. Under FM_LINT_REQUIRE_BOUNDS=1 the
 # watchdog is probed and the host's acceptance of ulimit -v is checked before
 # any root starts; failed checks refuse with a named error. A required-bounds run
-# never lints uncapped. Without it each root still runs alone in its own
-# ShellCheck process, unbounded, for local developer lint.
+# never lints uncapped. Without it a local run applies the envelope when the
+# host can and otherwise refuses, unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 lets a
+# smaller selection run each root unbounded after a warning.
 ROOT_SECONDS=${FM_LINT_ROOT_SECONDS:-1200}
 ROOT_GRACE=${FM_LINT_ROOT_GRACE:-5}
 # 12 GiB of virtual address space per analysis process. ulimit -v caps
@@ -1749,9 +1836,9 @@ ROOT_GRACE=${FM_LINT_ROOT_GRACE:-5}
 # tests/fm-pending-reply.test.sh, and
 # tests/fm-launch-prompt-signals-live-e2e.test.sh. CI runs one root per
 # lint job, so worst-case resident demand is ~8 GiB plus runner overhead,
-# inside the 16 GiB runner. Local lint defaults to two workers; two such
-# caps allow ~16 GiB resident plus host overhead, so use FM_LINT_JOBS=1 on
-# smaller local machines. A root that exceeds its cap fails by name.
+# inside the 16 GiB runner. Local runs fit workers x cap into
+# FM_LINT_LOCAL_MEMORY_BUDGET_GIB, so the 12 GiB cap means one local worker
+# under the 16 GiB default. A root that exceeds its cap fails by name.
 # Never disable, narrow, or redirect source-following to fit a root under
 # the cap. The roots sidecar records each root's peak RSS; roots peaking
 # above about 3 GiB resident are reduction candidates,
@@ -1762,13 +1849,41 @@ for bound_pair in \
   "FM_LINT_ROOT_GRACE=$ROOT_GRACE" \
   "FM_LINT_ROOT_MEMORY_KIB=$ROOT_MEMORY_KIB"; do
   case "${bound_pair#*=}" in
-    ''|0*|*[!0-9]*)
-      printf 'fm-lint.sh: %s must be a positive integer, got %s.\n' \
+    ''|0*|*[!0-9]*|?????????????*)
+      printf 'fm-lint.sh: %s must be a positive integer below 1000000000000, got %s.\n' \
         "${bound_pair%%=*}" "${bound_pair#*=}" >&2
       exit 2
       ;;
   esac
 done
+
+# A local run holds JOBS x ROOT_MEMORY_KIB within a total budget
+# (FM_LINT_LOCAL_MEMORY_BUDGET_GIB, default 16 GiB): the default worker count
+# drops to fit, and an explicit count or a per-root cap above it refuses.
+if [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
+  LOCAL_BUDGET_GIB=${FM_LINT_LOCAL_MEMORY_BUDGET_GIB:-16}
+  case "$LOCAL_BUDGET_GIB" in
+    ''|0*|*[!0-9]*|????????*)
+      printf 'fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got %s.\n' \
+        "$LOCAL_BUDGET_GIB" >&2
+      exit 2
+      ;;
+  esac
+  local_jobs_max=$((LOCAL_BUDGET_GIB * 1048576 / ROOT_MEMORY_KIB))
+  if [ "$local_jobs_max" -lt 1 ]; then
+    printf 'fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=%s exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=%s.\n' \
+      "$ROOT_MEMORY_KIB" "$LOCAL_BUDGET_GIB" >&2
+    exit 2
+  fi
+  if [ "$JOBS" -gt "$local_jobs_max" ]; then
+    if [ "$JOBS_EXPLICIT" -eq 1 ]; then
+      printf 'fm-lint.sh: %s local workers x FM_LINT_ROOT_MEMORY_KIB=%s exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=%s; use --jobs %s or raise the budget.\n' \
+        "$JOBS" "$ROOT_MEMORY_KIB" "$LOCAL_BUDGET_GIB" "$local_jobs_max" >&2
+      exit 2
+    fi
+    JOBS=$local_jobs_max
+  fi
+fi
 
 BOUND_MECH=none
 if [ "$ROOT_COUNT" -gt 0 ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
@@ -1807,6 +1922,28 @@ if [ "$ROOT_COUNT" -gt 0 ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
     printf 'fm-lint.sh: refusing to lint uncapped under FM_LINT_REQUIRE_BOUNDS=1.\n' >&2
     exit 2
   fi
+elif [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
+  # Bound every root when the host can. Otherwise the full set always refuses,
+  # and any other local run refuses before ShellCheck unless
+  # FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 accepts an unbounded run.
+  if declare -F fm_exec_timed >/dev/null 2>&1 \
+    && ( fm_exec_timed 30 1 true ) >/dev/null 2>&1 \
+    && ( ulimit -v "$ROOT_MEMORY_KIB" ) 2>/dev/null; then
+    BOUND_MECH=perl
+  elif [ "$CANONICAL_SET" -eq 1 ]; then
+    printf 'fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.\n' >&2
+    exit 2
+  elif [ "${FM_LINT_ALLOW_UNBOUNDED_LOCAL:-0}" = 1 ]; then
+    printf 'fm-lint.sh: warning: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded because FM_LINT_ALLOW_UNBOUNDED_LOCAL=1.\n' >&2
+  else
+    printf 'fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing to lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI, or set FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 to accept an unbounded local run.\n' >&2
+    exit 2
+  fi
+fi
+
+WORKER_NICE=()
+if [ "$LOCAL_RUN" -eq 1 ] && NICE_BIN=$(type -P nice); then
+  WORKER_NICE=("$NICE_BIN" -n 10)
 fi
 
 PROGRESS=0
@@ -1968,19 +2105,19 @@ fm_lint_run_worker() {  # <worker-index>
   if [ -n "$TELEMETRY" ] && [ -x /usr/bin/time ]; then
     if [ "$(uname)" = Darwin ]; then
       exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-        /usr/bin/time -lp -o "$timing" \
+        ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} /usr/bin/time -lp -o "$timing" \
         env "${worker_env[@]}" \
         "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
     else
       exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-        /usr/bin/time -f 'wall_seconds=%e\nuser_seconds=%U\nsystem_seconds=%S\nmax_rss_kib=%M' -o "$timing" \
+        ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} /usr/bin/time -f 'wall_seconds=%e\nuser_seconds=%U\nsystem_seconds=%S\nmax_rss_kib=%M' -o "$timing" \
         env "${worker_env[@]}" \
         "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
     fi
   else
     [ -z "$TELEMETRY" ] || printf 'timing_unavailable=1\n' > "$timing"
     exec "$PERL_BIN" -e 'setpgrp(0, 0) or die "setpgrp: $!"; exec @ARGV or die "exec: $!"' \
-      env "${worker_env[@]}" \
+      ${WORKER_NICE[@]+"${WORKER_NICE[@]}"} env "${worker_env[@]}" \
       "${BASH:-bash}" "$SELF" --internal-worker "$manifest" "$OUTPUT_DIR" "$worker_index"
   fi
 }
