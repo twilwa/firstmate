@@ -222,11 +222,11 @@ MAX_WALL_MS=
 PER_SCRIPT_TIMEOUT_SECS=0
 # Bound applied automatically on the automatic --changed path, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
-# script is tests/fm-captain-hold-lifecycle.test.sh at about 672s under CI load
-# (the hint table below records that loaded figure). 1500s keeps every measured
-# script under the bound with roughly 2.2x headroom over the slowest loaded
-# measurement, and the pool's slowest four-worker contended hint
-# (tests/fm-pr-merge.test.sh, about 599s) keeps about 2.5x.
+# serial script is tests/fm-remote-secondmate-lifecycle-e2e.test.sh at about
+# 559s under CI load (the hint table below records that loaded figure). 1500s
+# keeps every measured script under the bound with roughly 2.7x headroom over
+# the slowest loaded serial measurement, and the pool's slowest four-worker
+# contended hint (tests/fm-pr-merge.test.sh, about 599s) keeps about 2.5x.
 # The portable CI jobs apply the same bound under a job cap sized to cover setup,
 # the lane's packing ceiling (PORTABLE_SERIAL_MAX_WEIGHT_MS for serial shards,
 # PORTABLE_POOL_MAX_WEIGHT_MS for the pool lane), and this bound
@@ -351,6 +351,7 @@ family_for_basename() {
     fm-classify-decision-key.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
     fm-crew-state.test.sh|fm-captain-hold-lifecycle.test.sh|\
+    fm-captain-hold-teardown.test.sh|\
     fm-documentation-audiences.test.sh|fm-ensure-agents-md.test.sh|fm-forge-detect.test.sh|fm-grok-harness.test.sh|\
     fm-fork-free-helpers.test.sh|\
     fm-harness-precedence.test.sh|fm-install-herdr.test.sh|\
@@ -381,7 +382,7 @@ family_for_basename() {
     fm-codex-stop-park.test.sh|\
     fm-watch-inbox-meta.test.sh|fm-watch-open-decisions.test.sh|\
     fm-watch-triage.test.sh|fm-watch-triage-pause.test.sh|\
-    fm-watch-triage-wedge-defer.test.sh|fm-task-inbox.test.sh|\
+    fm-watch-triage-wedge-defer.test.sh|fm-watch-triage-busy.test.sh|fm-task-inbox.test.sh|\
     fm-watcher-lock.test.sh|fm-inactive-reconcile.test.sh|fm-watch-wedge-cap.test.sh|\
     fm-watch-wedge-cap-unconfigured-parity.test.sh)
       printf '%s\n' watcher-wake-lock
@@ -841,7 +842,8 @@ tests/fm-calm-pi-extension.test.sh 62626
 tests/fm-calm-pi-queue-retention-live-e2e.test.sh 1423
 tests/fm-capacity-auto.test.sh 36243
 tests/fm-capacity.test.sh 7095
-tests/fm-captain-hold-lifecycle.test.sh 671795
+tests/fm-captain-hold-lifecycle.test.sh 374540
+tests/fm-captain-hold-teardown.test.sh 297254
 tests/fm-cd-pretool-check.test.sh 16268
 tests/fm-check-unregister.test.sh 646
 tests/fm-ci-workflow.test.sh 9472
@@ -1094,9 +1096,10 @@ tests/fm-watch-beacon.test.sh 28563
 tests/fm-watch-checkpoint.test.sh 29308
 tests/fm-watch-inbox-meta.test.sh 398
 tests/fm-watch-recovery-loop.test.sh 61204
+tests/fm-watch-triage-busy.test.sh 197650
 tests/fm-watch-triage-pause.test.sh 466750
 tests/fm-watch-triage-wedge-defer.test.sh 526980
-tests/fm-watch-triage.test.sh 592950
+tests/fm-watch-triage.test.sh 395300
 tests/fm-watch-wedge-cap-live.test.sh 199
 tests/fm-watch-wedge-cap-unconfigured-parity.test.sh 46920
 tests/fm-watch-wedge-cap.test.sh 417835
@@ -2021,6 +2024,11 @@ families_for_changed_path() {
     docs/fm-test-portable-shards.md|docs/fm-test-isolation-proof.md|\
     docs/fm-test-isolation-proof.json)
       printf '%s\n' pure-contract-unit
+      printf '%s\n' __script__:fm-test-run.test.sh
+      ;;
+    bin/fm-ci-budget-warn.sh)
+      printf '%s\n' __script__:fm-ci-workflow.test.sh
+      printf '%s\n' __script__:fm-test-run.test.sh
       ;;
     AGENTS.md)
       # Its byte-size ratchet is a standalone suite outside the curated family.

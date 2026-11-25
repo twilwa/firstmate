@@ -1794,8 +1794,9 @@ SH
 # green but whose wall clock outgrew its caller's invocation budget. The caller
 # gets killed mid-run and retries invisibly, so an over-budget run has to be a
 # failure, not a note in the log.
-# tests/fm-watch-triage.test.sh is the slowest watcher-wake-lock member at about
-# 593s under CI load (pause and wedge-defer siblings are 467s and 527s), so the
+# tests/fm-watch-triage-wedge-defer.test.sh is the slowest watcher-wake-lock
+# member at about 527s under CI load (the pause and triage siblings are 467s and
+# 395s), so the
 # automatic --changed bound must leave a slow but healthy watcher-wake-lock
 # script room while still bounding a genuinely hung one
 # (upstream issue #3869). The stub records the bound the runner hands it.
@@ -2312,6 +2313,52 @@ SH
   pass "outer runner catches a nested run's ignored listener failure"
 }
 
+test_ci_budget_warn_annotates_over_budget_lanes_without_failing() {
+  local tmp out rc
+  tmp=$(fm_test_tmproot fm-ci-budget-warn)
+  cat >"$tmp/aggregate.json" <<'JSON'
+{
+  "kind": "aggregate",
+  "lanes": [
+    {"selection": "lane=portable-serial-1of13;fail-on-gate-skip=1", "summary": {"duration_ms": 2120000}},
+    {"selection": "lane=portable-pool", "summary": {"duration_ms": 2119999}},
+    {"selection": "lane=portable-serial-2of13", "summary": {"duration_ms": 1785194}},
+    {"selection": "lane=portable-serial-3of13", "summary": {"duration_ms": 1200000}}
+  ]
+}
+JSON
+  mkdir -p "$tmp/lint"
+  printf 'partition\t2\nwall_seconds\t1200\n' >"$tmp/lint/partition-2.tsv"
+  printf 'partition\t1\nwall_seconds\t1199\n' >"$tmp/lint/partition-1.tsv"
+
+  rc=0
+  out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
+    "$tmp/aggregate.json" "$tmp/lint" 2>"$tmp/err") || rc=$?
+  [ "$rc" -eq 0 ] || fail "budget warn must not fail, got $rc"$'\n'"$out"$'\n'"$(cat "$tmp/err")"
+  assert_contains "$out" "::warning title=CI budget::lane portable-serial-1of13 command time was 35.3 minutes, above the 35.3-minute healthy lane budget" \
+    "a lane exactly at the 2120s lane budget did not emit a GitHub warning annotation"
+  printf '%s\n' "$out" | grep -q 'fail-on-gate-skip' \
+    && fail "budget warning printed runner flags instead of the lane name"$'\n'"$out"
+  printf '%s\n' "$out" | grep -q 'portable-pool' \
+    && fail "a lane one millisecond under the lane budget was warned"$'\n'"$out"
+  printf '%s\n' "$out" | grep -q 'portable-serial-2of13' \
+    && fail "the slowest measured green fork lane (1785s) was warned"$'\n'"$out"
+  printf '%s\n' "$out" | grep -q 'portable-serial-3of13' \
+    && fail "a lane at its 1200s packing ceiling was warned"$'\n'"$out"
+  assert_contains "$out" "::warning title=CI budget::lint partition 2 command time was 20.0 minutes, above the 20.0-minute healthy lint budget" \
+    "a lint partition exactly at the 1200s lint budget did not emit a GitHub warning annotation"
+  printf '%s\n' "$out" | grep -q 'lint partition 1' \
+    && fail "a lint partition one second under the lint budget was warned"
+
+  rc=0
+  out=$(GITHUB_ACTIONS=true bash "$ROOT/bin/fm-ci-budget-warn.sh" \
+    "$tmp/missing.json" 2>"$tmp/missing.err") || rc=$?
+  [ "$rc" -eq 0 ] || fail "missing aggregate must still exit 0, got $rc"
+  assert_contains "$out" "::warning title=CI budget::no aggregate timing JSON" \
+    "missing aggregate did not warn"
+  pass "budget warn annotates lane and lint overruns at their own budgets and never fails the job"
+}
+
 test_json_preserves_timeouts_before_later_files_finish
 test_list_all_exact_suite_coverage
 test_family_selection
@@ -2364,3 +2411,4 @@ test_aggregate_json
 test_live_listener_guard
 test_listener_exited_during_scan
 test_nested_listener_guard
+test_ci_budget_warn_annotates_over_budget_lanes_without_failing
