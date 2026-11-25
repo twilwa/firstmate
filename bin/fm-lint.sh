@@ -9,7 +9,9 @@
 # dataflow analysis while preserving ordinary shell lint checks and source
 # following. Hosted CI's full canonical set (main pushes and upgraded
 # pull-request runs) and every --partition attempt --norc --external-sources
-# with full dataflow for each canonical root. A local run's default
+# with full dataflow for each canonical root except the known-heavy roots
+# (see the memory fallback below), which run once with the retry's flags.
+# A local run's default
 # changed-file mode (including the no-mistakes lint step) drops --external-sources, keeps
 # dataflow, and excludes SC1091, SC2034, SC2153, and SC2329, the codes that
 # need library context. CI checks those codes
@@ -29,10 +31,12 @@
 #     local run.
 #   - Hosted CI without --changed (main pushes) lints the full canonical set:
 #     bin/*.sh bin/backends/*.sh tests/*.sh, with --external-sources and full
-#     dataflow first; memory failures may take the narrower retry below.
+#     dataflow first; memory failures may take the narrower retry below,
+#     where known-heavy roots start.
 #   - --changed (CI pull requests) lints only the canonical-set files changed
-#     since the merge-base, still with --external-sources and full dataflow, so
-#     the PR gate stays source-aware on the files it checks. Outside hosted
+#     since the merge-base, still with --external-sources and full dataflow
+#     (known-heavy roots aside), so the PR gate stays source-aware on the
+#     files it checks. Outside hosted
 #     CI, --changed keeps that source-aware changed set but never upgrades.
 #   - Otherwise a local run, on any branch including main, lints only the
 #     canonical-set files changed since the merge-base against origin/main
