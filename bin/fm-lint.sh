@@ -921,15 +921,34 @@ FOLLOW_SOURCES=1
 EXCLUDE_CODES=
 # A failed diff (a corrupt index, say) must never read as an empty changed set
 # that skips every root, nor fall back to the canonical set: it refuses.
+# Both captures live in one private directory whose scoped cleanup covers exit
+# and catchable signals until the later worker traps take over; Git runs as a
+# waited child so a trapped signal interrupts the wait instead of queueing.
+DIFF_CAPTURE_DIR=
+DIFF_CAPTURE_PID=
+# shellcheck disable=SC2329 # Registered by the collector's scoped traps.
+fm_lint_diff_capture_cleanup() {
+  [ -z "$DIFF_CAPTURE_PID" ] || kill -TERM "$DIFF_CAPTURE_PID" 2>/dev/null || true
+  [ -z "$DIFF_CAPTURE_DIR" ] || rm -rf "$DIFF_CAPTURE_DIR"
+  DIFF_CAPTURE_PID=
+  DIFF_CAPTURE_DIR=
+}
 fm_lint_collect_changed_roots() {  # <merge-base>
   local merge_base=$1 changed_path diff_file diff_rc=0
-  diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-lint-diff.XXXXXX") || exit 1
-  git diff --name-only --diff-filter=ACMR -z "$merge_base" -- >"$diff_file" 2>"$diff_file.err" || diff_rc=$?
+  trap fm_lint_diff_capture_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  DIFF_CAPTURE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-lint-diff.XXXXXX") || exit 1
+  diff_file="$DIFF_CAPTURE_DIR/names"
+  git diff --name-only --diff-filter=ACMR -z "$merge_base" -- >"$diff_file" 2>"$diff_file.err" &
+  DIFF_CAPTURE_PID=$!
+  wait "$DIFF_CAPTURE_PID" || diff_rc=$?
+  DIFF_CAPTURE_PID=
   if [ "$diff_rc" -ne 0 ]; then
     printf 'fm-lint.sh: git diff against merge-base %s failed (exit %s), so the changed lint targets are unknown; refusing to report an empty lint. Repair the repository state (see git status) and rerun.\n' \
       "$merge_base" "$diff_rc" >&2
     sed 's/^/fm-lint.sh: git: /' "$diff_file.err" >&2
-    rm -f "$diff_file" "$diff_file.err"
     exit 2
   fi
   ROOTS=()
@@ -938,7 +957,8 @@ fm_lint_collect_changed_roots() {  # <merge-base>
     [ -f "$changed_path" ] || continue
     ROOTS+=("$changed_path")
   done < <(LC_ALL=C sort -z "$diff_file")
-  rm -f "$diff_file" "$diff_file.err"
+  fm_lint_diff_capture_cleanup
+  trap - EXIT HUP INT TERM
 }
 
 # git diff --name-only drops a rename's old path, and --diff-filter=ACMR drops

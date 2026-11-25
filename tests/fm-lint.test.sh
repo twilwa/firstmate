@@ -244,6 +244,8 @@ test_canonical_partitions_preserve_full_lint() {
 #   FM_TEST_GIT_DIFF_FILE        path to a file of NUL-separated changed paths
 #   FM_TEST_GIT_DIFF_FAIL        1 makes the changed-file diff fail like a
 #                                corrupt index (exit 128); default 0
+#   FM_TEST_GIT_DIFF_HOLD        path: the changed-file diff writes its own
+#                                pid there, then stays open until killed
 #   FM_TEST_GIT_NAME_STATUS_FILE path to a git diff --name-status listing
 #                                (tab-separated status and paths). When unset,
 #                                the name-status stub synthesizes M lines from
@@ -280,6 +282,15 @@ case "$*" in
     if [ "${FM_TEST_GIT_DIFF_FAIL:-0}" = 1 ]; then
       printf 'fatal: index file smaller than expected\n' >&2
       exit 128
+    fi
+    if [ -n "${FM_TEST_GIT_DIFF_HOLD:-}" ]; then
+      printf '%s\n' "$$" > "$FM_TEST_GIT_DIFF_HOLD"
+      i=0
+      while [ "$i" -lt 300 ]; do
+        sleep 0.1
+        i=$((i + 1))
+      done
+      exit 0
     fi
     if [ -n "${FM_TEST_GIT_DIFF_FILE:-}" ] && [ -f "$FM_TEST_GIT_DIFF_FILE" ]; then
       cat "$FM_TEST_GIT_DIFF_FILE"
@@ -895,6 +906,46 @@ test_failed_changed_diff_refuses_instead_of_passing_empty() {
     [ ! -s "$log" ] || fail "a failed diff on route $route still invoked ShellCheck"
   done
   pass "a failed changed-file diff refuses with git's error instead of passing as an empty lint"
+}
+
+# Cancelling lint while the changed-file diff runs must not leave its capture
+# files behind in TMPDIR.
+test_cancelled_changed_diff_leaves_no_capture() {
+  local tmp fakebin log lint_tmp hold out_file pid rc i git_pid leftover
+  tmp=$(fm_test_tmproot fm-lint-cancelled-diff)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  lint_tmp="$tmp/lint tmp"
+  mkdir -p "$lint_tmp"
+  hold="$tmp/git-diff.pid"
+  out_file="$tmp/output"
+
+  PATH="$fakebin:$PATH" TMPDIR="$lint_tmp" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
+    FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_HOLD="$hold" "$LINT" > "$out_file" 2>&1 &
+  pid=$!
+  i=0
+  while [ "$i" -lt 500 ] && [ ! -s "$hold" ]; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.01
+    i=$((i + 1))
+  done
+  [ -s "$hold" ] || {
+    kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    fail "the changed-file diff never started"$'\n'"$(cat "$out_file")"
+  }
+  git_pid=$(cat "$hold")
+  kill -TERM "$pid" 2>/dev/null || fail "the wrapper could not be interrupted"
+  rc=0
+  wait "$pid" 2>/dev/null || rc=$?
+  kill -TERM "$git_pid" 2>/dev/null || true
+  [ "$rc" -eq 143 ] || fail "a cancelled diff exited $rc, expected 143"$'\n'"$(cat "$out_file")"
+  leftover=$(ls -A "$lint_tmp")
+  [ -z "$leftover" ] || fail "a cancelled diff left captures in TMPDIR: $leftover"
+  [ ! -s "$log" ] || fail "a cancelled diff still invoked ShellCheck"
+  pass "cancelling lint during the changed-file diff leaves no capture files in TMPDIR"
 }
 
 # Only the hosted workflow contract (GITHUB_ACTIONS with required bounds)
@@ -2670,6 +2721,7 @@ test_ci_keeps_external_sources_without_local_exclusions
 test_local_main_drops_external_sources
 test_local_run_without_a_changed_set_refuses_the_full_set
 test_failed_changed_diff_refuses_instead_of_passing_empty
+test_cancelled_changed_diff_leaves_no_capture
 test_bare_ci_marker_keeps_local_safeguards
 test_explicit_path_keeps_external_sources
 test_fast_mode_on_a_local_branch_keeps_source_following
