@@ -2407,6 +2407,87 @@ test_hook_claude_mode_waits_for_late_claim() {
   pass "fm-turnend-guard --claude: bounded claim wait avoids a token-consuming forced continuation"
 }
 
+# Claude starts the guard and the asyncRewake auto-arm in parallel on one Stop,
+# and the auto-arm publishes its generation claim only after its pre-claim
+# path, which can land seconds after the guard starts. This fixture reproduces
+# the shape that blocked healthy Stops on a busy primary: the previous
+# generation closed as a terminal rewake a minute ago, the beacon is 7 s old,
+# no watcher lock exists, and the watcher arm is stubbed. The driver runs as
+# the fake Claude session that holds state/.lock, starts the real auto-arm
+# after <autoarm-delay> seconds (or never, for an empty delay), runs the guard
+# at once under its DEFAULT claim wait, and stops the auto-arm once it claims.
+run_parallel_stop() {  # <dir> <autoarm-delay|''>
+  local dir=$1 delay=$2 home now
+  home=$(cd "$dir" && pwd)
+  now=$(date +%s)
+  : > "$dir/state/task1.meta"
+  install_integrated_autoarm "$dir"
+  printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$dir/bin/fm-watch-arm.sh"
+  chmod +x "$dir/bin/fm-watch-arm.sh"
+  printf 'epoch=5 owner_pid=%s outcome=rewake updated_at=%s claude_session=sess-claude-mode\n' \
+    "$(nonexistent_pid)" "$((now - 60))" > "$dir/state/.claude-autoarm-epoch"
+  fm_touch_epoch "$((now - 60))" "$dir/state/.claude-autoarm-epoch"
+  : > "$dir/state/.last-watcher-beat"
+  fm_touch_epoch "$((now - 7))" "$dir/state/.last-watcher-beat"
+  cat > "$dir/parallel-stop.sh" <<'SH'
+delay=$1 auto_pid=
+export CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=sess-claude-mode CLAUDE_PID=$$
+printf '%s\n' "$$" > "$FM_HOME/state/.lock"
+printf '%s\n' "$CLAUDE_CODE_SESSION_ID" > "$FM_HOME/state/.lock-session"
+if [ -n "$delay" ]; then
+  (
+    sleep "$delay"
+    exec "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
+  ) <<< '{"session_id":"sess-claude-mode","stop_hook_active":false}' > "$FM_HOME/auto.out" 2>&1 &
+  auto_pid=$!
+fi
+printf '{"stop_hook_active":false,"session_id":"sess-claude-mode"}' \
+  | bash "$FM_HOME/bin/fm-turnend-guard.sh" --claude > "$FM_HOME/guard.out" 2>&1
+printf '%s' "$?" > "$FM_HOME/guard.status"
+if [ -n "$auto_pid" ]; then
+  # Let a late auto-arm reach its claim before ending the stubbed arm, so the
+  # ledger shows whether this Stop's generation was claimed at all.
+  waited=0
+  while [ "$waited" -lt 300 ] && grep -q '^epoch=5 ' "$FM_HOME/state/.claude-autoarm-epoch"; do
+    sleep 0.05
+    waited=$((waited + 1))
+  done
+  kill -TERM "$auto_pid" 2>/dev/null || true
+  wait "$auto_pid" 2>/dev/null || true
+fi
+SH
+  env -u FM_CLAUDE_AUTOARM_SYNC_WAIT_MS FM_HOME="$home" FM_CLAUDE_AUTOARM_ATTEMPTS=1 \
+    "$dir/fake-claude" "$dir/parallel-stop.sh" "$delay"
+}
+
+# The 2026-11-24 race: an auto-arm that claims well after the guard's old
+# 800 ms window must still own the Stop instead of costing a forced turn.
+test_hook_claude_mode_parallel_late_autoarm_claim_allows_stop() {
+  local dir status gen
+  dir=$(make_primary_dir "$TMP_ROOT/hook-claude-parallel-late-claim")
+  run_parallel_stop "$dir" 3
+  status=$(cat "$dir/guard.status")
+  gen=$(sed -n '1s/^epoch=\([0-9]*\) .*$/\1/p' "$dir/state/.claude-autoarm-epoch")
+  [ "$gen" = 6 ] || fail "the late auto-arm never claimed the next generation, ledger: $(cat "$dir/state/.claude-autoarm-epoch") auto: $(cat "$dir/auto.out")"
+  expect_code 0 "$status" "a Stop whose parallel auto-arm claims late must be allowed: $(cat "$dir/guard.out")"
+  assert_not_contains "$(cat "$dir/guard.out")" "did not claim this home" "the late-claim Stop printed the blind-turn banner"
+  assert_absent "$dir/state/.turnend-claude-blocks" "the late-claim Stop charged the block budget"
+  pass "fm-turnend-guard --claude: a parallel auto-arm claiming past the old 800 ms window owns the Stop"
+}
+
+# A genuinely absent auto-arm still blocks once the default wait runs out.
+test_hook_claude_mode_parallel_absent_autoarm_still_blocks() {
+  local dir status count
+  dir=$(make_primary_dir "$TMP_ROOT/hook-claude-parallel-absent")
+  run_parallel_stop "$dir" ''
+  status=$(cat "$dir/guard.status")
+  expect_code 2 "$status" "a Stop with no auto-arm claim must block after the wait"
+  assert_contains "$(cat "$dir/guard.out")" "did not claim this home" "the absent auto-arm block lost its banner"
+  count=$(sed -n '2s/^count=//p' "$dir/state/.turnend-claude-blocks")
+  [ "$count" = 1 ] || fail "the absent auto-arm block must charge one budget block, got $count"
+  pass "fm-turnend-guard --claude: a genuinely absent auto-arm still blocks after the default claim wait"
+}
+
 test_hook_claude_mode_secondmate_reblocks_like_primary() {
   local dir pid out status
   dir=$(make_secondmate_dir "$TMP_ROOT/hook-claude-sm-reblock")
@@ -2746,6 +2827,8 @@ test_hook_claude_mode_fail_open_requires_notice_and_failure_epoch
 test_hook_claude_mode_away_mode_never_uses_stop_autoarm_fail_open
 test_hook_claude_mode_allow_resets_budget
 test_hook_claude_mode_waits_for_late_claim
+test_hook_claude_mode_parallel_late_autoarm_claim_allows_stop
+test_hook_claude_mode_parallel_absent_autoarm_still_blocks
 test_hook_claude_mode_secondmate_reblocks_like_primary
 test_hook_away_daemon_allows_between_watcher_cycles
 test_hook_away_daemon_allows_over_dead_watcher_lock
