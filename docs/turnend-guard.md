@@ -328,8 +328,9 @@ Under the default one-shot behavior, that re-opened the 2026-07-21 blind window.
 
 Before the Claude cooperative budget can re-block a Stop, the guard checks for a live foreign session-lock owner and takes the same safe diagnostic exit described under "Guard predicates" ([foreign session-lock owner](#foreign-session-lock-owner)).
 
-The Claude mode waits up to `FM_CLAUDE_AUTOARM_SYNC_WAIT_MS` (default 800 milliseconds).
-It allows the stop when any of these holds:
+The Claude mode waits up to `FM_CLAUDE_AUTOARM_SYNC_WAIT_MS` (default 5000 milliseconds).
+Claude Code starts both Stop hooks in parallel, and the auto-arm publishes its claim only after its pre-claim checks, which can take seconds on a busy host.
+It allows the stop as soon as any of these holds, so only a Stop with no auto-arm claim waits the full window:
 
 - The watcher is healthy.
 - The auto-arm's generation claim is open.
