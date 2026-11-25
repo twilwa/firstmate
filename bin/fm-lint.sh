@@ -134,7 +134,7 @@
 #   fm-lint.sh <path>...               lint explicit roots with the same config
 #   fm-lint.sh --jobs <1|2> [path]...  override concurrent worker count
 #   fm-lint.sh --partition <k>of<N>      lint one canonical CI partition (see fallback above)
-#   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; sourced helpers and lint-definition files upgrade to the full set)
+#   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; in hosted CI only, sourced helpers and lint-definition files upgrade to the full set)
 #   fm-lint.sh --telemetry <path> ...  write a quiet metrics snapshot
 #   fm-lint.sh --required-version      print the ShellCheck pin
 #   fm-lint.sh --list-files            print the file set that would be linted
