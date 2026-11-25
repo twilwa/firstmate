@@ -54,6 +54,8 @@
 #     on the merge-base tree). Local runs, including the no-mistakes lint step
 #     and a worker's own lint, never take that upgrade: the source-following
 #     full set needs many GiB per root and exhausts a shared dev host.
+#   - In either changed-file mode, a failed `git diff` against the merge-base
+#     refuses with exit 2 rather than reading as an empty changed set.
 # Explicit paths always bypass this file-set selection and lint exactly the
 # given paths, matching the same config, without the workflow YAML check.
 # Explicit core bin/ and bin/backends/ scripts still receive the
