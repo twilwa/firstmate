@@ -1,0 +1,74 @@
+== S4 local run on main with an uncommitted edit to bin/consumer.sh ==
+-- BASE 78e5cce:
+$ bin/fm-lint.sh --list-files
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- NEW 0a71f200:
+$ bin/fm-lint.sh --list-files
+bin/consumer.sh
+[exit 0]
+
+== S5a local run with no merge-base (orphan branch, no main/origin/main) ==
+-- BASE 78e5cce:
+$ bin/fm-lint.sh --list-files
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- NEW 0a71f200:
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: cannot compute a local changed-file set (no merge-base against origin/main or main); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+[exit 2]
+-- NEW 0a71f200 actual lint (not --list-files):
+$ bin/fm-lint.sh
+fm-lint.sh: cannot compute a local changed-file set (no merge-base against origin/main or main); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+[exit 2]
+-- NEW hosted main-push contract still lints the full set (list only):
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --list-files
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+
+== S5b local run outside a Git work tree ==
+-- BASE 78e5cce:
+$ bin/fm-lint.sh --list-files
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- NEW 0a71f200:
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: cannot compute a local changed-file set (not inside a Git work tree); refusing the full canonical lint locally. Pass explicit paths, or lint the full set in a capped sandbox (for example a Boat sandbox started with --no-env, one --partition at a time) or in CI.
+[exit 2]
+-- NEW explicit paths still lint outside Git (bypass file-set selection):
+$ bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+[exit 0]

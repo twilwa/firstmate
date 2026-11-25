@@ -1,0 +1,67 @@
+== S1 local run, feature branch whose only change is a sourced helper (bin/helper.sh, sourced by bin/consumer.sh) ==
+-- BASE 78e5cce:
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: a sourced helper changed; using full canonical lint
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- NEW 0a71f200:
+$ bin/fm-lint.sh --list-files
+bin/helper.sh
+[exit 0]
+
+== S2 local run, feature branch changing a lint-definition file (bin/fm-timeout-lib.sh) ==
+-- BASE 78e5cce:
+$ bin/fm-lint.sh --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- NEW 0a71f200:
+$ bin/fm-lint.sh --list-files
+bin/fm-timeout-lib.sh
+bin/helper.sh
+[exit 0]
+
+== S3 same branch, hosted --changed (GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1) still upgrades ==
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --list-files
+fm-lint.sh: lint definition files changed; using full canonical lint
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
+-- local --changed (no hosted contract) does not upgrade:
+$ bin/fm-lint.sh --changed --list-files
+bin/fm-timeout-lib.sh
+bin/helper.sh
+[exit 0]
+-- bare CI=true counts as local:
+$ env CI=true bin/fm-lint.sh --list-files
+bin/fm-timeout-lib.sh
+bin/helper.sh
+[exit 0]
+-- GITHUB_ACTIONS=true without FM_LINT_REQUIRE_BOUNDS counts as local:
+$ env GITHUB_ACTIONS=true bin/fm-lint.sh --changed --list-files
+bin/fm-timeout-lib.sh
+bin/helper.sh
+[exit 0]

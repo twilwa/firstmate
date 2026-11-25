@@ -1,0 +1,18 @@
+== S10 real repo (this branch): inventory consumers ==
+hosted contract --list-files (ci.yml macOS step / fm-ci-workflow test form): exit 0 count 651
+local --partition 1of4 --list-files: exit 0
+local --partition 2of4 --list-files: exit 0
+local --partition 3of4 --list-files: exit 0
+local --partition 4of4 --list-files: exit 0
+union of 4 partitions: 651 lines, 651 unique
+RESULT: hosted --list-files == union of partitions (no loss/duplication)
+-- bare CI=true (old test env) is local: changed set only:
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+[exit 0]
+-- plain local default (the no-mistakes gate form) on this branch, which changes bin/fm-lint.sh (a lint-definition file):
+bin/fm-lint.sh
+tests/fm-ci-workflow.test.sh
+tests/fm-lint.test.sh
+[exit 0]

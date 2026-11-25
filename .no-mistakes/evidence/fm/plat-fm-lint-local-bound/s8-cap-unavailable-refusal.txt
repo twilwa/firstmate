@@ -1,0 +1,53 @@
+== S8a host where ulimit -v 12 GiB cannot be applied (hard RLIMIT_AS pinned at 8 GiB via prlimit) ==
+-- NEW local full canonical partition must refuse:
+$ env PATH=<wrap>:$PATH prlimit --as=8589934592:8589934592 -- bin/fm-lint.sh --partition 1of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+[exit 2]
+shellcheck roots started: 0
+-- NEW local changed-file run notes once and lints:
+$ env PATH=<wrap>:$PATH prlimit --as=8589934592:8589934592 -- bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+shellcheck roots started: 2
+-- BASE 78e5cce local partition on same host runs uncapped:
+$ env PATH=<wrap>:$PATH prlimit --as=8589934592:8589934592 -- bin/fm-lint.sh --partition 1of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: begin bin/fm-lint.sh (shard 0, full mode)
+fm-lint: end bin/fm-lint.sh reason=ok rc=0 duration_ms=3333 rss_kib=unavailable
+fm-lint: begin bin/consumer.sh (shard 1, full mode)
+fm-lint: end bin/consumer.sh reason=ok rc=0 duration_ms=107 rss_kib=unavailable
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+shellcheck roots started: 2
+pid=2007026 nice=0 ulimit_v_kib=8388608 args_tail=bin/fm-lint.sh
+pid=2009587 nice=0 ulimit_v_kib=8388608 args_tail=bin/consumer.sh
+
+== S8b host where the timeout watchdog is unavailable (bin/fm-timeout-lib.sh absent) ==
+-- NEW local full canonical partition must refuse:
+$ env PATH=<wrap>:$PATH bin/fm-lint.sh --partition 2of4
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.
+[exit 2]
+shellcheck roots started: 0
+-- NEW local changed-file run notes once and lints:
+$ env PATH=<wrap>:$PATH bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+shellcheck roots started: 1
+pid=2010156 nice=10 ulimit_v_kib=unlimited args_tail=bin/helper.sh

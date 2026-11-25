@@ -1,0 +1,100 @@
+== S6: FM_LINT_ROOT_MEMORY_KIB=65536 (64 MiB) on a local run: limit applied to each ShellCheck root (probe shows ulimit_v_kib=65536); tiny fixture fits under it. See s6b-tiny-cap-fails-by-name.txt for the binding case ==
+-- NEW 0a71f200:
+$ env PATH=/tmp/fmlintfix.x2fR3a/wrap:~/.local/bin:~/.local/bin:~/.kimi-code/bin:~/.local/bin:~/.local/bin:~/.local/share/mise/shims:~/.ascii/bin:~/.local/bin:~/.local/share/mise/shims:~/.local/bin:~/go/bin:~/.cargo/bin:~/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin FM_LINT_ROOT_MEMORY_KIB=65536 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+pid=1973671 nice=10 ulimit_v_kib=65536 args_tail=bin/helper.sh
+pid=1973676 nice=10 ulimit_v_kib=65536 args_tail=bin/fm-timeout-lib.sh
+-- BASE 78e5cce (same env; cap ignored locally):
+$ env PATH=/tmp/fmlintfix.x2fR3a/wrap:~/.local/bin:~/.local/bin:~/.kimi-code/bin:~/.local/bin:~/.local/bin:~/.local/share/mise/shims:~/.ascii/bin:~/.local/bin:~/.local/share/mise/shims:~/.local/bin:~/go/bin:~/.cargo/bin:~/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin FM_LINT_ROOT_MEMORY_KIB=65536 bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+[exit 0]
+pid=1974280 nice=0 ulimit_v_kib=unlimited args_tail=bin/helper.sh
+
+== S7 local memory budget (workers x per-root cap) ==
+-- explicit --jobs 2 with default 12 GiB cap and default 16 GiB budget must refuse:
+$ bin/fm-lint.sh --jobs 2
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+[exit 2]
+-- FM_LINT_JOBS=2 likewise:
+$ env FM_LINT_JOBS=2 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: 2 local workers x FM_LINT_ROOT_MEMORY_KIB=12582912 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16; use --jobs 1 or raise the budget.
+[exit 2]
+-- per-root cap above budget (FM_LINT_ROOT_MEMORY_KIB=20971520 = 20 GiB) must refuse:
+$ env FM_LINT_ROOT_MEMORY_KIB=20971520 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: per-root cap FM_LINT_ROOT_MEMORY_KIB=20971520 exceeds the local memory budget FM_LINT_LOCAL_MEMORY_BUDGET_GIB=16.
+[exit 2]
+-- named override FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 permits --jobs 2:
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=24 bin/fm-lint.sh --jobs 2 --telemetry /tmp/fmlintfix.x2fR3a/tel-b24.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+jobs	2
+-- smaller per-root cap (4 GiB) lets the default rise back to 2 workers within 16 GiB:
+$ env FM_LINT_ROOT_MEMORY_KIB=4194304 bin/fm-lint.sh --telemetry /tmp/fmlintfix.x2fR3a/tel-4g.tsv
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+awk: cmd. line:191: fatal: cannot open file `bin/backends/*.sh' for reading: No such file or directory
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+jobs	2
+-- malformed budget values refuse:
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=0 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 0.
+[exit 2]
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=-1 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got -1.
+[exit 2]
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=abc bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got abc.
+[exit 2]
+$ env FM_LINT_LOCAL_MEMORY_BUDGET_GIB=99999999 bin/fm-lint.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint.sh: FM_LINT_LOCAL_MEMORY_BUDGET_GIB must be a positive integer below 10000000, got 99999999.
+[exit 2]
+-- hosted contract (GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1) --changed --jobs 2: local budget not applied, hosted bounds + upgrade apply:
+$ env PATH=<probe-wrap>:$PATH GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh --changed --jobs 2 --telemetry /tmp/fmlintfix.x2fR3a/hosted.tsv
+fm-lint.sh: lint definition files changed; using full canonical lint
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+[exit 0]
+-- telemetry:
+jobs	2
+meta	mode	full
+meta	jobs	2
+meta	bounds_enforced	1
+meta	root_memory_limit_kib	12582912
+-- probe (hosted roots run at normal priority, under the 12 GiB cap):
+pid=2178932 nice=0 ulimit_v_kib=12582912 args_tail=bin/consumer.sh
+pid=2178931 nice=0 ulimit_v_kib=12582912 args_tail=bin/fm-lint.sh
+pid=2179132 nice=0 ulimit_v_kib=12582912 args_tail=bin/fm-install-actionlint.sh
+pid=2179387 nice=0 ulimit_v_kib=12582912 args_tail=bin/fm-install-shellcheck.sh
+pid=2179692 nice=0 ulimit_v_kib=12582912 args_tail=bin/fm-lint-workflows.sh
+pid=2179955 nice=0 ulimit_v_kib=12582912 args_tail=bin/fm-timeout-lib.sh
+pid=2180393 nice=0 ulimit_v_kib=12582912 args_tail=bin/helper.sh
+pid=2180536 nice=0 ulimit_v_kib=12582912 args_tail=bin/backends/x.sh
+pid=2180747 nice=0 ulimit_v_kib=12582912 args_tail=tests/t.test.sh

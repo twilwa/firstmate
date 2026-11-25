@@ -1,0 +1,25 @@
+== S6-adversarial (tighter): FM_LINT_ROOT_MEMORY_KIB=8192 (8 MiB) — a root that exceeds its cap must fail by name ==
+-- new:
+$ env PATH=<wrap>:$PATH FM_LINT_ROOT_MEMORY_KIB=8192 bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: end bin/helper.sh reason=signal:SEGV rc=139 duration_ms=116 rss_kib=3456
+fatal library error, reap
+[exit 139]
+pid=1985725 nice= ulimit_v_kib=8192 args_tail=bin/helper.sh
+-- base:
+$ env PATH=<wrap>:$PATH FM_LINT_ROOT_MEMORY_KIB=8192 bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+[exit 0]
+pid=1986019 nice=0 ulimit_v_kib=unlimited args_tail=bin/helper.sh
+$ env FM_LINT_ROOT_MEMORY_KIB=16384 bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+fm-lint: end bin/helper.sh reason=signal:126 rc=254 duration_ms=109 rss_kib=768
+malloc: failed on request for 2097152 bytes; message: initEventsBuf
+[exit 254]
+$ env FM_LINT_ROOT_MEMORY_KIB=32768 bin/fm-lint.sh bin/helper.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: full ShellCheck extended analysis enabled
+[exit 0]

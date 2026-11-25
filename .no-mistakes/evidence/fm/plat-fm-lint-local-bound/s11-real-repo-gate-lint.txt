@@ -1,0 +1,43 @@
+== S11 real repo: gate-form local lint (bin/fm-lint.sh, no args) on this branch ==
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+fm-lint.sh: local changed-file mode; ShellCheck source following disabled
+fm-lint-workflows.sh: actionlint 1.7.12 (pinned 1.7.12)
+fm-lint-workflows.sh: 4 workflow files valid
+outer wall=13.11s maxrss_kib(parent)=334080
+[exit 0]
+-- roots sidecar:
+format	fm-lint-roots-v1
+meta	shellcheck_version	0.11.0
+meta	platform	Linux x86_64
+meta	image_os	unknown
+meta	image_version	unknown
+meta	mode	local
+meta	partition	all
+meta	jobs	1
+meta	bounds_enforced	1
+meta	root_deadline_seconds	1200
+meta	root_kill_grace_seconds	5
+meta	root_memory_limit_kib	12582912
+meta	timing_mechanism	perl
+begin	3	tests/fm-lint.test.sh	0	local	1795603920870
+end	3	tests/fm-lint.test.sh	0	local	1795603920870	1795603925264	4394	0	ok	287872	0
+begin	1	bin/fm-lint.sh	1	local	1795603925290
+end	1	bin/fm-lint.sh	1	local	1795603925290	1795603928060	2770	0	ok	334080	0
+begin	2	tests/fm-ci-workflow.test.sh	1	local	1795603928062
+end	2	tests/fm-ci-workflow.test.sh	1	local	1795603928062	1795603928873	811	0	ok	59904	0
+meta	roots_begun	3
+meta	roots_completed	3
+meta	roots_unfinished	0
+meta	result_exit	0
+
+== S10b hosted contract outside Git (depth-1 PR checkout analogue): full inventory without a merge-base ==
+bin/consumer.sh
+bin/fm-install-actionlint.sh
+bin/fm-install-shellcheck.sh
+bin/fm-lint-workflows.sh
+bin/fm-lint.sh
+bin/fm-timeout-lib.sh
+bin/helper.sh
+bin/backends/*.sh
+tests/t.test.sh
+[exit 0]
