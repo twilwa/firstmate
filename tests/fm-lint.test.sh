@@ -193,6 +193,7 @@ test_canonical_partitions_preserve_full_lint() {
     printf '%s\n' "$selected" >> "$tmp/union"
     [ "$selected" = "$("$LINT" --partition "$part" --list-files)" ] \
       || fail "partition $part is nondeterministic"
+    fm_lint_bounds_supported || continue
     log="$tmp/$part.roots"
     flags="$tmp/$part.flags"
     mode="$tmp/$part.mode"
@@ -2297,6 +2298,8 @@ test_memory_evidence_outranks_findings_and_signal_reasons() {
   if fm_lint_bounds_supported; then
     modes+=(1)
   fi
+  mkdir -p "$tmp/uncapped/bin"
+  cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
 
   # A memory death reports memory whether the runtime exits 1 with a
   # program-prefixed OOM error, exits with GHC's heap-exhaustion status, or is
@@ -2309,8 +2312,8 @@ test_memory_evidence_outranks_findings_and_signal_reasons() {
       out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS=1 \
         "$LINT" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
     else
-      out=$(PATH="$fakebin:$PATH" FM_LINT_JOBS=1 \
-        "$LINT" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
+        "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
     fi
     [ "$rc" -ne 0 ] || fail "memory deaths unexpectedly passed (bounded=$bounded)"
     for name in oom-exit1 oom-heap oom-kill oom-text-findings; do
