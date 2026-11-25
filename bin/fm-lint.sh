@@ -54,8 +54,9 @@
 #     on the merge-base tree). Local runs, including the no-mistakes lint step
 #     and a worker's own lint, never take that upgrade: the source-following
 #     full set needs many GiB per root and exhausts a shared dev host.
-#   - In either changed-file mode, a failed `git diff` against the merge-base
-#     refuses with exit 2 rather than reading as an empty changed set.
+#   - In either changed-file mode, a failed `git diff` against the merge-base,
+#     or a failed sort of its paths, refuses with exit 2 rather than reading as
+#     an empty changed set.
 # Explicit paths always bypass this file-set selection and lint exactly the
 # given paths, matching the same config, without the workflow YAML check.
 # Explicit core bin/ and bin/backends/ scripts still receive the
@@ -102,8 +103,9 @@
 # envelope whenever the host accepts ulimit -v and the watchdog runs. On a
 # host that cannot (macOS rejects the address-space limit) a local full
 # canonical selection (a --partition) refuses and points to a capped sandbox
-# or CI, while a smaller local selection prints one note and lints each root
-# unbounded in its own ShellCheck process with identical diagnostics; the
+# or CI, and a smaller local selection refuses the same way before ShellCheck
+# unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 is set, in which case it prints a
+# warning and lints each root unbounded in its own ShellCheck process; the
 # local memory budget is enforceable only where that per-root limit is
 # active. Local lint workers run under nice -n 10 when an external nice is on
 # PATH, and at normal priority otherwise.
@@ -953,12 +955,20 @@ fm_lint_collect_changed_roots() {  # <merge-base>
     sed 's/^/fm-lint.sh: git: /' "$diff_file.err" >&2
     exit 2
   fi
+  diff_rc=0
+  LC_ALL=C sort -z "$diff_file" >"$diff_file.sorted" 2>"$diff_file.err" || diff_rc=$?
+  if [ "$diff_rc" -ne 0 ]; then
+    printf 'fm-lint.sh: sorting the changed paths failed (exit %s), so the changed lint targets are unknown; refusing to report an empty lint.\n' \
+      "$diff_rc" >&2
+    sed 's/^/fm-lint.sh: sort: /' "$diff_file.err" >&2
+    exit 2
+  fi
   ROOTS=()
   while IFS= read -r -d '' changed_path; do
     fm_lint_is_canonical_root "$changed_path" || continue
     [ -f "$changed_path" ] || continue
     ROOTS+=("$changed_path")
-  done < <(LC_ALL=C sort -z "$diff_file")
+  done < "$diff_file.sorted"
   fm_lint_diff_capture_cleanup
   trap - EXIT HUP INT TERM
 }
@@ -1813,7 +1823,8 @@ fi
 # watchdog is probed and the host's acceptance of ulimit -v is checked before
 # any root starts; failed checks refuse with a named error. A required-bounds run
 # never lints uncapped. Without it a local run applies the envelope when the
-# host can and otherwise notes once and runs each root unbounded.
+# host can and otherwise refuses, unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 lets a
+# smaller selection run each root unbounded after a warning.
 ROOT_SECONDS=${FM_LINT_ROOT_SECONDS:-1200}
 ROOT_GRACE=${FM_LINT_ROOT_GRACE:-5}
 # 12 GiB of virtual address space per analysis process. ulimit -v caps
@@ -1911,8 +1922,9 @@ if [ "$ROOT_COUNT" -gt 0 ] && [ "${FM_LINT_REQUIRE_BOUNDS:-0}" = 1 ]; then
     exit 2
   fi
 elif [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
-  # Best effort locally: bound every root when the host can, else note once
-  # and lint unbounded as before.
+  # Bound every root when the host can. Otherwise the full set always refuses,
+  # and any other local run refuses before ShellCheck unless
+  # FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 accepts an unbounded run.
   if declare -F fm_exec_timed >/dev/null 2>&1 \
     && ( fm_exec_timed 30 1 true ) >/dev/null 2>&1 \
     && ( ulimit -v "$ROOT_MEMORY_KIB" ) 2>/dev/null; then
@@ -1920,8 +1932,11 @@ elif [ "$ROOT_COUNT" -gt 0 ] && [ "$LOCAL_RUN" -eq 1 ]; then
   elif [ "$CANONICAL_SET" -eq 1 ]; then
     printf 'fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing the full canonical lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI.\n' >&2
     exit 2
+  elif [ "${FM_LINT_ALLOW_UNBOUNDED_LOCAL:-0}" = 1 ]; then
+    printf 'fm-lint.sh: warning: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded because FM_LINT_ALLOW_UNBOUNDED_LOCAL=1.\n' >&2
   else
-    printf 'fm-lint.sh: note: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); linting unbounded.\n' >&2
+    printf 'fm-lint.sh: this host cannot enforce the per-root bounds (ulimit -v or the timeout watchdog); refusing to lint uncapped. Run it in a capped sandbox (for example a Boat sandbox started with --no-env) or in CI, or set FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 to accept an unbounded local run.\n' >&2
+    exit 2
   fi
 fi
 

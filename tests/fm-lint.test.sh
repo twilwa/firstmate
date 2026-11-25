@@ -948,6 +948,53 @@ test_cancelled_changed_diff_leaves_no_capture() {
   pass "cancelling lint during the changed-file diff leaves no capture files in TMPDIR"
 }
 
+# A failing sort of the changed names must refuse like a failing diff, never
+# turn a nonempty diff into a passing "no changed lint targets" run.
+test_failed_changed_sort_refuses_instead_of_passing_empty() {
+  local tmp fakebin log diff_file out rc route flag real_sort
+  tmp=$(fm_test_tmproot fm-lint-failed-sort)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  real_sort=$(type -P sort) || fail "sort is not on PATH"
+  cat > "$fakebin/sort" <<SH
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = -z ]; then
+    printf 'sort: write failed: No space left on device\\n' >&2
+    exit 2
+  fi
+done
+exec '$real_sort' "\$@"
+SH
+  chmod +x "$fakebin/sort"
+  diff_file="$tmp/diff.nul"
+  fm_lint_write_diff_file "$diff_file" "bin/fm-afk-launch.sh"
+
+  for route in 'main:' 'feature:--changed' 'main:--list-files' 'hosted:--changed'; do
+    : > "$log"
+    rc=0
+    flag=${route#*:}
+    if [ "${route%%:*}" = hosted ]; then
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
+        FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" \
+        "$LINT" ${flag:+"$flag"} --partition 1of4 2>&1) || rc=$?
+    else
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
+        FM_TEST_GIT_BRANCH="${route%%:*}" FM_TEST_GIT_DIFF_FILE="$diff_file" \
+        "$LINT" ${flag:+"$flag"} 2>&1) || rc=$?
+    fi
+    [ "$rc" -eq 2 ] || fail "a failed sort on route $route exited $rc, expected 2"$'\n'"$out"
+    assert_contains "$out" "sort" "a failed sort on route $route did not name the sort"
+    assert_contains "$out" "No space left on device" "a failed sort on route $route hid sort's own error"
+    assert_not_contains "$out" "no changed lint targets" "a failed sort on route $route passed as empty"
+    assert_not_contains "$out" "no lint targets in this partition" "a failed sort on route $route passed as empty"
+    [ ! -s "$log" ] || fail "a failed sort on route $route still invoked ShellCheck"
+  done
+  pass "a failed sort of the changed names refuses instead of passing as an empty lint"
+}
+
 # Only the hosted workflow contract (GITHUB_ACTIONS with required bounds)
 # counts as hosted: a bare CI=true, or GITHUB_ACTIONS without bounds, keeps the
 # local safeguards and never upgrades or defaults to the full set.
@@ -1066,7 +1113,7 @@ SH
   fm_lint_write_diff_file "$diff_file" "tests/fm-lint-local-exclude-fixture.test.sh"
 
   rc=0
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 \
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_JOBS=1 FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 \
     FM_TEST_GIT_BRANCH=feature \
     FM_TEST_GIT_DIFF_FILE="$diff_file" "$lint" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] \
@@ -1075,7 +1122,7 @@ SH
   assert_not_contains "$out" "SC2329" "changed-mode local lint still reported SC2329"
 
   rc=0
-  out=$("$lint" "$fixture" 2>&1) || rc=$?
+  out=$(FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 "$lint" "$fixture" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "explicit-path lint passed a cross-file-only fixture"$'\n'"$out"
   assert_contains "$out" "SC2034" "explicit-path lint did not keep SC2034"
   assert_contains "$out" "SC2329" "explicit-path lint did not keep SC2329"
@@ -1406,8 +1453,9 @@ test_out_of_range_root_cap_is_rejected() {
   pass "an out-of-range per-root memory cap is rejected before arithmetic or an uncapped fallback"
 }
 
-# A local host that cannot cap each root must not run the full canonical,
-# source-following lint uncapped; the changed-file pass still runs with a note.
+# A local host that cannot cap each root must not lint uncapped: the full set
+# always refuses, and any other local run refuses before ShellCheck unless
+# FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 accepts an unbounded run. Listing still works.
 test_uncappable_local_host_refuses_the_full_set() {
   local tmp fakebin repo log diff_file out rc
   tmp=$(fm_test_tmproot fm-lint-uncappable)
@@ -1435,12 +1483,37 @@ test_uncappable_local_host_refuses_the_full_set() {
   diff_file="$tmp/diff.nul"
   fm_lint_write_diff_file "$diff_file" "bin/noop.sh"
   rc=0
-  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_TEST_GIT_BRANCH=feature \
-    FM_TEST_GIT_DIFF_FILE="$diff_file" "$repo/bin/fm-lint.sh" 2>&1) || rc=$?
-  [ "$rc" -eq 0 ] || fail "an uncappable local changed-file lint failed"$'\n'"$out"
-  [ "$(cat "$log")" = bin/noop.sh ] || fail "the uncappable changed-file lint did not lint the changed file"
-  assert_contains "$out" "linting unbounded" "the uncappable changed-file lint did not note it runs unbounded"
-  pass "an uncappable local host refuses the full set and notes the unbounded changed-file pass"
+  out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 \
+    "$repo/bin/fm-lint.sh" --partition 1of4 2>&1) || rc=$?
+  [ "$rc" -eq 2 ] || fail "the unbounded override let a local full-set lint run uncapped (rc=$rc)"$'\n'"$out"
+  [ ! -s "$log" ] || fail "the unbounded override let a local full-set lint invoke ShellCheck"
+
+  for selection in changed explicit; do
+    set -- "$repo/bin/fm-lint.sh"
+    [ "$selection" = changed ] || set -- "$repo/bin/fm-lint.sh" bin/noop.sh
+    : > "$log"
+    rc=0
+    out=$(cd "$repo" && PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_ALLOW_UNBOUNDED_LOCAL='' \
+      FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" "$@" 2>&1) || rc=$?
+    [ "$rc" -eq 2 ] || fail "an uncappable local $selection lint exited $rc, expected 2"$'\n'"$out"
+    assert_contains "$out" "FM_LINT_ALLOW_UNBOUNDED_LOCAL=1" "the $selection refusal did not name the override"
+    assert_contains "$out" "--no-env" "the $selection refusal did not point to a capped sandbox"
+    [ ! -s "$log" ] || fail "an uncappable local $selection lint still invoked ShellCheck"
+
+    rc=0
+    out=$(cd "$repo" && PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 \
+      FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" "$@" 2>&1) || rc=$?
+    [ "$rc" -eq 0 ] || fail "an overridden uncappable local $selection lint failed"$'\n'"$out"
+    [ "$(cat "$log")" = bin/noop.sh ] || fail "the overridden $selection lint did not lint the selected file"
+    assert_contains "$out" "unbounded" "the overridden $selection lint did not warn it runs unbounded"
+  done
+
+  rc=0
+  out=$(cd "$repo" && PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_TEST_GIT_BRANCH=feature \
+    FM_TEST_GIT_DIFF_FILE="$diff_file" "$repo/bin/fm-lint.sh" --list-files 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "an uncappable local --list-files refused (rc=$rc)"$'\n'"$out"
+  [ "$out" = bin/noop.sh ] || fail "an uncappable local --list-files did not list the changed file"$'\n'"$out"
+  pass "an uncappable local host refuses to lint uncapped unless FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 is set"
 }
 
 test_installer_skips_download_when_pinned_binary_is_present() {
@@ -1840,7 +1913,7 @@ test_rejects_direct_beads_cli_in_explicit_core_path() {
 
   for spelling in bin/direct-beads.sh bin/../bin/direct-beads.sh; do
     rc=0
-    out=$(cd "$tmp/repo" && PATH="$fakebin:$PATH" "$lint_copy" "$spelling" 2>&1) || rc=$?
+    out=$(cd "$tmp/repo" && PATH="$fakebin:$PATH" FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 "$lint_copy" "$spelling" 2>&1) || rc=$?
     [ "$rc" -ne 0 ] || fail "explicit core path bypassed backend-purity lint: $spelling"
     assert_contains "$out" "direct Beads CLI invocation bypasses tasks-axi" \
       "explicit core path did not report the backend-boundary violation: $spelling"
@@ -2131,7 +2204,7 @@ test_root_memory_limit_reports_a_named_death() {
   cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
   rc=0
   out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
-    FM_TEST_STUB_LOG="$stub_log" \
+    FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 FM_TEST_STUB_LOG="$stub_log" \
     "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$tmp/control.tsv" "$ok" "$hoarder" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "the allocator failed without any memory limit"$'\n'"$out"
   grep -q $'^meta\tbounds_enforced\t0$' "$tmp/control.roots.tsv" \
@@ -2209,7 +2282,7 @@ SH
     lint_bin=$LINT
     [ "$mode" -eq 1 ] || lint_bin="$tmp/uncapped/bin/fm-lint.sh"
     out=$(PATH="$fakebin:$PATH" CI=true GITHUB_ACTIONS=true FM_LINT_JOBS=1 FM_LINT_REQUIRE_BOUNDS="$mode" \
-      FM_TEST_FALLBACK_LOG="$log" "$lint_bin" --telemetry "$tmp/pass.$mode.tsv" "$fixture" 2>&1) || rc=$?
+      FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 FM_TEST_FALLBACK_LOG="$log" "$lint_bin" --telemetry "$tmp/pass.$mode.tsv" "$fixture" 2>&1) || rc=$?
     [ "$rc" -eq 0 ] || fail "a clean no-source fallback did not pass (bounded=$mode)"$'\n'"$out"
     assert_grep $'source_directives\t1' "$tmp/pass.$mode.tsv" "telemetry lost the root's source directive"
     assert_grep $'source_followed_directives\t0' "$tmp/pass.$mode.tsv" \
@@ -2364,7 +2437,7 @@ test_memory_evidence_outranks_findings_and_signal_reasons() {
         "$LINT" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
     else
       out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
-        "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
+        FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$tmp/lint.$bounded.tsv" "${roots[@]}" 2>&1) || rc=$?
     fi
     [ "$rc" -ne 0 ] || fail "memory deaths unexpectedly passed (bounded=$bounded)"
     for name in oom-exit1 oom-heap oom-kill oom-text-findings; do
@@ -2583,7 +2656,7 @@ test_roots_sidecar_records_per_root_lifecycle() {
   cp "$LINT" "$tmp/uncapped/bin/fm-lint.sh"
   rc=0
   out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_TEST_STUB_LOG="$stub_log" \
-    "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$telemetry" "$alpha" "$beta" "$gamma" 2>&1) || rc=$?
+    FM_LINT_ALLOW_UNBOUNDED_LOCAL=1 "$tmp/uncapped/bin/fm-lint.sh" --telemetry "$telemetry" "$alpha" "$beta" "$gamma" 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "a clean bounded run failed"$'\n'"$out"
   [ -f "$roots_log" ] || fail "the run wrote no per-root sidecar beside telemetry"
   grep -q $'^format\tfm-lint-roots-v1$' "$roots_log" \
@@ -2722,6 +2795,7 @@ test_local_main_drops_external_sources
 test_local_run_without_a_changed_set_refuses_the_full_set
 test_failed_changed_diff_refuses_instead_of_passing_empty
 test_cancelled_changed_diff_leaves_no_capture
+test_failed_changed_sort_refuses_instead_of_passing_empty
 test_bare_ci_marker_keeps_local_safeguards
 test_explicit_path_keeps_external_sources
 test_fast_mode_on_a_local_branch_keeps_source_following
