@@ -163,8 +163,9 @@ ROOT="$(cd "$SELF_DIR/.." && pwd -P)"
 cd "$ROOT" || exit 1
 
 # The sibling timeout library supplies the shared group-kill watchdog that
-# bounds each root when FM_LINT_REQUIRE_BOUNDS=1 requires it; without the
-# library a required-bounds run refuses in preflight rather than lint uncapped.
+# bounds each root when FM_LINT_REQUIRE_BOUNDS=1 requires it and, where the
+# host allows, in local runs; without the library a required-bounds run or a
+# local full canonical lint refuses rather than lint uncapped.
 if [ -r "$SELF_DIR/fm-timeout-lib.sh" ]; then
   # shellcheck source=bin/fm-timeout-lib.sh
   . "$SELF_DIR/fm-timeout-lib.sh"
