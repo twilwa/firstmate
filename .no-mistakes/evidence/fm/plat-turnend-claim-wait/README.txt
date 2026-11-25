@@ -1,0 +1,6 @@
+Evidence for fm/plat-turnend-claim-wait (FM_CLAUDE_AUTOARM_SYNC_WAIT_MS default 800 -> 5000).
+- new-tests-after-fix.log: the two new regression tests + existing late-claim test, run from the real test fixtures (real bin/fm-turnend-guard.sh and real bin/fm-claude-stop-autoarm.sh started in parallel under a fake-claude session).
+- parallel-stop-matrix.log: the same parallel fixture with guard=base (git show 7a31641d:bin/fm-turnend-guard.sh) vs guard=new, auto-arm delayed 0.5/1.5/3/6 s or absent, guard at DEFAULT wait.
+- override-matrix.log: fixed guard with explicit FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=800, invalid 'abc', and unset; auto-arm 3 s late.
+- live-claude-stop-new-guard.txt: real Claude Code 2.1.332 primary in a disposable lab home (plain-git copy of HEAD, FM_HOME=lab, supervision-host-off, one in-flight task, no watcher). Stop: auto-arm claimed and armed the watcher, guard allowed, no blind banner, no block budget charged.
+- live-claude-stop-base-guard.txt: same lab, base guard swapped in after the lab watcher was killed by hand. No guard block happened (the real auto-arm claimed inside the old window on that one Stop). The Stop hook feedback shown is the auto-arm's recovery rewake caused by the watcher kill, not a guard block. The race is intermittent (7/144 in the diagnosis), so one live Stop can't reproduce it.

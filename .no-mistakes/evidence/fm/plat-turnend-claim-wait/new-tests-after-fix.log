@@ -1,0 +1,6 @@
+ok - fm-turnend-guard --claude: bounded claim wait avoids a token-consuming forced continuation
+TIMING test_hook_claude_mode_waits_for_late_claim 0.71s
+ok - fm-turnend-guard --claude: a parallel auto-arm claiming past the old 800 ms window owns the Stop
+TIMING test_hook_claude_mode_parallel_late_autoarm_claim_allows_stop 6.25s
+ok - fm-turnend-guard --claude: a genuinely absent auto-arm still blocks after the default claim wait
+TIMING test_hook_claude_mode_parallel_absent_autoarm_still_blocks 12.71s

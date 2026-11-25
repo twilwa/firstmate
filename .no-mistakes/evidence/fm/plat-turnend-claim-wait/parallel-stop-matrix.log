@@ -1,0 +1,10 @@
+guard=base autoarm_delay=0.5  rep=1 guard_exit=2 guard_wall=4.74s blind_banner=yes ledger_gen=6 budget_file=count=1
+guard=base autoarm_delay=1.5  rep=1 guard_exit=2 guard_wall=4.77s blind_banner=yes ledger_gen=6 budget_file=count=1
+guard=base autoarm_delay=3    rep=1 guard_exit=2 guard_wall=4.73s blind_banner=yes ledger_gen=6 budget_file=count=1
+guard=base autoarm_delay=6    rep=1 guard_exit=2 guard_wall=5.06s blind_banner=yes ledger_gen=6 budget_file=count=1
+guard=base autoarm_delay=none rep=1 guard_exit=2 guard_wall=4.91s blind_banner=yes ledger_gen=5 budget_file=count=1
+guard=new  autoarm_delay=0.5  rep=1 guard_exit=0 guard_wall=3.41s blind_banner=no ledger_gen=6 budget_file=none
+guard=new  autoarm_delay=1.5  rep=1 guard_exit=0 guard_wall=4.69s blind_banner=no ledger_gen=6 budget_file=none
+guard=new  autoarm_delay=3    rep=1 guard_exit=0 guard_wall=6.00s blind_banner=no ledger_gen=6 budget_file=none
+guard=new  autoarm_delay=6    rep=1 guard_exit=0 guard_wall=8.80s blind_banner=no ledger_gen=6 budget_file=none
+guard=new  autoarm_delay=none rep=1 guard_exit=2 guard_wall=11.89s blind_banner=yes ledger_gen=5 budget_file=count=1
