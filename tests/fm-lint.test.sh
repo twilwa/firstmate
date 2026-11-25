@@ -241,6 +241,8 @@ test_canonical_partitions_preserve_full_lint() {
 #   FM_TEST_GIT_MERGE_BASE_OK    1 (default) or 0
 #   FM_TEST_GIT_MERGE_BASE       merge-base value to print when OK
 #   FM_TEST_GIT_DIFF_FILE        path to a file of NUL-separated changed paths
+#   FM_TEST_GIT_DIFF_FAIL        1 makes the changed-file diff fail like a
+#                                corrupt index (exit 128); default 0
 #   FM_TEST_GIT_NAME_STATUS_FILE path to a git diff --name-status listing
 #                                (tab-separated status and paths). When unset,
 #                                the name-status stub synthesizes M lines from
@@ -274,6 +276,10 @@ case "$*" in
     exit 1
     ;;
   "diff --name-only --diff-filter=ACMR -z "*)
+    if [ "${FM_TEST_GIT_DIFF_FAIL:-0}" = 1 ]; then
+      printf 'fatal: index file smaller than expected\n' >&2
+      exit 128
+    fi
     if [ -n "${FM_TEST_GIT_DIFF_FILE:-}" ] && [ -f "$FM_TEST_GIT_DIFF_FILE" ]; then
       cat "$FM_TEST_GIT_DIFF_FILE"
     fi
@@ -851,6 +857,43 @@ test_local_run_without_a_changed_set_refuses_the_full_set() {
     done
   done
   pass "fm-lint.sh refuses a local run that cannot compute a changed set instead of linting the full set"
+}
+
+# A changed-file diff that fails despite a valid merge-base (a corrupt index,
+# say) must not read as an empty, passing lint, and must not fall back to the
+# canonical set, on any route that collects changed files.
+test_failed_changed_diff_refuses_instead_of_passing_empty() {
+  local tmp fakebin log diff_file out rc route flag
+  tmp=$(fm_test_tmproot fm-lint-failed-diff)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_git "$fakebin"
+  log="$tmp/shellcheck.log"
+  fm_lint_stub_shellcheck "$fakebin" "$log"
+  diff_file="$tmp/diff.nul"
+  fm_lint_write_diff_file "$diff_file" "bin/fm-afk-launch.sh"
+
+  for route in 'main:' 'feature:' 'main:--list-files' 'feature:--changed' 'hosted:--changed'; do
+    : > "$log"
+    rc=0
+    flag=${route#*:}
+    if [ "${route%%:*}" = hosted ]; then
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 FM_LINT_JOBS=1 \
+        FM_TEST_GIT_BRANCH=feature FM_TEST_GIT_DIFF_FILE="$diff_file" FM_TEST_GIT_DIFF_FAIL=1 \
+        "$LINT" ${flag:+"$flag"} --partition 1of4 2>&1) || rc=$?
+    else
+      out=$(PATH="$fakebin:$PATH" GITHUB_ACTIONS='' CI='' FM_LINT_REQUIRE_BOUNDS='' FM_LINT_JOBS=1 \
+        FM_TEST_GIT_BRANCH="${route%%:*}" FM_TEST_GIT_DIFF_FILE="$diff_file" FM_TEST_GIT_DIFF_FAIL=1 \
+        "$LINT" ${flag:+"$flag"} 2>&1) || rc=$?
+    fi
+    [ "$rc" -eq 2 ] || fail "a failed diff on route $route exited $rc, expected 2"$'\n'"$out"
+    assert_contains "$out" "git diff against merge-base fakebase123 failed (exit 128)" \
+      "a failed diff on route $route did not name the failure"
+    assert_contains "$out" "index file smaller than expected" \
+      "a failed diff on route $route hid git's own error"
+    assert_not_contains "$out" "no changed lint targets" "a failed diff on route $route passed as empty"
+    [ ! -s "$log" ] || fail "a failed diff on route $route still invoked ShellCheck"
+  done
+  pass "a failed changed-file diff refuses with git's error instead of passing as an empty lint"
 }
 
 # Only the hosted workflow contract (GITHUB_ACTIONS with required bounds)
@@ -2623,6 +2666,7 @@ test_changed_mode_invokes_shellcheck_once_per_root
 test_ci_keeps_external_sources_without_local_exclusions
 test_local_main_drops_external_sources
 test_local_run_without_a_changed_set_refuses_the_full_set
+test_failed_changed_diff_refuses_instead_of_passing_empty
 test_bare_ci_marker_keeps_local_safeguards
 test_explicit_path_keeps_external_sources
 test_fast_mode_on_a_local_branch_keeps_source_following

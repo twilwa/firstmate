@@ -919,14 +919,26 @@ CANONICAL_SET=0
 EXPLICIT_PATHS=0
 FOLLOW_SOURCES=1
 EXCLUDE_CODES=
+# A failed diff (a corrupt index, say) must never read as an empty changed set
+# that skips every root, nor fall back to the canonical set: it refuses.
 fm_lint_collect_changed_roots() {  # <merge-base>
-  local merge_base=$1 changed_path
+  local merge_base=$1 changed_path diff_file diff_rc=0
+  diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-lint-diff.XXXXXX") || exit 1
+  git diff --name-only --diff-filter=ACMR -z "$merge_base" -- >"$diff_file" 2>"$diff_file.err" || diff_rc=$?
+  if [ "$diff_rc" -ne 0 ]; then
+    printf 'fm-lint.sh: git diff against merge-base %s failed (exit %s), so the changed lint targets are unknown; refusing to report an empty lint. Repair the repository state (see git status) and rerun.\n' \
+      "$merge_base" "$diff_rc" >&2
+    sed 's/^/fm-lint.sh: git: /' "$diff_file.err" >&2
+    rm -f "$diff_file" "$diff_file.err"
+    exit 2
+  fi
   ROOTS=()
   while IFS= read -r -d '' changed_path; do
     fm_lint_is_canonical_root "$changed_path" || continue
     [ -f "$changed_path" ] || continue
     ROOTS+=("$changed_path")
-  done < <(git diff --name-only --diff-filter=ACMR -z "$merge_base" -- 2>/dev/null | LC_ALL=C sort -z)
+  done < <(LC_ALL=C sort -z "$diff_file")
+  rm -f "$diff_file" "$diff_file.err"
 }
 
 # git diff --name-only drops a rename's old path, and --diff-filter=ACMR drops
