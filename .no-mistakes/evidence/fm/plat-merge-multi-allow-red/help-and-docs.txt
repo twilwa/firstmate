@@ -1,0 +1,39 @@
+$ bin/fm-pr-merge.sh --help | grep -n -i "allow-red"
+17:    [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
+73:--allow-red <check-name> may be repeated for up to four distinct names, each
+82:green unless separately waived by --allow-red. It matches the required
+246:Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+(exit 0)
+
+$ bin/fm-pr-review.sh --help | grep -n -i "allow-red\|allowed-red"
+20:  fm-pr-review.sh merge-decision <pr-url> [--allowed-red-check <check>]... [--snapshot <snapshot.json>]
+31:untouched. Each `--allow-red <check>` in that prefix reaches `merge-decision`
+32:as one `--allowed-red-check <check>`, under the same limit of four distinct
+
+$ git diff base..HEAD -- docs/scripts.md .agents/skills/pr-review-policy/SKILL.md
+diff --git a/.agents/skills/pr-review-policy/SKILL.md b/.agents/skills/pr-review-policy/SKILL.md
+index 2f950ec2..8861e6b7 100644
+--- a/.agents/skills/pr-review-policy/SKILL.md
++++ b/.agents/skills/pr-review-policy/SKILL.md
+@@ -55,6 +55,9 @@ For other GitHub PRs, use `bin/fm-pr-merge.sh <task> <url> [merge args...]`; it
+ While the away-posture record exists, every GitHub merge goes through `bin/fm-pr-review.sh merge` whatever the policy setting, and `bin/fm-pr-merge.sh` refuses one that did not.
+ `bin/fm-pr-review.sh merge` takes a fresh complete snapshot, starts a new generation if the head moved, refuses pending reviews, stale checks, missing dispositions, or missing high-stakes attestations, records the merge decision with the reviewed and immediately verified head, then hands the same URL to the guarded merge command.
+ The guarded merge command binds the forge request to that head, so a push in the remaining interval fails instead of merging unreviewed code.
++Put helper options such as `--allow-red <check>` before any forge merge flags, or before a standalone `--`; both scripts stop reading helper options at the first forge flag, so a waiver written after one is never applied or recorded.
++An attended red-check waiver names one check per `--allow-red`, up to four distinct names, and is refused while the away-posture record exists.
++The wrapper records the waived names in the merge decision's `allowed_red_checks`, and the guarded merge records them for an accepted merge in the task metadata's `merge_allow_red=` line; the `bin/fm-pr-merge.sh` and `bin/fm-pr-review.sh` headers own the exact rules.
+ 
+ ## Post-merge QA
+ 
+diff --git a/docs/scripts.md b/docs/scripts.md
+index 9b48db6d..5b49aefe 100644
+--- a/docs/scripts.md
++++ b/docs/scripts.md
+@@ -164,6 +164,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
+ | `fm-startup-growth-check.sh` | Daily metadata-only growth check for startup memory and tracked startup/instruction surfaces |
+ | `fm-usage-warner.sh`     | Opt-in macOS threshold warner that notifies once when a configured Claude usage window crosses its percentage |
+ | `fm-pr-lib.sh`           | Own canonical task and PR validation, the GitHub required-check reader, the branch-to-PR lookup shared by teardown and the PR health monitor, plus private atomic PR-poll publication, merge-notification identity, and retirement |
++| `fm-pr-merge-options-lib.sh` | Parse the guarded merge helper-option prefix once for `fm-pr-merge.sh` and `fm-pr-review.sh merge`, including the repeatable `--allow-red` waiver limits |
+ | `fm-pr-poll.sh`          | Provide the byte-static watcher program for validated pull-request, merge-request, and Gerrit-change poll sidecars; reports merged or post-ready degradation for GitHub checks, GitLab head pipelines, and merge-train drops (see [GitLab merge watch](gitlab-merge-watch.md)) |
+ | `fm-contributions.sh`    | Observe owned publications, retain exact-head judgments, measure required actors, and wake on maintainer or configured review-bot signals |
+ | `fm-pr-health.sh`        | Opt-in: enroll owned PRs; wake once per latest commit for conflicts, failing checks, and author actions; record maintainer-gated CI and missing required reviews without waking the task, using GitHub notifications plus a fallback sweep (see [configuration.md](configuration.md#pr-health-monitor-configpr-health-monitor)) |
