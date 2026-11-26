@@ -148,15 +148,16 @@
 # every mode (changed-file, partitions, explicit paths, --fast) looks up each
 # selected root's key in bin/fm-lint-cache-lib.sh, which owns the key, the
 # entry format, and the audit, and lints only the roots without a recorded
-# pass for that exact key. The run prints "lint cache: hits=N misses=N
-# stored=N uncacheable=N scope=local|hosted", and with --telemetry writes the
-# per-root sidecar <telemetry-without-.tsv>.cache.tsv. A corrupt entry or an
-# unreadable cache lints every root; a missing library lints every root with
-# a warning. --audit-cache <dir> and --audit-record <sidecar> (repeatable) lint
-# every root without reading or writing the cache and, after linting, report
-# each root with findings whose key <dir> records as a pass, or that a cached
-# run's sidecar recorded as a hit or stored pass, as "STALE LINT CACHE KEY
-# <key>", exiting 3.
+# pass for that exact key. Every run prints the library's "lint cache:"
+# summary line with its state, and with --telemetry writes the per-root
+# sidecar <telemetry-without-.tsv>.cache.tsv. A corrupt entry or an unreadable
+# cache lints every root; a missing library lints every root with a warning.
+# --audit-cache <dir> and --audit-record <sidecar> (repeatable) lint every
+# root without reading or writing the cache and, after linting, report each
+# root with findings whose key <dir> records as a pass, or that a same-commit
+# cached run's sidecar recorded as a hit or stored pass, as "STALE LINT CACHE
+# KEY <key>", exiting 3; a finding neither attributes is reported as "AUDIT
+# INCOMPLETE".
 #
 # Optional quiet telemetry writes one bounded TSV snapshot of content and source
 # graph identity, wall/CPU/RSS, shard load, and competing ShellCheck processes.
@@ -177,6 +178,10 @@
 #   fm-lint.sh --list-files            print the file set that would be linted
 #   fm-lint.sh --help                  print this usage
 set -u
+# Internal Bash processes (workers, the per-root payload, the watchdog) must
+# not run a startup file that could re-export SHELLCHECK_OPTS or change the
+# environment ShellCheck sees, so the invocation always matches the cache key.
+unset BASH_ENV ENV
 
 REQUIRED_SHELLCHECK=0.11.0
 
@@ -345,7 +350,7 @@ fm_lint_exec_root() {  # <path> <stdout-file> <stderr-file> <rss-file> <seconds>
     wait "$FM_LINT_WORKER_RUN_PID" || invocation_rc=$?
     FM_LINT_WORKER_RUN_PID=
   else
-    "$FM_LINT_SHELLCHECK" "$@" -- "$path" > "$root_out" 2> "$root_err" &
+    env -u SHELLCHECK_OPTS "$FM_LINT_SHELLCHECK" "$@" -- "$path" > "$root_out" 2> "$root_err" &
     FM_LINT_WORKER_RUN_PID=$!
     wait "$FM_LINT_WORKER_RUN_PID" || invocation_rc=$?
     FM_LINT_WORKER_RUN_PID=
@@ -601,6 +606,8 @@ if [ "${1:-}" = "--internal-root" ]; then
       "$internal_memory_kib" >&2
     exit 97
   }
+  # The exec boundary: ShellCheck never inherits ambient options.
+  unset SHELLCHECK_OPTS
   if [ -x /usr/bin/time ]; then
     if [ "$(uname)" = Darwin ]; then
       exec /usr/bin/time -l -o "$internal_rss_file" "$@"
@@ -2034,7 +2041,7 @@ if ! PERL_BIN=$(type -P perl); then
   printf 'fm-lint.sh: perl is required for bounded worker cleanup.\n' >&2
   exit 127
 fi
-resolved=$("$SHELLCHECK_BIN" --version | awk '/^version:/ {print $2; exit}')
+resolved=$(env -u SHELLCHECK_OPTS "$SHELLCHECK_BIN" --version | awk '/^version:/ {print $2; exit}')
 printf 'fm-lint.sh: ShellCheck %s (pinned %s)\n' "$resolved" "$REQUIRED_SHELLCHECK" >&2
 if [ "$resolved" != "$REQUIRED_SHELLCHECK" ]; then
   printf 'fm-lint.sh: ShellCheck %s required for CI parity, found %s. Install %s with bin/fm-install-shellcheck.sh <destination-directory>.\n' \
@@ -2454,7 +2461,7 @@ EOF
   } >> "$ROOTS_LOG"
 fi
 
-if [ "$FM_LINT_CACHE_STATE" != off ]; then
+if declare -F fm_lint_cache_report >/dev/null 2>&1; then
   fm_lint_cache_finish
   fm_lint_cache_audit
   if [ -n "$TELEMETRY" ]; then

@@ -72,7 +72,10 @@ jobs:
           fi
           gh run download "$run_id" -R "$GITHUB_REPOSITORY" -p 'fm-lint-telemetry-*' -D "$dir" \
             || echo "::warning::could not download the lint sidecars of CI run $run_id; auditing against the restored cache only"
+      # Runs even when the sidecar download step failed: the audit then names
+      # any finding it cannot attribute as an incomplete audit.
       - name: Lint every root uncached and audit the cache
+        if: ${{ !cancelled() }}
         env:
           FM_LINT_REQUIRE_BOUNDS: '1'
           FM_LINT_JOBS: '1'

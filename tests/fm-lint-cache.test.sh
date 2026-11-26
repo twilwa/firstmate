@@ -17,14 +17,54 @@ set -u
 
 # fm_lint_cache_bounds_supported: the bounded per-root envelope a local
 # explicit-path run needs (a watchdog and an enforceable ulimit -v at the
-# default 12 GiB cap); macOS rejects ulimit -v, so these cases skip there.
+# default 12 GiB cap) plus a C compiler for the stub launcher below; macOS
+# rejects ulimit -v, so these cases skip there.
 fm_lint_cache_bounds_supported() {
   ( ulimit -v 12582912 ) 2>/dev/null || return 1
-  type -P perl >/dev/null 2>&1
+  type -P perl >/dev/null 2>&1 || return 1
+  type -P cc >/dev/null 2>&1
+}
+
+# The cache only trusts a ShellCheck that is a regular executable, never a
+# script wrapper, so the stub is a compiled launcher that hands its arguments
+# to the bash script named by FM_TEST_SC_SCRIPT. Each build string yields a
+# different binary, standing in for a different ShellCheck build.
+FM_LINT_CACHE_LAUNCHERS=
+fm_lint_cache_launcher() {  # <build> -> path of the compiled launcher
+  local build=$1 out
+  [ -n "$FM_LINT_CACHE_LAUNCHERS" ] || FM_LINT_CACHE_LAUNCHERS=$(fm_test_tmproot fm-lint-cache-launchers)
+  out="$FM_LINT_CACHE_LAUNCHERS/shellcheck-$build"
+  if [ ! -x "$out" ]; then
+    cat > "$FM_LINT_CACHE_LAUNCHERS/launcher.c" <<'C'
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+static const char build[] = "fm-lint-cache test launcher build " BUILD;
+int main(int argc, char **argv) {
+  const char *script = getenv("FM_TEST_SC_SCRIPT");
+  char **args = calloc((size_t)argc + 2, sizeof *args);
+  int i;
+  if (script == NULL || args == NULL) {
+    fprintf(stderr, "%s: FM_TEST_SC_SCRIPT is unset\n", build);
+    return 2;
+  }
+  args[0] = "bash";
+  args[1] = (char *)script;
+  for (i = 1; i < argc; i++) args[i + 1] = argv[i];
+  execv("/bin/bash", args);
+  perror(build);
+  return 127;
+}
+C
+    cc -DBUILD="\"$build\"" -o "$out" "$FM_LINT_CACHE_LAUNCHERS/launcher.c" \
+      || fail "could not compile the ShellCheck stub launcher"
+  fi
+  printf '%s\n' "$out"
 }
 
 # fm_lint_cache_fixture <tmp>: a fixture repository holding copies of the lint
-# owner and its libraries, plus a ShellCheck stub under <tmp>/fakebin. The stub
+# owner and its libraries, plus a ShellCheck stub: the compiled launcher at
+# <tmp>/fakebin/shellcheck running the script <tmp>/stub.sh. The stub
 # answers --version with the pinned version, appends each analyzed root to
 # FM_TEST_SC_LOG, and reports a finding (exit 1) for a root whose content holds
 # LINT-BAD or whose path is listed in FM_TEST_SC_FAIL_LIST, a file outside every
@@ -36,7 +76,8 @@ fm_lint_cache_fixture() {
   mkdir -p "$tmp/repo/bin" "$tmp/repo/tests" "$tmp/fakebin"
   cp "$ROOT/bin/fm-lint.sh" "$ROOT/bin/fm-timeout-lib.sh" "$tmp/repo/bin/"
   [ ! -f "$ROOT/bin/fm-lint-cache-lib.sh" ] || cp "$ROOT/bin/fm-lint-cache-lib.sh" "$tmp/repo/bin/"
-  cat > "$tmp/fakebin/shellcheck" <<'SH'
+  cp "$(fm_lint_cache_launcher 1)" "$tmp/fakebin/shellcheck"
+  cat > "$tmp/stub.sh" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
   printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
@@ -65,23 +106,25 @@ if grep -q LINT-BAD "$target" 2>/dev/null \
 fi
 exit 0
 SH
-  chmod +x "$tmp/fakebin/shellcheck"
   : > "$tmp/sc.log"
 }
 
 # fm_lint_cache_run <tmp> [fm-lint args...]: run the fixture's lint owner as a
 # local run (or, with FM_TEST_HOSTED=1, under the hosted workflow contract)
 # with the fixture cache, capturing combined output in LINT_OUT and
-# the exit status in LINT_RC. Callers add environment with a prefix.
+# the exit status in LINT_RC. Callers add environment with a prefix;
+# FM_TEST_TIMEOUT=<seconds> bounds the run (exit 124 when it hangs).
 fm_lint_cache_run() {
   local tmp=$1
   shift
-  local -a scope=(-u GITHUB_ACTIONS -u FM_LINT_REQUIRE_BOUNDS)
+  local -a scope=(-u GITHUB_ACTIONS -u FM_LINT_REQUIRE_BOUNDS) guard=()
   [ "${FM_TEST_HOSTED:-0}" != 1 ] || scope=(GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1)
+  [ -z "${FM_TEST_TIMEOUT:-}" ] || guard=(timeout "$FM_TEST_TIMEOUT")
   : > "$tmp/sc.log"
   LINT_RC=0
-  LINT_OUT=$(env "${scope[@]}" PATH="$tmp/fakebin:$PATH" \
+  LINT_OUT=$(${guard[@]+"${guard[@]}"} env "${scope[@]}" PATH="$tmp/fakebin:$PATH" \
     FM_LINT_CACHE_DIR="${FM_TEST_CACHE_DIR:-$tmp/cache}" FM_TEST_SC_LOG="$tmp/sc.log" \
+    FM_TEST_SC_SCRIPT="$tmp/stub.sh" \
     "$tmp/repo/bin/fm-lint.sh" "$@" 2>&1) || LINT_RC=$?
 }
 
@@ -187,7 +230,7 @@ test_changed_shellcheck_build_misses() {
   fm_lint_cache_fixture "$tmp"
   printf '#!/usr/bin/env bash\necho ok\n' > "$tmp/repo/tests/a.sh"
   fm_lint_cache_warm "$tmp" tests/a.sh
-  printf '# another build reporting the same pinned version\n' >> "$tmp/fakebin/shellcheck"
+  cp "$(fm_lint_cache_launcher 2)" "$tmp/fakebin/shellcheck"
   fm_lint_cache_run "$tmp" tests/a.sh
   fm_lint_cache_linted "$tmp" tests/a.sh \
     || fail "a different ShellCheck build replayed a pass recorded by the old one"$'\n'"$LINT_OUT"
@@ -358,16 +401,33 @@ test_uncached_audit_bypasses_the_cache_and_names_a_stale_key() {
   pass "the uncached audit run ignores the cache and fails naming the stale key a cached pass hid"
 }
 
+# fm_lint_cache_real_fixture <tmp> <test-name>: a fixture whose shellcheck is
+# the real pinned ShellCheck; passes a SKIP and returns 1 when it is absent.
+fm_lint_cache_real_fixture() {
+  local sc
+  if ! sc=$(type -P shellcheck) || [ "$("$sc" --version | awk '/^version:/ {print $2; exit}')" != "$("$ROOT/bin/fm-lint.sh" --required-version)" ]; then
+    pass "SKIP (pinned ShellCheck not resolved): $2"
+    return 1
+  fi
+  fm_lint_cache_fixture "$1"
+  ln -sf "$sc" "$1/fakebin/shellcheck"
+}
+
+# fm_lint_cache_expect_real_finding <tmp> <code> <why> <root>...: after a warm
+# pass and an edit, the next run must lint again and report <code>.
+fm_lint_cache_expect_real_finding() {
+  local tmp=$1 code=$2 why=$3
+  shift 3
+  fm_lint_cache_run "$tmp" "$@"
+  [ "$LINT_RC" -ne 0 ] || fail "a recorded pass hid a real finding: $why"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "$code" "real ShellCheck did not report $code ($why)"
+}
+
 test_real_shellcheck_finding_two_levels_down_is_not_hidden() {
   fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
-  local sc tmp repo
-  if ! sc=$(type -P shellcheck) || [ "$("$sc" --version | awk '/^version:/ {print $2; exit}')" != "$("$ROOT/bin/fm-lint.sh" --required-version)" ]; then
-    pass "SKIP (pinned ShellCheck not resolved): ${FUNCNAME[0]}"
-    return
-  fi
+  local tmp repo
   tmp=$(fm_test_tmproot fm-lint-cache-real)
-  fm_lint_cache_fixture "$tmp"
-  ln -sf "$sc" "$tmp/fakebin/shellcheck"
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
   repo="$tmp/repo"
   cat > "$repo/tests/a.sh" <<'SH'
 #!/usr/bin/env bash
@@ -391,6 +451,202 @@ SH
   pass "real ShellCheck's finding from a file two source levels down is never hidden by a recorded pass"
 }
 
+test_real_quoted_source_paths_enter_the_key() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-quoted)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib" "$repo/other lib"
+  cat > "$repo/tests/a.sh" <<'SH'
+#!/usr/bin/env bash
+# shellcheck source="lib/two words.sh"
+. "lib/two words.sh"
+printf '%s\n' "$from_spaced"
+SH
+  cat > "$repo/tests/b.sh" <<'SH'
+#!/usr/bin/env bash
+# shellcheck source-path="other lib"
+. dep.sh
+printf '%s\n' "$from_other"
+SH
+  printf '# shellcheck shell=bash\nexport from_spaced=1\n' > "$repo/lib/two words.sh"
+  printf '# shellcheck shell=bash\nexport from_other=1\n' > "$repo/other lib/dep.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean quoted-path fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "stored=2" "the clean quoted-path passes were not recorded"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/two words.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a quoted source path with a space" tests/a.sh
+  printf '# shellcheck shell=bash\n' > "$repo/other lib/dep.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a quoted source-path directory" tests/b.sh
+  pass "quoted source filenames and quoted source-path values enter the key"
+}
+
+test_real_symlink_swap_between_candidates_misses() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-symlink)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib" "$repo/aux"
+  cat > "$repo/tests/a.sh" <<'SH'
+#!/usr/bin/env bash
+# shellcheck source-path=aux
+. dep.sh
+printf '%s\n' "$from_dep"
+SH
+  printf '# shellcheck shell=bash\nexport from_dep=1\n' > "$repo/lib/old.sh"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/new.sh"
+  ln -s lib/old.sh "$repo/dep.sh"
+  ln -s ../lib/new.sh "$repo/aux/dep.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean symlink fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "stored=1" "the clean symlink pass was not recorded"
+  ln -sfn lib/new.sh "$repo/dep.sh"
+  ln -sfn ../lib/old.sh "$repo/aux/dep.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "two source candidates swapped their targets" tests/a.sh
+  pass "swapping which file each source candidate resolves to misses"
+}
+
+test_real_bash_env_cannot_change_shellcheck_flags() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-bash-env)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\necho $1\n' > "$repo/tests/a.sh"
+  printf 'export SHELLCHECK_OPTS=--exclude=SC2086\n' > "$tmp/bash-env"
+  BASH_ENV="$tmp/bash-env" fm_lint_cache_run "$tmp" tests/a.sh
+  [ "$LINT_RC" -ne 0 ] || fail "SHELLCHECK_OPTS from BASH_ENV reached ShellCheck and hid a finding"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "SC2086" "real ShellCheck did not report the unquoted expansion"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  [ "$LINT_RC" -ne 0 ] || fail "a pass recorded under BASH_ENV was replayed"$'\n'"$LINT_OUT"
+  pass "BASH_ENV cannot change the flags ShellCheck runs with, so the key matches the invocation"
+}
+
+test_unresolvable_source_expression_is_uncacheable() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp attempt
+  tmp=$(fm_test_tmproot fm-lint-cache-unresolvable)
+  fm_lint_cache_fixture "$tmp"
+  # The scanner cannot delimit this argument, so it cannot prove which file
+  # ShellCheck reads; the same argument under a source= directive, and a word
+  # ShellCheck itself never follows (SC1090), leave the key complete.
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n. "$(printf lib.sh\n' > "$tmp/repo/tests/a.sh"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n# shellcheck source=/dev/null\n. "$(printf lib.sh\n' > "$tmp/repo/tests/b.sh"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n. "$base/$name.sh"\n' > "$tmp/repo/tests/c.sh"
+  for attempt in 1 2; do
+    fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh tests/c.sh
+    [ "$LINT_RC" -eq 0 ] || fail "run $attempt failed (exit $LINT_RC)"$'\n'"$LINT_OUT"
+    fm_lint_cache_linted "$tmp" tests/a.sh || fail "run $attempt replayed a root whose source argument cannot be delimited"
+  done
+  ! fm_lint_cache_linted "$tmp" tests/b.sh || fail "a directive-covered source argument was not cacheable"
+  ! fm_lint_cache_linted "$tmp" tests/c.sh || fail "a source ShellCheck never follows made its root uncacheable"
+  assert_contains "$LINT_OUT" "lint cache: hits=2 misses=1 stored=0 uncacheable=1" \
+    "the unresolvable root was not counted as an uncacheable miss"
+  pass "a source argument the key cannot resolve makes its root uncacheable unless a directive names the file"
+}
+
+test_script_wrapper_shellcheck_disables_the_cache() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp attempt
+  tmp=$(fm_test_tmproot fm-lint-cache-wrapper)
+  fm_lint_cache_fixture "$tmp"
+  cp "$tmp/stub.sh" "$tmp/fakebin/shellcheck"
+  chmod +x "$tmp/fakebin/shellcheck"
+  printf '#!/usr/bin/env bash\necho ok\n' > "$tmp/repo/tests/a.sh"
+  for attempt in 1 2; do
+    fm_lint_cache_run "$tmp" tests/a.sh
+    [ "$LINT_RC" -eq 0 ] || fail "run $attempt failed (exit $LINT_RC)"$'\n'"$LINT_OUT"
+    fm_lint_cache_linted "$tmp" tests/a.sh || fail "run $attempt replayed a pass recorded through a wrapper script"
+  done
+  assert_contains "$LINT_OUT" "lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=disabled" \
+    "a wrapper-script ShellCheck did not disable the cache with a summary"
+  [ -z "$(find "$tmp/cache" -type f 2>/dev/null)" ] || fail "a wrapper-script ShellCheck recorded a cache entry"
+  pass "a ShellCheck that is a script wrapper is never trusted for caching"
+}
+
+test_fifo_entry_lints_every_root() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp entry
+  tmp=$(fm_test_tmproot fm-lint-cache-fifo)
+  fm_lint_cache_fixture "$tmp"
+  printf '#!/usr/bin/env bash\necho one\n' > "$tmp/repo/tests/a.sh"
+  printf '#!/usr/bin/env bash\necho two\n' > "$tmp/repo/tests/b.sh"
+  fm_lint_cache_warm "$tmp" tests/a.sh tests/b.sh
+  entry=$(find "$tmp/cache" -type f | LC_ALL=C sort | head -n1)
+  rm -f "$entry"
+  mkfifo "$entry"
+  FM_TEST_TIMEOUT=60 fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh
+  [ "$LINT_RC" -ne 124 ] || fail "a FIFO cache entry hung the run"
+  [ "$LINT_RC" -eq 0 ] || fail "a FIFO cache entry failed the run (exit $LINT_RC)"$'\n'"$LINT_OUT"
+  fm_lint_cache_linted "$tmp" tests/a.sh tests/b.sh \
+    || fail "a FIFO cache entry did not make the run lint every root"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "not a regular file" "the FIFO entry was not reported as corrupt"
+  pass "a FIFO or other special node at an entry name discards every hit without blocking"
+}
+
+test_summary_counts_every_root_in_every_state() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-summary)
+  fm_lint_cache_fixture "$tmp"
+  repo="$tmp/repo"
+  printf '#!/usr/bin/env bash\necho ok\n' > "$repo/tests/a.sh"
+  mkdir -p "$tmp/cache"
+  if [ "$(id -u)" -ne 0 ]; then
+    chmod 000 "$tmp/cache"
+    fm_lint_cache_run "$tmp" tests/a.sh
+    chmod 755 "$tmp/cache"
+    assert_contains "$LINT_OUT" "lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=disabled" \
+      "a disabled cache printed no numeric summary"
+  fi
+  fm_lint_cache_run "$tmp" --audit-cache "$tmp/cache" tests/a.sh
+  assert_contains "$LINT_OUT" "lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=bypassed" \
+    "the uncached audit printed no numeric summary"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/bin/fm-lint-workflows.sh"
+  chmod +x "$repo/bin/fm-lint-workflows.sh"
+  git -C "$repo" init -q
+  git -C "$repo" add -A
+  git -C "$repo" -c user.name=t -c user.email=t@example.invalid commit -q -m base
+  git -C "$repo" update-ref refs/remotes/origin/main HEAD
+  fm_lint_cache_run "$tmp"
+  [ "$LINT_RC" -eq 0 ] || fail "the zero-target run failed (exit $LINT_RC)"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "lint cache: hits=0 misses=0 stored=0 uncacheable=0 scope=local state=on" \
+    "a zero-target run printed no numeric summary"
+  pass "every run prints its cache state with hits and misses that cover every selected root"
+}
+
+test_audit_without_attribution_reports_incomplete() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo head
+  tmp=$(fm_test_tmproot fm-lint-cache-incomplete)
+  fm_lint_cache_fixture "$tmp"
+  repo="$tmp/repo"
+  printf '#!/usr/bin/env bash\n# LINT-BAD\necho bad\n' > "$repo/tests/a.sh"
+  git -C "$repo" init -q
+  git -C "$repo" add -A
+  git -C "$repo" -c user.name=t -c user.email=t@example.invalid commit -q -m base
+  head=$(git -C "$repo" rev-parse HEAD)
+  fm_lint_cache_run "$tmp" --audit-cache "$tmp/missing-cache" tests/a.sh
+  [ "$LINT_RC" -ne 0 ] || fail "the audit passed a root with findings"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "AUDIT INCOMPLETE: tests/a.sh has findings at commit $head (partition all)" \
+    "an unattributed finding did not report an incomplete audit naming the commit, partition and root"
+  assert_contains "$LINT_OUT" "is unproven" "the incomplete audit claimed its candidate key was replayed"
+  printf '%s\n' "$LINT_OUT" | grep -Eq 'candidate key [0-9a-f]{64}' \
+    || fail "the incomplete audit did not name the recomputed candidate key"$'\n'"$LINT_OUT"
+  fm_lint_cache_run "$tmp" --telemetry "$tmp/cached.tsv" tests/a.sh
+  [ -s "$tmp/cached.cache.tsv" ] || fail "the cached run wrote no sidecar"
+  fm_lint_cache_run "$tmp" --audit-cache "$tmp/missing-cache" --audit-record "$tmp/cached.cache.tsv" tests/a.sh
+  [ "$LINT_RC" -eq 1 ] || fail "an attributed finding did not report the plain findings status (exit $LINT_RC)"$'\n'"$LINT_OUT"
+  assert_not_contains "$LINT_OUT" "AUDIT INCOMPLETE" "a sidecar proving the root was linted still reported an incomplete audit"
+  pass "a finding no record attributes reports an incomplete audit, and a covering sidecar proves it"
+}
+
 fm_test_run \
   test_unchanged_root_hits_a_recorded_pass \
   test_changed_root_misses \
@@ -402,4 +658,12 @@ fm_test_run \
   test_corrupt_or_unreadable_cache_lints_everything \
   test_local_and_hosted_entries_do_not_collide \
   test_uncached_audit_bypasses_the_cache_and_names_a_stale_key \
-  test_real_shellcheck_finding_two_levels_down_is_not_hidden
+  test_real_shellcheck_finding_two_levels_down_is_not_hidden \
+  test_real_quoted_source_paths_enter_the_key \
+  test_real_symlink_swap_between_candidates_misses \
+  test_real_bash_env_cannot_change_shellcheck_flags \
+  test_unresolvable_source_expression_is_uncacheable \
+  test_script_wrapper_shellcheck_disables_the_cache \
+  test_fifo_entry_lints_every_root \
+  test_summary_counts_every_root_in_every_state \
+  test_audit_without_attribution_reports_incomplete
