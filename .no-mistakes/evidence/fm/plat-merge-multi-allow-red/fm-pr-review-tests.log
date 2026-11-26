@@ -26,4 +26,3 @@ ok - post-merge validates and records the same immutable staged evidence object
 ok - browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence
 ok - post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims
 ok - a failed post-merge smoke requires an owning bug and blocks Ready for QA
-exit=0
