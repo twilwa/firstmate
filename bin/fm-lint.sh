@@ -152,11 +152,11 @@
 # stored=N uncacheable=N scope=local|hosted", and with --telemetry writes the
 # per-root sidecar <telemetry-without-.tsv>.cache.tsv. A corrupt entry or an
 # unreadable cache lints every root; a missing library lints every root with
-# a warning. --no-cache lints every root without reading or writing the
-# cache. --audit-cache <dir> and --audit-record <sidecar> (repeatable) imply
-# --no-cache and, after linting, report each root with findings whose key
-# <dir> records as a pass, or that a cached run's sidecar recorded as a hit
-# or stored pass, as "STALE LINT CACHE KEY <key>", exiting 3.
+# a warning. --audit-cache <dir> and --audit-record <sidecar> (repeatable) lint
+# every root without reading or writing the cache and, after linting, report
+# each root with findings whose key <dir> records as a pass, or that a cached
+# run's sidecar recorded as a hit or stored pass, as "STALE LINT CACHE KEY
+# <key>", exiting 3.
 #
 # Optional quiet telemetry writes one bounded TSV snapshot of content and source
 # graph identity, wall/CPU/RSS, shard load, and competing ShellCheck processes.
@@ -171,7 +171,6 @@
 #   fm-lint.sh --partition <k>of<N>      lint one canonical CI partition (see fallback above)
 #   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; in hosted CI only, sourced helpers and lint-definition files upgrade to the full set)
 #   fm-lint.sh --telemetry <path> ...  write a quiet metrics snapshot
-#   fm-lint.sh --no-cache ...           lint every root, ignoring FM_LINT_CACHE_DIR
 #   fm-lint.sh --audit-cache <dir> [--audit-record <sidecar>]... ...
 #                                      uncached run that names stale cache keys
 #   fm-lint.sh --required-version      print the ShellCheck pin
@@ -934,10 +933,6 @@ while [ "$#" -gt 0 ]; do
       ;;
     --list-files)
       LIST_FILES=1
-      shift
-      ;;
-    --no-cache)
-      NO_CACHE=1
       shift
       ;;
     --audit-cache)
@@ -2270,8 +2265,8 @@ fi
 } >> "$ROOTS_LOG"
 
 # The per-root pass cache (bin/fm-lint-cache-lib.sh): with FM_LINT_CACHE_DIR
-# set, roots whose exact key holds a recorded pass are skipped; --no-cache and
-# the audit flags lint every selected root without reading or writing it.
+# set, roots whose exact key holds a recorded pass are skipped; the audit flags
+# lint every selected root without reading or writing it.
 LINT_COUNT=$ROOT_COUNT
 FM_LINT_CACHE_STATE=off
 if [ -n "${FM_LINT_CACHE_DIR:-}" ] || [ "$NO_CACHE" -eq 1 ]; then

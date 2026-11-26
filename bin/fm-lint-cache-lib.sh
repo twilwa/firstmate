@@ -36,8 +36,7 @@
 # <dir>/fm-lint-cache-v1/<key> whose exact bytes are re-derived and compared
 # on every read; any mismatch, an unreadable entry, or an unreadable cache
 # directory discards every hit for the run, so the whole selection is linted.
-# Hits refresh the entry's mtime and a run prunes entries unused for
-# FM_LINT_CACHE_MAX_AGE_DAYS (default 14).
+# Hits refresh the entry's mtime and a run prunes entries unused for 14 days.
 #
 # Audit. The scheduled uncached run (fm-lint.sh --audit-cache/--audit-record)
 # lints every root without reading or writing the cache, then reports each
@@ -463,7 +462,7 @@ fm_lint_cache_finish() {
       esac
     done < "$out"
   fi
-  fm_lint_cache_helper prune "$FM_LINT_CACHE_DIR" "${FM_LINT_CACHE_MAX_AGE_DAYS:-14}" 2>/dev/null || true
+  fm_lint_cache_helper prune "$FM_LINT_CACHE_DIR" 14 2>/dev/null || true
 }
 
 # Print the run's hit and miss counts and, beside --telemetry, write the

@@ -300,10 +300,6 @@ test_uncached_audit_bypasses_the_cache_and_names_a_stale_key() {
   assert_not_contains "$LINT_OUT" "tests/b.sh has findings" "the audit blamed a clean root"
   after=$(find "$tmp/cache" -type f -exec cksum {} + | LC_ALL=C sort)
   [ "$before" = "$after" ] || fail "the uncached audit run wrote to the cache"
-  FM_TEST_SC_FAIL_LIST="$tmp/fail-list" fm_lint_cache_run "$tmp" --no-cache tests/a.sh tests/b.sh
-  fm_lint_cache_linted "$tmp" tests/a.sh tests/b.sh \
-    || fail "--no-cache did not lint every root"$'\n'"$LINT_OUT"
-  [ "$LINT_RC" -eq 1 ] || fail "--no-cache did not report the plain findings status (exit $LINT_RC)"$'\n'"$LINT_OUT"
   pass "the uncached audit run ignores the cache and fails naming the stale key a cached pass hid"
 }
 

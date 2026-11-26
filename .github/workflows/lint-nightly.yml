@@ -50,7 +50,7 @@ jobs:
       - name: Restore the lint result cache for audit
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/fm-lint-cache-audit
+          path: ${{ runner.temp }}/fm-lint-cache
           key: fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-audit-${{ github.run_id }}
           restore-keys: |
             fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-
@@ -78,7 +78,7 @@ jobs:
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-lint"
-          audit=(--audit-cache "$RUNNER_TEMP/fm-lint-cache-audit")
+          audit=(--audit-cache "$RUNNER_TEMP/fm-lint-cache")
           while IFS= read -r record; do
             audit+=(--audit-record "$record")
           done < <(find "$RUNNER_TEMP/fm-lint-cached-run" -type f -name '*.cache.tsv' | LC_ALL=C sort)
