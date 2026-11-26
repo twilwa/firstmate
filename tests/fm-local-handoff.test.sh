@@ -1594,7 +1594,7 @@ test_a_current_spawn_token_lands_through_to_its_receipt() {
   # A respawn under the current writer is a new token, and the approval named
   # the old one.
   local respawned err status
-  respawned="s$(date +%s).$$.$((RANDOM + 1))"
+  respawned="${token}0"
   set_child_spawn_gen_lines "spawn_gen=$respawned"
   err="$TMP_ROOT/current-token.err"
   status=0
@@ -1669,7 +1669,7 @@ test_an_empty_or_duplicate_incarnation_refuses_the_offer() {
 # must still refuse the landing, rather than reading the empty field as the
 # same legacy 0 or reading only the first of two fields.
 test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing() {
-  local head err status pinned=0 lines
+  local head err status pinned=0 lines before
   make_bound_fixture pinned-incarnation
   set_child_spawn_gen_lines
   commit_child_work 'legacy incarnation change'
@@ -1685,6 +1685,7 @@ test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing() {
     echo "skip: tasks-axi not found (pinned incarnation landing; refusals still checked)"
   fi
   err="$TMP_ROOT/pinned-incarnation.err"
+  before=$(git -C "$FX_MAIN/projects/app" rev-parse main)
 
   for lines in 'spawn_gen=' $'spawn_gen=0\nspawn_gen=8'; do
     set_child_spawn_gen_lines "$lines"
@@ -1698,7 +1699,7 @@ test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing() {
       *) assert_grep "child task $FX_TASK records more than one incarnation" "$err" \
         "the refusal did not name the duplicate incarnation" ;;
     esac
-    assert_not_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    assert_equals "$before" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
       "a refused incarnation still moved the primary's default branch"
   done
 
