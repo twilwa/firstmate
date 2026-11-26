@@ -1,0 +1,18 @@
+1..11
+ok - an unchanged root replays its recorded pass and the run reports hits and misses
+ok - editing a root misses only that root
+ok - a change anywhere in a root's transitive source closure misses, two levels down included
+ok - a changed ShellCheck build misses even under the same pinned version
+ok - a changed ShellCheck flag or lint-definition file misses
+ok - a root with findings is never recorded and never replayed
+ok - a timeout, a memory-fallback pass, or an uncacheable root is never recorded and never replayed
+ok - a corrupt, truncated, or unreadable cache lints every root and never passes on it
+ok - local and hosted runs keep separate entries
+ok - the uncached audit run ignores the cache and fails naming the stale key a cached pass hid
+ok - real ShellCheck's finding from a file two source levels down is never hidden by a recorded pass
+FM_TEST_COMPLETE
+
+real	0m38.210s
+user	0m8.020s
+sys	0m15.962s
+exit=0

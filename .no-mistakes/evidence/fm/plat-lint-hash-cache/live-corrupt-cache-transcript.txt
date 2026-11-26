@@ -1,0 +1,36 @@
+===== warm (record both passes)
+$ fm-lint.sh --telemetry /tmp/fmlab-s5.mpTumB/w.tsv tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local
+exit=0
+===== warm check (expect hits=2)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+--- corrupting b.sh's own entry 04d58a233054018c29a4028ca5a26cad099ccbca0240c18a1c6308c250b83261 (flip verdict text, keep length)
+===== corrupt b.sh entry (expect hits=0: a.sh hit discarded too, both linted)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: malformed entry /tmp/fmlab-s5.mpTumB/cache/fm-lint-cache-v1/04d58a233054018c29a4028ca5a26cad099ccbca0240c18a1c6308c250b83261; discarding every hit and linting every root
+fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local
+exit=0
+===== warm again after rewrite
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== truncated (empty) b.sh entry (expect hits=0)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: malformed entry /tmp/fmlab-s5.mpTumB/cache/fm-lint-cache-v1/04d58a233054018c29a4028ca5a26cad099ccbca0240c18a1c6308c250b83261; discarding every hit and linting every root
+fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local
+exit=0
+===== re-warm
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== unreadable b.sh entry (expect hits=0)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: unreadable entry /tmp/fmlab-s5.mpTumB/cache/fm-lint-cache-v1/04d58a233054018c29a4028ca5a26cad099ccbca0240c18a1c6308c250b83261; discarding every hit and linting every root
+fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local
+exit=0
+===== b.sh now has a finding (corrupt state cleared) expect exit 1
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=1 misses=1 stored=0 uncacheable=0 scope=local
+exit=1

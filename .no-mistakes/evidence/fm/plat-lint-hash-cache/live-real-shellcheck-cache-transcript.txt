@@ -1,0 +1,122 @@
+===== S1 cold run (expect misses, stores passes, bad.sh reported, not stored)
+$ fm-lint.sh tests/a.sh tests/b.sh tests/bad.sh
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+fm-lint.sh: lint cache: hits=0 misses=3 stored=2 uncacheable=0 scope=local
+exit=1
+entries on disk: 2
+===== S1 warm run (expect hits for a.sh,b.sh; bad.sh re-linted and fails again)
+$ fm-lint.sh tests/a.sh tests/b.sh tests/bad.sh
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local
+exit=1
+===== S2 sourced file two levels down changed (expect a.sh miss + real SC2154)
+$ fm-lint.sh tests/a.sh tests/b.sh
+In tests/a.sh line 4:
+               ^-------^ SC2154 (warning): from_two is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- from_two is referenced but not as...
+fm-lint.sh: lint cache: hits=1 misses=1 stored=0 uncacheable=0 scope=local
+exit=1
+===== S2 restored two.sh (expect a.sh hit again)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== S3 changed linter flag: --fast (expect misses)
+$ fm-lint.sh --fast tests/b.sh
+fm-lint.sh: lint cache: hits=0 misses=1 stored=1 uncacheable=0 scope=local
+exit=0
+===== S3 back to default flags (expect hit)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=1 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== S3 lint-definition file changed (expect misses)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=0 misses=1 stored=1 uncacheable=0 scope=local
+exit=0
+===== S3 different shellcheck binary bytes (expect miss)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=0 misses=1 stored=1 uncacheable=0 scope=local
+exit=0
+===== S4 hosted scope (expect miss, scope=hosted)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=0 misses=1 stored=1 uncacheable=0 scope=hosted
+exit=0
+===== S4 hosted again (expect hit)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=1 misses=0 stored=0 uncacheable=0 scope=hosted
+exit=0
+===== S4 local again (expect hit on local entry)
+$ fm-lint.sh tests/b.sh
+fm-lint.sh: lint cache: hits=1 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== S5 one corrupt entry (expect every root linted, no hits)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: hits=1 misses=1 stored=1 uncacheable=0 scope=local
+exit=0
+NOTE (tester): this S5 step damaged whichever entry `ls | head -1` listed. That was a stale entry this run never looked up (b.sh hit its own current entry), so hits=1 is expected here. The targeted corrupt, truncated, and unreadable cases for a consulted entry are in live-corrupt-cache-transcript.txt: each prints "discarding every hit and linting every root" with hits=0.
+===== S5 unreadable cache dir (expect lint everything, no pass replay)
+$ fm-lint.sh tests/a.sh tests/b.sh
+fm-lint.sh: lint cache: could not record the pass for tests/a.sh (error)
+fm-lint.sh: lint cache: could not record the pass for tests/b.sh (error)
+fm-lint.sh: lint cache: hits=0 misses=2 stored=0 uncacheable=0 scope=local
+exit=0
+===== S6 cached run with telemetry to learn bad.sh key
+$ fm-lint.sh --telemetry /tmp/fmlab-live.GGNMHS/t.tsv tests/bad.sh tests/b.sh
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+fm-lint.sh: lint cache: hits=1 misses=1 stored=0 uncacheable=0 scope=local
+exit=1
+bad.sh key=c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f
+--- forged stale entry:
+fm-lint-cache-entry-v1
+key c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f
+verdict pass
+reason ok
+root tests/bad.sh
+check 13de9c2bfdd7255971a6a8f6fe1a2754763af861a219a3c10a2b3b2cddb1fc6e
+===== S6 cached run now replays the forged (stale) pass for bad.sh (threat model)
+$ fm-lint.sh --telemetry /tmp/fmlab-live.GGNMHS/c.tsv tests/bad.sh tests/b.sh
+fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local
+exit=0
+===== S6 nightly-style uncached audit (expect bad.sh linted, exit 3, STALE LINT CACHE KEY c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f)
+$ fm-lint.sh --audit-cache /tmp/fmlab-live.GGNMHS/cache --audit-record /tmp/fmlab-live.GGNMHS/c.cache.tsv tests/bad.sh tests/b.sh
+fm-lint.sh: lint cache bypassed; every selected root is linted and nothing is recorded
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+fm-lint.sh: STALE LINT CACHE KEY c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f: tests/bad.sh has findings in this uncached run, but the cache at /tmp/fmlab-live.GGNMHS/cache recorded a pass for that key
+fm-lint.sh: STALE LINT CACHE KEY c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f: tests/bad.sh has findings in this uncached run, but the cached run's sidecar /tmp/fmlab-live.GGNMHS/c.cache.tsv recorded a pass for that key
+exit=3
+cache bytes unchanged by audit: yes
+===== S6 audit with cache-only channel (as nightly when sidecar download fails)
+$ fm-lint.sh --audit-cache /tmp/fmlab-live.GGNMHS/cache tests/bad.sh tests/b.sh
+fm-lint.sh: lint cache bypassed; every selected root is linted and nothing is recorded
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+fm-lint.sh: STALE LINT CACHE KEY c4fea77116fed32b47e6d227513b882874e8a21109066ccfdfbf1780d17d091f: tests/bad.sh has findings in this uncached run, but the cache at /tmp/fmlab-live.GGNMHS/cache recorded a pass for that key
+exit=3
+===== S6 audit against an empty/missing cache dir: still lints all, bad.sh fails exit 1 (no false stale)
+$ fm-lint.sh --audit-cache /tmp/fmlab-live.GGNMHS/nope tests/bad.sh tests/b.sh
+fm-lint.sh: lint cache bypassed; every selected root is linted and nothing is recorded
+In tests/bad.sh line 2:
+     ^------------^ SC2154 (warning): undefined_var is referenced but not assigned.
+     ^------------^ SC2086 (info): Double quote to prevent globbing and word splitting.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var is referenced but n...
+  https://www.shellcheck.net/wiki/SC2086 -- Double quote to prevent globbing ...
+exit=1
+T=/tmp/fmlab-live.GGNMHS

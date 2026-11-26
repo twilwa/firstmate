@@ -1,0 +1,9 @@
+no paths given -> fm-lint.sh default local changed-file selection on this branch (--list-files: bin/fm-lint-cache-lib.sh, bin/fm-lint.sh, tests/fm-lint-cache.test.sh), real ShellCheck 0.11.0, FM_LINT_CACHE_DIR in a throwaway /tmp dir
+===== cold run on real repo roots
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=local
+wall=9.72s
+exit=0
+===== warm run on real repo roots
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local
+wall=4.84s
+exit=0
