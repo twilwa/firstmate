@@ -489,8 +489,9 @@ fm_pr_metadata_identity_parse() {
       # control_relaunch_tx is allowlisted post-pr= for records written
       # before fm-spawn moved the key ahead of the preserved block, and
       # decisions_reviewed=/decision_keys= because fm-captain-hold.sh appends
-      # them after the pr= identity block.
-      control_relaunch_tx=*|decisions_reviewed=*|decision_keys=*|x_request=*|x_request_ts=*|x_followups=*|x_platform=*|x_reply_max_chars=*)
+      # them after the pr= identity block, as fm-pr-merge.sh does
+      # merge_allow_red= for an accepted merge's waived checks.
+      control_relaunch_tx=*|decisions_reviewed=*|decision_keys=*|merge_allow_red=*|x_request=*|x_request_ts=*|x_followups=*|x_platform=*|x_reply_max_chars=*)
         ;;
       *)
         [ "$seen_pr" -eq 0 ] || post_pr_invalid=1

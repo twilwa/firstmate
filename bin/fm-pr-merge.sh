@@ -15,7 +15,7 @@
 # Usage:
 #   fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch]
 #     [--expected-head <full-sha>]
-#     [--allow-red <check>] [--allow-missing <check>] [--allow-no-pipeline]
+#     [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
 #     [-- <forge merge flags>]
 #   fm-pr-merge.sh -h | --help
 #
@@ -66,9 +66,17 @@
 # does not replace it with a newly read head. Omitting the flag keeps the
 # previous behavior: the live head read at verification is the matched value.
 # Reading that state needs gh and jq, and either one absent stops the merge before any
-# state is recorded. An attended --allow-red <check-name> may be passed once,
-# with the name as a separate argument; it waives only checks with that exact
-# name, still requires every other check green, and still binds the head. Its
+# state is recorded. The helper options end at a standalone -- or at the first
+# argument that is not one of them, and everything after is forge extras;
+# bin/fm-pr-merge-options-lib.sh owns that parse for this script and for
+# bin/fm-pr-review.sh merge, and refuses a missing option value (empty or
+# starting with --) rather than consuming the next argument. An attended
+# --allow-red <check-name> may be repeated for up to four distinct names, each
+# as a separate argument; a missing, duplicate, or fifth name refuses before
+# any forge call. Each occurrence waives only a check whose whole reported name
+# equals it, every check not named must still be green, and the head is still
+# bound. An accepted GitHub merge records its waived names, in order, as a JSON
+# array in the task metadata's merge_allow_red= line. Its single-use
 # twin, an attended --allow-missing <check-name>, follows the same rules for one
 # required check that has not reported: it waives only that exact name, still
 # requires every other required check to have reported and every check to be
@@ -236,7 +244,7 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>] [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
 # The repository policy in .github/firstmate-review-policy.json may set
 # require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
 # from fm-pr-review.sh for GitHub merges.
@@ -247,7 +255,8 @@
 # A GitHub merge also refuses while the PR's review ledger records an unreleased
 # hold on its current generation, whether or not the handoff is required, and
 # while the away-posture record exists it needs the handoff together with the
-# ledger merge decision recorded for that head, whatever the policy setting.
+# ledger merge decision recorded for that head, whatever the policy setting, and
+# refuses a decision that waived any red check, whenever it was recorded.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -283,6 +292,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-merge-authority-lib.sh"
 # shellcheck source=bin/fm-afk-contract.sh
 . "$SCRIPT_DIR/fm-afk-contract.sh"
+# shellcheck source=bin/fm-pr-merge-options-lib.sh
+. "$SCRIPT_DIR/fm-pr-merge-options-lib.sh"
 
 if [ "$#" -lt 2 ]; then
   echo "error: invalid PR merge request" >&2
@@ -369,80 +380,14 @@ if [ "$PROVIDER" = gerrit ]; then
   exit 2
 fi
 shift 2
-ATTENDED_OVERRIDE=false
-UPDATE_BRANCH=false
-ALLOW_NO_PIPELINE=false
-ALLOW_RED=()
-ALLOW_MISSING=()
-EXPECTED_HEAD=
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --attended-override)
-      ATTENDED_OVERRIDE=true
-      shift
-      ;;
-    --update-branch)
-      UPDATE_BRANCH=true
-      shift
-      ;;
-    --update-branch=*)
-      echo "error: --update-branch takes no value" >&2
-      exit 2
-      ;;
-    --attended-override=*)
-      echo "error: --attended-override takes no value" >&2
-      exit 2
-      ;;
-    --allow-red)
-      [ -n "${2:-}" ] || { echo "error: --allow-red requires a check name" >&2; exit 2; }
-      [ "${#ALLOW_RED[@]}" -eq 0 ] || { echo "error: --allow-red may be specified only once" >&2; exit 2; }
-      ALLOW_RED+=("$2")
-      shift 2
-      ;;
-    --allow-red=*)
-      echo "error: --allow-red requires a separate check name argument" >&2
-      exit 2
-      ;;
-    --allow-missing)
-      [ -n "${2:-}" ] || { echo "error: --allow-missing requires a check name" >&2; exit 2; }
-      [ "${#ALLOW_MISSING[@]}" -eq 0 ] || { echo "error: --allow-missing may be specified only once" >&2; exit 2; }
-      ALLOW_MISSING+=("$2")
-      shift 2
-      ;;
-    --allow-missing=*)
-      echo "error: --allow-missing requires a separate check name argument" >&2
-      exit 2
-      ;;
-    --allow-no-pipeline)
-      ALLOW_NO_PIPELINE=true
-      shift
-      ;;
-    --allow-no-pipeline=*)
-      echo "error: --allow-no-pipeline takes no value" >&2
-      exit 2
-      ;;
-    --expected-head)
-      if [ -n "$EXPECTED_HEAD" ]; then
-        echo "error: --expected-head may be specified only once" >&2
-        exit 2
-      fi
-      case "${2:-}" in
-        ''|--*)
-          echo "error: --expected-head requires a full commit sha" >&2
-          exit 2
-          ;;
-      esac
-      EXPECTED_HEAD=$2
-      shift 2
-      ;;
-    --expected-head=*)
-      echo "error: --expected-head requires a separate full commit sha argument" >&2
-      exit 2
-      ;;
-    --) shift; break ;;
-    *) break ;;
-  esac
-done
+fm_pr_merge_options_parse "$@" || exit 2
+shift "$FM_PR_OPT_CONSUMED"
+ATTENDED_OVERRIDE=$FM_PR_OPT_ATTENDED_OVERRIDE
+UPDATE_BRANCH=$FM_PR_OPT_UPDATE_BRANCH
+ALLOW_NO_PIPELINE=$FM_PR_OPT_ALLOW_NO_PIPELINE
+ALLOW_RED=(${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"})
+ALLOW_MISSING=(${FM_PR_OPT_ALLOW_MISSING[@]+"${FM_PR_OPT_ALLOW_MISSING[@]}"})
+EXPECTED_HEAD=$FM_PR_OPT_EXPECTED_HEAD
 if [ "$UPDATE_BRANCH" = true ] && [ "$PROVIDER" != github ]; then
   echo "error: --update-branch applies only to GitHub" >&2
   exit 2
@@ -451,7 +396,7 @@ if [ -n "$EXPECTED_HEAD" ] && ! fm_pr_head_valid "$EXPECTED_HEAD"; then
   echo "error: --expected-head requires a full lowercase commit sha" >&2
   exit 2
 fi
-# --allow-red names one check run to waive, which only GitHub's per-check
+# --allow-red names check runs to waive, which only GitHub's per-check
 # reading can match. GitLab and Forgejo each collapse their checks into a
 # single head verdict - a head pipeline status and a combined commit status -
 # so there is no per-check name to waive there; GitLab's only waiver is the
@@ -1167,7 +1112,10 @@ forgejo_default_merge_style() {
 # stays red. A name whose runs are all green needs no timestamp, while a name
 # with no green run stays red.
 #
-# The reported name is also what --allow-red matches. An unnamed check run is
+# The reported name is also what --allow-red matches: each waiver is compared
+# with the whole JSON name string, so a waived check never reaches the output,
+# and a line break inside a name is escaped there so one name stays one line.
+# An unnamed check run is
 # grouped alone and can neither supersede nor be superseded, because unrelated
 # unnamed checks must not be treated as one.
 github_checks_not_green() {
@@ -1176,7 +1124,8 @@ github_checks_not_green() {
     def settled_at:
       if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
       then . else null end;
-    if (.statusCheckRollup | type) != "array" then error("no check rollup") else . end
+    $ARGS.positional as $waived
+    | if (.statusCheckRollup | type) != "array" then error("no check rollup") else . end
     | [ .statusCheckRollup
         | to_entries[]
         | .key as $i
@@ -1222,8 +1171,9 @@ github_checks_not_green() {
           | .name
         )
       )
-    | if . == "" then "(unnamed check)" else . end
-  ' 2>/dev/null || return 1
+    | select(. as $name | any($waived[]; . == $name) | not)
+    | if . == "" then "(unnamed check)" else gsub("\n"; "\\n") end
+  ' --args -- ${ALLOW_RED[@]+"${ALLOW_RED[@]}"} 2>/dev/null || return 1
 }
 
 
@@ -1232,7 +1182,7 @@ github_checks_not_green() {
 # the usual 1, when mergeable=UNKNOWN is the only failing condition, so the
 # caller can retry a still-computing mergeability read instead of refusing.
 github_verify_mergeable() {
-  local json fields line red failed name covered missing unreported producers pending
+  local json fields line red failed name missing unreported producers pending
   local total=0 named=0 refusals='' mergeable_refusal=''
   local state='' draft='' mergeable='' merge_state='' live_head='' base=''
   FM_PR_GITHUB_BEHIND=false
@@ -1302,7 +1252,6 @@ FIELDS
   fi
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    [ "${#ALLOW_RED[@]}" -eq 0 ] || [ "${ALLOW_RED[0]}" != "$name" ] || continue
     FM_PR_GITHUB_CHECKS_FAILED=true
   done <<EOF
 $failed
@@ -1340,17 +1289,9 @@ EOF
   uncovered=''
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    covered=0
-    if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
-      for check in "${ALLOW_RED[@]}"; do
-        [ "$check" = "$name" ] && covered=1
-      done
-    fi
-    [ "$covered" -eq 1 ] || {
-      refusals="$refusals  - check '$name' is not green
+    refusals="$refusals  - check '$name' is not green
 "
-      uncovered="${uncovered:+$uncovered, }$name"
-    }
+    uncovered="${uncovered:+$uncovered, }$name"
   done <<EOF
 $red
 EOF
@@ -1809,19 +1750,68 @@ require_current_away_authority() {
 # to the live head. A direct call, a hand-set handoff, or a decision recorded
 # for another head is refused, so the review policy is enforced by this script
 # rather than by the away session's judgment.
+# A decision that waived a red check is attended authority only, whenever it
+# was recorded, so it never stands in for the away merge gate. One ledger read
+# classifies the current decision as waiver-bearing, clean authority for the
+# handed-over head, or invalid; only clean authority passes, and a malformed
+# waiver field or an unreadable ledger refuses.
 require_away_review_merge_decision() {
+  local verdict=invalid
   [ "$FM_PR_AWAY_POSTURE" = true ] && [ "$PROVIDER" = github ] && [ -n "$REVIEW_LEDGER" ] || return 0
-  if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
-    && [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
-    && jq -e --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
-      .url == $url and (.generations | type == "array" and length > 0)
-      and .generations[-1].merge_decision.decision == "merge"
-      and .generations[-1].merge_decision.verified_head == $head
-    ' "$REVIEW_LEDGER" >/dev/null 2>&1; then
-    return 0
+  if [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ]; then
+    verdict=$(jq -r --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
+      if .url != $url or (.generations | type != "array" or length == 0) then "invalid"
+      else
+        .generations[-1].merge_decision
+        | if type != "object" then "invalid"
+          elif (.allowed_red_check | type) as $t | ($t != "null" and $t != "string") then "invalid"
+          elif (.allowed_red_checks | type) as $t | ($t != "null" and $t != "array") then "invalid"
+          elif (.allowed_red_checks // []) | any(.[]; type != "string") then "invalid"
+          elif .allowed_red_check != null or ((.allowed_red_checks // []) | length > 0) then "waiver"
+          elif $head != "" and .decision == "merge" and .verified_head == $head then "clean"
+          else "invalid" end
+      end
+    ' "$REVIEW_LEDGER" 2>/dev/null) || verdict=invalid
   fi
-  echo "error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged" >&2
+  case "$verdict" in
+    clean) return 0 ;;
+    waiver)
+      echo "error: while the away-posture record exists a GitHub merge needs a review-ledger merge decision that waives no red check; nothing was merged" >&2
+      ;;
+    *)
+      echo "error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged" >&2
+      ;;
+  esac
   return 2
+}
+
+# Under the metadata lock, replace any earlier merge_allow_red= line with the
+# ordered JSON array of this accepted merge's --allow-red names, or drop it when
+# the merge waived none, keeping the same private, single-link file identity.
+record_accepted_merge_waivers() {
+  local tmp line waived='' status=0
+  if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
+    waived=$(jq -cn '$ARGS.positional' --args -- "${ALLOW_RED[@]}") && [ -n "$waived" ] || return 1
+  fi
+  tmp=$(mktemp "$STATE/.fm-pr-merge-meta.XXXXXX") || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      merge_allow_red=*) ;;
+      *) printf '%s\n' "$line" >> "$tmp" || status=1 ;;
+    esac
+  done < "$META"
+  if [ "$status" -eq 0 ] && [ -n "$waived" ]; then
+    printf 'merge_allow_red=%s\n' "$waived" >> "$tmp" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    chmod 0600 "$tmp" \
+      && fm_pr_metadata_identity_parse "$tmp" \
+      && [ "$FM_PR_META_URL" = "$URL" ] \
+      && mv -f -- "$tmp" "$META" \
+      || status=1
+  fi
+  [ "$status" -eq 0 ] || rm -f -- "$tmp"
+  return "$status"
 }
 
 persist_accepted_merge_authority() {
@@ -1831,12 +1821,16 @@ persist_accepted_merge_authority() {
   fm_merge_authority_persist "$STATE" "$ID" "$META" \
     "$PROVIDER" "$PR_HOST" "$PR_PATH" "$PR_NUMBER" "$FM_PR_MERGE_AUTHORITY" \
     || status=1
+  if [ "$status" -eq 0 ] \
+    && { [ "${#ALLOW_RED[@]}" -gt 0 ] || grep -q '^merge_allow_red=' "$META"; }; then
+    record_accepted_merge_waivers || status=1
+  fi
   fm_lock_release "$MERGE_META_LOCK" || status=1
   MERGE_META_LOCK=
   if [ "$status" -eq 0 ]; then
     return 0
   fi
-  printf 'actionable: the forge accepted the merge request for %s but its merge authority could not be persisted; the merge poll remains armed\n' \
+  printf 'actionable: the forge accepted the merge request for %s but its merge authority or waived-check record could not be persisted; the merge poll remains armed\n' \
     "$URL" >&2
   return 1
 }

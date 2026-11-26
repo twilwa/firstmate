@@ -607,11 +607,12 @@ test_human_hold_survives_head_change_until_evidenced_release() {
 }
 
 test_merge_forwards_guarded_options_to_the_merge_parser() {
-  local fakebin initial rc=0
+  local fakebin initial rc=0 bad_head label
   fakebin=$(fm_fakebin "$TMP_ROOT/merge-forward-fake")
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 set -eu
+[ -z "${FM_TEST_GH_LOG:-}" ] || printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 case "${1:-} ${2:-}" in
   "api user")
@@ -653,45 +654,99 @@ esac
 SH
   chmod +x "$fakebin/gh"
 
+  ready_forward_ledger() { # snapshot final-comment-id
+    rm -rf "$HOME_DIR/data/pr-review-ledger"
+    FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$1" >/dev/null
+    FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$1" >/dev/null
+    bind_final_disposition "$HEAD_A" "$URL#issuecomment-$2" "$1"
+  }
+  forward_merge() { # label extra-red final-comment-id args...
+    local label=$1 extra=$2 comment=$3
+    shift 3
+    : > "$TMP_ROOT/merge-forward-$label.gh"
+    set +e
+    PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-$comment" FM_TEST_EXTRA_RED=$extra \
+      FM_TEST_GH_LOG="$TMP_ROOT/merge-forward-$label.gh" FM_TEST_NOW_EPOCH=7601 \
+      review merge task-forward "$URL" "$@" \
+        > "$TMP_ROOT/merge-forward-$label.stdout" 2> "$TMP_ROOT/merge-forward-$label.stderr"
+    rc=$?
+    set -e
+  }
+  # An --expected-head value the guard's own validation refuses proves the
+  # wrapper handed the arguments to fm-pr-merge.sh after recording its decision.
+  bad_head=not-a-commit
+
   initial="$TMP_ROOT/merge-forward-initial.json"
   snapshot "$initial" "$HEAD_A" '[]' '[]' "$RED_LINT" "$LOW_FILES"
-  rm -rf "$HOME_DIR/data/pr-review-ledger"
-  FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
-  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  bind_final_disposition "$HEAD_A" "$URL#issuecomment-106" "$initial"
-
-  set +e
-  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-106" FM_TEST_NOW_EPOCH=7601 \
-    review merge task-forward "$URL" --allow-red lint --attended-override=bad \
-      > "$TMP_ROOT/merge-forward.stdout" 2> "$TMP_ROOT/merge-forward.stderr"
-  rc=$?
-  set -e
-
-  expect_code 2 "$rc" 'merge forwarding: guarded option parser should reject the invalid value'
-  assert_grep 'error: --attended-override takes no value' "$TMP_ROOT/merge-forward.stderr" \
-    'merge forwarding: the wrapper blocked or hid guarded options before the merge parser'
-  [ "$(jq -r '.generations[-1].merge_decision.allowed_red_check' "$(ledger)")" = lint ] \
+  ready_forward_ledger "$initial" 106
+  forward_merge one false 106 --allow-red lint --expected-head "$bad_head"
+  expect_code 2 "$rc" 'merge forwarding: the guard should reject the forwarded --expected-head value'
+  assert_grep 'error: --expected-head requires a full lowercase commit sha' "$TMP_ROOT/merge-forward-one.stderr" \
+    'merge forwarding: the wrapper did not hand its arguments to the merge guard'
+  [ "$(jq -c '.generations[-1].merge_decision | [.allowed_red_check, .allowed_red_checks]' "$(ledger)")" = '["lint",["lint"]]' ] \
     || fail 'merge forwarding: the ledger did not record the exact waived check'
+
+  ready_forward_ledger "$initial" 106
+  forward_merge malformed false 106 --attended-override=bad --allow-red lint
+  expect_code 2 "$rc" 'merge forwarding: a malformed helper option must refuse'
+  assert_grep 'error: --attended-override takes no value' "$TMP_ROOT/merge-forward-malformed.stderr" \
+    'merge forwarding: the malformed helper option was not reported'
+  [ ! -s "$TMP_ROOT/merge-forward-malformed.gh" ] \
+    || fail "merge forwarding: a malformed prefix still read the forge: $(cat "$TMP_ROOT/merge-forward-malformed.gh")"
+  [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$(ledger)")" != merge ] \
+    || fail 'merge forwarding: a malformed prefix still recorded a merge decision'
+
+  ready_forward_ledger "$initial" 106
+  forward_merge forge-tail false 106 --squash --allow-red lint
+  expect_code 1 "$rc" 'merge forwarding: a waiver among forge extras must not reach the review gate'
+  assert_grep 'review gate: a required check is not green on this head' "$TMP_ROOT/merge-forward-forge-tail.stderr" \
+    'merge forwarding: a forge extra was read as a helper waiver'
+  [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$(ledger)")" != merge ] \
+    || fail 'merge forwarding: a forge extra recorded a waiver decision'
 
   initial="$TMP_ROOT/merge-forward-two-red.json"
   snapshot "$initial" "$HEAD_A" '[]' '[]' "$RED_LINT_AND_UNIT" "$LOW_FILES"
-  rm -rf "$HOME_DIR/data/pr-review-ledger"
-  FM_TEST_NOW_EPOCH=7000 review init task-forward "$URL" --snapshot "$initial" >/dev/null
-  FM_TEST_NOW_EPOCH=7600 review checkpoint "$URL" --snapshot "$initial" >/dev/null
-  bind_final_disposition "$HEAD_A" "$URL#issuecomment-107" "$initial"
-  rc=0
-  set +e
-  PATH="$fakebin:$PATH" FM_TEST_FINAL_URL="$URL#issuecomment-107" \
-    FM_TEST_EXTRA_RED=true FM_TEST_NOW_EPOCH=7601 \
-    review merge task-forward "$URL" --allow-red lint --attended-override=bad \
-      > "$TMP_ROOT/merge-forward-two-red.stdout" 2> "$TMP_ROOT/merge-forward-two-red.stderr"
-  rc=$?
-  set -e
+  ready_forward_ledger "$initial" 107
+  forward_merge two-red true 107 --allow-red lint --expected-head "$bad_head"
   expect_code 1 "$rc" 'merge forwarding: an unwaived red check must block before the merge parser'
   assert_grep 'review gate: a required check is not green on this head' \
     "$TMP_ROOT/merge-forward-two-red.stderr" \
     'merge forwarding: naming one red check also waived another red check'
-  pass 'the review wrapper applies one named red-check waiver and forwards guarded options'
+
+  ready_forward_ledger "$initial" 107
+  forward_merge two-waivers true 107 --allow-red lint --update-branch --allow-red unit --expected-head "$bad_head"
+  expect_code 2 "$rc" 'merge forwarding: two named waivers should reach the merge guard'
+  assert_grep 'error: --expected-head requires a full lowercase commit sha' "$TMP_ROOT/merge-forward-two-waivers.stderr" \
+    'merge forwarding: the wrapper did not apply both named waivers'
+  [ "$(jq -c '.generations[-1].merge_decision | [.allowed_red_check, .allowed_red_checks]' "$(ledger)")" = '[null,["lint","unit"]]' ] \
+    || fail 'merge forwarding: the ledger did not record every waived check with a null single-name field'
+
+  for label in duplicate missing; do
+    ready_forward_ledger "$initial" 107
+    case "$label" in
+      duplicate) forward_merge "$label" true 107 --allow-red lint --allow-red lint --allow-red unit ;;
+      missing) forward_merge "$label" true 107 --allow-red --update-branch --allow-red lint ;;
+    esac
+    expect_code 2 "$rc" "merge forwarding: a $label waiver must refuse"
+    [ ! -s "$TMP_ROOT/merge-forward-$label.gh" ] \
+      || fail "merge forwarding: a $label waiver still read the forge: $(cat "$TMP_ROOT/merge-forward-$label.gh")"
+    [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$(ledger)")" != merge ] \
+      || fail "merge forwarding: a $label waiver still recorded a merge decision"
+  done
+  assert_grep "names check 'lint' more than once" "$TMP_ROOT/merge-forward-duplicate.stderr" \
+    'merge forwarding: the duplicate waiver was not reported'
+  assert_grep '--allow-red requires a check name' "$TMP_ROOT/merge-forward-missing.stderr" \
+    'merge forwarding: the missing waiver name was not reported'
+
+  set +e
+  FM_TEST_NOW_EPOCH=7601 review merge-decision "$URL" --allowed-red-check --snapshot "$initial" \
+    > "$TMP_ROOT/merge-decision-missing.stdout" 2> "$TMP_ROOT/merge-decision-missing.stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" 'merge-decision: an option in the waiver value slot must refuse'
+  assert_grep '--allowed-red-check requires a check name' "$TMP_ROOT/merge-decision-missing.stderr" \
+    'merge-decision: the missing waiver name was not reported'
+  pass 'the review wrapper applies each named red-check waiver and forwards guarded options'
 }
 
 test_merge_rejects_a_task_that_does_not_own_the_ledger() {

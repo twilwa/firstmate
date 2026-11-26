@@ -453,6 +453,20 @@ SH
   chmod +x "$case_dir/fakebin/mv"
 }
 
+add_failing_merge_meta_mv() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/mv" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    */.fm-pr-merge-meta.*) exit 1 ;;
+  esac
+done
+exec "$FM_TEST_REAL_MV" "$@"
+SH
+  chmod +x "$case_dir/fakebin/mv"
+}
+
 # glab mock recording every invocation together with the GITLAB_HOST it was
 # given, so a test can prove the instance came from the URL. `mr view` answers
 # from the case's JSON payload; marker files in the case dir drive the failure
@@ -795,6 +809,9 @@ run_pr_merge() {
   # Branch-update cases may locally clear this optional handoff to exercise
   # another policy; an explicit nonempty handoff must survive the update.
   [ "${FM_TEST_MERGE_VIA_REVIEW:-0}" != 1 ] || entry=("$ROOT/bin/fm-pr-review.sh" merge)
+  # FM_TEST_REVIEW_SUBCOMMAND=<name> enters through that fm-pr-review.sh
+  # subcommand instead, with the same faked forge and state.
+  [ -z "${FM_TEST_REVIEW_SUBCOMMAND:-}" ] || entry=("$ROOT/bin/fm-pr-review.sh" "$FM_TEST_REVIEW_SUBCOMMAND")
   if [ "${FM_PR_REVIEW_EXPECTED_HEAD+x}" = x ]; then
     reviewed_head=$FM_PR_REVIEW_EXPECTED_HEAD
   elif [[ "${2:-}" == https://github.com/* ]] && [ -s "$case_dir/github-head" ]; then
@@ -850,6 +867,19 @@ run_pr_merge() {
     return 1
   fi
   return "$rc"
+}
+
+# The value gh pr merge received for one flag, or the literal ABSENT.
+# Args: case_dir flag
+github_merge_flag_value() {
+  local arg prev='' found=ABSENT
+  while IFS= read -r -d '' arg; do
+    if [ "$prev" = "$2" ]; then
+      found=$arg
+    fi
+    prev=$arg
+  done < "$1/github-merge-args"
+  printf '%s' "$found"
 }
 
 write_github_outcome() {
@@ -4612,6 +4642,584 @@ test_github_red_checks_refuse_and_allow_red_waives_named() {
   pass "fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check"
 }
 
+# Each --allow-red occurrence waives exactly one named check; up to four may be
+# given, a named check that is already green is harmless, and any red check not
+# named still refuses.
+test_allow_red_waives_each_named_check() {
+  local case_dir rc head
+  head=a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+
+  case_dir=$(make_case github-allow-red-two)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run build COMPLETED SUCCESS)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/101 \
+    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-two: two named waivers should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 101 example/repo --squash
+  assert_equals 'merge_allow_red=["lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "github-allow-red-two: the task metadata did not record every waived name in order"
+
+  case_dir=$(make_case github-allow-red-exactly-three)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/104 \
+    --allow-red e2e --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-exactly-three: three named red waivers should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 104 example/repo --squash
+  assert_equals 'merge_allow_red=["e2e","lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "github-allow-red-exactly-three: the task metadata did not record every waived name in order"
+
+  case_dir=$(make_case github-allow-red-three-and-green)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)" \
+    "$(check_run build COMPLETED SUCCESS)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/102 \
+    --allow-red lint --allow-red unit --allow-red e2e --allow-red build \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-three: three red waivers beside a named green check should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 102 example/repo --squash
+
+  case_dir=$(make_case github-allow-red-fourth-unnamed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)" \
+    "$(check_run docs COMPLETED FAILURE)"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/103 \
+    --allow-red lint --allow-red unit --allow-red e2e > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-allow-red-fourth-unnamed: an unnamed red check must refuse"
+  assert_grep "check 'docs' is not green" "$case_dir/stderr" \
+    "github-allow-red-fourth-unnamed: the unnamed red check was not named"
+  assert_no_grep "check 'lint' is not green" "$case_dir/stderr" \
+    "github-allow-red-fourth-unnamed: a named check was reported red"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-fourth-unnamed: gh pr merge ran with an unnamed red check"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "github-allow-red-fourth-unnamed: a refused merge recorded waivers"
+  pass "fm-pr-merge waives each separately named red check and still refuses an unnamed one"
+}
+
+# A merge that waives nothing leaves the task metadata alone, so a failed
+# waived-check rewrite cannot fail it after the forge accepted it; an earlier
+# merge_allow_red= line is still dropped, and a waiving merge still records.
+test_allow_red_record_rewrites_metadata_only_when_waivers_change() {
+  local case_dir rc head
+  head=a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5
+
+  case_dir=$(make_case github-no-waiver-keeps-meta)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  add_failing_merge_meta_mv "$case_dir"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/108 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-no-waiver-keeps-meta: a green merge with no waiver failed on the waiver record"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 108 example/repo --squash
+  assert_no_grep 'waived-check record could not be persisted' "$case_dir/stderr" \
+    "github-no-waiver-keeps-meta: a merge with no waiver rewrote the task metadata"
+
+  case_dir=$(make_case github-waiver-record-failure)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" lint
+  add_failing_merge_meta_mv "$case_dir"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/109 \
+    --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-waiver-record-failure: an unrecorded waiver must be reported"
+  assert_grep 'waived-check record could not be persisted' "$case_dir/stderr" \
+    "github-waiver-record-failure: the failed waiver record was not named"
+
+  case_dir=$(make_case github-no-waiver-drops-stale)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf 'merge_allow_red=["lint"]\n' >> "$case_dir/state/task-x1.meta"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/110 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-no-waiver-drops-stale: a green merge with no waiver should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "github-no-waiver-drops-stale: an earlier merge's waivers survived a merge that waived none"
+  pass "fm-pr-merge rewrites the waived-check record only when a merge waives or clears one"
+}
+
+# A missing --allow-red value never borrows the next argument: an option or the
+# -- separator in the value slot refuses before any forge call, even when a
+# reported red check carries that literal name.
+test_allow_red_missing_value_never_consumes_an_option() {
+  local case_dir rc head label
+  head=a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2
+  for label in trailing option separator; do
+    case_dir=$(make_case "github-allow-red-missing-$label")
+    mkdir -p "$case_dir/wt"
+    add_gh_mocks "$case_dir" "$head"
+    write_github_rollup_json "$case_dir" "$head" \
+      "$(check_run lint COMPLETED FAILURE)" \
+      "$(check_run --update-branch COMPLETED FAILURE)" \
+      "$(check_run -- COMPLETED FAILURE)"
+    set +e
+    case "$label" in
+      trailing) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red lint --allow-red > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+      option) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red --update-branch --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+      separator) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red lint --allow-red -- --squash > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+    esac
+    rc=$?
+    set -e
+    expect_code 2 "$rc" "github-allow-red-missing-$label: a missing waiver name must refuse"
+    assert_grep '--allow-red requires a check name' "$case_dir/stderr" \
+      "github-allow-red-missing-$label: the missing name was not reported"
+    [ ! -s "$case_dir/gh.log" ] \
+      || fail "github-allow-red-missing-$label: a forge call ran before the refusal: $(cat "$case_dir/gh.log")"
+  done
+  pass "fm-pr-merge refuses a missing --allow-red name instead of consuming the next option or separator"
+}
+
+# Waivers match whole reported names: one red check whose name carries a line
+# break is not waived by naming the fragments on either side of it.
+test_allow_red_matches_whole_names_across_line_breaks() {
+  local case_dir rc head
+  head=a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3
+  case_dir=$(make_case github-allow-red-newline-name)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run 'lint\nunit' COMPLETED FAILURE)"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/106 \
+    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-allow-red-newline-name: fragments of one red name must not waive it"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-newline-name: gh pr merge ran past a check no waiver named"
+  pass "fm-pr-merge matches --allow-red against whole reported check names"
+}
+
+# The review wrapper reads the same helper-option prefix as the merge guard:
+# it refuses a malformed prefix before taking a snapshot, records exactly the
+# waivers the guard applies, and leaves forge extras alone.
+test_review_merge_records_only_the_waivers_the_guard_applies() {
+  local case_dir rc head url ledger low
+  head=a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/107
+
+  case_dir=$(make_case review-allow-red-interleaved)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --allow-red lint --update-branch --allow-red unit -- --squash \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "review-allow-red-interleaved: interleaved helper options should merge: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 107 example/repo --squash
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  assert_equals '[["lint","unit"],null]' \
+    "$(jq -c '.generations[-1].merge_decision | [.allowed_red_checks, .allowed_red_check]' "$ledger")" \
+    "review-allow-red-interleaved: the ledger did not record both waivers with a null single-name field"
+  assert_equals 'merge_allow_red=["lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "review-allow-red-interleaved: the task metadata did not record both waivers"
+
+  case_dir=$(make_case review-allow-red-forge-tail)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --squash --subject --allow-red --body=reviewed \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "review-allow-red-forge-tail: a green merge with forge extras should merge: $(cat "$case_dir/stderr")"
+  assert_equals '--allow-red' "$(github_merge_flag_value "$case_dir" --subject)" \
+    "review-allow-red-forge-tail: the forge subject value was not passed through unchanged"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  assert_equals '[]' "$(jq -c '.generations[-1].merge_decision.allowed_red_checks' "$ledger")" \
+    "review-allow-red-forge-tail: the ledger recorded a waiver the guard never applied"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "review-allow-red-forge-tail: the task metadata recorded a waiver the guard never applied"
+
+  case_dir=$(make_case review-allow-red-missing-value)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run --update-branch COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  : > "$case_dir/gh.log"
+  set +e
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --allow-red --update-branch --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "review-allow-red-missing-value: the wrapper must refuse a missing waiver name"
+  assert_grep '--allow-red requires a check name' "$case_dir/stderr" \
+    "review-allow-red-missing-value: the missing name was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "review-allow-red-missing-value: a forge call ran before the refusal: $(cat "$case_dir/gh.log")"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" != merge ] \
+    || fail "review-allow-red-missing-value: a malformed prefix still recorded a merge decision"
+  pass "the review wrapper records exactly the waivers fm-pr-merge applies and refuses a malformed prefix first"
+}
+
+# A waiver name may begin with a single hyphen, and it stays data: it is never
+# read as a jq option, only an exact match is waived, an unrelated red check
+# still refuses, and both waiver records keep every exact name in order.
+test_allow_red_single_hyphen_names_stay_data() {
+  local case_dir rc head url ledger low
+  head=a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/108
+
+  case_dir=$(make_case github-allow-red-hyphen-unrelated)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run -n COMPLETED FAILURE)" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)"
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" --allow-red -n --allow-red lint \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-allow-red-hyphen-unrelated: an unnamed red check must refuse"
+  assert_grep "check 'unit' is not green" "$case_dir/stderr" \
+    "github-allow-red-hyphen-unrelated: the unnamed red check was not the one refused"
+  assert_no_grep "check '-n' is not green" "$case_dir/stderr" \
+    "github-allow-red-hyphen-unrelated: the single-hyphen waiver was not applied"
+  assert_no_grep "check 'lint' is not green" "$case_dir/stderr" \
+    "github-allow-red-hyphen-unrelated: the normal waiver was not applied"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-hyphen-unrelated: gh pr merge ran with an unnamed red check"
+
+  case_dir=$(make_case review-allow-red-hyphen)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run -n COMPLETED FAILURE)" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run n COMPLETED SUCCESS)"
+  review_pull_request_for_merge "$case_dir" 108 "$low" no-attest
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --allow-red -n --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "review-allow-red-hyphen: exactly waived red checks should merge: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 108 example/repo --squash
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--108.json"
+  assert_equals '["-n","lint"]' "$(jq -c '.generations[-1].merge_decision.allowed_red_checks' "$ledger")" \
+    "review-allow-red-hyphen: the ledger did not keep both exact names in order"
+  assert_equals 'merge_allow_red=["-n","lint"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "review-allow-red-hyphen: the task metadata did not keep both exact names in order"
+  pass "fm-pr-merge keeps single-hyphen waiver names as exact data in matching and in both records"
+}
+
+# While away, no red-check waiver reaches a merge decision: both review-wrapper
+# entry points refuse before publishing one, and the guard refuses a ledger
+# decision that carries a waiver, even one recorded before the away posture.
+test_away_posture_publishes_and_accepts_no_waiver_decision() {
+  local case_dir rc head url ledger low decision label timing expected n=1
+  head=a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/109
+
+  # The away record exists before the request (no forge read at all), or is
+  # published while the wrapper collects its live snapshot; either way the
+  # ledger stays byte-identical.
+  for timing in present during; do
+    for label in merge merge-decision; do
+      case_dir=$(make_case "away-review-$label-waiver-$timing")
+      mkdir -p "$case_dir/wt" "$case_dir/home"
+      add_gh_mocks "$case_dir" "$head"
+      write_github_rollup_json "$case_dir" "$head" \
+        "$(check_run lint COMPLETED FAILURE)" \
+        "$(check_run unit COMPLETED FAILURE)"
+      review_pull_request_for_merge "$case_dir" 109 "$low" no-attest
+      write_away_record "$case_dir" --words 'keep the lanes running'
+      [ "$timing" = present ] || mv "$case_dir/state/.afk-contract" "$case_dir/away-record-after-view"
+      ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--109.json"
+      cp "$ledger" "$case_dir/ledger-before.json"
+      : > "$case_dir/gh.log"
+      set +e
+      if [ "$label" = merge ]; then
+        FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+          --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+      else
+        FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+          --allowed-red-check lint --allowed-red-check unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+      fi
+      rc=$?
+      set -e
+      expect_code 2 "$rc" "away-review-$label-waiver-$timing: a waiver must be refused while away"
+      assert_grep 'attended-only' "$case_dir/stderr" \
+        "away-review-$label-waiver-$timing: the refusal did not name attended-only"
+      assert_no_grep 'pr merge' "$case_dir/gh.log" \
+        "away-review-$label-waiver-$timing: gh pr merge ran despite an away waiver"
+      cmp -s "$case_dir/ledger-before.json" "$ledger" \
+        || fail "away-review-$label-waiver-$timing: the refused waiver request changed the review ledger"
+      if [ "$timing" = present ]; then
+        [ ! -s "$case_dir/gh.log" ] \
+          || fail "away-review-$label-waiver-$timing: the forge was read before the away refusal: $(cat "$case_dir/gh.log")"
+      else
+        assert_grep 'statusCheckRollup' "$case_dir/gh.log" \
+          "away-review-$label-waiver-$timing: the away record was not placed during snapshot collection"
+      fi
+    done
+  done
+
+  for decision in \
+    "waives no red check|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":null,\"allowed_red_checks\":[\"lint\"]}" \
+    "waives no red check|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":\"lint\"}" \
+    "goes through bin/fm-pr-review.sh merge|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":null,\"allowed_red_checks\":true}"; do
+    expected=${decision%%|*}
+    decision=${decision#*|}
+    case_dir=$(make_case "away-guard-waiver-ledger-$n")
+    mkdir -p "$case_dir/wt" "$case_dir/home"
+    add_gh_mocks "$case_dir" "$head"
+    write_review_ledger "$case_dir" 109 "$decision"
+    jq --arg head "$head" '.current_head = $head | .generations[-1].head = $head' \
+      "$case_dir/home/data/pr-review-ledger/github--example--repo--109.json" > "$case_dir/ledger.tmp"
+    mv "$case_dir/ledger.tmp" "$case_dir/home/data/pr-review-ledger/github--example--repo--109.json"
+    write_away_record "$case_dir" --words 'keep the lanes running'
+    set +e
+    FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+      > "$case_dir/stdout" 2> "$case_dir/stderr"
+    rc=$?
+    set -e
+    expect_code 2 "$rc" "away-guard-waiver-ledger-$n: a waiver-bearing or malformed ledger decision must not be away authority"
+    assert_grep "$expected" "$case_dir/stderr" \
+      "away-guard-waiver-ledger-$n: the refusal did not give the expected reason"
+    assert_no_grep 'pr merge' "$case_dir/gh.log" \
+      "away-guard-waiver-ledger: gh pr merge ran on a waiver-bearing ledger decision"
+    n=$((n + 1))
+  done
+  pass "while away neither review-wrapper entry point touches the ledger for a waiver and the guard refuses a waiver-bearing or malformed decision"
+}
+
+# A signal while merge-decision stages a waiver-bearing decision ends the run:
+# it never resumes toward the publish after releasing the away lock, records no
+# waiver decision, and leaves no lock behind.
+test_signal_during_waiver_decision_staging_publishes_nothing() {
+  local case_dir rc head url ledger low
+  head=a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/110
+  case_dir=$(make_case review-waiver-signal-staging)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 110 "$low" no-attest
+  # The real jq stages the decision; once, the call that stages it first
+  # signals the review shell that ran it.
+  cat > "$case_dir/fakebin/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in
+  *'merge_decision={decision:"merge"'*)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+exec "$JQ_BIN" "\$@"
+SH
+  chmod +x "$case_dir/fakebin/jq"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-staging: the decision staging was never reached: $(cat "$case_dir/stderr")"
+  [ "$rc" -ne 0 ] || fail "review-waiver-signal-staging: a signalled waiver decision run exited 0"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--110.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-staging: the signalled run still published a waiver-bearing decision"
+  [ ! -e "$case_dir/state/.afk-contract.lock" ] && [ ! -L "$case_dir/state/.afk-contract.lock" ] \
+    || fail "review-waiver-signal-staging: the away lock was left behind"
+  pass "a signal while merge-decision stages a waiver decision ends the run with nothing published and no lock held"
+}
+
+# A signal that lands while merge-decision is still acquiring the away lock,
+# after the lock is published but before the run records holding it, ends the
+# run and still leaves no lock behind.
+test_signal_during_waiver_away_lock_acquisition_leaves_no_lock() {
+  local case_dir rc head url ledger low
+  head=a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/111
+  case_dir=$(make_case review-waiver-signal-acquire)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 111 "$low" no-attest
+  # The real mv publishes the lock owner's pid; once, that publication then
+  # signals the review shell that ran it.
+  cat > "$case_dir/fakebin/mv" <<SH
+#!/usr/bin/env bash
+"$REAL_MV" "\$@" || exit
+case "\${*: -1}" in
+  "$case_dir/state/.afk-contract.lock.owner."*/pid)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mv"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-acquire: the away lock acquisition was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-acquire: TERM during the away lock acquisition must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--111.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-acquire: the signalled run still published a merge decision"
+  [ ! -e "$case_dir/state/.afk-contract.lock" ] && [ ! -L "$case_dir/state/.afk-contract.lock" ] \
+    || fail "review-waiver-signal-acquire: the away lock was left behind when TERM landed during acquisition"
+  pass "a signal while merge-decision acquires the away lock for a waiver ends the run and leaves no lock"
+}
+
+# The waiver path waits for a contended away lock in the review shell itself,
+# so a signal at the moment it finally takes the lock still ends the run with
+# no decision, no lock, and no lock staging left behind.
+test_signal_during_contended_waiver_away_lock_acquisition_leaves_no_lock() {
+  local case_dir rc head url ledger low lock holder staged
+  head=a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/112
+  case_dir=$(make_case review-waiver-signal-contended)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 112 "$low" no-attest
+  lock="$case_dir/state/.afk-contract.lock"
+  # A live holder keeps the away lock briefly, so the review shell must wait.
+  FM_STATE_OVERRIDE="$case_dir/state" bash -c '
+    . "$1"
+    fm_lock_acquire_wait "$2" || exit 7
+    : > "$3/held"
+    sleep 1.5
+    fm_lock_release "$2"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$case_dir" &
+  holder=$!
+  while [ ! -e "$case_dir/held" ]; do
+    kill -0 "$holder" 2>/dev/null || fail "review-waiver-signal-contended: the holder never took the lock"
+    sleep 0.05
+  done
+  # Once the review side publishes its own owner pid, signal the process that
+  # published it.
+  cat > "$case_dir/fakebin/mv" <<SH
+#!/usr/bin/env bash
+"$REAL_MV" "\$@" || exit
+case "\${*: -1}" in
+  "$case_dir/state/.afk-contract.lock.owner."*/pid)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mv"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  wait "$holder" || fail "review-waiver-signal-contended: the holder failed"
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-contended: the contended acquisition was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-contended: TERM as the contended lock is taken must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--112.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-contended: the signalled run still published a merge decision"
+  [ ! -e "$lock" ] && [ ! -L "$lock" ] \
+    || fail "review-waiver-signal-contended: the away lock was left behind after a contended acquisition"
+  for staged in "$lock".owner.* "$lock".steal.owner.*; do
+    [ ! -e "$staged" ] || fail "review-waiver-signal-contended: lock staging was left behind: $staged"
+  done
+  pass "a signal as merge-decision takes a contended away lock for a waiver leaves no lock or staging"
+}
+
+# A signal while the waiver path stages the steal mutex for a stale away lock
+# leaves none of this run's steal staging behind.
+test_signal_during_waiver_away_lock_steal_staging_leaves_no_staging() {
+  local case_dir rc head url ledger low lock dead staged
+  head=b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/113
+  case_dir=$(make_case review-waiver-signal-steal)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 113 "$low" no-attest
+  lock="$case_dir/state/.afk-contract.lock"
+  # A stale away lock whose holder is gone sends the acquirer to the steal path.
+  sh -c 'exit 0' &
+  dead=$!
+  wait "$dead" || true
+  mkdir "$lock"
+  printf '%s\n' "$dead" > "$lock/pid"
+  # Right after the steal mutex's staging directory is created, signal the
+  # review shell (the outermost fm-pr-review.sh ancestor of the shim).
+  cat > "$case_dir/fakebin/mktemp" <<SH
+#!/usr/bin/env bash
+out=\$("$(type -P mktemp)" "\$@") || exit
+printf '%s\n' "\$out"
+case "\$out" in
+  "$lock".steal.owner.*)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      target=\$PPID
+      while parent=\$(ps -o ppid= -p "\$target" 2>/dev/null | tr -d ' ') \\
+        && [ -n "\$parent" ] && ps -o args= -p "\$parent" 2>/dev/null | grep -q 'fm-pr-review.sh merge-decision'; do
+        target=\$parent
+      done
+      kill -TERM "\$target"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mktemp"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-steal: the steal staging was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-steal: TERM during steal staging must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--113.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-steal: the signalled run still published a merge decision"
+  [ ! -e "$lock.steal" ] && [ ! -L "$lock.steal" ] \
+    || fail "review-waiver-signal-steal: the steal mutex was left behind"
+  for staged in "$lock".steal.owner.*; do
+    [ ! -e "$staged" ] || fail "review-waiver-signal-steal: steal staging was left behind: $staged"
+  done
+  pass "a signal while merge-decision stages the away-lock steal mutex leaves no steal staging"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -4923,6 +5531,25 @@ test_allow_red_is_refused_while_away() {
     "github-allow-red-away-after-view: late refusal did not name attended-only"
   assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "github-allow-red-away-after-view: gh pr merge ran after late away publication"
+
+  case_dir=$(make_case github-allow-red-away-several)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)"
+  write_away_record "$case_dir" --words 'merge task-x1 when green'
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/82 \
+    --allow-red lint --allow-red unit \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "github-allow-red-away-several: several waivers must be refused while away"
+  assert_grep '--allow-red is attended-only' "$case_dir/stderr" \
+    "github-allow-red-away-several: refusal did not name attended-only"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-away-several: gh pr merge ran despite away waivers"
   pass "fm-pr-merge rechecks away presence before an attended red merge"
 }
 
@@ -4948,7 +5575,7 @@ test_quiet_record_keeps_merges_attended() {
   pass "fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included"
 }
 
-test_allow_red_requires_one_separate_name() {
+test_allow_red_requires_distinct_separate_names() {
   local case_dir rc head
   head=afafafafafafafafafafafafafafafafafafafaf
 
@@ -4971,13 +5598,31 @@ test_allow_red_requires_one_separate_name() {
   write_github_red_json "$case_dir" "$head" lint
   set +e
   run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/88 \
-    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+    --allow-red lint --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
   expect_code 2 "$rc" "github-allow-red-duplicate: duplicate waiver must be refused"
-  assert_no_grep 'pr merge' "$case_dir/gh.log" \
-    "github-allow-red-duplicate: gh pr merge ran for duplicate waivers"
-  pass "fm-pr-merge accepts exactly one separately named red-check waiver"
+  assert_grep "--allow-red names check 'lint' more than once" "$case_dir/stderr" \
+    "github-allow-red-duplicate: the duplicate name was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "github-allow-red-duplicate: a forge call ran before the duplicate refusal: $(cat "$case_dir/gh.log")"
+
+  case_dir=$(make_case github-allow-red-five)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" lint
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/89 \
+    --allow-red a --allow-red b --allow-red c --allow-red d --allow-red lint \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "github-allow-red-five: a fifth waiver must be refused"
+  assert_grep '--allow-red may name at most 4 checks' "$case_dir/stderr" \
+    "github-allow-red-five: the waiver limit was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "github-allow-red-five: a forge call ran before the limit refusal: $(cat "$case_dir/gh.log")"
+  pass "fm-pr-merge accepts only distinct, separately named red-check waivers, at most four"
 }
 
 test_away_record_permits_a_reviewed_green_merge_under_away_authority() {
@@ -5158,6 +5803,7 @@ review_pull_request_for_merge() {
 #!/usr/bin/env bash
 fakebin=$(dirname "$0")
 case_dir=$(dirname "$fakebin")
+printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
 case "${1:-} ${2:-}" in
   "api user") printf '%s\n' '{"login":"maintainer"}'; exit 0 ;;
   "pr checks") printf "%s\n" "no required checks reported on the 'topic' branch" >&2; exit 1 ;;
@@ -6045,7 +6691,7 @@ test_allow_missing_follows_the_allow_red_rules() {
   assert_grep '--allow-no-pipeline waives only a merge request with no head pipeline' "$case_dir/stderr" \
     "gitlab-allow-missing: the refusal did not point at the GitLab no-pipeline waiver"
   [ ! -s "$case_dir/glab.log" ] || fail "gitlab-allow-missing: glab ran despite the waiver"
-  pass "fm-pr-merge --allow-missing is single use, attended-only, and GitHub-only like --allow-red"
+  pass "fm-pr-merge --allow-missing is single use, and attended-only and GitHub-only like --allow-red"
 }
 
 test_allow_red_refused_on_forgejo() {
@@ -6232,6 +6878,17 @@ test_github_behind_update_keeps_expected_head_pin
 test_github_updated_head_failure_refuses_without_waiting_for_pending
 test_github_behind_updates_and_rechecks_before_merge
 test_github_red_checks_refuse_and_allow_red_waives_named
+test_allow_red_waives_each_named_check
+test_allow_red_record_rewrites_metadata_only_when_waivers_change
+test_allow_red_missing_value_never_consumes_an_option
+test_allow_red_matches_whole_names_across_line_breaks
+test_review_merge_records_only_the_waivers_the_guard_applies
+test_allow_red_single_hyphen_names_stay_data
+test_away_posture_publishes_and_accepts_no_waiver_decision
+test_signal_during_waiver_decision_staging_publishes_nothing
+test_signal_during_waiver_away_lock_acquisition_leaves_no_lock
+test_signal_during_contended_waiver_away_lock_acquisition_leaves_no_lock
+test_signal_during_waiver_away_lock_steal_staging_leaves_no_staging
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts
@@ -6244,7 +6901,7 @@ test_undated_runs_never_supersede
 test_allow_red_still_waives_only_the_current_failure
 test_allow_red_is_refused_while_away
 test_quiet_record_keeps_merges_attended
-test_allow_red_requires_one_separate_name
+test_allow_red_requires_distinct_separate_names
 test_away_record_permits_a_reviewed_green_merge_under_away_authority
 test_away_github_merge_requires_the_review_ledger_merge_decision
 test_away_review_merge_lands_only_a_ledger_that_passes_every_gate
@@ -6288,19 +6945,6 @@ SQUASH_SECTION=$'- Wake the merge poll once when a ready PR degrades.\n- Add sha
 # Args: case_dir title body. Writes the PR title and body gh reports.
 write_github_text() {
   jq -n --arg t "$2" --arg b "$3" '{title: $t, body: $b}' > "$1/github-text.json"
-}
-
-# The value gh pr merge received for one flag, or the literal ABSENT.
-# Args: case_dir flag
-github_merge_flag_value() {
-  local arg prev='' found=ABSENT
-  while IFS= read -r -d '' arg; do
-    if [ "$prev" = "$2" ]; then
-      found=$arg
-    fi
-    prev=$arg
-  done < "$1/github-merge-args"
-  printf '%s' "$found"
 }
 
 test_squash_summary_uses_title_and_what_changed() {

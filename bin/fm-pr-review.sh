@@ -18,13 +18,29 @@
 #   fm-pr-review.sh hold <pr-url> <head> <reason>
 #   fm-pr-review.sh release-hold <pr-url> <head> <evidence>
 #   fm-pr-review.sh ready <pr-url> <head>
-#   fm-pr-review.sh merge-decision <pr-url> [--snapshot <snapshot.json>]
+#   fm-pr-review.sh merge-decision <pr-url> [--allowed-red-check <check>]... [--snapshot <snapshot.json>]
 #   fm-pr-review.sh merge <task-id> <pr-url> [fm-pr-merge args...]
 #   fm-pr-review.sh post-merge <pr-url> <head> <evidence.json>
 #   fm-pr-review.sh ready-for-qa <pr-url> <head>
 #   fm-pr-review.sh show <pr-url>
 #   fm-pr-review.sh poll
 #   fm-pr-review.sh arm|disarm
+#
+# `merge` parses fm-pr-merge.sh's helper-option prefix with the same parser that
+# guard uses (bin/fm-pr-merge-options-lib.sh), refusing a malformed prefix
+# before it reads anything live, and leaves the forge extras after it
+# untouched. Each `--allow-red <check>` in that prefix reaches `merge-decision`
+# as one `--allowed-red-check <check>`, under the same limit of four distinct
+# names, each its own argument and never starting with `--`. The review gate
+# waives only those exact checks, and the merge decision records them in order
+# as `allowed_red_checks`, with `allowed_red_check` holding the name only when
+# exactly one was given. fm-pr-merge.sh records the same list for the accepted
+# merge in the task metadata. Like the guard's own --allow-red, a waiver is
+# attended-only: while the away-posture record exists `merge-decision` refuses
+# any `--allowed-red-check` before reading a snapshot, and rechecks under the
+# away record's lock before its first ledger write, holding that lock through
+# its last, so a waiver request leaves the ledger untouched once away begins; fm-pr-merge.sh in turn refuses such a
+# decision, whenever recorded, as away merge authority.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
 # records its actual merge commit separately from the reviewed head.
@@ -66,8 +82,29 @@ LEDGER_DIR=
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-lease-lib.sh
 . "$SCRIPT_DIR/fm-lease-lib.sh"
+# shellcheck source=bin/fm-pr-merge-options-lib.sh
+. "$SCRIPT_DIR/fm-pr-merge-options-lib.sh"
+# shellcheck source=bin/fm-afk-contract.sh
+. "$SCRIPT_DIR/fm-afk-contract.sh"
 
 die() { printf 'fm-pr-review: %s\n' "$*" >&2; exit 1; }
+# A red-check waiver is attended-only, as in fm-pr-merge.sh: refuse it while
+# the away-posture record exists in the state directory that guard reads.
+# merge-decision checks under the away record's lock before collecting a
+# snapshot, then holds that lock from a recheck before its first ledger
+# publication through its last, so no ledger write lands once away begins.
+hold_away_lock_for_waiver() {
+  fm_afk_contract_lock_hold "$STATE" '' in-process \
+    || { rm -f -- "${WORK:-}"; die 'the away-posture record could not be locked for a red-check waiver decision'; }
+}
+refuse_away_waiver() {
+  fm_afk_contract_away_present "$STATE" || return 0
+  fm_afk_contract_lock_release || true
+  rm -f -- "${WORK:-}"
+  printf 'fm-pr-review: --allowed-red-check is attended-only; while the away-posture record exists the green check is absolute and no waiver decision is recorded
+' >&2
+  exit 2
+}
 usage() { sed -n '2,/^set -eu$/s/^# \{0,1\}//p' "$0"; }
 need_tools() {
   local ledger_relative
@@ -231,9 +268,9 @@ checkpoint_apply() {
   mv -f -- "$work.next" "$work"
 }
 ready_check() {
-  local head=$1 allowed_red=${2:-} errors model independent risk
+  local head=$1 allowed_red=${2:-[]} errors model independent risk
   ledger_valid || die 'review ledger is unavailable'
-  errors=$(jq -r --arg head "$head" --arg allowed_red "$allowed_red" --slurpfile policy "$POLICY" '
+  errors=$(jq -r --arg head "$head" --argjson allowed_red "$allowed_red" --slurpfile policy "$POLICY" '
     .generations[-1] as $g
     | ($policy[0].high_stakes.no_mistakes_model) as $model
     | ($policy[0].high_stakes.independent_agent_reviews) as $needed
@@ -244,7 +281,7 @@ ready_check() {
       (if ($g.checkpoints | length) > 0 and ($g.checkpoints[-1].pending_reviews | length) == 0 then empty else "an explicitly pending review still needs bounded-backoff retry" end),
       (if ($g.checkpoints | length) > 0 and all($g.checkpoints[-1].checks[];
           (.status == "COMPLETED" and (.conclusion == "pass" or .conclusion == "skipping")) or
-          ($allowed_red != "" and .name == $allowed_red))
+          (.name as $name | any($allowed_red[]; . == $name)))
         then empty else "a required check is not green on this head" end),
       (if all($g.review_items[]; (.disposition == "addressed" or .disposition == "rejected") and (.evidence | type == "string" and length > 0)) then empty else "a reviewer comment, submitted review, or inline thread lacks a disposition with evidence" end),
       (if $g.final_disposition != null
@@ -266,21 +303,6 @@ ready_check() {
   model=$(jq -r '.generations[-1].attestations[]? | select(.kind == "no-mistakes") | .model' "$LEDGER" | tail -1)
   independent=$(jq '[.generations[-1].attestations[] | select(.kind == "independent-agent-review")] | length' "$LEDGER")
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
-}
-
-find_merge_allowed_red() {
-  MERGE_ALLOWED_RED=
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --attended-override) shift ;;
-      --allow-red)
-        [ -n "${2:-}" ] || return 0
-        MERGE_ALLOWED_RED=$2
-        return 0
-        ;;
-      --|*) return 0 ;;
-    esac
-  done
 }
 
 read_forge_merge_sha() {
@@ -392,7 +414,18 @@ ready_for_qa_check() {
 
 SNAPSHOT_TEMP=0
 POST_MERGE_TEMP=
+WAIVER_AWAY_LOCK=
 cleanup_snapshot() {
+  if [ -n "$WAIVER_AWAY_LOCK" ]; then
+    trap '' HUP INT TERM
+    fm_lock_wait_pending_mutation
+    fm_lock_release "$WAIVER_AWAY_LOCK" || true
+    fm_lock_release "$WAIVER_AWAY_LOCK.steal" || true
+    fm_lock_discard_staged_owners "$WAIVER_AWAY_LOCK" "$FM_LOCK_OWNER_SCOPE" "$$" || true
+    fm_lock_discard_staged_owners "$WAIVER_AWAY_LOCK.steal" "$FM_LOCK_OWNER_SCOPE" "$$" || true
+    FM_AFK_CONTRACT_LOCK_HELD=
+  fi
+  fm_afk_contract_lock_release || true
   [ "$SNAPSHOT_TEMP" -eq 0 ] || rm -f -- "${SNAPSHOT:-}"
   [ -z "$POST_MERGE_TEMP" ] || rm -f -- "$POST_MERGE_TEMP"
 }
@@ -529,25 +562,51 @@ case "$cmd" in
     [ "$#" -ge 1 ] || die 'merge-decision requires pull-request URL'
     parse_url "$1"; shift
     ledger_valid || die 'review ledger is unavailable'
-    ALLOWED_RED_CHECK=
-    if [ "${1:-}" = --allowed-red-check ]; then
-      [ -n "${2:-}" ] || die '--allowed-red-check requires a check name'
-      ALLOWED_RED_CHECK=$2
+    FM_PR_OPT_ALLOW_RED=()
+    while [ "${1:-}" = --allowed-red-check ]; do
+      fm_pr_allow_red_add --allowed-red-check "${2-}" || exit 2
       shift 2
+    done
+    ALLOWED_RED_CHECKS=$(jq -cn '$ARGS.positional' --args -- ${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"})
+    WAIVING=false
+    [ "${#FM_PR_OPT_ALLOW_RED[@]}" -eq 0 ] || WAIVING=true
+    if [ "$WAIVING" = true ]; then
+      # A returning signal trap would release the lock and resume toward a
+      # publish, so these exit and leave the release to EXIT cleanup. That
+      # cleanup knows the lock path and this run's owner scope up front, so a
+      # signal between the lock's publication and the record of holding it
+      # still releases it.
+      fm_afk_contract_lock_helpers || die 'could not load the away-posture lock primitive'
+      FM_LOCK_OWNER_SCOPE="review.$$.$RANDOM.$RANDOM"
+      WAIVER_AWAY_LOCK=$(fm_afk_contract_lock_path "$STATE")
+      trap 'exit 129' HUP
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      hold_away_lock_for_waiver
+      refuse_away_waiver
+      fm_afk_contract_lock_release
     fi
     snapshot_arg "$@"
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX"); cp "$LEDGER" "$WORK"
     checkpoint_apply "$(jq -r .task "$WORK")" "$SNAPSHOT" "$WORK"
+    if [ "$WAIVING" = true ]; then
+      hold_away_lock_for_waiver
+      refuse_away_waiver
+    fi
     publish "$WORK"; rm -f -- "$WORK"
     HEAD=$(jq -r .head "$SNAPSHOT")
-    ready_check "$HEAD" "$ALLOWED_RED_CHECK" >/dev/null
+    ready_check "$HEAD" "$ALLOWED_RED_CHECKS" >/dev/null
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
     jq --arg head "$HEAD" --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
-      --arg allowed_red "$ALLOWED_RED_CHECK" '
+      --argjson allowed_red "$ALLOWED_RED_CHECKS" '
       .generations[-1].merge_decision={decision:"merge",reviewed_head:$head,verified_head:$head,
-        verified_at:$at,verified_epoch:$epoch,allowed_red_check:(if $allowed_red == "" then null else $allowed_red end)}' \
+        verified_at:$at,verified_epoch:$epoch,
+        allowed_red_check:(if ($allowed_red | length) == 1 then $allowed_red[0] else null end),
+        allowed_red_checks:$allowed_red}' \
       "$LEDGER" > "$WORK"
-    publish "$WORK"; rm -f -- "$WORK"
+    publish "$WORK"
+    [ "$WAIVING" != true ] || fm_afk_contract_lock_release
+    rm -f -- "$WORK"
     printf 'merge-decision: %s verified_head=%s verified_at=%s\n' "$URL" "$HEAD" "$(jq -r '.generations[-1].merge_decision.verified_at' "$LEDGER")"
     ;;
   merge)
@@ -556,12 +615,12 @@ case "$cmd" in
     fm_pr_task_id_valid "$TASK" || die 'invalid task id'
     ledger_valid || die 'review ledger is unavailable'
     [ "$(jq -r .task "$LEDGER")" = "$TASK" ] || die 'merge task does not match the review ledger task'
-    find_merge_allowed_red "$@"
-    if [ -n "$MERGE_ALLOWED_RED" ]; then
-      "$0" merge-decision "$URL" --allowed-red-check "$MERGE_ALLOWED_RED"
-    else
-      "$0" merge-decision "$URL"
-    fi
+    fm_pr_merge_options_parse "$@" || exit 2
+    MERGE_ALLOWED_RED=()
+    for check in ${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"}; do
+      MERGE_ALLOWED_RED+=(--allowed-red-check "$check")
+    done
+    "$0" merge-decision "$URL" ${MERGE_ALLOWED_RED[@]+"${MERGE_ALLOWED_RED[@]}"}
     FM_PR_REVIEW_EXPECTED_HEAD=$(jq -er '.generations[-1].merge_decision.verified_head' "$LEDGER") \
       || die 'reviewed-head merge handoff is unavailable'
     export FM_PR_REVIEW_EXPECTED_HEAD
