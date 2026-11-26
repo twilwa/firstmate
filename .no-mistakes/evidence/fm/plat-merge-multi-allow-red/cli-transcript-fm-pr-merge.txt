@@ -1,0 +1,217 @@
+### help text
+17:    [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
+18-    [-- <forge merge flags>]
+19-  fm-pr-merge.sh -h | --help
+20-
+--
+73:--allow-red <check-name> may be repeated for up to four distinct names, each
+74-as a separate argument; a missing, duplicate, or fifth name refuses before
+75-any forge call. Each occurrence waives only a check whose whole reported name
+76-equals it, every check not named must still be green, and the head is still
+--
+82:green unless separately waived by --allow-red. It matches the required
+83-context name even for an app-bound requirement, and never waives an unreadable
+84-required source or producer read. Both are
+85-refused while the away-posture record exists, and neither
+--
+246:Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+247-The repository policy in .github/firstmate-review-policy.json may set
+248-require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
+249-from fm-pr-review.sh for GitHub merges.
+
+=== A owner allowance: four named bbchat red checks, everything else green -> merges
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/301 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=0
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | verified: https://github.com/example/repo/pull/301 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+  forge merge call: pr merge 301 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+  meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"]
+  forge calls made: 6
+
+=== B three red named + a named check that is green (harmless) -> merges
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/302 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=0
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | verified: https://github.com/example/repo/pull/302 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+  forge merge call: pr merge 302 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+  meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"]
+  forge calls made: 6
+
+=== C two waivers, exactly those red -> merges
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/303 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check
+  exit=0
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | verified: https://github.com/example/repo/pull/303 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+  forge merge call: pr merge 303 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+  meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check"]
+  forge calls made: 6
+
+=== D adversarial: a red check not named ('unit') -> refuses, no forge merge
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/304 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=1
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/304
+    |   - check 'unit' is not green
+    | error: these checks are not green: unit
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== E adversarial: prefix 'dev-browser' / 'dev-gate' do not waive the full names -> refuses
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/305 --allow-red dev-browser --allow-red dev-gate
+  exit=1
+  stderr:
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/305
+    |   - check 'dev-browser (shard 1) / check' is not green
+    |   - check 'dev-browser (shard 2) / check' is not green
+    |   - check 'dev-gate / lint' is not green
+    |   - check 'dev-gate / web-tests' is not green
+    | error: these checks are not green: dev-browser (shard 1) / check, dev-browser (shard 2) / check, dev-gate / lint, dev-gate / web-tests
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== F adversarial: five names -> exit 2 before any forge call
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/306 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests --allow-red unit
+  exit=2
+  stderr:
+    | error: --allow-red may name at most 4 checks
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 0
+
+=== G adversarial: duplicate name -> exit 2 before any forge call
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/307 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-browser\ \(shard\ 1\)\ /\ check
+  exit=2
+  stderr:
+    | error: --allow-red names check 'dev-browser (shard 1) / check' more than once
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 0
+
+=== H adversarial: two names packed in one argument are one name, not two -> refuses
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/308 --allow-red dev-browser\ \(shard\ 1\)\ /\ check\,dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=1
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/308
+    |   - check 'dev-browser (shard 1) / check' is not green
+    |   - check 'dev-browser (shard 2) / check' is not green
+    | error: these checks are not green: dev-browser (shard 1) / check, dev-browser (shard 2) / check
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== I adversarial: away record exists -> attended-only refusal, no forge merge
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/309 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=2
+  stderr:
+    | error: --allow-red is attended-only; while the away-posture record exists the green check is absolute
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 0
+
+=== J adversarial: --expected-head differs from live head -> refuses (waivers still bind head)
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/310 --expected-head cccccccccccccccccccccccccccccccccccccccc --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=1
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/310
+    |   - the live head is "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0", not the expected head cccccccccccccccccccccccccccccccccccccccc
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== K adversarial: required 'validate' never reported, named in --allow-red -> refuses (red waiver never waives missing)
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/311 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red validate
+  exit=1
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/311
+    |   - check 'dev-gate / web-tests' is not green
+    |   - required check 'validate' has not reported at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+    | error: these checks are not green: dev-gate / web-tests
+    | error: these required checks have not reported: validate
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== L adversarial: unreadable branch rules -> refuses despite four waivers
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/312 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint --allow-red dev-gate\ /\ web-tests
+  exit=1
+  stderr:
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | ●  WATCHER DOWN - SUPERVISION IS OFF
+    | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    | ●  This is a supervision warning only; the guarded operation WILL still run.
+    | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    | error: refusing to merge https://github.com/example/repo/pull/312
+    |   - the branch rules for base branch main could not be read, so a required check that has not reported cannot be ruled out
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 4
+
+=== M --allow-missing unchanged: given twice still refuses
+$ fm-pr-merge.sh task-x1 https://github.com/example/repo/pull/313 --allow-missing validate --allow-missing other
+  exit=2
+  stderr:
+    | error: --allow-missing may be specified only once
+  forge merge call: <none>
+  meta merge_allow_red: <none>
+  forge calls made: 0
+
+### done

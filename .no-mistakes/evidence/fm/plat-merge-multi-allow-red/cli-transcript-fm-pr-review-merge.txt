@@ -1,0 +1,42 @@
+
+=== R1 wrapper forwards three waivers -> merges, ledger + meta record all three
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/107 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint
+  exit=0
+  stderr (tail):
+    | verified: https://github.com/example/repo/pull/107 is open and mergeable, with every unwaived required check reported and every unwaived check green at head a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4
+  forge merge call: pr merge 107 --repo example/repo --match-head-commit a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4 --squash
+pr merge 107 --repo example/repo --match-head-commit a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4 --squash
+  ledger merge_decision waivers: {"allowed_red_checks":["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint"],"allowed_red_check":null}
+  meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint"]
+
+=== R2 wrapper with only two waivers while three are red -> guard refuses
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/107 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check
+  exit=1
+  stderr (tail):
+    | error: refusing to merge https://github.com/example/repo/pull/107
+    |   - check 'dev-gate / lint' is not green
+    | error: these checks are not green: dev-gate / lint
+  forge merge call: <none>
+  ledger merge_decision waivers: {"allowed_red_checks":["dev-browser (shard 1) / check","dev-browser (shard 2) / check"],"allowed_red_check":null}
+  meta merge_allow_red: <none>
+
+=== R3 wrapper duplicate waiver -> exit 2 before any forge call
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/107 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 1\)\ /\ check
+  exit=2
+  stderr (tail):
+    | error: --allow-red names check 'dev-browser (shard 1) / check' more than once
+  forge merge call: <none>
+  ledger merge_decision waivers: {"allowed_red_checks":null,"allowed_red_check":null}
+  meta merge_allow_red: <none>
+
+=== R4 wrapper while away -> refuses, no waiver decision recorded
+$ fm-pr-review.sh merge task-x1 https://github.com/example/repo/pull/107 --allow-red dev-browser\ \(shard\ 1\)\ /\ check --allow-red dev-browser\ \(shard\ 2\)\ /\ check --allow-red dev-gate\ /\ lint
+  exit=2
+  stderr (tail):
+    | fm-pr-review: --allowed-red-check is attended-only; while the away-posture record exists the green check is absolute and no waiver decision is recorded
+  forge merge call: <none>
+  ledger merge_decision waivers: {"allowed_red_checks":null,"allowed_red_check":null}
+  meta merge_allow_red: <none>
+
+Note: in R1 the "pr merge" line appears twice because the review-path fixture shim logs each gh call and then execs the forge shim, which logs it again; exactly one merge was issued.
+Note: the WATCHER DOWN banner in the fm-pr-merge transcript is a fixture-home supervision warning (no watcher runs in the disposable home); it does not affect the guard.

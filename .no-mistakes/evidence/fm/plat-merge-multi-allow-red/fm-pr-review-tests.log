@@ -19,10 +19,3 @@ ok - human holds survive head changes and require an evidenced release
 ok - the review wrapper applies each named red-check waiver and forwards guarded options
 ok - the merge wrapper binds its task id to the task recorded in the review ledger
 ok - review checkpoints reuse the authenticated watcher check without another monitor
-ok - non-browser changes record a head-keyed N/A reason that a new head invalidates
-ok - post-merge verification requires a forge merge of the reviewed source head
-ok - post-merge validation and recording use one exact JSON document
-ok - post-merge validates and records the same immutable staged evidence object
-ok - browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence
-ok - post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims
-ok - a failed post-merge smoke requires an owning bug and blocks Ready for QA
