@@ -2173,7 +2173,8 @@ validate_bound_local_only_landed() {
     worktree_head=$(git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
   fi
   if [ -n "$worktree_head" ] \
-    && ! git -C "$WT" merge-base --is-ancestor "$worktree_head" "$offered" 2>/dev/null; then
+    && ! GIT_GRAFT_FILE=/dev/null git -C "$WT" --no-replace-objects \
+      merge-base --is-ancestor "$worktree_head" "$offered" 2>/dev/null; then
     echo "REFUSED: $ID has committed work at $worktree_head after the $offered its parent was offered." >&2
     echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
     return 1
