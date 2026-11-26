@@ -393,8 +393,9 @@ sub root_key {
         my ($type, $value, $form) = @$ref;
         my @candidates;
         for my $v (with_scriptdir($value, $root_dir, $file_dir)) {
-          if (($form // '') eq 'tail' || $v !~ m{\A/}) { push @candidates, map { join_path($_, $v) } @dirs }
-          else { push @candidates, $v }
+          (my $rel = $v) =~ s{\A/+}{};
+          push @candidates, map { join_path($_, $rel) } @dirs;
+          push @candidates, $v if $rel ne $v && ($form // '') ne 'tail';
         }
         for my $candidate (@candidates) {
           my $k = path_kind($candidate);

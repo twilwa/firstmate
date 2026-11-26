@@ -508,6 +508,35 @@ SH
   pass "swapping which file each source candidate resolves to misses"
 }
 
+test_real_absolute_source_paths_resolve_from_the_working_directory() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-absolute)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib"
+  cat > "$repo/tests/a.sh" <<'SH'
+#!/usr/bin/env bash
+. /lib/x.sh
+printf '%s\n' "$foo"
+SH
+  cat > "$repo/tests/b.sh" <<'SH'
+#!/usr/bin/env bash
+f() { printf '%s\n' "$1"; }
+# shellcheck source=/lib/x.sh
+. "$(f lib/x.sh)"
+printf '%s\n' "$foo"
+SH
+  printf '# shellcheck shell=bash\nexport foo=1\n' > "$repo/lib/x.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean absolute-path fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "stored=2" "the clean absolute-path passes were not recorded"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/x.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "an absolute source command read below the working directory" tests/a.sh
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "an absolute source directive read below the working directory" tests/b.sh
+  pass "absolute source commands and directives key the file ShellCheck reads below the working directory"
+}
+
 test_real_bash_env_cannot_change_shellcheck_flags() {
   fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
   local tmp repo
@@ -661,6 +690,7 @@ fm_test_run \
   test_real_shellcheck_finding_two_levels_down_is_not_hidden \
   test_real_quoted_source_paths_enter_the_key \
   test_real_symlink_swap_between_candidates_misses \
+  test_real_absolute_source_paths_resolve_from_the_working_directory \
   test_real_bash_env_cannot_change_shellcheck_flags \
   test_unresolvable_source_expression_is_uncacheable \
   test_script_wrapper_shellcheck_disables_the_cache \
