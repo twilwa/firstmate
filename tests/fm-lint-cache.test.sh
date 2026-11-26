@@ -77,6 +77,7 @@ fm_lint_cache_fixture() {
   cp "$ROOT/bin/fm-lint.sh" "$ROOT/bin/fm-timeout-lib.sh" "$tmp/repo/bin/"
   [ ! -f "$ROOT/bin/fm-lint-cache-lib.sh" ] || cp "$ROOT/bin/fm-lint-cache-lib.sh" "$tmp/repo/bin/"
   cp "$(fm_lint_cache_launcher 1)" "$tmp/fakebin/shellcheck"
+  fm_lint_cache_trust "$tmp" "$tmp/fakebin/shellcheck"
   cat > "$tmp/stub.sh" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
@@ -109,6 +110,15 @@ SH
   : > "$tmp/sc.log"
 }
 
+# fm_lint_cache_trust <tmp> <executable>: the test-only fixture verifier. The
+# cache trusts only the pinned ShellCheck release digests; a fixture extends
+# its own copy of the library's allowlist with a stub launcher's digest.
+fm_lint_cache_trust() {
+  printf 'FM_LINT_CACHE_TRUSTED_SHELLCHECK_SHA256+=(%s)\n' \
+    "$(perl -MDigest::SHA -e 'print Digest::SHA->new(256)->addfile($ARGV[0])->hexdigest' "$2")" \
+    >> "$1/repo/bin/fm-lint-cache-lib.sh"
+}
+
 # fm_lint_cache_run <tmp> [fm-lint args...]: run the fixture's lint owner as a
 # local run (or, with FM_TEST_HOSTED=1, under the hosted workflow contract)
 # with the fixture cache, capturing combined output in LINT_OUT and
@@ -123,7 +133,7 @@ fm_lint_cache_run() {
   : > "$tmp/sc.log"
   LINT_RC=0
   LINT_OUT=$(${guard[@]+"${guard[@]}"} env "${scope[@]}" PATH="$tmp/fakebin:$PATH" \
-    FM_LINT_CACHE_DIR="${FM_TEST_CACHE_DIR:-$tmp/cache}" FM_TEST_SC_LOG="$tmp/sc.log" \
+    FM_LINT_CACHE_DIR="${FM_TEST_CACHE_DIR-$tmp/cache}" FM_TEST_SC_LOG="$tmp/sc.log" \
     FM_TEST_SC_SCRIPT="$tmp/stub.sh" \
     "$tmp/repo/bin/fm-lint.sh" "$@" 2>&1) || LINT_RC=$?
 }
@@ -203,8 +213,9 @@ test_sourced_file_two_levels_down_misses() {
 SH
   cat > "$repo/lib/one.sh" <<'SH'
 # shellcheck shell=bash
-# shellcheck source-path=SCRIPTDIR/../lib
+# shellcheck source=lib/two.sh
 . "$LIB_DIR/two.sh"
+# shellcheck source=lib/three.sh
 [ -r "$LIB_DIR/three.sh" ] && . "$LIB_DIR"/three.sh
 SH
   printf 'two=1\n' > "$repo/lib/two.sh"
@@ -231,6 +242,7 @@ test_changed_shellcheck_build_misses() {
   printf '#!/usr/bin/env bash\necho ok\n' > "$tmp/repo/tests/a.sh"
   fm_lint_cache_warm "$tmp" tests/a.sh
   cp "$(fm_lint_cache_launcher 2)" "$tmp/fakebin/shellcheck"
+  fm_lint_cache_trust "$tmp" "$tmp/fakebin/shellcheck"
   fm_lint_cache_run "$tmp" tests/a.sh
   fm_lint_cache_linted "$tmp" tests/a.sh \
     || fail "a different ShellCheck build replayed a pass recorded by the old one"$'\n'"$LINT_OUT"
@@ -403,12 +415,21 @@ test_uncached_audit_bypasses_the_cache_and_names_a_stale_key() {
 
 # fm_lint_cache_real_fixture <tmp> <test-name>: a fixture whose shellcheck is
 # the real pinned ShellCheck; passes a SKIP and returns 1 when it is absent.
+# The static binaries inside the official ShellCheck v0.11.0 linux release
+# archives (shellcheck-v0.11.0.linux.{x86_64,aarch64}.tar.xz), computed from the
+# archives whose published digests bin/fm-install-shellcheck.sh pins.
+FM_LINT_CACHE_RELEASE_BINARIES='4da528ddb3a4d1b7b24a59d4e16eb2f5fd960f4bd9a3708a15baddbdf1d5a55b 127f13925eadd52c341bca0ebaf9ab0dbd78c6468f30a8f262a528bf8de47546'
 fm_lint_cache_real_fixture() {
-  local sc
-  if ! sc=$(type -P shellcheck) || [ "$("$sc" --version | awk '/^version:/ {print $2; exit}')" != "$("$ROOT/bin/fm-lint.sh" --required-version)" ]; then
+  local sc digest
+  if ! sc=$(type -P shellcheck); then
     pass "SKIP (pinned ShellCheck not resolved): $2"
     return 1
   fi
+  digest=$(perl -MCwd=realpath -MDigest::SHA -e 'print Digest::SHA->new(256)->addfile(realpath($ARGV[0]))->hexdigest' "$sc")
+  case " $FM_LINT_CACHE_RELEASE_BINARIES " in
+    *" $digest "*) ;;
+    *) pass "SKIP (resolved ShellCheck is not the pinned release build): $2"; return 1 ;;
+  esac
   fm_lint_cache_fixture "$1"
   ln -sf "$sc" "$1/fakebin/shellcheck"
 }
@@ -437,13 +458,15 @@ printf '%s\n' "$from_two"
 SH
   cat > "$repo/tests/one.sh" <<'SH'
 # shellcheck shell=bash
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source=tests/two.sh
 . "$HERE/two.sh"
 SH
   printf '# shellcheck shell=bash\nexport from_two=1\n' > "$repo/tests/two.sh"
   fm_lint_cache_run "$tmp" tests/a.sh
   [ "$LINT_RC" -eq 0 ] || fail "the clean fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
   assert_contains "$LINT_OUT" "stored=1" "the clean fixture's pass was not recorded"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  assert_contains "$LINT_OUT" "lint cache: hits=1 misses=0" "the verified release ShellCheck did not replay its recorded pass"
   printf '# shellcheck shell=bash\n' > "$repo/tests/two.sh"
   fm_lint_cache_run "$tmp" tests/a.sh
   [ "$LINT_RC" -ne 0 ] || fail "a recorded pass hid a real finding introduced two source levels down"$'\n'"$LINT_OUT"
@@ -559,25 +582,25 @@ test_unresolvable_source_expression_is_uncacheable() {
   local tmp attempt
   tmp=$(fm_test_tmproot fm-lint-cache-unresolvable)
   fm_lint_cache_fixture "$tmp"
-  # The scanner cannot delimit this argument, so it cannot prove which file
-  # ShellCheck reads; the same argument under a source= directive, and a word
-  # ShellCheck itself never follows (SC1090), leave the key complete.
+  # A source argument the lexer cannot delimit, and a dynamic argument with no
+  # source= directive, leave the closure unproven; the same dynamic argument
+  # under a directive that replaces it is provable.
   # shellcheck disable=SC2016 # Fixture source text, not an expansion.
   printf '#!/usr/bin/env bash\n. "$(printf lib.sh\n' > "$tmp/repo/tests/a.sh"
   # shellcheck disable=SC2016 # Fixture source text, not an expansion.
-  printf '#!/usr/bin/env bash\n# shellcheck source=/dev/null\n. "$(printf lib.sh\n' > "$tmp/repo/tests/b.sh"
+  printf '#!/usr/bin/env bash\n# shellcheck source=/dev/null\n. "$base/$name.sh"\n' > "$tmp/repo/tests/b.sh"
   # shellcheck disable=SC2016 # Fixture source text, not an expansion.
   printf '#!/usr/bin/env bash\n. "$base/$name.sh"\n' > "$tmp/repo/tests/c.sh"
   for attempt in 1 2; do
     fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh tests/c.sh
     [ "$LINT_RC" -eq 0 ] || fail "run $attempt failed (exit $LINT_RC)"$'\n'"$LINT_OUT"
-    fm_lint_cache_linted "$tmp" tests/a.sh || fail "run $attempt replayed a root whose source argument cannot be delimited"
+    fm_lint_cache_linted "$tmp" tests/a.sh tests/c.sh \
+      || fail "run $attempt replayed a root whose source argument is not provable"
   done
   ! fm_lint_cache_linted "$tmp" tests/b.sh || fail "a directive-covered source argument was not cacheable"
-  ! fm_lint_cache_linted "$tmp" tests/c.sh || fail "a source ShellCheck never follows made its root uncacheable"
-  assert_contains "$LINT_OUT" "lint cache: hits=2 misses=1 stored=0 uncacheable=1" \
-    "the unresolvable root was not counted as an uncacheable miss"
-  pass "a source argument the key cannot resolve makes its root uncacheable unless a directive names the file"
+  assert_contains "$LINT_OUT" "lint cache: hits=1 misses=2 stored=0 uncacheable=2" \
+    "the unprovable roots were not counted as uncacheable misses"
+  pass "a source argument the key cannot prove makes its root uncacheable unless a directive names the file"
 }
 
 test_script_wrapper_shellcheck_disables_the_cache() {
@@ -676,6 +699,150 @@ test_audit_without_attribution_reports_incomplete() {
   pass "a finding no record attributes reports an incomplete audit, and a covering sidecar proves it"
 }
 
+test_source_in_every_command_position_is_detected() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo n=0 form root
+  local -a sourcing=() quiet=()
+  tmp=$(fm_test_tmproot fm-lint-cache-position)
+  fm_lint_cache_fixture "$tmp"
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib"
+  printf 'dep=1\n' > "$repo/lib/dep.sh"
+  # shellcheck disable=SC2016 # Fixture source text, not expansions.
+  for form in '. lib/dep.sh' 'true; . lib/dep.sh' 'true & . lib/dep.sh' 'true && . lib/dep.sh' \
+    'false || . lib/dep.sh' 'true | . lib/dep.sh' 'true |& . lib/dep.sh' '( . lib/dep.sh )' \
+    '{ . lib/dep.sh; }' 'x=$(. lib/dep.sh)' 'x=`. lib/dep.sh`' 'if true; then . lib/dep.sh; fi' \
+    'for i in 1; do . lib/dep.sh; done' 'if false; then :; else . lib/dep.sh; fi' \
+    'if false; then :; elif . lib/dep.sh; then :; fi' 'if . lib/dep.sh; then :; fi' \
+    'while . lib/dep.sh; do break; done' 'until . lib/dep.sh; do :; done' '! . lib/dep.sh' \
+    'time . lib/dep.sh' 'x=1 source lib/dep.sh' 'source </dev/null lib/dep.sh'; do
+    n=$((n + 1))
+    printf '#!/usr/bin/env bash\n%s\n' "$form" > "$repo/tests/s$n.sh"
+    sourcing+=("tests/s$n.sh")
+  done
+  # shellcheck disable=SC2016 # Fixture source text, not expansions.
+  for form in "bash -c '. \"\$1\"' _ lib/dep.sh" "jq 'if . == 1 then . else . end' lib/dep.sh" \
+    $'cat <<\'EOF\'\n. lib/dep.sh\nEOF' '# . lib/dep.sh' 'printf "%s\n" . lib/dep.sh'; do
+    n=$((n + 1))
+    printf '#!/usr/bin/env bash\n%s\n' "$form" > "$repo/tests/q$n.sh"
+    quiet+=("tests/q$n.sh")
+  done
+  fm_lint_cache_run "$tmp" "${sourcing[@]}" "${quiet[@]}"
+  fm_lint_cache_run "$tmp" "${sourcing[@]}" "${quiet[@]}"
+  printf 'dep=2\n' > "$repo/lib/dep.sh"
+  fm_lint_cache_run "$tmp" "${sourcing[@]}" "${quiet[@]}"
+  for root in "${sourcing[@]}"; do
+    fm_lint_cache_linted "$tmp" "$root" \
+      || fail "a source command in $(sed -n 2p "$repo/$root") replayed a pass after its dependency changed"
+  done
+  for root in "${quiet[@]}"; do
+    ! fm_lint_cache_linted "$tmp" "$root" \
+      || fail "text that is not a source command made $(sed -n 2,4p "$repo/$root") depend on the sourced file"$'\n'"$LINT_OUT"
+  done
+  pass "a source command after every command boundary is a dependency, and quoted, heredoc, comment, and argument text is not"
+}
+
+test_real_scriptdir_expands_only_as_a_leading_component() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-scriptdir)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib" "$repo/otherSCRIPTDIR"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n. lib/SCRIPTDIR-data.sh\nprintf "%%s\\n" "$from_a"\n' > "$repo/tests/a.sh"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n# shellcheck source-path=otherSCRIPTDIR\n. dep.sh\nprintf "%%s\\n" "$from_b"\n' > "$repo/tests/b.sh"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\n# shellcheck source-path=SCRIPTDIR\n. sibling.sh\nprintf "%%s\\n" "$from_c"\n' > "$repo/tests/c.sh"
+  printf '# shellcheck shell=bash\nexport from_a=1\n' > "$repo/lib/SCRIPTDIR-data.sh"
+  printf '# shellcheck shell=bash\nexport from_b=1\n' > "$repo/otherSCRIPTDIR/dep.sh"
+  printf '# shellcheck shell=bash\nexport from_c=1\n' > "$repo/tests/sibling.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh tests/b.sh tests/c.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean SCRIPTDIR fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "stored=3" "the clean SCRIPTDIR passes were not recorded"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/SCRIPTDIR-data.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a literal path containing SCRIPTDIR" tests/a.sh
+  printf '# shellcheck shell=bash\n' > "$repo/otherSCRIPTDIR/dep.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source-path containing SCRIPTDIR" tests/b.sh
+  printf '# shellcheck shell=bash\n' > "$repo/tests/sibling.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source-path=SCRIPTDIR lookup" tests/c.sh
+  pass "SCRIPTDIR expands only as a leading path component and literal paths containing it stay in the key"
+}
+
+test_real_redirected_source_is_uncacheable() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-redirect)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib"
+  # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+  printf '#!/usr/bin/env bash\nsource </dev/null lib/dep.sh\nprintf "%%s\\n" "$from_dep"\n' > "$repo/tests/a.sh"
+  printf '# shellcheck shell=bash\nexport from_dep=1\n' > "$repo/lib/dep.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean redirected-source fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "uncacheable=1" "a source command with a redirection was cacheable"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/dep.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source command with an intervening redirection" tests/a.sh
+  pass "a source command with a redirection is uncacheable and its dependency edit is never hidden"
+}
+
+test_unverified_shellcheck_launcher_disables_the_cache() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp attempt
+  tmp=$(fm_test_tmproot fm-lint-cache-untrusted)
+  fm_lint_cache_fixture "$tmp"
+  cp "$(fm_lint_cache_launcher untrusted)" "$tmp/fakebin/shellcheck"
+  printf '#!/usr/bin/env bash\necho ok\n' > "$tmp/repo/tests/a.sh"
+  for attempt in 1 2; do
+    fm_lint_cache_run "$tmp" tests/a.sh
+    [ "$LINT_RC" -eq 0 ] || fail "run $attempt failed (exit $LINT_RC)"$'\n'"$LINT_OUT"
+    fm_lint_cache_linted "$tmp" tests/a.sh || fail "run $attempt replayed a pass recorded through an unverified launcher"
+  done
+  assert_contains "$LINT_OUT" "is not a verified pinned release build" "the unverified launcher was not named"
+  assert_contains "$LINT_OUT" "state=disabled" "the unverified launcher did not disable the cache"
+  [ -z "$(find "$tmp/cache" -type f 2>/dev/null)" ] || fail "an unverified launcher recorded a cache entry"
+  pass "a compiled launcher that is not a verified pinned release build lints but never reads or writes entries"
+}
+
+test_unreadable_entries_directory_discards_every_hit() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp
+  tmp=$(fm_test_tmproot fm-lint-cache-entries-dir)
+  if [ "$(id -u)" -eq 0 ]; then
+    pass "SKIP (root ignores directory permissions): ${FUNCNAME[0]}"
+    return
+  fi
+  fm_lint_cache_fixture "$tmp"
+  printf '#!/usr/bin/env bash\necho one\n' > "$tmp/repo/tests/a.sh"
+  fm_lint_cache_warm "$tmp" tests/a.sh
+  chmod 0100 "$tmp/cache/fm-lint-cache-v1"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  chmod 0755 "$tmp/cache/fm-lint-cache-v1"
+  fm_lint_cache_linted "$tmp" tests/a.sh \
+    || fail "an execute-only entries directory still yielded a hit"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "not a readable, searchable directory" "the unreadable entries directory was not reported"
+  pass "an entries directory that is not readable and searchable discards every hit"
+}
+
+test_missing_library_prints_the_summary() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp
+  tmp=$(fm_test_tmproot fm-lint-cache-no-lib)
+  fm_lint_cache_fixture "$tmp"
+  rm -f "$tmp/repo/bin/fm-lint-cache-lib.sh"
+  printf '#!/usr/bin/env bash\n# LINT-BAD\necho bad\n' > "$tmp/repo/tests/a.sh"
+  fm_lint_cache_run "$tmp" tests/a.sh
+  [ "$LINT_RC" -eq 1 ] || fail "a missing cache library changed the lint result (exit $LINT_RC)"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=disabled" \
+    "a requested cache without its library printed no disabled summary"
+  FM_TEST_CACHE_DIR='' fm_lint_cache_run "$tmp" tests/a.sh
+  assert_contains "$LINT_OUT" "lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=off" \
+    "an unrequested cache without its library printed no off summary"
+  pass "a missing cache library still prints the numeric summary with its state"
+}
+
 fm_test_run \
   test_unchanged_root_hits_a_recorded_pass \
   test_changed_root_misses \
@@ -696,4 +863,10 @@ fm_test_run \
   test_script_wrapper_shellcheck_disables_the_cache \
   test_fifo_entry_lints_every_root \
   test_summary_counts_every_root_in_every_state \
-  test_audit_without_attribution_reports_incomplete
+  test_audit_without_attribution_reports_incomplete \
+  test_source_in_every_command_position_is_detected \
+  test_real_scriptdir_expands_only_as_a_leading_component \
+  test_real_redirected_source_is_uncacheable \
+  test_unverified_shellcheck_launcher_disables_the_cache \
+  test_unreadable_entries_directory_discards_every_hit \
+  test_missing_library_prints_the_summary

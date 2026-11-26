@@ -14,31 +14,34 @@
 #     (hosted or local, so the two never share an entry), uname -s/-m, and the
 #     LC_ALL, LC_CTYPE, LANG, and GHCRTS environment. fm-lint.sh clears
 #     BASH_ENV and strips SHELLCHECK_OPTS at every ShellCheck exec, so these
-#     flags are the whole invocation. A ShellCheck that resolves to a script
-#     wrapper, or to anything but a regular executable file, disables the
-#     cache: its behavior cannot be hashed;
-#   - the root's transitive source closure, over-approximated. Every
-#     `# shellcheck source=` and `source-path=` value (quoted or bare) counts,
-#     and every `source`/`.` argument, tokenized like ShellCheck 0.11.0's
-#     readSource: the first word (after `--`, or `-p` and its value) read as a
-#     literal string, or a literal /tail after one leading expansion
-#     ("$D/x.sh" reads as ./x.sh). Any other word, and a `~/` path, is one
-#     ShellCheck never follows (SC1090), so it reads no file. Candidates are
-#     resolved against the working directory, the root's directory, the
-#     referencing file's directory, and every source-path value (SCRIPTDIR
-#     read as both the root's and the referencing file's directory), iterated
-#     to a fixpoint. Like ShellCheck, an absolute path is also resolved
-#     against each of those with its leading slash stripped. Each candidate
-#     adds its lexical path with what it resolves to - a regular file's real
-#     path and content hash (that file is
-#     parsed in turn), or a missing, directory, or special marker - so
+#     flags are the whole invocation. Only a ShellCheck whose resolved
+#     executable digest is on FM_LINT_CACHE_TRUSTED_SHELLCHECK_SHA256 below is
+#     trusted; any other disables the cache (state=disabled);
+#   - the root's transitive source closure. A small shell lexer finds
+#     `source` and `.` only in command position (the first word of a simple
+#     command after any assignments and redirections; quoted text, heredoc
+#     bodies, comments, case patterns, and other commands' arguments are not
+#     commands, because ShellCheck does not follow them either). Each source
+#     command must be `source|. <literal>` alone on its line, with a literal
+#     word that is bare, single-quoted, or double-quoted without expansions,
+#     or must sit directly under comment lines carrying a literal
+#     `# shellcheck source=` directive, which ShellCheck applies instead of
+#     the argument. Every `source=` and `source-path=` value must be literal
+#     too. SCRIPTDIR expands only as an exact leading path component, with the
+#     raw literal kept. Candidates are resolved against the working directory
+#     (absolute paths also below it, as ShellCheck does), the root's
+#     directory, the referencing file's directory, and every source-path
+#     value, iterated to a fixpoint. Each candidate adds its lexical path with
+#     what it resolves to - a regular file's real path and content hash (that
+#     file is parsed in turn), or a missing, directory, or special marker - so
 #     creating a file, swapping a symlink, or changing which candidate wins
 #     all miss.
 #   A root is uncacheable, and is linted every run, whenever the key cannot be
-#   proven complete: a source argument the tokenizer cannot delimit with no
-#   source= directive on the line or the comment lines just above it, a -P or
-#   --source-path flag, an unreadable closure file, a missing --norc, or an
-#   unreadable root.
+#   proven complete: any source command or directive outside that grammar,
+#   anything the lexer cannot delimit (an unterminated quote, substitution,
+#   here-document, or case), a -P or --source-path flag, an unreadable closure
+#   file, a missing --norc, or an unreadable root. Unknown never means no
+#   dependency.
 #
 # Entries. A cache hit is only ever a recorded pass for that exact key: only a
 # root whose final attempt exited 0 with reason ok or known-heavy is stored,
@@ -66,6 +69,16 @@
 # key by name. A root with findings that neither source attributes is reported
 # as AUDIT INCOMPLETE with its commit, partition, and recomputed candidate key,
 # never claimed as the key a cached run replayed.
+
+# The ShellCheck executables the cache trusts: SHA-256 digests of the static
+# binaries inside the pinned v0.11.0 release archives bin/fm-install-shellcheck.sh
+# verifies (linux x86_64, linux aarch64). Any other executable, including a
+# native launcher or a local build reporting the same version, still lints but
+# never reads or writes a pass entry.
+FM_LINT_CACHE_TRUSTED_SHELLCHECK_SHA256=(
+  4da528ddb3a4d1b7b24a59d4e16eb2f5fd960f4bd9a3708a15baddbdf1d5a55b
+  127f13925eadd52c341bca0ebaf9ab0dbd78c6468f30a8f262a528bf8de47546
+)
 
 # Internal: the Perl helper. Modes read tab-separated requests on stdin, one
 # per root, with flags joined by \x1f:
@@ -117,21 +130,20 @@ sub file_sha {
   }
   return $file_sha{$path} = $sha;
 }
+my %trusted;
 open(my $cf, '<', $context_file) or die "fm-lint cache: cannot read context: $!\n";
 while (my $line = <$cf>) {
   chomp $line;
+  if ($line =~ /\Atrusted-shellcheck ([0-9a-f]{64})\z/) { $trusted{$1} = 1; next }
   if ($line =~ /\Ahashfile (\S+) (.+)\z/) {
     my ($label, $path) = ($1, $2);
     if ($label eq 'shellcheck-binary') {
       my $real = realpath($path);
       die "fm-lint cache: ShellCheck at $path has no real path\n" unless defined $real;
       die "fm-lint cache: ShellCheck at $real is not a regular executable file\n" unless -f $real && -x _;
-      open(my $bin, '<', $real) or die "fm-lint cache: cannot read ShellCheck at $real\n";
-      binmode $bin;
-      my $magic = '';
-      read($bin, $magic, 2);
-      close $bin;
-      die "fm-lint cache: ShellCheck at $real is a script wrapper, so its behavior cannot be hashed\n" if $magic eq '#!';
+      my $sha = file_sha($real);
+      die "fm-lint cache: ShellCheck at $real (sha256 " . ($sha // 'unreadable') . ") is not a verified pinned release build\n"
+        unless defined $sha && $trusted{$sha};
       $path = $real;
     }
     my $sha = file_sha($path);
@@ -149,143 +161,316 @@ my $context_hash = $context->hexdigest;
 
 my %refs;
 
-# The end offset of the expansion starting at $s[$i] ($..., ${...}, $(...),
-# or `...`), or undef when it cannot be delimited.
-sub expansion_end {
-  my ($s, $i) = @_;
-  my $n = length $s;
-  my $c = substr($s, $i, 1);
-  if ($c eq '`') {
-    for (my $j = $i + 1; $j < $n; $j++) {
-      my $d = substr($s, $j, 1);
-      if ($d eq '\\') { $j++; next }
-      return $j + 1 if $d eq '`';
-    }
-    return undef;
+# The one source grammar the key can prove: a literal path word is bare
+# (letters, digits, and ./_@%+,:=-), single-quoted, or double-quoted with no
+# expansion, escape, or nested quote.
+my $LITERAL = qr{'([^']*)'|"([^"\$`\\]*)"|([A-Za-z0-9_./@%+,:=-]+)};
+my %RESERVED = map { $_ => 1 } qw(then do else elif if while until ! time { } fi done esac);
+
+sub literal_value {
+  my @m = @_;
+  return defined $m[0] ? $m[0] : defined $m[1] ? $m[1] : $m[2];
+}
+
+# Every directive key=value on a shellcheck comment, or undef when any
+# source= or source-path= value falls outside the literal grammar.
+sub directive_values {
+  my ($comment, $key) = @_;
+  my @values;
+  my $seen = () = $comment =~ /(?:\A|[\s#])\Q$key\E=/g;
+  while ($comment =~ /(?:\A|[\s#])\Q$key\E=(?:$LITERAL)(?=\s|\z)/g) {
+    push @values, literal_value($1, $2, $3);
   }
-  my $next = substr($s, $i + 1, 1);
-  if ($next eq '(' || $next eq '{') {
-    my ($open, $close) = $next eq '(' ? ('(', ')') : ('{', '}');
-    my $depth = 0;
-    for (my $j = $i + 1; $j < $n; $j++) {
-      my $d = substr($s, $j, 1);
-      if ($d eq '\\') { $j++; next }
-      if ($d eq "'") { my $k = index($s, "'", $j + 1); return undef if $k < 0; $j = $k; next }
-      if ($d eq '"') {
-        for ($j++; $j < $n; $j++) {
-          my $e = substr($s, $j, 1);
-          if ($e eq '\\') { $j++; next }
-          last if $e eq '"';
-        }
-        return undef if $j >= $n;
-        next;
+  return @values == $seen ? \@values : undef;
+}
+
+# A small shell lexer that finds `source` and `.` only in command position:
+# the first word of a simple command after any assignments and redirections,
+# where simple commands start at a line start, ;, &, &&, ||, |, |&, (, {,
+# $(, a backquote, or a reserved word. Quoted text, heredoc bodies, comments,
+# case patterns, and arguments of other commands are never commands. Each
+# source command must be `source|. <literal>` alone on its line (an optional
+# trailing comment aside); any other form, and anything the lexer cannot
+# delimit, makes the file unprovable. State lives in %L for one file.
+our %L;
+
+sub lex_fail { $L{problem} = "$L{path} near line " . line_of($L{i}) . " has $_[0]" if $L{problem} eq ''; $L{i} = length $L{s} }
+sub line_of { my $p = $_[0]; $p = length $L{s} if $p > length $L{s}; return (substr($L{s}, 0, $p) =~ tr/\n//) + 1 }
+
+sub directive_comment {
+  my ($comment) = @_;
+  return unless $comment =~ /\bshellcheck\b/ && $comment =~ /\bsource(?:-path)?=/;
+  my $sources = directive_values($comment, 'source');
+  my $paths = directive_values($comment, 'source-path');
+  return lex_fail('a source directive outside the literal grammar') unless defined $sources && defined $paths;
+  push @{$L{sources}}, map { ['directive', $_] } @$sources;
+  push @{$L{paths}}, @$paths;
+  return scalar @$sources;
+}
+
+# Skip a balanced $(( )) region, lexing any command substitution inside it.
+sub skip_balanced {
+  my ($open, $close) = @_;
+  my $depth = 0;
+  my $s = $L{s};
+  for (; $L{i} < length $s; $L{i}++) {
+    my $c = substr($s, $L{i}, 1);
+    if ($c eq '\\') { $L{i}++; next }
+    if ($c eq '`' || (substr($s, $L{i}, 2) eq '$(' && substr($s, $L{i}, 3) ne '$((')) {
+      expansion();
+      return if $L{problem} ne '';
+      $L{i}--;
+      next;
+    }
+    if ($c eq "'" || $c eq '"') { my $k = index($s, $c, $L{i} + 1); return lex_fail('an unterminated quote') if $k < 0; $L{i} = $k; next }
+    $depth++ if $c eq $open;
+    if ($c eq $close) { $depth--; if ($depth == 0) { $L{i}++; return } }
+  }
+  lex_fail('an unterminated expansion');
+}
+
+# Read one word at $L{i}. Returns [raw, dynamic] where dynamic is true when
+# the word holds any expansion, glob, or escape. Command substitutions and
+# backquotes inside it are lexed as nested command text.
+sub read_word {
+  my $s = $L{s};
+  my $start = $L{i};
+  my $dynamic = 0;
+  while ($L{i} < length $s) {
+    my $c = substr($s, $L{i}, 1);
+    last if $c =~ /[\s;&|<>()]/;
+    if ($c eq "'") {
+      my $k = index($s, "'", $L{i} + 1);
+      return lex_fail('an unterminated quote') if $k < 0;
+      $L{i} = $k + 1;
+    } elsif ($c eq '"') {
+      $L{i}++;
+      while (1) {
+        return lex_fail('an unterminated quote') if $L{i} >= length $s;
+        my $d = substr($s, $L{i}, 1);
+        if ($d eq '"') { $L{i}++; last }
+        if ($d eq '\\') { $dynamic = 1; $L{i} += 2; next }
+        if ($d eq '$' || $d eq '`') { $dynamic = 1; expansion(); return if $L{problem} ne ''; next }
+        $L{i}++;
       }
-      $depth++ if $d eq $open;
-      if ($d eq $close) { $depth--; return $j + 1 if $depth == 0 }
+    } elsif ($c eq '\\') {
+      $dynamic = 1;
+      $L{i} += 2;
+    } elsif ($c eq '$' || $c eq '`') {
+      $dynamic = 1;
+      expansion();
+      return if $L{problem} ne '';
+    } else {
+      $dynamic = 1 if $c =~ /[*?\[{}~]/;
+      $L{i}++;
     }
-    return undef;
   }
-  return $i + 1 + length($1) if substr($s, $i + 1) =~ /\A([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?\$!-])/;
+  return [substr($s, $start, $L{i} - $start), $dynamic];
+}
+
+# The rest of a ${...} expansion; command substitutions inside it are lexed.
+sub braced {
+  my $s = $L{s};
+  my $depth = 1;
+  while ($L{i} < length $s) {
+    my $c = substr($s, $L{i}, 1);
+    if ($c eq '\\') { $L{i} += 2; next }
+    if ($c eq "'") { my $k = index($s, "'", $L{i} + 1); return lex_fail('an unterminated quote') if $k < 0; $L{i} = $k + 1; next }
+    if ($c eq '"') {
+      for ($L{i}++; ; ) {
+        return lex_fail('an unterminated quote') if $L{i} >= length $s;
+        my $d = substr($s, $L{i}, 1);
+        if ($d eq '"') { $L{i}++; last }
+        if ($d eq '\\') { $L{i} += 2; next }
+        if ($d eq '$' || $d eq '`') { expansion(); return if $L{problem} ne ''; next }
+        $L{i}++;
+      }
+      next;
+    }
+    if ($c eq '$' || $c eq '`') {
+      if (substr($s, $L{i}, 2) eq '${') { $L{i} += 2; $depth++; next }
+      expansion();
+      return if $L{problem} ne '';
+      next;
+    }
+    if ($c eq '}') { $depth--; $L{i}++; return if $depth == 0; next }
+    $L{i}++;
+  }
+  lex_fail('an unterminated expansion');
+}
+
+# One $... or `...` expansion at $L{i}; command text inside is lexed.
+sub expansion {
+  my $s = $L{s};
+  if (substr($s, $L{i}, 1) eq '`') {
+    my $k = $L{i} + 1;
+    for (; $k < length $s; $k++) { my $d = substr($s, $k, 1); if ($d eq '\\') { $k++; next } last if $d eq '`' }
+    return lex_fail('an unterminated backquote') if $k >= length $s;
+    my $inner = substr($s, $L{i} + 1, $k - $L{i} - 1);
+    return lex_fail('an escape inside a backquote') if $inner =~ /\\/;
+    {
+      local $L{s} = $inner;
+      local $L{i} = 0;
+      local $L{heredocs} = [];
+      lex_list('');
+    }
+    $L{i} = $k + 1;
+    return;
+  }
+  my $two = substr($s, $L{i}, 3);
+  if ($two eq '$((') { $L{i}++; return skip_balanced('(', ')') }
+  if (substr($s, $L{i}, 2) eq '$(') { $L{i} += 2; lex_list(')'); return }
+  if (substr($s, $L{i}, 2) eq '${') { $L{i} += 2; return braced() }
+  if (substr($s, $L{i} + 1) =~ /\A([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?\$!-])/) { $L{i} += 1 + length $1; return }
+  $L{i}++;
+}
+
+# Skip spaces, tabs, and backslash-newline continuations (and a comment);
+# returns the comment text when found.
+sub skip_blank {
+  my $s = $L{s};
+  while ($L{i} < length $s) {
+    if (substr($s, $L{i}, 1) =~ /[ \t]/) { $L{i}++ }
+    elsif (substr($s, $L{i}, 2) eq "\\\n") { $L{i} += 2 }
+    else { last }
+  }
+  if ($L{i} < length $s && substr($s, $L{i}, 1) eq '#') {
+    my $k = index($s, "\n", $L{i});
+    $k = length $s if $k < 0;
+    my $comment = substr($s, $L{i}, $k - $L{i});
+    my $line_start = rindex($s, "\n", $L{i} - 1) + 1;
+    my $whole = substr($s, $line_start, $L{i} - $line_start) !~ /\S/;
+    $L{i} = $k;
+    my $sources = directive_comment($comment);
+    if ($whole) { $L{pending} = 1 if $sources }
+    return $comment;
+  }
   return undef;
 }
 
-# Split the shell word at the start of $s into literal and dynamic segments
-# with shell quoting removed. Returns (\@segments) or (undef, reason).
-sub shell_word {
-  my ($s) = @_;
-  my (@seg, $i);
-  my $n = length $s;
-  my $lit = sub {
-    if (@seg && $seg[-1][0] eq 'lit') { $seg[-1][1] .= $_[0] } else { push @seg, ['lit', $_[0]] }
-  };
-  for ($i = 0; $i < $n;) {
-    my $c = substr($s, $i, 1);
-    last if $c =~ /[\s;&|<>()]/;
-    if ($c eq "'") {
-      my $j = index($s, "'", $i + 1);
-      return (undef, 'unterminated quote') if $j < 0;
-      $lit->(substr($s, $i + 1, $j - $i - 1));
-      $i = $j + 1;
-    } elsif ($c eq '"') {
-      for ($i++; ; ) {
-        return (undef, 'unterminated quote') if $i >= $n;
-        my $d = substr($s, $i, 1);
-        if ($d eq '"') { $i++; last }
-        if ($d eq '\\' && substr($s, $i + 1, 1) =~ /[\$`"\\]/) { $lit->(substr($s, $i + 1, 1)); $i += 2; next }
-        if ($d eq '$' || $d eq '`') {
-          my $j = expansion_end($s, $i);
-          return (undef, 'an expansion it cannot delimit') unless defined $j;
-          push @seg, ['dyn'];
-          $i = $j;
-          next;
-        }
-        $lit->($d);
-        $i++;
+# Skip the bodies of here-documents opened on the line that just ended.
+sub heredoc_bodies {
+  my $s = $L{s};
+  while (my $h = shift @{$L{heredocs}}) {
+    my ($tag, $tabs) = @$h;
+    my $found = 0;
+    while ($L{i} < length $s) {
+      my $k = index($s, "\n", $L{i});
+      $k = length $s if $k < 0;
+      my $line = substr($s, $L{i}, $k - $L{i});
+      $L{i} = $k + 1;
+      $line =~ s/\A\t+// if $tabs;
+      if ($line eq $tag) { $found = 1; last }
+    }
+    return lex_fail('a here-document with no terminator') unless $found;
+  }
+}
+
+# Lex a command list until $term (')' for $( ), or end of text).
+sub lex_list {
+  my ($term) = @_;
+  my $s = $L{s};
+  my $cmdstart = 1;
+  my @case;             # 'pattern' or 'command' per open case
+  my $source;           # an open source command: [start, words, redirect]
+  my $prefixed = 0;     # assignments or redirections seen in this command
+  my $finish = sub {
+    my ($boundary) = @_;
+    if ($source) {
+      my ($at, $words, $redirect) = @$source;
+      local $L{i} = $at;
+      if ($source->[4]) {
+        # The source= directive on the comment lines just above applies to this
+        # command and replaces its argument, so the argument reads no file.
+      } elsif ($redirect || $source->[3] || @$words != 1 || ($boundary ne "\n" && $boundary ne '')
+        || $words->[0][0] !~ /\A(?:$LITERAL)\z/) {
+        lex_fail('a source command outside the provable grammar');
+      } else {
+        $words->[0][0] =~ /\A(?:$LITERAL)\z/;
+        push @{$L{sources}}, ['command', literal_value($1, $2, $3)];
       }
-    } elsif ($c eq '\\') {
-      return (undef, 'a trailing backslash') if $i + 1 >= $n;
-      $lit->(substr($s, $i + 1, 1));
-      $i += 2;
-    } elsif ($c eq '$' || $c eq '`') {
-      return (undef, 'ANSI-C or locale quoting') if $c eq '$' && substr($s, $i + 1, 1) =~ /['"]/;
-      my $j = expansion_end($s, $i);
-      return (undef, 'an expansion it cannot delimit') unless defined $j;
-      push @seg, ['dyn'];
-      $i = $j;
-    } elsif ($c =~ /[*?\[]/) {
-      push @seg, ['dyn'];
-      $i++;
-    } else {
-      $lit->($c);
-      $i++;
+      undef $source;
     }
-  }
-  return (\@seg, '', $i);
-}
-
-# The file a source command names, following ShellCheck 0.11.0's readSource:
-# the first argument (after `--`, or after `-p` and its value) read as a
-# literal string, or a literal /tail after one leading expansion (read as
-# ./tail); a `~/` path or any other word is never followed (SC1090), so it
-# reads no file. A word the tokenizer cannot delimit is unresolvable.
-# Returns ('none'), ('path', p), ('tail', t), or ('unresolvable', reason).
-sub source_word {
-  my ($s) = @_;
-  my ($seg, $why, $end) = shell_word($s);
-  return ('unresolvable', $why) unless defined $seg;
-  if (@$seg == 1 && $seg->[0][0] eq 'lit' && $seg->[0][1] =~ /\A(?:--|-p)\z/) {
-    my $skip = $seg->[0][1] eq '-p' ? 2 : 1;
-    my $rest = substr($s, $end);
-    for (1 .. $skip) {
-      $rest =~ s/\A[ \t]+//;
-      ($seg, $why, $end) = shell_word($rest);
-      return ('unresolvable', $why) unless defined $seg;
-      $rest = substr($rest, $end);
+    $prefixed = 0;
+  };
+  while ($L{problem} eq '') {
+    my $comment = skip_blank();
+    last if $L{problem} ne '';
+    if ($L{i} >= length $s) {
+      return lex_fail('an unterminated command substitution') if $term ne '';
+      $finish->('');
+      return lex_fail('an unterminated case statement') if @case;
+      return;
     }
+    my $c = substr($s, $L{i}, 1);
+    if ($c eq "\n") {
+      $finish->("\n");
+      $L{pending} = 0 unless defined $comment && substr($s, rindex($s, "\n", $L{i} - 1) + 1, $L{i} - rindex($s, "\n", $L{i} - 1) - 1) =~ /\A\s*#/;
+      $L{i}++;
+      heredoc_bodies();
+      $cmdstart = 1 unless @case && $case[-1] eq 'pattern';
+      next;
+    }
+    if ($term ne '' && $c eq $term && !(@case && $case[-1] eq 'pattern')) {
+      $finish->(')');
+      $L{i}++;
+      return;
+    }
+    if (substr($s, $L{i}) =~ /\A(;;&|;;|;&|&&|\|\||\|&|;|&|\||\(|\))/) {
+      my $op = $1;
+      $L{i} += length $op;
+      $finish->($op);
+      if (@case && $case[-1] eq 'pattern') {
+        if ($op eq ')') { $case[-1] = 'command'; $cmdstart = 1 }
+        next;
+      }
+      if (@case && $op =~ /\A;;|;&/) { $case[-1] = 'pattern'; $cmdstart = 0; next }
+      $cmdstart = 1;
+      next;
+    }
+    if (substr($s, $L{i}) =~ /\A([0-9]*|\{[A-Za-z_][A-Za-z0-9_]*\})(<<<|<<-|<<|<>|<&|>&|>>|>\||&>>|&>|<|>)/) {
+      my $op = $2;
+      $L{i} += length($1) + length($op);
+      $L{i}++ while substr($s, $L{i}, 1) =~ /[ \t]/;
+      my $target = read_word();
+      return if $L{problem} ne '';
+      if ($op eq '<<' || $op eq '<<-') {
+        (my $tag = $target->[0]) =~ s/['"\\]//g;
+        return lex_fail('a here-document with no delimiter') if $tag eq '';
+        push @{$L{heredocs}}, [$tag, $op eq '<<-'];
+      }
+      if ($source) { $source->[2] = 1 } else { $prefixed = 1 }
+      next;
+    }
+    my $word = read_word();
+    return if $L{problem} ne '';
+    my $raw = $word->[0];
+    if (@case && $case[-1] eq 'pattern') {
+      if ($raw eq 'esac') { pop @case; $cmdstart = 0 }
+      next;
+    }
+    if ($source) { push @{$source->[1]}, $word; next }
+    if ($cmdstart) {
+      (my $plain = $raw) =~ s/['"\\]//g;
+      if ($raw !~ /[\$`*?\[]/ && ($plain eq 'source' || $plain eq '.')) {
+        $source = [$L{i} - length $raw, [], 0, $prefixed, $L{pending}];
+        $cmdstart = 0;
+        next;
+      }
+      if ($raw =~ /\A[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/) { $prefixed = 1; next }
+      if ($raw eq 'case') { push @case, 'subject'; $cmdstart = 0; next }
+      if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
+      next if $RESERVED{$raw};
+      $cmdstart = 0;
+      next;
+    }
+    if (@case && $case[-1] eq 'subject' && $raw eq 'in') { $case[-1] = 'pattern'; next }
+    if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
   }
-  return ('none') unless @$seg;
-  if (@$seg == 1 && $seg->[0][0] eq 'lit') {
-    my $path = $seg->[0][1];
-    return ('none') if $path eq '' || index($path, '~/') == 0;
-    return ('path', $path);
-  }
-  if (@$seg == 2 && $seg->[0][0] eq 'dyn' && $seg->[1][0] eq 'lit' && $seg->[1][1] =~ m{\A/+(.+)\z}s) {
-    return ('tail', $1);
-  }
-  return ('none');
 }
 
-sub directive_values {
-  my ($line, $key) = @_;
-  my @values;
-  while ($line =~ /(?:\A|[\s#])\Q$key\E=(?:"([^"]*)"|'([^']*)'|(\S+))/g) {
-    push @values, defined $1 ? $1 : defined $2 ? $2 : $3;
-  }
-  return @values;
-}
-
-# Every source reference in one file: [type, value] pairs, source-path
-# values, and the first reason the file defeats the scanner (or '').
+# Every source reference in one file: [type, value] pairs, source-path values,
+# and the first reason the file falls outside the provable grammar (or '').
 sub file_refs {
   my ($path) = @_;
   return $refs{$path} if exists $refs{$path};
@@ -295,40 +480,18 @@ sub file_refs {
   my $text = <$fh>;
   close $fh;
   $text = '' unless defined $text;
-  $text =~ s/\\\r?\n//g;
-  my (@sources, @paths);
-  my ($pending, $problem, $offset) = (0, '', 0);
-  for my $line (split /\n/, $text, -1) {
-    my $start = $offset;
-    $offset += length($line) + 1;
-    my $directive = $line =~ /#.*\bshellcheck\b/;
-    if ($directive) {
-      push @sources, map { ['directive', $_] } directive_values($line, 'source');
-      push @paths, directive_values($line, 'source-path');
-    }
-    if ($line =~ /\A\s*#/) {
-      $pending = 1 if $directive && $line =~ /\bsource=/;
-      next;
-    }
-    if ($line !~ /\S/) { $pending = 0; next }
-    my $excused = $pending || ($directive && $line =~ /\bsource=/);
-    $pending = 0;
-    while ($line =~ /(?:\A|[\s;&|(){}!`])(?:source|\.)[ \t]+/g) {
-      my ($kind, $value) = source_word(substr($text, $start + pos($line)));
-      if ($kind eq 'path' || $kind eq 'tail') { push @sources, ['command', $value, $kind] }
-      elsif ($kind eq 'unresolvable' && !$excused && $problem eq '') {
-        my $number = (substr($text, 0, $start) =~ tr/\n//) + 1;
-        $problem = "$path near line $number has a source argument with $value";
-      }
-    }
-  }
-  return $refs{$path} = [\@sources, \@paths, $problem];
+  local %L = (path => $path, s => $text, i => 0, problem => '', sources => [], paths => [], heredocs => []);
+  lex_list('');
+  return $refs{$path} = [$L{sources}, $L{paths}, $L{problem}];
 }
 
+# ShellCheck expands SCRIPTDIR only as an exact leading path component; the
+# raw literal is kept too, so a path that merely contains the word still
+# enters the closure.
 sub with_scriptdir {
   my ($value, @dirs) = @_;
-  return ($value) unless $value =~ /SCRIPTDIR/;
-  return map { (my $v = $value) =~ s/SCRIPTDIR/$_/g; $v } @dirs;
+  return ($value) unless $value =~ m{\ASCRIPTDIR(?:/|\z)};
+  return ($value, map { (my $v = $value) =~ s{\ASCRIPTDIR}{$_}; $v } @dirs);
 }
 
 sub join_path {
@@ -433,7 +596,8 @@ sub entry_text {
 sub read_entry {
   my ($key, $root) = @_;
   if (lstat $entries) {
-    return ('corrupt', "cache entries path $entries is not a directory") unless -d _;
+    return ('corrupt', "cache entries path $entries is not a readable, searchable directory")
+      unless -d _ && -r _ && -x _;
   } elsif (!$!{ENOENT}) {
     return ('corrupt', "cannot inspect cache entries path $entries: $!");
   }
@@ -506,6 +670,7 @@ fm_lint_cache_write_context() {
     printf 'env LC_CTYPE=%s\n' "${LC_CTYPE-<unset>}"
     printf 'env LANG=%s\n' "${LANG-<unset>}"
     printf 'env GHCRTS=%s\n' "${GHCRTS-<unset>}"
+    printf 'trusted-shellcheck %s\n' "${FM_LINT_CACHE_TRUSTED_SHELLCHECK_SHA256[@]}"
     printf 'hashfile shellcheck-binary %s\n' "$bin"
     env -u SHELLCHECK_OPTS "$bin" --version 2>&1 | sed 's/^/shellcheck-version /'
     for definition in "$@"; do

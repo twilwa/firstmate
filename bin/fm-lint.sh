@@ -2281,6 +2281,7 @@ if [ -n "${FM_LINT_CACHE_DIR:-}" ] || [ "$NO_CACHE" -eq 1 ]; then
     fm_lint_cache_begin
   elif [ "$NO_CACHE" -eq 0 ]; then
     printf 'fm-lint.sh: lint cache unavailable (bin/fm-lint-cache-lib.sh is missing); linting every root\n' >&2
+    FM_LINT_CACHE_STATE=disabled
   fi
 fi
 
@@ -2472,6 +2473,11 @@ if declare -F fm_lint_cache_report >/dev/null 2>&1; then
   if [ "${FM_LINT_CACHE_STALE:-0}" -gt 0 ]; then
     overall_rc=3
   fi
+else
+  # The library's reporter is absent: print its summary shape from here.
+  FM_LINT_CACHE_HITS=0 FM_LINT_CACHE_MISSES=$ROOT_COUNT FM_LINT_CACHE_STORED=0
+  printf 'fm-lint.sh: lint cache: hits=0 misses=%s stored=0 uncacheable=0 scope=%s state=%s\n' \
+    "$ROOT_COUNT" "$([ "$LOCAL_RUN" -eq 1 ] && printf local || printf hosted)" "$FM_LINT_CACHE_STATE" >&2
 fi
 
 purity_rc=0
