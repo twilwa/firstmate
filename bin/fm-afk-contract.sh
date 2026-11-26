@@ -250,8 +250,12 @@ fm_afk_contract_lock_helpers() {
 # blocking a merge or a captain return forever, and returns 1 WITHOUT the lock so
 # every caller refuses rather than proceeding unlocked. A caller that defers on
 # contention instead of waiting for a merge passes its own shorter bound.
-fm_afk_contract_lock_hold() {  # [state-dir] [timeout-seconds]
-  local lock rc=0 STATE timeout
+# A third argument of in-process opts into the same bound waited in this very
+# shell (fm_lock_acquire_wait_max) instead of a timed helper that hands the lock
+# over, for a caller whose own signal cleanup must be able to join and release
+# every acquisition it starts; contention past the bound still refuses.
+fm_afk_contract_lock_hold() {  # [state-dir] [timeout-seconds] [in-process]
+  local lock rc=0 STATE timeout pid
   STATE=${1:-$FM_AFK_CONTRACT_STATE}
   lock=$(fm_afk_contract_lock_path "$STATE")
   timeout=${2:-${FM_TEST_AFK_CONTRACT_LOCK_TIMEOUT:-$_FM_AFK_CONTRACT_LOCK_TIMEOUT}}
@@ -259,7 +263,19 @@ fm_afk_contract_lock_hold() {  # [state-dir] [timeout-seconds]
     fm_afk_contract_log "could not load the lock primitive for $lock"
     return 1
   }
-  fm_lock_acquire_wait_bounded "$lock" "$timeout" || rc=$?
+  if [ "${3:-}" = in-process ]; then
+    if ! fm_lock_acquire_wait_max "$lock" "$timeout"; then
+      rc=124
+      FM_LOCK_HELD_PID=
+      pid=$(cat "$lock/pid" 2>/dev/null || true)
+      case "$pid" in
+        ''|*[!0-9]*|0) ;;
+        *) ! fm_pid_alive "$pid" || FM_LOCK_HELD_PID=$pid ;;
+      esac
+    fi
+  else
+    fm_lock_acquire_wait_bounded "$lock" "$timeout" || rc=$?
+  fi
   if [ "$rc" -ne 0 ]; then
     if [ "$rc" -eq 124 ] && [ -n "${FM_LOCK_HELD_PID:-}" ]; then
       fm_afk_contract_log "the away-posture record is locked by live process $FM_LOCK_HELD_PID (an in-flight merge, or another change to this record); nothing was changed"

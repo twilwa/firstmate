@@ -94,7 +94,7 @@ die() { printf 'fm-pr-review: %s\n' "$*" >&2; exit 1; }
 # snapshot, then holds that lock from a recheck before its first ledger
 # publication through its last, so no ledger write lands once away begins.
 hold_away_lock_for_waiver() {
-  fm_afk_contract_lock_hold "$STATE" \
+  fm_afk_contract_lock_hold "$STATE" '' in-process \
     || { rm -f -- "${WORK:-}"; die 'the away-posture record could not be locked for a red-check waiver decision'; }
 }
 refuse_away_waiver() {
@@ -422,6 +422,7 @@ cleanup_snapshot() {
     fm_lock_release "$WAIVER_AWAY_LOCK" || true
     fm_lock_release "$WAIVER_AWAY_LOCK.steal" || true
     fm_lock_discard_staged_owners "$WAIVER_AWAY_LOCK" "$FM_LOCK_OWNER_SCOPE" "$$" || true
+    fm_lock_discard_staged_owners "$WAIVER_AWAY_LOCK.steal" "$FM_LOCK_OWNER_SCOPE" "$$" || true
     FM_AFK_CONTRACT_LOCK_HELD=
   fi
   fm_afk_contract_lock_release || true

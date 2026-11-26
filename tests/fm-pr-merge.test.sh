@@ -5101,6 +5101,125 @@ SH
   pass "a signal while merge-decision acquires the away lock for a waiver ends the run and leaves no lock"
 }
 
+# The waiver path waits for a contended away lock in the review shell itself,
+# so a signal at the moment it finally takes the lock still ends the run with
+# no decision, no lock, and no lock staging left behind.
+test_signal_during_contended_waiver_away_lock_acquisition_leaves_no_lock() {
+  local case_dir rc head url ledger low lock holder staged
+  head=a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/112
+  case_dir=$(make_case review-waiver-signal-contended)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 112 "$low" no-attest
+  lock="$case_dir/state/.afk-contract.lock"
+  # A live holder keeps the away lock briefly, so the review shell must wait.
+  FM_STATE_OVERRIDE="$case_dir/state" bash -c '
+    . "$1"
+    fm_lock_acquire_wait "$2" || exit 7
+    : > "$3/held"
+    sleep 1.5
+    fm_lock_release "$2"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$case_dir" &
+  holder=$!
+  while [ ! -e "$case_dir/held" ]; do
+    kill -0 "$holder" 2>/dev/null || fail "review-waiver-signal-contended: the holder never took the lock"
+    sleep 0.05
+  done
+  # Once the review side publishes its own owner pid, signal the process that
+  # published it.
+  cat > "$case_dir/fakebin/mv" <<SH
+#!/usr/bin/env bash
+"$REAL_MV" "\$@" || exit
+case "\${*: -1}" in
+  "$case_dir/state/.afk-contract.lock.owner."*/pid)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mv"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  wait "$holder" || fail "review-waiver-signal-contended: the holder failed"
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-contended: the contended acquisition was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-contended: TERM as the contended lock is taken must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--112.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-contended: the signalled run still published a merge decision"
+  [ ! -e "$lock" ] && [ ! -L "$lock" ] \
+    || fail "review-waiver-signal-contended: the away lock was left behind after a contended acquisition"
+  for staged in "$lock".owner.* "$lock".steal.owner.*; do
+    [ ! -e "$staged" ] || fail "review-waiver-signal-contended: lock staging was left behind: $staged"
+  done
+  pass "a signal as merge-decision takes a contended away lock for a waiver leaves no lock or staging"
+}
+
+# A signal while the waiver path stages the steal mutex for a stale away lock
+# leaves none of this run's steal staging behind.
+test_signal_during_waiver_away_lock_steal_staging_leaves_no_staging() {
+  local case_dir rc head url ledger low lock dead staged
+  head=b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/113
+  case_dir=$(make_case review-waiver-signal-steal)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 113 "$low" no-attest
+  lock="$case_dir/state/.afk-contract.lock"
+  # A stale away lock whose holder is gone sends the acquirer to the steal path.
+  sh -c 'exit 0' &
+  dead=$!
+  wait "$dead" || true
+  mkdir "$lock"
+  printf '%s\n' "$dead" > "$lock/pid"
+  # Right after the steal mutex's staging directory is created, signal the
+  # review shell (the outermost fm-pr-review.sh ancestor of the shim).
+  cat > "$case_dir/fakebin/mktemp" <<SH
+#!/usr/bin/env bash
+out=\$("$(type -P mktemp)" "\$@") || exit
+printf '%s\n' "\$out"
+case "\$out" in
+  "$lock".steal.owner.*)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      target=\$PPID
+      while parent=\$(ps -o ppid= -p "\$target" 2>/dev/null | tr -d ' ') \\
+        && [ -n "\$parent" ] && ps -o args= -p "\$parent" 2>/dev/null | grep -q 'fm-pr-review.sh merge-decision'; do
+        target=\$parent
+      done
+      kill -TERM "\$target"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mktemp"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-steal: the steal staging was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-steal: TERM during steal staging must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--113.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-steal: the signalled run still published a merge decision"
+  [ ! -e "$lock.steal" ] && [ ! -L "$lock.steal" ] \
+    || fail "review-waiver-signal-steal: the steal mutex was left behind"
+  for staged in "$lock".steal.owner.*; do
+    [ ! -e "$staged" ] || fail "review-waiver-signal-steal: steal staging was left behind: $staged"
+  done
+  pass "a signal while merge-decision stages the away-lock steal mutex leaves no steal staging"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -6768,6 +6887,8 @@ test_allow_red_single_hyphen_names_stay_data
 test_away_posture_publishes_and_accepts_no_waiver_decision
 test_signal_during_waiver_decision_staging_publishes_nothing
 test_signal_during_waiver_away_lock_acquisition_leaves_no_lock
+test_signal_during_contended_waiver_away_lock_acquisition_leaves_no_lock
+test_signal_during_waiver_away_lock_steal_staging_leaves_no_staging
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts
