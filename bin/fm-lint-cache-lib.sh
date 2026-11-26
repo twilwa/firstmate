@@ -27,8 +27,10 @@
 #     resolved against the working directory, the root's directory, the
 #     referencing file's directory, and every source-path value (SCRIPTDIR
 #     read as both the root's and the referencing file's directory), iterated
-#     to a fixpoint. Each candidate adds its lexical path with what it
-#     resolves to - a regular file's real path and content hash (that file is
+#     to a fixpoint. Like ShellCheck, an absolute path is also resolved
+#     against each of those with its leading slash stripped. Each candidate
+#     adds its lexical path with what it resolves to - a regular file's real
+#     path and content hash (that file is
 #     parsed in turn), or a missing, directory, or special marker - so
 #     creating a file, swapping a symlink, or changing which candidate wins
 #     all miss.
