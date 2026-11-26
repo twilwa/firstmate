@@ -27,10 +27,11 @@
 #     double-quoted without expansions, or must sit directly under comment
 #     lines carrying a literal `# shellcheck source=` directive, which
 #     ShellCheck applies instead of the argument, with no ;, &, ;;-type
-#     separator or ) before it on its line. Every `source=` and `source-path=` value must be literal
-#     too. SCRIPTDIR expands only as an exact leading path component, with the
-#     raw literal kept. Candidates are resolved against the working directory
-#     (absolute paths also below it, as ShellCheck does), the root's
+#     separator or ) before it on its line. Every `source=` and
+#     `source-path=` value must be literal too. SCRIPTDIR expands only as an
+#     exact leading path component, with the raw literal kept. Candidates
+#     are resolved against the working directory (absolute paths also below
+#     it, as ShellCheck does), the root's
 #     directory, the referencing file's directory, and every source-path
 #     value, iterated to a fixpoint. Each candidate adds its lexical path with
 #     what it resolves to - a regular file's real path and content hash (that
@@ -42,9 +43,9 @@
 #   anything the lexer cannot delimit (an unterminated quote, substitution,
 #   here-document, or case), any construct it does not model (a parenthesis
 #   inside a command substitution, the function or coproc keyword, or a
-#   command substitution in an unquoted here-document body), a -P or --source-path flag, an unreadable closure
-#   file, a missing --norc, or an unreadable root. Unknown never means no
-#   dependency.
+#   command substitution in an unquoted here-document body), a -P or
+#   --source-path flag, an unreadable closure file, a missing --norc, or an
+#   unreadable root. Unknown never means no dependency.
 #
 # Entries. A cache hit is only ever a recorded pass for that exact key: only a
 # root whose final attempt exited 0 with reason ok or known-heavy is stored,
@@ -193,7 +194,8 @@ sub directive_values {
 # $(, a backquote, or a reserved word. Quoted text, quoted-delimiter heredoc
 # bodies, comments, case patterns, and arguments of other commands are never
 # commands. Each source command must be `source|. <literal>` alone on its line
-# (an optional trailing comment aside); any other form, any construct the
+# (an optional trailing comment aside) or sit under a `source=` directive in
+# scope (the header owns both grammars); any other form, any construct the
 # lexer does not model, and anything it cannot delimit makes the file
 # unprovable. State lives in %L for one file.
 our %L;
