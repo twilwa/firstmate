@@ -1751,27 +1751,37 @@ require_current_away_authority() {
 # for another head is refused, so the review policy is enforced by this script
 # rather than by the away session's judgment.
 # A decision that waived a red check is attended authority only, whenever it
-# was recorded, so it never stands in for the away merge gate.
+# was recorded, so it never stands in for the away merge gate. One ledger read
+# classifies the current decision as waiver-bearing, clean authority for the
+# handed-over head, or invalid; only clean authority passes, and a malformed
+# waiver field or an unreadable ledger refuses.
 require_away_review_merge_decision() {
+  local verdict=invalid
   [ "$FM_PR_AWAY_POSTURE" = true ] && [ "$PROVIDER" = github ] && [ -n "$REVIEW_LEDGER" ] || return 0
-  if [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
-    && jq -e '
-      .generations[-1].merge_decision // {}
-      | .allowed_red_check != null or ((.allowed_red_checks // []) | length > 0)
-    ' "$REVIEW_LEDGER" >/dev/null 2>&1; then
-    echo "error: while the away-posture record exists a GitHub merge needs a review-ledger merge decision that waives no red check; nothing was merged" >&2
-    return 2
+  if [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ]; then
+    verdict=$(jq -r --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
+      if .url != $url or (.generations | type != "array" or length == 0) then "invalid"
+      else
+        .generations[-1].merge_decision
+        | if type != "object" then "invalid"
+          elif (.allowed_red_check | type) as $t | ($t != "null" and $t != "string") then "invalid"
+          elif (.allowed_red_checks | type) as $t | ($t != "null" and $t != "array") then "invalid"
+          elif (.allowed_red_checks // []) | any(.[]; type != "string") then "invalid"
+          elif .allowed_red_check != null or ((.allowed_red_checks // []) | length > 0) then "waiver"
+          elif $head != "" and .decision == "merge" and .verified_head == $head then "clean"
+          else "invalid" end
+      end
+    ' "$REVIEW_LEDGER" 2>/dev/null) || verdict=invalid
   fi
-  if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
-    && [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
-    && jq -e --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
-      .url == $url and (.generations | type == "array" and length > 0)
-      and .generations[-1].merge_decision.decision == "merge"
-      and .generations[-1].merge_decision.verified_head == $head
-    ' "$REVIEW_LEDGER" >/dev/null 2>&1; then
-    return 0
-  fi
-  echo "error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged" >&2
+  case "$verdict" in
+    clean) return 0 ;;
+    waiver)
+      echo "error: while the away-posture record exists a GitHub merge needs a review-ledger merge decision that waives no red check; nothing was merged" >&2
+      ;;
+    *)
+      echo "error: while the away-posture record exists a GitHub merge goes through bin/fm-pr-review.sh merge, so the current review-ledger generation passes every gate for the live head; nothing was merged" >&2
+      ;;
+  esac
   return 2
 }
 

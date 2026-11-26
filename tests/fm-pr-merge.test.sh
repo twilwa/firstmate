@@ -809,6 +809,9 @@ run_pr_merge() {
   # Branch-update cases may locally clear this optional handoff to exercise
   # another policy; an explicit nonempty handoff must survive the update.
   [ "${FM_TEST_MERGE_VIA_REVIEW:-0}" != 1 ] || entry=("$ROOT/bin/fm-pr-review.sh" merge)
+  # FM_TEST_REVIEW_SUBCOMMAND=<name> enters through that fm-pr-review.sh
+  # subcommand instead, with the same faked forge and state.
+  [ -z "${FM_TEST_REVIEW_SUBCOMMAND:-}" ] || entry=("$ROOT/bin/fm-pr-review.sh" "$FM_TEST_REVIEW_SUBCOMMAND")
   if [ "${FM_PR_REVIEW_EXPECTED_HEAD+x}" = x ]; then
     reviewed_head=$FM_PR_REVIEW_EXPECTED_HEAD
   elif [[ "${2:-}" == https://github.com/* ]] && [ -s "$case_dir/github-head" ]; then
@@ -4934,46 +4937,61 @@ test_allow_red_single_hyphen_names_stay_data() {
 # entry points refuse before publishing one, and the guard refuses a ledger
 # decision that carries a waiver, even one recorded before the away posture.
 test_away_posture_publishes_and_accepts_no_waiver_decision() {
-  local case_dir rc head url ledger low decision label n=1
+  local case_dir rc head url ledger low decision label timing expected n=1
   head=a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6
   low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
   url=https://github.com/example/repo/pull/109
 
-  for label in merge merge-decision; do
-    case_dir=$(make_case "away-review-$label-waiver")
-    mkdir -p "$case_dir/wt" "$case_dir/home"
-    add_gh_mocks "$case_dir" "$head"
-    write_github_rollup_json "$case_dir" "$head" \
-      "$(check_run lint COMPLETED FAILURE)" \
-      "$(check_run unit COMPLETED FAILURE)"
-    review_pull_request_for_merge "$case_dir" 109 "$low" no-attest
-    write_away_record "$case_dir" --words 'keep the lanes running'
-    : > "$case_dir/gh.log"
-    set +e
-    if [ "$label" = merge ]; then
-      FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
-        --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
-    else
-      FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" PATH="$case_dir/fakebin:$PATH" \
-        FM_TEST_GH_LOG="$case_dir/gh.log" FM_TEST_GH_HEAD="$case_dir/github-head" \
-        "$ROOT/bin/fm-pr-review.sh" merge-decision "$url" --allowed-red-check lint --allowed-red-check unit \
-        > "$case_dir/stdout" 2> "$case_dir/stderr"
-    fi
-    rc=$?
-    set -e
-    expect_code 2 "$rc" "away-review-$label-waiver: a waiver must be refused while away"
-    assert_grep 'attended-only' "$case_dir/stderr" \
-      "away-review-$label-waiver: the refusal did not name attended-only"
-    assert_no_grep 'pr merge' "$case_dir/gh.log" \
-      "away-review-$label-waiver: gh pr merge ran despite an away waiver"
-    ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--109.json"
-    assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
-      "away-review-$label-waiver: a waiver-bearing merge decision was published while away"
+  # The away record exists before the request (no forge read at all), or is
+  # published while the wrapper collects its live snapshot; either way the
+  # ledger stays byte-identical.
+  for timing in present during; do
+    for label in merge merge-decision; do
+      case_dir=$(make_case "away-review-$label-waiver-$timing")
+      mkdir -p "$case_dir/wt" "$case_dir/home"
+      add_gh_mocks "$case_dir" "$head"
+      write_github_rollup_json "$case_dir" "$head" \
+        "$(check_run lint COMPLETED FAILURE)" \
+        "$(check_run unit COMPLETED FAILURE)"
+      review_pull_request_for_merge "$case_dir" 109 "$low" no-attest
+      write_away_record "$case_dir" --words 'keep the lanes running'
+      [ "$timing" = present ] || mv "$case_dir/state/.afk-contract" "$case_dir/away-record-after-view"
+      ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--109.json"
+      cp "$ledger" "$case_dir/ledger-before.json"
+      : > "$case_dir/gh.log"
+      set +e
+      if [ "$label" = merge ]; then
+        FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+          --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+      else
+        FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+          --allowed-red-check lint --allowed-red-check unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+      fi
+      rc=$?
+      set -e
+      expect_code 2 "$rc" "away-review-$label-waiver-$timing: a waiver must be refused while away"
+      assert_grep 'attended-only' "$case_dir/stderr" \
+        "away-review-$label-waiver-$timing: the refusal did not name attended-only"
+      assert_no_grep 'pr merge' "$case_dir/gh.log" \
+        "away-review-$label-waiver-$timing: gh pr merge ran despite an away waiver"
+      cmp -s "$case_dir/ledger-before.json" "$ledger" \
+        || fail "away-review-$label-waiver-$timing: the refused waiver request changed the review ledger"
+      if [ "$timing" = present ]; then
+        [ ! -s "$case_dir/gh.log" ] \
+          || fail "away-review-$label-waiver-$timing: the forge was read before the away refusal: $(cat "$case_dir/gh.log")"
+      else
+        assert_grep 'statusCheckRollup' "$case_dir/gh.log" \
+          "away-review-$label-waiver-$timing: the away record was not placed during snapshot collection"
+      fi
+    done
   done
 
   for decision in \
-    "{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":null,\"allowed_red_checks\":[\"lint\"]}" \
-    "{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":\"lint\"}"; do
+    "waives no red check|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":null,\"allowed_red_checks\":[\"lint\"]}" \
+    "waives no red check|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":\"lint\"}" \
+    "goes through bin/fm-pr-review.sh merge|{\"decision\":\"merge\",\"reviewed_head\":\"$head\",\"verified_head\":\"$head\",\"allowed_red_check\":null,\"allowed_red_checks\":true}"; do
+    expected=${decision%%|*}
+    decision=${decision#*|}
     case_dir=$(make_case "away-guard-waiver-ledger-$n")
     mkdir -p "$case_dir/wt" "$case_dir/home"
     add_gh_mocks "$case_dir" "$head"
@@ -4987,14 +5005,14 @@ test_away_posture_publishes_and_accepts_no_waiver_decision() {
       > "$case_dir/stdout" 2> "$case_dir/stderr"
     rc=$?
     set -e
-    expect_code 2 "$rc" "away-guard-waiver-ledger: a waiver-bearing ledger decision must not be away authority"
-    assert_grep 'waives no red check' "$case_dir/stderr" \
-      "away-guard-waiver-ledger: the refusal did not name the waiver"
+    expect_code 2 "$rc" "away-guard-waiver-ledger-$n: a waiver-bearing or malformed ledger decision must not be away authority"
+    assert_grep "$expected" "$case_dir/stderr" \
+      "away-guard-waiver-ledger-$n: the refusal did not give the expected reason"
     assert_no_grep 'pr merge' "$case_dir/gh.log" \
       "away-guard-waiver-ledger: gh pr merge ran on a waiver-bearing ledger decision"
     n=$((n + 1))
   done
-  pass "while away neither review-wrapper entry point publishes a waiver decision and the guard refuses one"
+  pass "while away neither review-wrapper entry point touches the ledger for a waiver and the guard refuses a waiver-bearing or malformed decision"
 }
 
 # A draft cannot be merged, and neither can a pull request whose draft state the
@@ -5580,6 +5598,7 @@ review_pull_request_for_merge() {
 #!/usr/bin/env bash
 fakebin=$(dirname "$0")
 case_dir=$(dirname "$fakebin")
+printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
 case "${1:-} ${2:-}" in
   "api user") printf '%s\n' '{"login":"maintainer"}'; exit 0 ;;
   "pr checks") printf "%s\n" "no required checks reported on the 'topic' branch" >&2; exit 1 ;;

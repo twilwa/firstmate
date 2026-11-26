@@ -38,8 +38,8 @@
 # merge in the task metadata. Like the guard's own --allow-red, a waiver is
 # attended-only: while the away-posture record exists `merge-decision` refuses
 # any `--allowed-red-check` before reading a snapshot, and rechecks under the
-# away record's lock when it publishes the decision, so no waiver-bearing
-# decision is recorded while away; fm-pr-merge.sh in turn refuses such a
+# away record's lock before its first ledger write, holding that lock through
+# its last, so a waiver request leaves the ledger untouched once away begins; fm-pr-merge.sh in turn refuses such a
 # decision, whenever recorded, as away merge authority.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
@@ -90,6 +90,13 @@ LEDGER_DIR=
 die() { printf 'fm-pr-review: %s\n' "$*" >&2; exit 1; }
 # A red-check waiver is attended-only, as in fm-pr-merge.sh: refuse it while
 # the away-posture record exists in the state directory that guard reads.
+# merge-decision checks under the away record's lock before collecting a
+# snapshot, then holds that lock from a recheck before its first ledger
+# publication through its last, so no ledger write lands once away begins.
+hold_away_lock_for_waiver() {
+  fm_afk_contract_lock_hold "$STATE" \
+    || { rm -f -- "${WORK:-}"; die 'the away-posture record could not be locked for a red-check waiver decision'; }
+}
 refuse_away_waiver() {
   fm_afk_contract_away_present "$STATE" || return 0
   fm_afk_contract_lock_release || true
@@ -408,6 +415,7 @@ ready_for_qa_check() {
 SNAPSHOT_TEMP=0
 POST_MERGE_TEMP=
 cleanup_snapshot() {
+  fm_afk_contract_lock_release || true
   [ "$SNAPSHOT_TEMP" -eq 0 ] || rm -f -- "${SNAPSHOT:-}"
   [ -z "$POST_MERGE_TEMP" ] || rm -f -- "$POST_MERGE_TEMP"
 }
@@ -550,10 +558,20 @@ case "$cmd" in
       shift 2
     done
     ALLOWED_RED_CHECKS=$(jq -cn '$ARGS.positional' --args -- ${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"})
-    [ "${#FM_PR_OPT_ALLOW_RED[@]}" -eq 0 ] || refuse_away_waiver
+    WAIVING=false
+    [ "${#FM_PR_OPT_ALLOW_RED[@]}" -eq 0 ] || WAIVING=true
+    if [ "$WAIVING" = true ]; then
+      hold_away_lock_for_waiver
+      refuse_away_waiver
+      fm_afk_contract_lock_release
+    fi
     snapshot_arg "$@"
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX"); cp "$LEDGER" "$WORK"
     checkpoint_apply "$(jq -r .task "$WORK")" "$SNAPSHOT" "$WORK"
+    if [ "$WAIVING" = true ]; then
+      hold_away_lock_for_waiver
+      refuse_away_waiver
+    fi
     publish "$WORK"; rm -f -- "$WORK"
     HEAD=$(jq -r .head "$SNAPSHOT")
     ready_check "$HEAD" "$ALLOWED_RED_CHECKS" >/dev/null
@@ -565,14 +583,8 @@ case "$cmd" in
         allowed_red_check:(if ($allowed_red | length) == 1 then $allowed_red[0] else null end),
         allowed_red_checks:$allowed_red}' \
       "$LEDGER" > "$WORK"
-    if [ "${#FM_PR_OPT_ALLOW_RED[@]}" -gt 0 ]; then
-      fm_afk_contract_lock_hold "$STATE" || { rm -f -- "$WORK"; die 'the away-posture record could not be locked to publish a red-check waiver decision'; }
-      refuse_away_waiver
-      publish "$WORK"
-      fm_afk_contract_lock_release
-    else
-      publish "$WORK"
-    fi
+    publish "$WORK"
+    [ "$WAIVING" != true ] || fm_afk_contract_lock_release
     rm -f -- "$WORK"
     printf 'merge-decision: %s verified_head=%s verified_at=%s\n' "$URL" "$HEAD" "$(jq -r '.generations[-1].merge_decision.verified_at' "$LEDGER")"
     ;;
