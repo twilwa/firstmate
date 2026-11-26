@@ -55,6 +55,9 @@ For other GitHub PRs, use `bin/fm-pr-merge.sh <task> <url> [merge args...]`; it 
 While the away-posture record exists, every GitHub merge goes through `bin/fm-pr-review.sh merge` whatever the policy setting, and `bin/fm-pr-merge.sh` refuses one that did not.
 `bin/fm-pr-review.sh merge` takes a fresh complete snapshot, starts a new generation if the head moved, refuses pending reviews, stale checks, missing dispositions, or missing high-stakes attestations, records the merge decision with the reviewed and immediately verified head, then hands the same URL to the guarded merge command.
 The guarded merge command binds the forge request to that head, so a push in the remaining interval fails instead of merging unreviewed code.
+Put helper options such as `--allow-red <check>` before any forge merge flags, or before a standalone `--`; both scripts stop reading helper options at the first forge flag, so a waiver written after one is never applied or recorded.
+An attended red-check waiver names one check per `--allow-red`, up to four distinct names, and is refused while the away-posture record exists.
+The wrapper records the waived names in the merge decision's `allowed_red_checks`, and the guarded merge records them for an accepted merge in the task metadata's `merge_allow_red=` line; the `bin/fm-pr-merge.sh` and `bin/fm-pr-review.sh` headers own the exact rules.
 
 ## Post-merge QA
 

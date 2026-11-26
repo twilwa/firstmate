@@ -26,11 +26,16 @@
 #   fm-pr-review.sh poll
 #   fm-pr-review.sh arm|disarm
 #
-# `merge` passes each `--allow-red <check>` it forwards to fm-pr-merge.sh to
-# `merge-decision` as one `--allowed-red-check <check>`, which accepts at most
-# four distinct names. The review gate waives only those exact checks, and the
-# merge decision records them in order as `allowed_red_checks`, with
-# `allowed_red_check` holding the name only when exactly one was given.
+# `merge` parses fm-pr-merge.sh's helper-option prefix with the same parser that
+# guard uses (bin/fm-pr-merge-options-lib.sh), refusing a malformed prefix
+# before it reads anything live, and leaves the forge extras after it
+# untouched. Each `--allow-red <check>` in that prefix reaches `merge-decision`
+# as one `--allowed-red-check <check>`, under the same limit of four distinct
+# names, each its own argument and never starting with `--`. The review gate
+# waives only those exact checks, and the merge decision records them in order
+# as `allowed_red_checks`, with `allowed_red_check` holding the name only when
+# exactly one was given. fm-pr-merge.sh records the same list for the accepted
+# merge in the task metadata.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
 # records its actual merge commit separately from the reviewed head.
@@ -72,6 +77,8 @@ LEDGER_DIR=
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-lease-lib.sh
 . "$SCRIPT_DIR/fm-lease-lib.sh"
+# shellcheck source=bin/fm-pr-merge-options-lib.sh
+. "$SCRIPT_DIR/fm-pr-merge-options-lib.sh"
 
 die() { printf 'fm-pr-review: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n '2,/^set -eu$/s/^# \{0,1\}//p' "$0"; }
@@ -272,24 +279,6 @@ ready_check() {
   model=$(jq -r '.generations[-1].attestations[]? | select(.kind == "no-mistakes") | .model' "$LEDGER" | tail -1)
   independent=$(jq '[.generations[-1].attestations[] | select(.kind == "independent-agent-review")] | length' "$LEDGER")
   printf 'ready: %s head=%s risk=%s%s independent_reviews=%s\n' "$URL" "$head" "$risk" "${model:+ no_mistakes_model=$model}" "$independent"
-}
-
-# Collects every --allow-red name from fm-pr-merge arguments as repeated
-# --allowed-red-check arguments for merge-decision, which owns their limits.
-find_merge_allowed_red() {
-  MERGE_ALLOWED_RED=()
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --allow-red)
-        [ -n "${2:-}" ] || return 0
-        MERGE_ALLOWED_RED+=(--allowed-red-check "$2")
-        shift 2
-        ;;
-      --allow-missing|--expected-head) [ "$#" -ge 2 ] || return 0; shift 2 ;;
-      --) return 0 ;;
-      *) shift ;;
-    esac
-  done
 }
 
 read_forge_merge_sha() {
@@ -538,16 +527,12 @@ case "$cmd" in
     [ "$#" -ge 1 ] || die 'merge-decision requires pull-request URL'
     parse_url "$1"; shift
     ledger_valid || die 'review ledger is unavailable'
-    ALLOWED_RED_CHECKS='[]'
+    FM_PR_OPT_ALLOW_RED=()
     while [ "${1:-}" = --allowed-red-check ]; do
-      [ -n "${2:-}" ] || die '--allowed-red-check requires a check name'
-      jq -en --argjson names "$ALLOWED_RED_CHECKS" --arg name "$2" 'any($names[]; . == $name) | not' >/dev/null \
-        || die "--allowed-red-check names check '$2' more than once"
-      [ "$(jq -n --argjson names "$ALLOWED_RED_CHECKS" '$names | length')" -lt 4 ] \
-        || die '--allowed-red-check may name at most 4 checks'
-      ALLOWED_RED_CHECKS=$(jq -cn --argjson names "$ALLOWED_RED_CHECKS" --arg name "$2" '$names + [$name]')
+      fm_pr_allow_red_add --allowed-red-check "${2-}" || exit 2
       shift 2
     done
+    ALLOWED_RED_CHECKS=$(jq -cn '$ARGS.positional' --args ${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"})
     snapshot_arg "$@"
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX"); cp "$LEDGER" "$WORK"
     checkpoint_apply "$(jq -r .task "$WORK")" "$SNAPSHOT" "$WORK"
@@ -571,7 +556,11 @@ case "$cmd" in
     fm_pr_task_id_valid "$TASK" || die 'invalid task id'
     ledger_valid || die 'review ledger is unavailable'
     [ "$(jq -r .task "$LEDGER")" = "$TASK" ] || die 'merge task does not match the review ledger task'
-    find_merge_allowed_red "$@"
+    fm_pr_merge_options_parse "$@" || exit 2
+    MERGE_ALLOWED_RED=()
+    for check in ${FM_PR_OPT_ALLOW_RED[@]+"${FM_PR_OPT_ALLOW_RED[@]}"}; do
+      MERGE_ALLOWED_RED+=(--allowed-red-check "$check")
+    done
     "$0" merge-decision "$URL" ${MERGE_ALLOWED_RED[@]+"${MERGE_ALLOWED_RED[@]}"}
     FM_PR_REVIEW_EXPECTED_HEAD=$(jq -er '.generations[-1].merge_decision.verified_head' "$LEDGER") \
       || die 'reviewed-head merge handoff is unavailable'

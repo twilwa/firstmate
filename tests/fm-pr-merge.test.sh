@@ -4630,6 +4630,22 @@ test_allow_red_waives_each_named_check() {
     --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr" \
     || fail "github-allow-red-two: two named waivers should merge"$'\n'"$(cat "$case_dir/stderr")"
   assert_logged_gh_merge "$case_dir" 101 example/repo --squash
+  assert_equals 'merge_allow_red=["lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "github-allow-red-two: the task metadata did not record every waived name in order"
+
+  case_dir=$(make_case github-allow-red-exactly-three)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)" \
+    "$(check_run e2e COMPLETED FAILURE)"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/104 \
+    --allow-red e2e --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-allow-red-exactly-three: three named red waivers should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 104 example/repo --squash
+  assert_equals 'merge_allow_red=["e2e","lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "github-allow-red-exactly-three: the task metadata did not record every waived name in order"
 
   case_dir=$(make_case github-allow-red-three-and-green)
   mkdir -p "$case_dir/wt"
@@ -4665,7 +4681,131 @@ test_allow_red_waives_each_named_check() {
     "github-allow-red-fourth-unnamed: a named check was reported red"
   assert_no_grep 'pr merge' "$case_dir/gh.log" \
     "github-allow-red-fourth-unnamed: gh pr merge ran with an unnamed red check"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "github-allow-red-fourth-unnamed: a refused merge recorded waivers"
   pass "fm-pr-merge waives each separately named red check and still refuses an unnamed one"
+}
+
+# A missing --allow-red value never borrows the next argument: an option or the
+# -- separator in the value slot refuses before any forge call, even when a
+# reported red check carries that literal name.
+test_allow_red_missing_value_never_consumes_an_option() {
+  local case_dir rc head label
+  head=a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2
+  for label in trailing option separator; do
+    case_dir=$(make_case "github-allow-red-missing-$label")
+    mkdir -p "$case_dir/wt"
+    add_gh_mocks "$case_dir" "$head"
+    write_github_rollup_json "$case_dir" "$head" \
+      "$(check_run lint COMPLETED FAILURE)" \
+      "$(check_run --update-branch COMPLETED FAILURE)" \
+      "$(check_run -- COMPLETED FAILURE)"
+    set +e
+    case "$label" in
+      trailing) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red lint --allow-red > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+      option) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red --update-branch --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+      separator) run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/105 \
+        --allow-red lint --allow-red -- --squash > "$case_dir/stdout" 2> "$case_dir/stderr" ;;
+    esac
+    rc=$?
+    set -e
+    expect_code 2 "$rc" "github-allow-red-missing-$label: a missing waiver name must refuse"
+    assert_grep '--allow-red requires a check name' "$case_dir/stderr" \
+      "github-allow-red-missing-$label: the missing name was not reported"
+    [ ! -s "$case_dir/gh.log" ] \
+      || fail "github-allow-red-missing-$label: a forge call ran before the refusal: $(cat "$case_dir/gh.log")"
+  done
+  pass "fm-pr-merge refuses a missing --allow-red name instead of consuming the next option or separator"
+}
+
+# Waivers match whole reported names: one red check whose name carries a line
+# break is not waived by naming the fragments on either side of it.
+test_allow_red_matches_whole_names_across_line_breaks() {
+  local case_dir rc head
+  head=a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3
+  case_dir=$(make_case github-allow-red-newline-name)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run 'lint\nunit' COMPLETED FAILURE)"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/106 \
+    --allow-red lint --allow-red unit > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-allow-red-newline-name: fragments of one red name must not waive it"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-allow-red-newline-name: gh pr merge ran past a check no waiver named"
+  pass "fm-pr-merge matches --allow-red against whole reported check names"
+}
+
+# The review wrapper reads the same helper-option prefix as the merge guard:
+# it refuses a malformed prefix before taking a snapshot, records exactly the
+# waivers the guard applies, and leaves forge extras alone.
+test_review_merge_records_only_the_waivers_the_guard_applies() {
+  local case_dir rc head url ledger low
+  head=a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/107
+
+  case_dir=$(make_case review-allow-red-interleaved)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run unit COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --allow-red lint --update-branch --allow-red unit -- --squash \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "review-allow-red-interleaved: interleaved helper options should merge: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 107 example/repo --squash
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  assert_equals '[["lint","unit"],null]' \
+    "$(jq -c '.generations[-1].merge_decision | [.allowed_red_checks, .allowed_red_check]' "$ledger")" \
+    "review-allow-red-interleaved: the ledger did not record both waivers with a null single-name field"
+  assert_equals 'merge_allow_red=["lint","unit"]' "$(grep '^merge_allow_red=' "$case_dir/state/task-x1.meta")" \
+    "review-allow-red-interleaved: the task metadata did not record both waivers"
+
+  case_dir=$(make_case review-allow-red-forge-tail)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --squash --subject --allow-red --body=reviewed \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "review-allow-red-forge-tail: a green merge with forge extras should merge: $(cat "$case_dir/stderr")"
+  assert_equals '--allow-red' "$(github_merge_flag_value "$case_dir" --subject)" \
+    "review-allow-red-forge-tail: the forge subject value was not passed through unchanged"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  assert_equals '[]' "$(jq -c '.generations[-1].merge_decision.allowed_red_checks' "$ledger")" \
+    "review-allow-red-forge-tail: the ledger recorded a waiver the guard never applied"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "review-allow-red-forge-tail: the task metadata recorded a waiver the guard never applied"
+
+  case_dir=$(make_case review-allow-red-missing-value)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" \
+    "$(check_run lint COMPLETED FAILURE)" \
+    "$(check_run --update-branch COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 107 "$low" no-attest
+  : > "$case_dir/gh.log"
+  set +e
+  FM_TEST_MERGE_VIA_REVIEW=1 FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" task-x1 "$url" \
+    --allow-red --update-branch --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "review-allow-red-missing-value: the wrapper must refuse a missing waiver name"
+  assert_grep '--allow-red requires a check name' "$case_dir/stderr" \
+    "review-allow-red-missing-value: the missing name was not reported"
+  [ ! -s "$case_dir/gh.log" ] \
+    || fail "review-allow-red-missing-value: a forge call ran before the refusal: $(cat "$case_dir/gh.log")"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--107.json"
+  [ "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" != merge ] \
+    || fail "review-allow-red-missing-value: a malformed prefix still recorded a merge decision"
+  pass "the review wrapper records exactly the waivers fm-pr-merge applies and refuses a malformed prefix first"
 }
 
 # A draft cannot be merged, and neither can a pull request whose draft state the
@@ -6326,6 +6466,9 @@ test_github_updated_head_failure_refuses_without_waiting_for_pending
 test_github_behind_updates_and_rechecks_before_merge
 test_github_red_checks_refuse_and_allow_red_waives_named
 test_allow_red_waives_each_named_check
+test_allow_red_missing_value_never_consumes_an_option
+test_allow_red_matches_whole_names_across_line_breaks
+test_review_merge_records_only_the_waivers_the_guard_applies
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts
