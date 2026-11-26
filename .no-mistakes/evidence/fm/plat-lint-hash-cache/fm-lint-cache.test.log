@@ -1,5 +1,4 @@
-Running as unit: run-u353487.scope; invocation ID: 55731716b0ab407c8ce63904c74b2ef4
-1..20
+1..29
 ok - an unchanged root replays its recorded pass and the run reports hits and misses
 ok - editing a root misses only that root
 ok - a change anywhere in a root's transitive source closure misses, two levels down included
@@ -14,11 +13,20 @@ ok - real ShellCheck's finding from a file two source levels down is never hidde
 ok - quoted source filenames and quoted source-path values enter the key
 ok - swapping which file each source candidate resolves to misses
 ok - absolute source commands and directives key the file ShellCheck reads below the working directory
+ok - a source directive covers only its own and-or list, so a later top-level source enters the key
+ok - a subshell inside a substitution, function, coproc, or unquoted heredoc substitution never hides a sourced file's finding
+ok - every construct the lexer does not model makes its root uncacheable, and modelled neighbours stay cacheable
 ok - BASH_ENV cannot change the flags ShellCheck runs with, so the key matches the invocation
-ok - a source argument the key cannot resolve makes its root uncacheable unless a directive names the file
+ok - a source argument the key cannot prove makes its root uncacheable unless a directive names the file
 ok - a ShellCheck that is a script wrapper is never trusted for caching
 ok - a FIFO or other special node at an entry name discards every hit without blocking
 ok - every run prints its cache state with hits and misses that cover every selected root
 ok - a finding no record attributes reports an incomplete audit, and a covering sidecar proves it
+ok - a source command after every command boundary is a dependency, and quoted, heredoc, comment, and argument text is not
+ok - SCRIPTDIR expands only as a leading path component and literal paths containing it stay in the key
+ok - a source command with a redirection is uncacheable and its dependency edit is never hidden
+ok - a compiled launcher that is not a verified pinned release build lints but never reads or writes entries
+ok - an entries directory that is not readable and searchable discards every hit
+ok - a missing cache library still prints the numeric summary with its state
 FM_TEST_COMPLETE
-exit=0
+rc=0

@@ -1,0 +1,93 @@
+shellcheck: ~/.local/bin/shellcheck version: 0.11.0
+=== S1 first run records passes (cold cache)
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local state=on
+  rc=0
+  entries: 2
+=== S1 second run replays recorded passes
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+  entries: 2
+=== S2 sourced file two levels down changed -> root misses, real SC2154 shown
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  In lab/root.sh line 4:
+                 ^--^ SC2154 (warning): bar is referenced but not assigned.
+    https://www.shellcheck.net/wiki/SC2154 -- bar is referenced but not assigned.
+  fm-lint.sh: lint cache: hits=1 misses=1 stored=0 uncacheable=0 scope=local state=on
+  rc=1
+  entries: 2
+=== S3 failing root is never replayed (run again)
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  In lab/root.sh line 4:
+                 ^--^ SC2154 (warning): bar is referenced but not assigned.
+    https://www.shellcheck.net/wiki/SC2154 -- bar is referenced but not assigned.
+  fm-lint.sh: lint cache: hits=1 misses=1 stored=0 uncacheable=0 scope=local state=on
+  rc=1
+  entries: 2
+=== S2b restore level-2 file -> original recorded pass key matches again
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S4 changed linter flags (--fast drops extended analysis) -> miss
+$ fm-lint.sh --fast lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local state=on
+  rc=0
+=== S4 --fast again -> its own entry hits
+$ fm-lint.sh --fast lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S5 lint-definition file changed -> every root misses
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local state=on
+  rc=0
+=== S5 definition restored -> hits again
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S6 hosted scope never reads local entries
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=hosted state=on
+  rc=0
+=== S6 local run after hosted still replays only local entries
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S7 setup: hit run with telemetry to learn the replayed keys
+$ fm-lint.sh --telemetry /tmp/fm-lint-cache-live.3L5rgH/s7.tsv lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+  corrupting the entry this run replays: /tmp/fm-lint-cache-live.3L5rgH/cache/fm-lint-cache-v1/bb9cfc995eb2ca887a83e8ba2dc0653c902595721b029a970779edb095d84ab9
+=== S7 one corrupt entry -> every hit discarded, everything linted
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: malformed entry /tmp/fm-lint-cache-live.3L5rgH/cache/fm-lint-cache-v1/bb9cfc995eb2ca887a83e8ba2dc0653c902595721b029a970779edb095d84ab9; discarding every hit and linting every root
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=2 uncacheable=0 scope=local state=on
+  rc=0
+=== S7 unreadable cache directory -> everything linted, never pass
+$ fm-lint.sh lab/root.sh lab/plain.sh
+  fm-lint.sh: lint cache: cache entries path /tmp/fm-lint-cache-live.3L5rgH/cache/fm-lint-cache-v1 is not a readable, searchable directory; discarding every hit and linting every root
+  fm-lint.sh: lint cache: cache entries path /tmp/fm-lint-cache-live.3L5rgH/cache/fm-lint-cache-v1 is not a readable, searchable directory; discarding every hit and linting every root
+  fm-lint.sh: lint cache: could not record the pass for lab/root.sh (error)
+  fm-lint.sh: lint cache: could not record the pass for lab/plain.sh (error)
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S8 bad.sh linted cached: finding reported, not stored
+$ fm-lint.sh --telemetry /tmp/fm-lint-cache-live.3L5rgH/t.tsv lab/bad.sh
+  In lab/bad.sh line 2:
+                 ^--------^ SC2154 (warning): never_set is referenced but not assigned.
+    https://www.shellcheck.net/wiki/SC2154 -- never_set is referenced but not a...
+  fm-lint.sh: lint cache: hits=0 misses=1 stored=0 uncacheable=0 scope=local state=on
+  rc=1
+  bad.sh current key: f90050c7208de500be35870ced337e1ec84e28bdabfe1d9cb708d31208881702
+=== S8 planted stale pass replayed by a cached run (finding hidden)
+$ fm-lint.sh lab/bad.sh lab/plain.sh
+  fm-lint.sh: lint cache: hits=2 misses=0 stored=0 uncacheable=0 scope=local state=on
+  rc=0
+=== S8 nightly-style uncached audit ignores the cache and names the stale key
+$ fm-lint.sh --audit-cache /tmp/fm-lint-cache-live.3L5rgH/cache lab/bad.sh lab/plain.sh
+  In lab/bad.sh line 2:
+                 ^--------^ SC2154 (warning): never_set is referenced but not assigned.
+    https://www.shellcheck.net/wiki/SC2154 -- never_set is referenced but not a...
+  fm-lint.sh: STALE LINT CACHE KEY f90050c7208de500be35870ced337e1ec84e28bdabfe1d9cb708d31208881702: lab/bad.sh has findings in this uncached run, but the cache at /tmp/fm-lint-cache-live.3L5rgH/cache recorded a pass for that key
+  fm-lint.sh: lint cache: hits=0 misses=2 stored=0 uncacheable=0 scope=local state=bypassed
+  rc=3
