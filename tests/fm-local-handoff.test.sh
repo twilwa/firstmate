@@ -1129,6 +1129,103 @@ test_a_deleted_task_branch_after_a_receipted_landing_tears_down() {
   pass "a receipted landing tears down after its task branch was already deleted"
 }
 
+# The builder may commit on the task branch in the bound clone while the
+# task's own copy stays detached at its launch commit. That copy holds nothing
+# the landed head does not already contain, so it is landed; a copy holding a
+# commit outside the landed head, even on an unrelated history, still refuses.
+test_a_worktree_behind_the_landed_head_tears_down() {
+  local launch head stray orphan err status out
+  make_bound_fixture behind-landed
+  launch=$(git -C "$FX_WT" rev-parse HEAD)
+  commit_child_work 'offered change made on the branch'
+  head=$(git -C "$FX_WT" rev-parse HEAD)
+  git -C "$FX_WT" checkout -q --detach "$launch" || fail "detaching the copy at its launch commit failed"
+  assert_not_equals "$launch" "$head" "the copy is not behind the offered head, so this case proves nothing"
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (worktree behind the landed head)"; return 0; }
+  approve_current_offer
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null \
+    || fail "landing the offered commit failed"
+  err="$TMP_ROOT/behind-landed.err"
+
+  printf '%s\n' 'unlanded detached work' > "$FX_WT/stray.txt"
+  git -C "$FX_WT" add stray.txt
+  git -C "$FX_WT" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm 'unlanded detached work'
+  stray=$(git -C "$FX_WT" rev-parse HEAD)
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "cleanup discarded a detached commit the landed head does not contain"
+  assert_grep "has committed work at $stray after the $head its parent was offered" "$err" \
+    "the refusal did not name the unlanded worktree commit"
+
+  orphan=$(git -C "$FX_WT" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit-tree -m 'unrelated history' "$(git -C "$FX_WT" rev-parse "$launch^{tree}")")
+  git -C "$FX_WT" checkout -q --detach "$orphan" || fail "detaching the copy on an unrelated history failed"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "cleanup discarded a copy on a history unrelated to the landed head"
+  assert_grep "has committed work at $orphan after the $head its parent was offered" "$err" \
+    "the refusal did not name the unrelated worktree commit"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+
+  git -C "$FX_WT" checkout -q --detach "$launch" || fail "returning the copy to its launch commit failed"
+  out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
+    || fail "cleanup refused a copy behind the landed head"$'\n'"$out"
+  assert_absent "$FX_CHILD/state/$FX_TASK.meta" "cleanup left the task record behind"
+  pass "a copy behind the landed head tears down, and a commit outside it still refuses"
+}
+
+# A receipt proves the offered commit's real history, so a child-local replace
+# ref or legacy graft that rewrites that history must not make an unlanded
+# worktree commit look contained in the landed head.
+test_a_child_local_ancestry_override_cannot_fake_a_landing() {
+  local head ahead grafts err status
+  make_bound_fixture ancestry-override
+  commit_child_work 'offered change'
+  head=$(git -C "$FX_WT" rev-parse HEAD)
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "publishing the offer failed"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (ancestry override)"; return 0; }
+  approve_current_offer
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null \
+    || fail "landing the offered commit failed"
+  git -C "$FX_WT" checkout -q --detach "$head" || fail "detaching the copy at the offered head failed"
+  printf '%s\n' 'unlanded change' > "$FX_WT/ahead.txt"
+  git -C "$FX_WT" add ahead.txt
+  git -C "$FX_WT" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm 'unlanded change past the offer'
+  ahead=$(git -C "$FX_WT" rev-parse HEAD)
+  err="$TMP_ROOT/ancestry-override.err"
+
+  git -C "$FX_WT" replace --graft "$head" "$ahead" || fail "adding the child-local replacement failed"
+  git -C "$FX_WT" merge-base --is-ancestor "$ahead" "$head" \
+    || fail "the replacement does not fake the ancestry, so this case proves nothing"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a child-local replace ref let cleanup discard an unlanded commit"
+  assert_grep "has committed work at $ahead after the $head its parent was offered" "$err" \
+    "the refusal under a replace ref did not name the unlanded worktree commit"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+  git -C "$FX_WT" replace -d "$head" >/dev/null || fail "removing the replacement failed"
+
+  grafts=$(git -C "$FX_WT" rev-parse --path-format=absolute --git-path info/grafts)
+  mkdir -p "$(dirname "$grafts")"
+  printf '%s %s\n' "$head" "$ahead" > "$grafts"
+  git -C "$FX_WT" --no-replace-objects merge-base --is-ancestor "$ahead" "$head" 2>/dev/null \
+    || fail "the legacy graft does not fake the ancestry, so this case proves nothing"
+  status=0
+  run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a child-local legacy graft let cleanup discard an unlanded commit"
+  assert_grep "has committed work at $ahead after the $head its parent was offered" "$err" \
+    "the refusal under a legacy graft did not name the unlanded worktree commit"
+  assert_present "$FX_CHILD/state/$FX_TASK.meta" "a refused cleanup removed the task record"
+  pass "a child-local replace ref or graft cannot make an unlanded commit look landed"
+}
+
 # One damaged record must never be read as a weaker version of a good one.
 # The landing is the strictest consumer, so it drives the offer cases; the
 # cleanup gate drives the receipt case.
@@ -1636,6 +1733,8 @@ test_a_substituted_parent_clone_proves_nothing
 test_the_receipt_gate_survives_a_missing_worktree
 test_missing_worktree_refuses_a_later_unlanded_branch_head
 test_a_deleted_task_branch_after_a_receipted_landing_tears_down
+test_a_worktree_behind_the_landed_head_tears_down
+test_a_child_local_ancestry_override_cannot_fake_a_landing
 test_damaged_records_fail_closed
 test_landing_checks_its_pinned_call_identity
 test_a_deferred_then_released_call_lands_its_pin

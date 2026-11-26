@@ -2168,11 +2168,18 @@ validate_bound_local_only_landed() {
     echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
+  # A worktree head equal to or behind the offered head (for example a copy
+  # still detached at its launch commit while the builder committed on the
+  # branch) carries nothing unlanded; only commits the offered head lacks
+  # refuse. Grafts and replace refs are ignored so a local graph rewrite
+  # cannot fake that ancestry.
   worktree_head=
   if [ -d "$WT" ]; then
     worktree_head=$(git -C "$WT" rev-parse --verify --quiet HEAD 2>/dev/null || true)
   fi
-  if [ -n "$worktree_head" ] && [ "$worktree_head" != "$offered" ]; then
+  if [ -n "$worktree_head" ] \
+    && ! GIT_GRAFT_FILE=/dev/null git -C "$WT" --no-replace-objects \
+      merge-base --is-ancestor "$worktree_head" "$offered" 2>/dev/null; then
     echo "REFUSED: $ID has committed work at $worktree_head after the $offered its parent was offered." >&2
     echo "Publish the new head with bin/fm-local-handoff.sh offer $ID and have the parent land that, or get the captain's explicit OK to discard, then --force." >&2
     return 1
