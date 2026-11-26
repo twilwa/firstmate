@@ -1,0 +1,5 @@
+### HEAD 654c0ef7 (after fix): legacy spawn_gen=7, current token through receipt+teardown, malformed tokens refused
+ok - a pinned delegated landing fast-forwards the primary, receipts the child, and closes its row
+ok - a current spawn token is carried from offer through landing to its receipt
+ok - a malformed incarnation still refuses the offer
+exit=0

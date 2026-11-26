@@ -1,0 +1,5 @@
+### HEAD 654c0ef7 adversarial: offer under one current token, task relaunched under another
+child meta now: spawn_gen=s1795672511.311225.222; offer carries: s1795672511.311225.111
+land-app exit=1 stderr: error: child task child-task is now incarnation s1795672511.311225.222, not the offered s1795672511.311225.111
+ok - a relaunched task (new current-format token) cannot land its predecessor's offer; main unmoved, no receipt
+exit=0

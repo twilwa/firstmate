@@ -1,0 +1,5 @@
+### BASE 38936b68 (before fix): legacy spawn_gen=7 landing, then a current s<epoch>.<pid>.<rand> token
+ok - a pinned delegated landing fast-forwards the primary, receipts the child, and closes its row
+not ok - a task with a current spawn token could not publish its offer
+error: task child-task records a malformed incarnation
+exit=1
