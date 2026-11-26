@@ -852,6 +852,19 @@ run_pr_merge() {
   return "$rc"
 }
 
+# The value gh pr merge received for one flag, or the literal ABSENT.
+# Args: case_dir flag
+github_merge_flag_value() {
+  local arg prev='' found=ABSENT
+  while IFS= read -r -d '' arg; do
+    if [ "$prev" = "$2" ]; then
+      found=$arg
+    fi
+    prev=$arg
+  done < "$1/github-merge-args"
+  printf '%s' "$found"
+}
+
 write_github_outcome() {
   local case_dir=$1 state=$2 merged=$3 queued=$4 base=$5
   printf '%s\n' \
@@ -6525,19 +6538,6 @@ SQUASH_SECTION=$'- Wake the merge poll once when a ready PR degrades.\n- Add sha
 # Args: case_dir title body. Writes the PR title and body gh reports.
 write_github_text() {
   jq -n --arg t "$2" --arg b "$3" '{title: $t, body: $b}' > "$1/github-text.json"
-}
-
-# The value gh pr merge received for one flag, or the literal ABSENT.
-# Args: case_dir flag
-github_merge_flag_value() {
-  local arg prev='' found=ABSENT
-  while IFS= read -r -d '' arg; do
-    if [ "$prev" = "$2" ]; then
-      found=$arg
-    fi
-    prev=$arg
-  done < "$1/github-merge-args"
-  printf '%s' "$found"
 }
 
 test_squash_summary_uses_title_and_what_changed() {
