@@ -1,0 +1,26 @@
+lab core session fm-hclab-smoke-2228405-30231 ready (server pid 2228667)
+ok - hc smoke: create_task started fm-hclab-smoke-2228405-30231:t1
+ok - hc smoke: current_path follows the shell's cwd
+ok - hc smoke: send_text_line ran the command and capture shows its output
+ok - hc smoke: send_text_submit delivers through send --wait (verdict unknown)
+ok - hc smoke: agent_state reads dead for a shell and alive for an agent-named foreground
+ok - hc smoke: kill closes and removes the terminal
+stopped hc-control-2228262-26227 harness=claude backend=hc endpoint=fm-hclab-smoke-2228405-30231:t2 worktree=/tmp/fm-backend-hc-smoke.jtUrxA/wt
+ok - hc control: normal agent exit leaves a dead shell in the same terminal
+warning: /tmp/fm-backend-hc-smoke.jtUrxA/home/data/hc-control-2228262-26227/launch-brief.md records no ship branch; defaulting to legacy branch fm/hc-control-2228262-26227
+warning: /tmp/fm-backend-hc-smoke.jtUrxA/home/data/hc-control-2228262-26227/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+mise ERROR node is not a valid shim. This likely means you uninstalled a tool and the shim does not point to anything. Run `mise use <TOOL>` to reinstall the tool.
+mise ERROR Version: 2026.11.0 linux-x64 (2026-11-03)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+error: refusing to pre-register Claude trust: could not record trust for '/tmp/fm-backend-hc-smoke.jtUrxA/wt' and project '/tmp/fm-backend-hc-smoke.jtUrxA/proj' in '/tmp/fm-backend-hc-smoke.jtUrxA/user-home/.claude.json'
+error: could not pre-register Claude workspace trust for /tmp/fm-backend-hc-smoke.jtUrxA/wt; refusing to launch a claude worker that would wedge on the trust dialog; inspect window fm-hclab-smoke-2228405-30231:t2
+error: the replacement agent for hc-control-2228262-26227 could not be launched on claude
+error: hc-control-2228262-26227's agent was stopped but the replacement did not launch; no agent is running, and its work plus the recorded progress note are preserved at /tmp/fm-backend-hc-smoke.jtUrxA/wt
+not ok - control relaunch did not start a replacement in place
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2428101 1795703989 234216
+---
+> ~/.local/state/herdr-core/default/terminals.json 2428101 1795704011 234216
+rc=1

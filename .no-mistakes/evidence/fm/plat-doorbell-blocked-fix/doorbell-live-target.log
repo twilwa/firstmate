@@ -1,0 +1,30 @@
+lab core session fm-hclab-repro-2313078-20547 ready (server pid 2313383)
+== code root: {run-worktree}
+[open key k1] pane root status: {"app":"firstmate-devin","msg":"Needs your decision: pick a or b ","state":"idle","title":"fm-hc-doorbell-2312812-30563"}
+[open key k1] fm-send rc=0 stderr: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[open key k1] doorbells received by agent: 1
+[captain-held] pane root status: {"app":"firstmate-devin","msg":"Needs your decision: tracked by plat-held-1","state":"idle","title":"fm-hc-doorbell-2312812-30563"}
+[captain-held] fm-send rc=0 stderr: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[captain-held] doorbells received by agent: 2
+[program-blocked] pane root status: {"app":"devin","kind":"question","state":"blocked"}
+[program-blocked] adapter verdict=blocked stderr: error: hc send refused fm-hclab-repro-2313078-20547:t1 - the terminal is blocked waiting on input (never forced): {"error":{"hint":"typing would answer its dialog; read its screen first (hc read t1), or --force","kind":"blocked","message":"t1 is blocked (question)"}}
+[program-blocked] fm-send rc=0 stderr: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-send: doorbell not typed: fm-hclab-repro-2313078-20547:t1 reports a blocked status (its program is waiting on a dialog), so its terminal refused input and nothing was typed (never forced); the steer is durably recorded at /tmp/fm-doorbell-repro.VvjxWc/home/state/hc-doorbell-2312812-30563.inbox/003.msg and the watcher will re-ring. Read the pane with fm-peek.sh to see what it is waiting on
+[program-blocked] doorbells received by agent: before=2 after=2
+[agent input log]
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'hc-doorbell-2312812-30563.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'hc-doorbell-2312812-30563.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2428098 1795704104 234020
+---
+> ~/.local/state/herdr-core/default/terminals.json 2428098 1795704150 234049
+teardown-rc=nonzero (tripwire)
+rc=0

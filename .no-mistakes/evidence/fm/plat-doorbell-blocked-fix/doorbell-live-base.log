@@ -1,0 +1,27 @@
+lab core session fm-hclab-repro-2278104-202 ready (server pid 2278419)
+== code root: /tmp/fm-base-src.MRzSYv
+[open key k1] pane root status: {"app":"firstmate-devin","kind":"question","msg":"Needs your decision: pick a or b ","state":"blocked","title":"fm-hc-doorbell-2277865-16245"}
+[open key k1] fm-send rc=0 stderr: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[open key k1] doorbells received by agent: 0
+[captain-held] pane root status: {"app":"firstmate-devin","kind":"question","msg":"Needs your decision: tracked by plat-held-1","state":"blocked","title":"fm-hc-doorbell-2277865-16245"}
+[captain-held] fm-send rc=0 stderr: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[captain-held] doorbells received by agent: 0
+[program-blocked] pane root status: {"app":"devin","kind":"question","state":"blocked"}
+[program-blocked] adapter verdict=unknown stderr: error: hc send refused fm-hclab-repro-2278104-202:t1 - the terminal is blocked waiting on input (never forced): {"error":{"hint":"typing would answer its dialog; read its screen first (hc read t1), or --force","kind":"blocked","message":"t1 is blocked (question)"}}
+[program-blocked] fm-send rc=0 stderr: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[program-blocked] doorbells received by agent: before=0 after=0
+[agent input log]
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2428098 1795704057 234216
+---
+> ~/.local/state/herdr-core/default/terminals.json 2428101 1795704101 234020
+teardown-rc=nonzero (tripwire)
+rc=0
