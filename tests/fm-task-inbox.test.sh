@@ -29,10 +29,17 @@
 #   7. A fire-and-forget record stays outside the ladder, but one whose first
 #      ring did not land gets exactly one retry ring and never escalates. The
 #      retry waits while the worker has an open decision of its own.
+#   8. An hc endpoint that refuses the doorbell because its status is blocked
+#      returns a distinct ring result, never counted as rung, and the
+#      watcher's escalation names the refusal instead of an idle pane.
 set -u
 
 # shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
+# shellcheck source=tests/hc-fake-fixture.sh
+. "$(dirname "${BASH_SOURCE[0]}")/hc-fake-fixture.sh"
+# Read by the sourced hc fixture.
+export FM_TEST_ROOT=$ROOT
 
 WATCH="$ROOT/bin/fm-watch.sh"
 TMP_ROOT=$(fm_test_tmproot fm-task-inbox)
@@ -269,6 +276,33 @@ test_doorbell_rejects_terminal_controls() {
     [ -f "$rec" ] || fail "rejecting a $label inbox name removed the durable record"
   done
   pass "inbox: terminal-control inbox names are rejected without typing"
+}
+
+# fm_task_inbox_ring against an hc terminal that refuses input because its
+# program's status is blocked: nothing is typed, the refusal is never forced,
+# and the distinct return code 4 keeps it from reading as rung.
+test_ring_reports_a_blocked_refusal() {
+  local state rec rc
+  setup_case ring-blocked
+  state="$D/state"
+  mkdir -p "$state"
+  write_terminal "$D" t1 live fm-t1 "$(hometag_of)" claude claude
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  printf '9\n' > "$D/send.exit"
+  printf 'blocked\n' > "$D/send.kind"
+  rc=0
+  FM_STATE_OVERRIDE="$state" hc_shell '. "'"$ROOT"'/bin/fm-task-inbox-lib.sh"; fm_task_inbox_ring hc fmtest:t1 "'"$rec"'" fm-t1' \
+    2> "$D/ring.err" || rc=$?
+  [ "$rc" = 4 ] || fail "a blocked refusal should return 4 from the ring, got $rc: $(cat "$D/ring.err")"
+  assert_equals "$(grep -c $'\x1fsend\x1f' "$D/log")" 1 "a refused doorbell is tried once"
+  assert_not_contains "$(cat "$D/log")" --force "a refused doorbell is never forced"
+  [ -f "$rec" ] || fail "a refused doorbell must leave the durable record in place"
+  rm -f "$D/send.exit" "$D/send.kind"
+  rc=0
+  FM_STATE_OVERRIDE="$state" hc_shell '. "'"$ROOT"'/bin/fm-task-inbox-lib.sh"; fm_task_inbox_ring hc fmtest:t1 "'"$rec"'" fm-t1' \
+    2> "$D/ring.err" || rc=$?
+  [ "$rc" = 0 ] || fail "an accepting hc terminal should be rung, got $rc: $(cat "$D/ring.err")"
+  pass "inbox: an hc terminal refusing input on a blocked status is a distinct ring result, never rung"
 }
 
 # fm_task_inbox_ring against a backend whose agent classifies dead or missing:
@@ -1321,6 +1355,40 @@ test_watcher_escalates_once_after_budget() {
   pass "watcher: a spent ring budget emits exactly one ordinary stale wake for recovery"
 }
 
+# On hc, a pane whose program's status is blocked refuses every doorbell
+# before a byte is typed. The ladder still spends its budget, and the
+# escalation names the refusal instead of blaming an idle pane.
+test_watcher_names_a_blocked_refusal() {
+  local dir state out pid rec tag
+  dir=$(setup_watch_case hc-refused)
+  state="$dir/state"; out="$dir/watch.out"
+  make_hc_fakebin "$dir" >/dev/null
+  tag=$(FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source hc; fm_backend_hometag' _ "$ROOT")
+  write_terminal "$dir" t1 live fm-t1 "$tag" claude claude
+  fm_write_meta "$dir/state/t1.meta" "window=fmtest:t1" "kind=ship" "harness=grok" \
+    "backend=hc" "hc_session=fmtest" "hc_terminal=t1"
+  printf '9\n' > "$dir/send.exit"
+  printf 'blocked\n' > "$dir/send.kind"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  age_path "$rec"
+  watch_bg "$state" "$dir/fakebin" "$out" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$dir/fakebin/hc" HC_SESSION=fmtest FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    FM_TASK_INBOX_RING_MAX=2
+  pid=$!
+  wait_watcher_gone "$pid" 200 \
+    || { kill "$pid" 2>/dev/null; fail "the watcher never escalated a refused ring budget"; }
+  assert_equals "$(grep -c $'\x1fsend\x1f' "$dir/log")" 2 "each due ring tried the refused doorbell once"
+  assert_not_contains "$(cat "$dir/log")" --force "a refused doorbell is never forced"
+  [ "$(grep -cF 'unread firstmate instruction' "$state/.wake-queue" 2>/dev/null || true)" = 1 ] \
+    || fail "the refused budget should surface exactly one stale wake:"$'\n'"$(cat "$state/.wake-queue" 2>/dev/null)"
+  grep -qF 'refused input on every attempt' "$state/.wake-queue" \
+    || fail "the stale wake should name the refusal:"$'\n'"$(cat "$state/.wake-queue")"
+  grep -qF 'idle pane' "$state/.wake-queue" \
+    && fail "a refused doorbell must not be blamed on an idle pane:"$'\n'"$(cat "$state/.wake-queue")"
+  [ -f "$rec" ] || fail "the durable record must survive the refusal"
+  pass "watcher: an hc refusal on a blocked status escalates naming the refusal, never as rung"
+}
+
 test_watcher_dead_pane_escalates_once_without_ringing() {
   local dir state out log pid rec
   dir=$(setup_watch_case dead-pane)
@@ -1376,6 +1444,7 @@ test_write_is_durable_and_exact
 test_doorbell_is_a_shell_noop
 test_doorbell_rejects_terminal_controls
 test_ring_skips_dead_agent
+test_ring_reports_a_blocked_refusal
 test_ring_submits_its_own_stuck_doorbell
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_prefilters_history
@@ -1421,5 +1490,6 @@ test_watcher_pays_fire_and_forget_retry_once
 test_watcher_holds_retry_while_the_worker_decides
 test_watcher_retry_keeps_a_newer_mark
 test_watcher_escalates_once_after_budget
+test_watcher_names_a_blocked_refusal
 test_watcher_dead_pane_escalates_once_without_ringing
 test_watcher_dead_pane_ignores_stale_busy_state

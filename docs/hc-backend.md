@@ -109,7 +109,8 @@ An input, capture, or close that carries the task label refuses a terminal whose
   `bin/fm-spawn.sh` pastes and submits the spawn launch line with `hc send` and consumes the Enter that follows it.
 - Submitting a message uses one bounded `hc send --wait`.
   A started turn or a still-working wait confirms it natively; otherwise the adapter falls back to the composer screen, with Enter retries only for a proven pending composer.
-  A blocked terminal (exit 9) returns `unknown` without typing or retrying and is never forced.
+  A blocked terminal (exit 9) returns the distinct verdict `blocked` without typing or retrying and is never forced; the steering doorbell reports that refusal rather than counting it as rung.
+  Because hc refuses input to a blocked pane, the OSC 7501 worker status bridge never publishes Firstmate's own open decisions, blockers, or captain holds as `blocked` on hc; [`bin/fm-osc7501.sh`](../bin/fm-osc7501.sh)'s header owns that mapping.
 - hc reports one foreground process per terminal.
   When that process is a launcher, the adapter also reads the rest of its process group from `ps`, which works only for terminals on the local machine.
   An unreadable group cannot prove the agent stopped.

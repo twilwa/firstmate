@@ -252,9 +252,12 @@ test_send_text_submit_confirms_through_send_wait() {
   assert_contains "$log" $'\x1f--\x1fdeploy now' "the text must arrive after the -- delimiter"
   printf '9\n' > "$D/send.exit"
   printf 'blocked\n' > "$D/send.kind"
-  out=$(hc_shell 'fm_backend_hc_send_text_submit fmtest:t1 "deploy now" 3 0.4 0 fm-a1' 2>&1)
-  assert_contains "$out" unknown "a blocked terminal is unknown, never forced"
-  assert_contains "$out" blocked "the refusal must name the blocked cause"
+  : > "$D/log"
+  out=$(hc_shell 'fm_backend_hc_send_text_submit fmtest:t1 "deploy now" 3 0.4 0 fm-a1' 2> "$D/blocked.err")
+  assert_equals "$out" blocked "a blocked terminal's refusal is the distinct blocked verdict, nothing typed"
+  assert_contains "$(cat "$D/blocked.err")" "never forced" "the refusal diagnostic still names the blocked cause"
+  assert_equals "$(grep -c $'\x1fsend\x1f' "$D/log")" 1 "a refused send is never retried"
+  assert_not_contains "$(cat "$D/log")" --force "a refused send is never forced"
   printf '11\n' > "$D/send.exit"
   out=$(hc_shell 'fm_backend_hc_send_text_submit fmtest:t1 "deploy now" 3 0.4 0 fm-a1')
   assert_equals "$out" send-failed "a finished terminal is send-failed"

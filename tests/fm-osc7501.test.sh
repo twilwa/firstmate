@@ -431,6 +431,61 @@ t_unknown_activity_leaves_native_root() {
   pass "shared root: unknown activity never overwrites a native record, live or at exit"
 }
 
+# On hc, herdr-core refuses every send while a pane's root status is
+# blocked, so firstmate's own ledger-derived waits (open needs-decision, open
+# blocked, latest captain-held) never publish blocked there: they keep their
+# message with the activity's own non-gating state, so firstmate's doorbell
+# still reaches the worker.
+hc_last_record() { # <cap> -> "<state> <decoded msg>" of the newest record
+  local rec msg
+  rec=$(tr '\033' '\n' <"$1" | grep -o '7501;state=[^\\]*' | tail -n 1)
+  msg=$(printf '%s' "$rec" | grep -o 'msg=[A-Za-z0-9+/=]*' | cut -d= -f2-)
+  printf '%s %s' "$(printf '%s' "$rec" | grep -o 'state=[a-z]*' | cut -d= -f2)" \
+    "$(printf '%s' "$msg" | base64 -d 2>/dev/null)"
+}
+hc_wait_record() { # <cap> <state> <msg-substring> <tenths>
+  local i=0 got
+  while [ "$i" -lt "$4" ]; do
+    got=$(hc_last_record "$1")
+    case "$got" in "$2 "*"$3"*) return 0 ;; esac
+    sleep 0.1
+    i=$((i + 1))
+  done
+  echo "# last record: $got" >&2
+  return 1
+}
+t_hc_ledger_waits_never_gate() {
+  local d=$TMP_ROOT/hcledger
+  mkhome "$d"
+  : >"$d/cap"
+  sleep 300 &
+  local holder=$!
+  busy_rec "$d/state" t40 idle
+  printf 'needs-decision [at=1] [key=k1]: ship it?\n' >"$d/state/t40.status"
+  env "${CLEAN_UNSET[@]}" FM_OSC7501_TTY="$d/cap" FM_OSC7501_INTERVAL=1 \
+    bash "$SCRIPT" watch --task t40 --kind ship --state "$d/state" --harness opencode \
+    --backend hc --parent "$holder" &
+  local wpid=$!
+  hc_wait_record "$d/cap" idle 'Needs your decision: ship it?' 60 \
+    || fail "hc: an idle worker's open decision is not idle with its message"
+  busy_rec "$d/state" t40 busy
+  hc_wait_record "$d/cap" working 'Needs your decision: ship it?' 60 \
+    || fail "hc: a busy worker's open decision is not working with its message"
+  busy_rec "$d/state" t40 idle
+  printf 'resolved [at=2] [key=k1]: yes\nblocked [at=3] [key=b1]: need the staging token\n' >>"$d/state/t40.status"
+  hc_wait_record "$d/cap" idle 'Blocked: need the staging token' 60 \
+    || fail "hc: an open blocker is not idle with its message"
+  printf 'resolved [at=4] [key=b1]: here\ncaptain-held [at=5]: tracked by plat-held-1\n' >>"$d/state/t40.status"
+  hc_wait_record "$d/cap" idle 'Needs your decision: tracked by plat-held-1' 60 \
+    || fail "hc: a captain-held line is not idle with its message"
+  kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null || true
+  wait_gone "$wpid" || fail "hc: the watcher did not exit"
+  wait "$wpid" 2>/dev/null || true
+  ! grep -q 'state=blocked' "$d/cap" \
+    || fail "hc: the bridge published firstmate's own ledger as an input-gating blocked"
+  pass "hc: ledger-derived waits keep their message without an input-gating blocked"
+}
+
 # Once activity turns unknown the bridge never holds or heartbeats its last
 # record, but while that last write is still its own the durable signals keep
 # it honest: a still-open decision stays blocked without rewriting, a
@@ -1211,4 +1266,5 @@ fm_test_run \
   t_paused_reads_from_busy_state \
   t_captain_hold_stays_question_blocked \
   t_retire_waits_for_slow_reporter \
-  t_hc_terminal_with_inherited_herdr_markers
+  t_hc_terminal_with_inherited_herdr_markers \
+  t_hc_ledger_waits_never_gate

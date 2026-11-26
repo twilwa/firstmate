@@ -46,6 +46,11 @@
 #     blocked             -> blocked kind=permission (kind=auth when the note
 #                            names a credential)
 #   otherwise the latest status line is captain-held -> blocked kind=question
+#   On backend=hc these three ledger-derived waits keep their message but
+#   never publish blocked: herdr-core refuses every send to a pane whose root
+#   status is blocked (a dialog a person must answer), so a blocked record
+#   would refuse firstmate's own doorbell. They read working while busy and
+#   idle otherwise; Rex and Ghostty do not gate input and keep blocked.
 #   otherwise busy -> working
 #   otherwise the latest status line, when it is terminal:
 #     failed              -> error
@@ -57,7 +62,8 @@
 #   has written a record of its own, though, the durable signals alone keep
 #   it honest: they fold the same way with idle activity and the result is
 #   written once per change - an open decision or standing captain hold
-#   still reads blocked, a fresh terminal result reads done/error, and
+#   still reads blocked (on hc, idle with its message), a fresh terminal
+#   result reads done/error, and
 #   anything else parks at idle - so a working/blocked record cannot
 #   outlive the signals that produced it. A done/failed line only counts
 #   when it was appended to the status file after the last reading that
@@ -300,6 +306,22 @@ osc_mark() {
   printf '%s' "${n:-0}"
 }
 
+# osc_ledger_wait <kind> <msg> <act> <backend> sets the record for one of
+# firstmate's own ledger-derived waits: blocked with <kind> everywhere but hc,
+# where herdr-core refuses every send to a blocked pane - firstmate's own
+# doorbell included - so the same message rides the activity's non-gating
+# state instead (working while a turn is running, otherwise idle).
+osc_ledger_wait() {
+  W_MSG=$2
+  if [ "$4" = hc ]; then
+    W_KIND=
+    if [ "$3" = busy ]; then W_STATE=working; else W_STATE=idle; fi
+    return 0
+  fi
+  W_STATE=blocked
+  W_KIND=$1
+}
+
 # osc_plan sets W_STATE, W_KIND, W_MSG from the task's signals and its
 # activity. act=unknown folds the same signals as idle - no unproven working
 # claim - except that a terminal line then proves the worker finished only
@@ -309,8 +331,8 @@ osc_mark() {
 # superseded it is still in flight. Append order, unlike a whole-second
 # stamp, orders a line against a reading in the same second. 0 means no
 # line preceded any busy reading.
-osc_plan() { # <task> <kind> <state> <busy|idle|unknown> [busy-mark]
-  local task=$1 kind=$2 state_dir=$3 act=$4 busy_mark=${5:-0} file line verb note held at
+osc_plan() { # <task> <kind> <state> <busy|idle|unknown> [busy-mark] [backend]
+  local task=$1 kind=$2 state_dir=$3 act=$4 busy_mark=${5:-0} backend=${6:-} file line verb note held at
   file="$state_dir/$task.status"
   W_STATE=
   W_KIND=
@@ -321,16 +343,13 @@ osc_plan() { # <task> <kind> <state> <busy|idle|unknown> [busy-mark]
   note=$(printf '%s' "$line" | cut -f3- | tr '\t\r\n' '   ')
   case "$verb" in
     needs-decision)
-      W_STATE=blocked
-      W_KIND=question
-      W_MSG="Needs your decision: $note"
+      osc_ledger_wait question "Needs your decision: $note" "$act" "$backend"
       return 0
       ;;
     blocked)
-      W_STATE=blocked
       W_KIND=permission
       if printf '%s' "$note" | grep -Eiq "$FM_OSC7501_AUTH_RE"; then W_KIND=auth; fi
-      W_MSG="Blocked: $note"
+      osc_ledger_wait "$W_KIND" "Blocked: $note" "$act" "$backend"
       return 0
       ;;
   esac
@@ -339,9 +358,7 @@ osc_plan() { # <task> <kind> <state> <busy|idle|unknown> [busy-mark]
   note=$(status_line_note "$line" 2>/dev/null) || note=
   note=$(printf '%s' "$note" | tr '\t\r\n' '   ')
   if [ "$verb" = "$held" ]; then
-    W_STATE=blocked
-    W_KIND=question
-    W_MSG="Needs your decision: $note"
+    osc_ledger_wait question "Needs your decision: $note" "$act" "$backend"
     return 0
   fi
   if [ "$act" = busy ]; then
@@ -439,7 +456,7 @@ osc_watch() { # --task --kind --state --harness [--backend] [--target] [--owned 
     fi
     if act=$(osc_activity "$WATCH_HARNESS" "$WATCH_TASK" "$WATCH_STATE" "$WATCH_BACKEND" "$WATCH_TARGET"); then
       [ "$act" = busy ] && busy_mark=$(osc_mark "$WATCH_STATE/$WATCH_TASK.status")
-      osc_plan "$WATCH_TASK" "$WATCH_KIND" "$WATCH_STATE" "$act"
+      osc_plan "$WATCH_TASK" "$WATCH_KIND" "$WATCH_STATE" "$act" 0 "$WATCH_BACKEND"
       seq=$(osc_seq "$W_STATE" "$W_KIND" "$WATCH_TITLE" "$W_MSG")
       if [ "$seq" != "$last" ]; then
         printf '%s' "$seq" >&3 2>/dev/null
@@ -462,7 +479,7 @@ osc_watch() { # --task --kind --state --harness [--backend] [--target] [--owned 
       # has to be appended after the last reading that proved a turn was
       # running.
       if [ -n "$last" ]; then
-        osc_plan "$WATCH_TASK" "$WATCH_KIND" "$WATCH_STATE" unknown "$busy_mark"
+        osc_plan "$WATCH_TASK" "$WATCH_KIND" "$WATCH_STATE" unknown "$busy_mark" "$WATCH_BACKEND"
         seq=$(osc_seq "$W_STATE" "$W_KIND" "$WATCH_TITLE" "$W_MSG")
         if [ "$seq" != "$last" ]; then
           printf '%s' "$seq" >&3 2>/dev/null

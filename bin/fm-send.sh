@@ -55,7 +55,9 @@
 # On pane backends, the composer pre-check before the ring is ADVISORY only: when
 # the composer visibly holds pending text the ring is skipped with a notice and
 # the watcher re-rings an ordinary record later; no composer verdict is
-# delivery proof on this plane, and a failed ring never fails the send.
+# delivery proof on this plane, and a failed ring never fails the send. A ring
+# the endpoint refused because its status is blocked (hc) is reported with its
+# own notice, never as rung.
 #
 # TYPED - the LOCAL text submitted directly instead of through the inbox. On a
 # pane backend, a harness-native invocation (a leading "/", or a leading "$" to
@@ -1379,7 +1381,7 @@ else
     if [ -n "$FIRE_AND_FORGET_ID" ] \
       && [ -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/wait-no-turns" ]; then
       case "$ring_rc" in
-      1|2)
+      1|2|4)
         if fm_task_inbox_mark_retry "$STATE" "$INBOX_TASK_ID" "$INBOX_RECORD"; then
           ring_retry="the watcher will ring it once more"
         else
@@ -1392,6 +1394,7 @@ else
     1) echo "fm-send: doorbell skipped (composer visibly holds pending text); the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
     2) echo "fm-send: doorbell did not reach $T; the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
     3) echo "fm-send: doorbell not typed because the agent in $T has exited; the steer is durably recorded at $INBOX_RECORD for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane" >&2 ;;
+    4) echo "fm-send: doorbell not typed: $T reports a blocked status (its program is waiting on a dialog), so its terminal refused input and nothing was typed (never forced); the steer is durably recorded at $INBOX_RECORD and $ring_retry. Read the pane with fm-peek.sh to see what it is waiting on" >&2 ;;
     esac
     exit 0
   fi

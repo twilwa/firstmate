@@ -27,6 +27,8 @@
 #  10. An empty or whitespace-only text steer is refused before anything is
 #      marked, recorded, or typed - on the marked secondmate path that means
 #      no marker-only record and no pending-reply expectation.
+#  11. A doorbell an hc endpoint refuses because its status is blocked is
+#      reported with its own notice, and the steer is still durably sent.
 # Every case below that passes a literal `$...` message quotes it on purpose
 # (the point is sending an unexpanded `$` line), so SC2016 is disabled.
 # shellcheck disable=SC2016
@@ -36,6 +38,10 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-marker-lib.sh"
+# Read by the sourced hc fixture.
+export FM_TEST_ROOT=$ROOT
+# shellcheck source=tests/hc-fake-fixture.sh
+. "$ROOT/tests/hc-fake-fixture.sh"
 
 SEND="$ROOT/bin/fm-send.sh"
 
@@ -240,6 +246,35 @@ test_failed_ring_is_still_sent() {
   assert_contains "$(cat "$err")" "watcher will re-ring" \
     "the failed-ring notice should point at the re-ring"
   pass "fm-send inbox: a failed doorbell is still a durably sent steer"
+}
+
+# An hc terminal whose program's status is blocked refuses input before a
+# byte is typed. The steer is still durably sent (exit 0), but the refused
+# doorbell is reported loudly instead of passing for a rung one.
+test_blocked_refusal_is_reported() {
+  local dir err rc fb tag
+  dir="$TMP_ROOT/hcblocked"
+  mkdir -p "$dir/home/state"
+  fb=$(make_hc_fakebin "$dir")
+  tag=$(FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$dir/home" bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source hc; fm_backend_hometag' _ "$ROOT")
+  write_terminal "$dir" t1 live fm-t1 "$tag" claude claude
+  fm_write_meta "$dir/home/state/t1.meta" "window=fmtest:t1" "kind=ship" "harness=claude" \
+    "backend=hc" "hc_session=fmtest" "hc_terminal=t1"
+  printf '9\n' > "$dir/send.exit"
+  printf 'blocked\n' > "$dir/send.kind"
+  err="$dir/send.err"
+  rc=0
+  env PATH="$fb:$PATH" FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" HC_SESSION=fmtest \
+    FM_ROOT_OVERRIDE="$dir/home" FM_HOME="$dir/home" FM_SEND_SETTLE=0 \
+    "$SEND" t1 "steer a blocked program" >/dev/null 2>"$err" || rc=$?
+  expect_code 0 "$rc" "a refused doorbell is still a durably sent steer"$'\n'"$(cat "$err")"
+  [ -f "$dir/home/state/t1.inbox/001.msg" ] || fail "the steer was not recorded"
+  assert_contains "$(cat "$err")" "doorbell not typed" "fm-send names the refused doorbell"
+  assert_contains "$(cat "$err")" "blocked" "fm-send names the blocked status that refused it"
+  assert_contains "$(cat "$err")" "watcher will re-ring" "the refusal notice points at the re-ring"
+  assert_equals "$(grep -c $'\x1fsend\x1f' "$dir/log")" 1 "the refused doorbell was tried once"
+  assert_not_contains "$(cat "$dir/log")" --force "the refused doorbell was never forced"
+  pass "fm-send inbox: a doorbell refused on a blocked status is reported, and the steer stays durably sent"
 }
 
 # Contract: a fire-and-forget record stays outside the re-ring ladder, so a
@@ -548,6 +583,7 @@ test_multiline_steer_is_legal
 test_resend_enqueues_new_sequence
 test_pending_composer_skips_ring_advisorily
 test_failed_ring_is_still_sent
+test_blocked_refusal_is_reported
 test_fire_and_forget_unlanded_ring_owes_one_retry
 test_fire_and_forget_retry_stays_off_without_the_flag
 test_harness_invocations_stay_typed
