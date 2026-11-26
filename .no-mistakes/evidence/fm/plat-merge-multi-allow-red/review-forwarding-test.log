@@ -1,0 +1,6 @@
+ok - the review wrapper applies each named red-check waiver and forwards guarded options
+SELECTED-PASSED
+
+real	0m12.443s
+user	0m3.683s
+sys	0m8.750s

@@ -1,0 +1,40 @@
+15-  fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch]
+16-    [--expected-head <full-sha>]
+17:    [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
+18-    [-- <forge merge flags>]
+19-  fm-pr-merge.sh -h | --help
+20-
+21-Merge method on GitHub defaults to --squash when the caller passes none of
+22---squash, --merge, --rebase, or --method after the optional -- separator.
+23-With the opt-in config/pr-squash-summary presence flag, a GitHub squash merge
+24-whose caller passed no subject or body takes the PR title and the body's
+25-"## What Changed" section as its commit text; github_add_squash_summary owns it.
+--
+71-bin/fm-pr-review.sh merge, and refuses a missing option value (empty or
+72-starting with --) rather than consuming the next argument. An attended
+73:--allow-red <check-name> may be repeated for up to four distinct names, each
+74-as a separate argument; a missing, duplicate, or fifth name refuses before
+75-any forge call. Each occurrence waives only a check whose whole reported name
+76-equals it, every check not named must still be green, and the head is still
+77-bound. An accepted GitHub merge records its waived names, in order, as a JSON
+78-array in the task metadata's merge_allow_red= line. Its single-use
+79-twin, an attended --allow-missing <check-name>, follows the same rules for one
+80-required check that has not reported: it waives only that exact name, still
+81-requires every other required check to have reported and every check to be
+82:green unless separately waived by --allow-red. It matches the required
+83-context name even for an app-bound requirement, and never waives an unreadable
+84-required source or producer read. Both are
+85-refused while the away-posture record exists, and neither
+86-applies on GitLab, where a merge already requires the head pipeline to have
+87-succeeded, or on Forgejo, where a merge already requires the head's combined
+88-commit status to have succeeded. After gh returns success, GitHub's live
+89-state is read back and
+90-accepted only when the pull request is merged or in the merge queue. gh's
+--
+244-away-record read, or a captain hold.
+245-
+246:Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
+247-The repository policy in .github/firstmate-review-policy.json may set
+248-require_reviewed_head_handoff to true to require FM_PR_REVIEW_EXPECTED_HEAD
+249-from fm-pr-review.sh for GitHub merges.
+250-When supplied, the live pre-merge head must equal that reviewed head, so a

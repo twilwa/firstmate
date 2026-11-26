@@ -1,0 +1,32 @@
+ok - fm-pr-merge waives each separately named red check and still refuses an unnamed one
+ok - fm-pr-merge rewrites the waived-check record only when a merge waives or clears one
+ok - fm-pr-merge refuses a missing --allow-red name instead of consuming the next option or separator
+ok - fm-pr-merge matches --allow-red against whole reported check names
+ok - the review wrapper records exactly the waivers fm-pr-merge applies and refuses a malformed prefix first
+ok - fm-pr-merge keeps single-hyphen waiver names as exact data in matching and in both records
+ok - while away neither review-wrapper entry point touches the ledger for a waiver and the guard refuses a waiver-bearing or malformed decision
+ok - a signal while merge-decision stages a waiver decision ends the run with nothing published and no lock held
+ok - a signal while merge-decision acquires the away lock for a waiver ends the run and leaves no lock
+ok - fm-pr-merge accepts only distinct, separately named red-check waivers, at most four
+ok - fm-pr-merge rechecks away presence before an attended red merge
+ok - fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check
+ok - fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure
+ok - fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included
+ok - while the away-posture record exists a reviewed green merge lands under away authority, yolo or not, and attended merges stay untagged
+ok - while away a GitHub merge needs the review ledger's recorded merge decision for the live head, and attended direct merges are unchanged
+ok - while away the merge wrapper lands a ledger that passes every gate at its reviewed head and refuses one without the exact-model attestation
+ok - the away record does not bypass red checks, and a recorded pr= must match the URL
+ok - fm-pr-merge refuses --allow-red on GitLab
+ok - fm-pr-merge refuses --allow-red on Forgejo
+ok - fm-pr-merge --allow-missing waives only its named unreported check
+ok - fm-pr-merge --allow-missing is single use, and attended-only and GitHub-only like --allow-red
+ok - fm-pr-merge refuses when a required check from branch protection or a ruleset never reported
+ok - fm-pr-merge reports a red check and an unreported required check together with every other failure
+ok - fm-pr-merge refuses when the required checks cannot be read, and tells a plan without rules apart
+ok - fm-pr-merge keeps draft, hold, review, check, authority, and identity refusals when --expected-head matches
+ok - fm-pr-merge records pr= and pr_head= for a verified GitHub merge
+ALL-SELECTED-PASSED
+
+real	13m5.715s
+user	3m45.877s
+sys	8m52.662s
