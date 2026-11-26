@@ -251,13 +251,13 @@ SH
     roots+=(tests/hidden.sh)
   fi
   for attempt in 1 2; do
-    FM_LINT_ROOT_SECONDS=2 FM_LINT_ROOT_GRACE=1 \
+    FM_LINT_ROOT_SECONDS=3 FM_LINT_ROOT_GRACE=1 \
       FM_TEST_SC_SLOW_LIST="$tmp/slow-list" FM_TEST_SC_OOM_LIST="$tmp/oom-list" \
       fm_lint_cache_run "$tmp" "${roots[@]}"
     [ "$LINT_RC" -ne 0 ] || fail "run $attempt passed a root that timed out"$'\n'"$LINT_OUT"
     assert_contains "$LINT_OUT" "reason=timeout" "run $attempt did not end the slow root on its deadline"
-    assert_contains "$LINT_OUT" "tests/oom.sh hit the memory ceiling with --external-sources" \
-      "run $attempt did not take the memory fallback"
+    assert_contains "$LINT_OUT" "tests/oom.sh hit the memory ceiling with --external-sources (reason=memory rc=251); retried without it; fallback passed with cross-file codes excluded" \
+      "run $attempt did not pass the root through the memory fallback"
     fm_lint_cache_linted "$tmp" "${roots[@]:1}" \
       || fail "run $attempt replayed a root whose verdict was never a recorded pass"$'\n'"$(cat "$tmp/sc.log")"$'\n'"$LINT_OUT"
   done
