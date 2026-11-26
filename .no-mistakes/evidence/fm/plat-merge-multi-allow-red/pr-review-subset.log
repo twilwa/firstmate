@@ -1,0 +1,3 @@
+=== test_merge_forwards_guarded_options_to_the_merge_parser
+ok - the review wrapper applies each named red-check waiver and forwards guarded options
+=== SUBSET DONE

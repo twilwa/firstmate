@@ -1,0 +1,51 @@
+=== test_allow_red_waives_each_named_check
+ok - fm-pr-merge waives each separately named red check and still refuses an unnamed one
+=== test_allow_red_record_rewrites_metadata_only_when_waivers_change
+ok - fm-pr-merge rewrites the waived-check record only when a merge waives or clears one
+=== test_allow_red_missing_value_never_consumes_an_option
+ok - fm-pr-merge refuses a missing --allow-red name instead of consuming the next option or separator
+=== test_allow_red_matches_whole_names_across_line_breaks
+ok - fm-pr-merge matches --allow-red against whole reported check names
+=== test_review_merge_records_only_the_waivers_the_guard_applies
+ok - the review wrapper records exactly the waivers fm-pr-merge applies and refuses a malformed prefix first
+=== test_allow_red_single_hyphen_names_stay_data
+ok - fm-pr-merge keeps single-hyphen waiver names as exact data in matching and in both records
+=== test_away_posture_publishes_and_accepts_no_waiver_decision
+ok - while away neither review-wrapper entry point touches the ledger for a waiver and the guard refuses a waiver-bearing or malformed decision
+=== test_allow_red_requires_distinct_separate_names
+ok - fm-pr-merge accepts only distinct, separately named red-check waivers, at most four
+=== test_allow_red_is_refused_while_away
+ok - fm-pr-merge rechecks away presence before an attended red merge
+=== test_github_red_checks_refuse_and_allow_red_waives_named
+ok - fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check
+=== test_allow_red_still_waives_only_the_current_failure
+ok - fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure
+=== test_quiet_record_keeps_merges_attended
+ok - fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included
+=== test_away_record_permits_a_reviewed_green_merge_under_away_authority
+ok - while the away-posture record exists a reviewed green merge lands under away authority, yolo or not, and attended merges stay untagged
+=== test_away_github_merge_requires_the_review_ledger_merge_decision
+ok - while away a GitHub merge needs the review ledger's recorded merge decision for the live head, and attended direct merges are unchanged
+=== test_away_record_does_not_bypass_red_or_identity
+ok - the away record does not bypass red checks, and a recorded pr= must match the URL
+=== test_allow_red_refused_on_gitlab
+ok - fm-pr-merge refuses --allow-red on GitLab
+=== test_allow_red_refused_on_forgejo
+ok - fm-pr-merge refuses --allow-red on Forgejo
+=== test_allow_missing_waives_only_the_named_unreported_check
+ok - fm-pr-merge --allow-missing waives only its named unreported check
+=== test_allow_missing_follows_the_allow_red_rules
+ok - fm-pr-merge --allow-missing is single use, and attended-only and GitHub-only like --allow-red
+=== test_required_check_that_never_reported_refuses
+ok - fm-pr-merge refuses when a required check from branch protection or a ruleset never reported
+=== test_red_and_unreported_checks_are_reported_together
+ok - fm-pr-merge reports a red check and an unreported required check together with every other failure
+=== test_unreadable_required_set_refuses
+ok - fm-pr-merge refuses when the required checks cannot be read, and tells a plan without rules apart
+=== test_verified_merge_records_pr_and_head
+ok - fm-pr-merge records pr= and pr_head= for a verified GitHub merge
+=== SUBSET DONE
+
+real	12m23.189s
+user	3m31.822s
+sys	8m25.297s
