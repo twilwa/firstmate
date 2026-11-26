@@ -19,14 +19,15 @@
 #     trusted; any other disables the cache (state=disabled);
 #   - the root's transitive source closure. A small shell lexer finds
 #     `source` and `.` only in command position (the first word of a simple
-#     command after any assignments and redirections; quoted text, heredoc
-#     bodies, comments, case patterns, and other commands' arguments are not
-#     commands, because ShellCheck does not follow them either). Each source
-#     command must be `source|. <literal>` alone on its line, with a literal
-#     word that is bare, single-quoted, or double-quoted without expansions,
-#     or must sit directly under comment lines carrying a literal
-#     `# shellcheck source=` directive, which ShellCheck applies instead of
-#     the argument. Every `source=` and `source-path=` value must be literal
+#     command after any assignments and redirections; quoted text,
+#     quoted-delimiter heredoc bodies, comments, case patterns, and other
+#     commands' arguments are not commands, because ShellCheck does not follow
+#     them either). Each source command must be `source|. <literal>` alone on
+#     its line, with a literal word that is bare, single-quoted, or
+#     double-quoted without expansions, or must sit directly under comment
+#     lines carrying a literal `# shellcheck source=` directive, which
+#     ShellCheck applies instead of the argument, with no ;, &, ;;-type
+#     separator or ) before it on its line. Every `source=` and `source-path=` value must be literal
 #     too. SCRIPTDIR expands only as an exact leading path component, with the
 #     raw literal kept. Candidates are resolved against the working directory
 #     (absolute paths also below it, as ShellCheck does), the root's
@@ -39,7 +40,9 @@
 #   A root is uncacheable, and is linted every run, whenever the key cannot be
 #   proven complete: any source command or directive outside that grammar,
 #   anything the lexer cannot delimit (an unterminated quote, substitution,
-#   here-document, or case), a -P or --source-path flag, an unreadable closure
+#   here-document, or case), any construct it does not model (a parenthesis
+#   inside a command substitution, the function or coproc keyword, or a
+#   command substitution in an unquoted here-document body), a -P or --source-path flag, an unreadable closure
 #   file, a missing --norc, or an unreadable root. Unknown never means no
 #   dependency.
 #
@@ -187,19 +190,16 @@ sub directive_values {
 # A small shell lexer that finds `source` and `.` only in command position:
 # the first word of a simple command after any assignments and redirections,
 # where simple commands start at a line start, ;, &, &&, ||, |, |&, (, {,
-# $(, a backquote, or a reserved word. Quoted text, heredoc bodies, comments,
-# case patterns, and arguments of other commands are never commands. Each
-# source command must be `source|. <literal>` alone on its line (an optional
-# trailing comment aside); any other form, and anything the lexer cannot
-# delimit, makes the file unprovable. State lives in %L for one file.
+# $(, a backquote, or a reserved word. Quoted text, quoted-delimiter heredoc
+# bodies, comments, case patterns, and arguments of other commands are never
+# commands. Each source command must be `source|. <literal>` alone on its line
+# (an optional trailing comment aside); any other form, any construct the
+# lexer does not model, and anything it cannot delimit makes the file
+# unprovable. State lives in %L for one file.
 our %L;
 
 sub lex_fail { $L{problem} = "$L{path} near line " . line_of($L{i}) . " has $_[0]" if $L{problem} eq ''; $L{i} = length $L{s} }
 sub line_of { my $p = $_[0]; $p = length $L{s} if $p > length $L{s}; return (substr($L{s}, 0, $p) =~ tr/\n//) + 1 }
-
-# A whole-line source directive covers only the next and-or list at its own
-# nesting depth; $L{pending} is the lexer's depth relative to that list.
-sub nest { return unless defined $L{pending}; $L{pending} += $_[0]; undef $L{pending} if $L{pending} < 0 }
 
 sub directive_comment {
   my ($comment) = @_;
@@ -316,16 +316,16 @@ sub expansion {
       local $L{s} = $inner;
       local $L{i} = 0;
       local $L{heredocs} = [];
-      nest(1);
+      local $L{pending} = $L{pending};
+      local $L{sub} = 1;
       lex_list('');
-      nest(-1);
     }
     $L{i} = $k + 1;
     return;
   }
   my $two = substr($s, $L{i}, 3);
   if ($two eq '$((') { $L{i}++; return skip_balanced('(', ')') }
-  if (substr($s, $L{i}, 2) eq '$(') { $L{i} += 2; nest(1); lex_list(')'); nest(-1); return }
+  if (substr($s, $L{i}, 2) eq '$(') { $L{i} += 2; local $L{pending} = $L{pending}; local $L{sub} = 1; lex_list(')'); return }
   if (substr($s, $L{i}, 2) eq '${') { $L{i} += 2; return braced() }
   if (substr($s, $L{i} + 1) =~ /\A([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?\$!-])/) { $L{i} += 1 + length $1; return }
   $L{i}++;
@@ -358,7 +358,7 @@ sub skip_blank {
 sub heredoc_bodies {
   my $s = $L{s};
   while (my $h = shift @{$L{heredocs}}) {
-    my ($tag, $tabs) = @$h;
+    my ($tag, $tabs, $expands) = @$h;
     my $found = 0;
     while ($L{i} < length $s) {
       my $k = index($s, "\n", $L{i});
@@ -367,6 +367,7 @@ sub heredoc_bodies {
       $L{i} = $k + 1;
       $line =~ s/\A\t+// if $tabs;
       if ($line eq $tag) { $found = 1; last }
+      return lex_fail('a command substitution in an unquoted here-document') if $expands && $line =~ s/\\.//gr =~ /\$\(|\$\{[\s|]|`/;
     }
     return lex_fail('a here-document with no terminator') unless $found;
   }
@@ -430,8 +431,8 @@ sub lex_list {
         if ($op eq ')') { $case[-1] = 'command'; $cmdstart = 1 }
         next;
       }
-      nest($op eq '(' ? 1 : $op eq ')' ? -1 : 0);
-      undef $L{pending} if defined $L{pending} && $L{pending} == 0 && $op =~ /\A(?:;;?&?|&)\z/;
+      return lex_fail('a subshell or other parenthesis inside a command substitution') if $op eq '(' && $L{sub};
+      undef $L{pending} if $op =~ /\A(?:;;?&?|&|\))\z/;
       if (@case && $op =~ /\A;;|;&/) { $case[-1] = 'pattern'; $cmdstart = 0; next }
       $cmdstart = 1;
       next;
@@ -445,7 +446,7 @@ sub lex_list {
       if ($op eq '<<' || $op eq '<<-') {
         (my $tag = $target->[0]) =~ s/['"\\]//g;
         return lex_fail('a here-document with no delimiter') if $tag eq '';
-        push @{$L{heredocs}}, [$tag, $op eq '<<-'];
+        push @{$L{heredocs}}, [$tag, $op eq '<<-', $target->[0] !~ /['"\\]/];
       }
       if ($source) { $source->[2] = 1 } else { $prefixed = 1 }
       next;
@@ -454,7 +455,7 @@ sub lex_list {
     return if $L{problem} ne '';
     my $raw = $word->[0];
     if (@case && $case[-1] eq 'pattern') {
-      if ($raw eq 'esac') { pop @case; nest(-1); $cmdstart = 0 }
+      if ($raw eq 'esac') { pop @case; $cmdstart = 0 }
       next;
     }
     if ($source) { push @{$source->[1]}, $word; next }
@@ -466,15 +467,15 @@ sub lex_list {
         next;
       }
       if ($raw =~ /\A[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/) { $prefixed = 1; next }
-      if ($raw eq 'case') { push @case, 'subject'; nest(1); $cmdstart = 0; next }
-      if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; nest(-1); next }
-      if ($RESERVED{$raw}) { nest($raw =~ /\A(?:\{|if|while|until)\z/ ? 1 : $raw =~ /\A(?:\}|fi|done)\z/ ? -1 : 0); next }
-      nest(1) if $raw eq 'for' || $raw eq 'select';
+      if ($raw eq 'case') { push @case, 'subject'; $cmdstart = 0; next }
+      if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
+      return lex_fail("the $raw keyword") if $raw eq 'function' || $raw eq 'coproc';
+      next if $RESERVED{$raw};
       $cmdstart = 0;
       next;
     }
     if (@case && $case[-1] eq 'subject' && $raw eq 'in') { $case[-1] = 'pattern'; next }
-    if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; nest(-1); next }
+    if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
   }
 }
 
