@@ -255,7 +255,8 @@
 # A GitHub merge also refuses while the PR's review ledger records an unreleased
 # hold on its current generation, whether or not the handoff is required, and
 # while the away-posture record exists it needs the handoff together with the
-# ledger merge decision recorded for that head, whatever the policy setting.
+# ledger merge decision recorded for that head, whatever the policy setting, and
+# refuses a decision that waived any red check, whenever it was recorded.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -1172,7 +1173,7 @@ github_checks_not_green() {
       )
     | select(. as $name | any($waived[]; . == $name) | not)
     | if . == "" then "(unnamed check)" else gsub("\n"; "\\n") end
-  ' --args ${ALLOW_RED[@]+"${ALLOW_RED[@]}"} 2>/dev/null || return 1
+  ' --args -- ${ALLOW_RED[@]+"${ALLOW_RED[@]}"} 2>/dev/null || return 1
 }
 
 
@@ -1749,8 +1750,18 @@ require_current_away_authority() {
 # to the live head. A direct call, a hand-set handoff, or a decision recorded
 # for another head is refused, so the review policy is enforced by this script
 # rather than by the away session's judgment.
+# A decision that waived a red check is attended authority only, whenever it
+# was recorded, so it never stands in for the away merge gate.
 require_away_review_merge_decision() {
   [ "$FM_PR_AWAY_POSTURE" = true ] && [ "$PROVIDER" = github ] && [ -n "$REVIEW_LEDGER" ] || return 0
+  if [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
+    && jq -e '
+      .generations[-1].merge_decision // {}
+      | .allowed_red_check != null or ((.allowed_red_checks // []) | length > 0)
+    ' "$REVIEW_LEDGER" >/dev/null 2>&1; then
+    echo "error: while the away-posture record exists a GitHub merge needs a review-ledger merge decision that waives no red check; nothing was merged" >&2
+    return 2
+  fi
   if [ -n "$FM_PR_REVIEW_EXPECTED_HEAD" ] \
     && [ -f "$REVIEW_LEDGER" ] && [ ! -L "$REVIEW_LEDGER" ] \
     && jq -e --arg url "$URL" --arg head "$FM_PR_REVIEW_EXPECTED_HEAD" '
@@ -1768,7 +1779,10 @@ require_away_review_merge_decision() {
 # ordered JSON array of this accepted merge's --allow-red names, or drop it when
 # the merge waived none, keeping the same private, single-link file identity.
 record_accepted_merge_waivers() {
-  local tmp line status=0
+  local tmp line waived='' status=0
+  if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
+    waived=$(jq -cn '$ARGS.positional' --args -- "${ALLOW_RED[@]}") && [ -n "$waived" ] || return 1
+  fi
   tmp=$(mktemp "$STATE/.fm-pr-merge-meta.XXXXXX") || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -1776,8 +1790,8 @@ record_accepted_merge_waivers() {
       *) printf '%s\n' "$line" >> "$tmp" || status=1 ;;
     esac
   done < "$META"
-  if [ "$status" -eq 0 ] && [ "${#ALLOW_RED[@]}" -gt 0 ]; then
-    printf 'merge_allow_red=%s\n' "$(jq -cn '$ARGS.positional' --args "${ALLOW_RED[@]}")" >> "$tmp" || status=1
+  if [ "$status" -eq 0 ] && [ -n "$waived" ]; then
+    printf 'merge_allow_red=%s\n' "$waived" >> "$tmp" || status=1
   fi
   if [ "$status" -eq 0 ]; then
     chmod 0600 "$tmp" \

@@ -6,9 +6,12 @@
 #
 # The prefix ends at a standalone -- (consumed) or at the first argument that
 # is not a helper option (kept); everything after it is forge extras passed
-# through verbatim. Every option value is its own argument, and a value that is
-# empty or begins with -- is refused rather than consumed, so a missing value
-# never borrows the next option or the separator.
+# through verbatim. Every option value is its own argument. An --allow-red or
+# --expected-head value that is empty or begins with -- is refused rather than
+# consumed, so a missing value never borrows the next option or the separator;
+# --allow-missing keeps its legacy parse and refuses only an empty value. A
+# waiver name beginning with a single - is accepted, and callers hand names to
+# jq only after --args --, so a name is always data.
 #
 # fm_pr_merge_options_parse <args...> sets:
 #   FM_PR_OPT_ATTENDED_OVERRIDE   true|false
