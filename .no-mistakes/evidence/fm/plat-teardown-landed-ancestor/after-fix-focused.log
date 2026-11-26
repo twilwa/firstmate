@@ -1,0 +1,11 @@
+=== test_a_worktree_behind_the_landed_head_tears_down
+ok - a copy behind the landed head tears down, and a commit outside it still refuses
+=== test_a_child_local_ancestry_override_cannot_fake_a_landing
+ok - a child-local replace ref or graft cannot make an unlanded commit look landed
+=== test_a_deleted_task_branch_after_a_receipted_landing_tears_down
+ok - a receipted landing tears down after its task branch was already deleted
+=== test_missing_worktree_refuses_a_later_unlanded_branch_head
+ok - a missing worktree cannot hide a later unlanded branch commit
+=== test_teardown_requires_the_parent_receipt
+ok - cleanup of a bound local-only task needs the parent's durable receipt
+exit=0

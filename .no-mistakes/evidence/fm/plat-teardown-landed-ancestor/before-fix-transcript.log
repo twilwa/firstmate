@@ -1,0 +1,12 @@
+=== before
+~/.no-mistakes/evidence/01M8BH5QWB2JC3TY60CZ9NFE4R/focused-runner.sh: line 1714: before: command not found
+launch commit (copy HEAD, detached): d7b111b95423e8cd01f1d4185cf0ff8f3ec565ee
+landed/offered head:                 0fca0dc68e29c1c35019c7b046d70e6fcc86af9f
+launch is an ancestor of landed head: yes
+parent default branch head: 0fca0dc68e29c1c35019c7b046d70e6fcc86af9f
+$ fm-teardown.sh tf-sell-now
+REFUSED: tf-sell-now has committed work at d7b111b95423e8cd01f1d4185cf0ff8f3ec565ee after the 0fca0dc68e29c1c35019c7b046d70e6fcc86af9f its parent was offered.
+Publish the new head with bin/fm-local-handoff.sh offer tf-sell-now and have the parent land that, or get the captain's explicit OK to discard, then --force.
+teardown exit=1
+task record: still present
+task copy: still present

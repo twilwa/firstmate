@@ -1,0 +1,12 @@
+=== after
+~/.no-mistakes/evidence/01M8BH5QWB2JC3TY60CZ9NFE4R/focused-runner.sh: line 1714: after: command not found
+launch commit (copy HEAD, detached): 52d8ea8a744f278b404e9b61f62813c857af5241
+landed/offered head:                 f55139e17dfd9bd82981cfc91baf129e9d1c7146
+launch is an ancestor of landed head: yes
+parent default branch head: f55139e17dfd9bd82981cfc91baf129e9d1c7146
+$ fm-teardown.sh tf-sell-now
+teardown tf-sell-now complete (window firstmate:fm-tf-sell-now, worktree /tmp/fm-local-handoff.vBL3Bv/transcript-after/child/work/tf-sell-now)
+Backlog: tf-sell-now just finished (this home keeps no markdown backlog at /tmp/fm-local-handoff.vBL3Bv/transcript-after/child/data/backlog.md). Update /tmp/fm-local-handoff.vBL3Bv/transcript-after/child/data/backlog.md - move tf-sell-now to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+teardown exit=0
+task record: removed
+task copy: still present

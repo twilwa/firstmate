@@ -1,0 +1,5 @@
+=== test_a_worktree_behind_the_landed_head_tears_down
+not ok - cleanup refused a copy behind the landed head
+REFUSED: child-task has committed work at b7fd97f0005e10bc48e089223dd43eb3d37f8d78 after the 0c7422d6d91d6b5aefd2246a0924a8505ad7d67f its parent was offered.
+Publish the new head with bin/fm-local-handoff.sh offer child-task and have the parent land that, or get the captain's explicit OK to discard, then --force.
+exit=1
