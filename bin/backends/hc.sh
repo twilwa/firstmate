@@ -360,16 +360,17 @@ fm_backend_hc_composer_state() {  # <target> [expected-label] -> empty|pending|p
 
 # fm_backend_hc_send_text_submit: one `hc send --wait`, which pastes, presses
 # Enter, and reports the turn it started. Echoes
-# empty|pending|pending-unproven|unknown|send-failed, a subset of the
-# proof-carrying submit vocabulary.
+# empty|pending|pending-unproven|unknown|blocked|send-failed: the
+# proof-carrying submit vocabulary plus hc's own blocked refusal.
 #
 # A started turn or a still-working wait confirms the submit natively, which
 # no composer text can fake. A program that never reports status answers
 # started:null once the bounded wait times out; the send still typed and
 # entered, so the verdict falls back to the composer screen, and only a
 # proven pending composer gets Enter retries through the shared loop. A
-# blocked terminal refuses with exit 9 before typing - unknown, with a
-# diagnostic and no retries, never forced. The other structured refusals
+# blocked terminal (its program's root status says a person must answer a
+# dialog) refuses with exit 9 before typing - blocked, with a diagnostic and
+# no retries, never forced: nothing reached the program. The other structured refusals
 # (3 not_found, 11 finished) and any other failure are send-failed.
 fm_backend_hc_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle> [expected-label]
   local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 expected=${6:-}
@@ -387,7 +388,7 @@ fm_backend_hc_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <s
     0) ;;
     9)
       echo "error: hc send refused $target - the terminal is blocked waiting on input (never forced): $out" >&2
-      printf 'unknown'
+      printf 'blocked'
       return 0
       ;;
     *) printf 'send-failed'; return 0 ;;

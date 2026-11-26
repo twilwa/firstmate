@@ -631,7 +631,7 @@ inbox_steer_busy() {  # <window> <backend> <task> <tail40>
 # Runs for secondmates too: their pane-staleness exemption is about quiet panes
 # being healthy, while an unacknowledged instruction can still be a stuck steer.
 inbox_steer_check() {  # <window> <task>
-  local w=$1 task=$2 action verb rec count tail40 reason='' ring_rc backend agent_state progress=''
+  local w=$1 task=$2 action verb rec count tail40 reason='' ring_rc backend agent_state progress='' refused
   action=$(fm_task_inbox_due_action "$STATE" "$task") || return 0
   verb=${action%% *}
   [ "$verb" != quiet ] || return 0
@@ -689,7 +689,7 @@ inbox_steer_check() {  # <window> <task>
         inbox_steer_escalate_unavailable "$w" "$task" "$rec"
         return 0
       fi
-      if ! fm_task_inbox_record_ring "$STATE" "$task" "$rec"; then
+      if ! fm_task_inbox_record_ring "$STATE" "$task" "$rec" "$ring_rc"; then
         if [ ! -f "$rec" ]; then
           fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
           return 0
@@ -714,7 +714,15 @@ inbox_steer_check() {  # <window> <task>
       triage_log "steer-inbox retry ring: $task ${rec##*/} result=$ring_rc"
       ;;
     escalate)
-      reason=${reason:-"stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts with an idle pane; inspect the worker)"}
+      if [ -z "$reason" ]; then
+        refused=$(fm_task_inbox_ring_refusals "$STATE" "$task" "$rec")
+        if [ "$refused" -gt 0 ] 2>/dev/null; then
+          if [ "$refused" -ge "$count" ] 2>/dev/null; then refused="every attempt"; else refused="$refused of them"; fi
+          reason="stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts; the endpoint refused input on $refused because its program's status is blocked, waiting on a dialog, so nothing was typed and it was never forced; inspect the pane)"
+        else
+          reason="stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts with an idle pane; inspect the worker)"
+        fi
+      fi
       if [ ! -d "${rec%/*}" ] || [ ! -f "$rec" ]; then
         fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
         return 0

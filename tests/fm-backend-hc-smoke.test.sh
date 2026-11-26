@@ -13,8 +13,11 @@
 # and generation gates, container ensure, create, submitted input, cwd
 # tracking, capture, agent state for a shell and for an agent-named process,
 # and a proven close. With a C compiler, a native fake agent additionally
-# exercises control exit/relaunch and the lost-agent refusal after a core stop;
-# it never starts an authenticated harness or spends tokens.
+# exercises control exit/relaunch and the lost-agent refusal after a core stop,
+# and the steering doorbell behind the real OSC 7501 bridge: an open decision
+# or captain hold still lets the doorbell through, and a program's own blocked
+# status is a loud refusal with nothing typed. It never starts an
+# authenticated harness or spends tokens.
 #
 # Skips cleanly (exit 0, "skip: hc not found ...") when no herdr-core binary
 # is installed (optional-binary gate); to pin a specific binary run
@@ -203,6 +206,95 @@ C
   assert_equals "$(git -C "$WT" rev-parse HEAD)" "$HEAD_BEFORE" 'relaunch preserves branch HEAD'
   assert_equals "$(cat "$WT/draft.txt")" 'preserve unfinished work' 'relaunch preserves unfinished work'
   pass 'hc control: relaunch replaces the agent in place without changing its work'
+
+  # Doorbell regression (the OSC 7501 bridge on hc): firstmate's own ledger
+  # must never make herdr-core refuse firstmate's own doorbell. The real
+  # bridge runs in a lab terminal exactly as fm-spawn stages it, in front of
+  # a native fake agent that logs every input line it receives.
+  cat > "$TMP_ROOT/doorbell-agent.c" <<'C'
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char **argv) {
+  char line[8192];
+  FILE *log = fopen(argc > 1 ? argv[1] : "/dev/null", "a");
+  puts("> ");
+  fflush(stdout);
+  while (fgets(line, sizeof line, stdin)) {
+    fputs(line, log);
+    fflush(log);
+  }
+  return 0;
+}
+C
+  mkdir -p "$TMP_ROOT/doorbell-bin" "$TMP_ROOT/doorbell-wt"
+  "$CC" -o "$TMP_ROOT/doorbell-bin/devin" "$TMP_ROOT/doorbell-agent.c" || fail 'doorbell fake agent compilation failed'
+  DB_ID="hc-doorbell-$$-$RANDOM"
+  DB_LABEL="fm-$DB_ID"
+  DB_STATE=$FM_HOME_DIR/state
+  DB_LOG=$TMP_ROOT/doorbell-input.log
+  : > "$DB_LOG"
+  DB_WT=$(cd "$TMP_ROOT/doorbell-wt" && pwd -P)
+  DB_ADDR=$(fm_backend_hc_create_task "$SES" "$DB_LABEL" "$DB_WT") || fail 'doorbell terminal create failed'
+  DB_T="$SES:$DB_ADDR"
+  DB_GEN=$("$ROOT/bin/fm-busy-event.sh" arm "$DB_STATE" "$DB_ID" --state idle --source devin-hook --event stop) \
+    || fail 'doorbell busy record arm failed'
+  printf 'window=%s\nendpoint_task_id=%s\nworktree=%s\nproject=%s\nharness=devin\nkind=ship\nmode=no-mistakes\nyolo=off\nmodel=default\neffort=default\nbusy_gen=%s\nbackend=hc\nhc_session=%s\nhc_terminal=%s\n' \
+    "$DB_T" "$DB_ID" "$DB_WT" "$DB_WT" "$DB_GEN" "$SES" "$DB_ADDR" > "$DB_STATE/$DB_ID.meta"
+  printf 'working [at=%s]: started\n' "$(date +%s)" > "$DB_STATE/$DB_ID.status"
+  q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+  # The bridge heartbeat is pushed out of the test's window so a record
+  # written over the bridge's own stands until the bridge's signals change.
+  fm_backend_hc_send_text_line "$DB_T" "export FM_HC_SOCKET=$(q "$HC_TEST_SOCK") XDG_STATE_HOME=$(q "$XDG_STATE_HOME") XDG_CONFIG_HOME=$(q "$XDG_CONFIG_HOME") XDG_DATA_HOME=$(q "$XDG_DATA_HOME") FM_OSC7501_INTERVAL=1 FM_OSC7501_HEARTBEAT=3600; unset FM_HOME FM_TASK_ID FM_TASK_INBOX; $(q "$ROOT/bin/fm-osc7501.sh") arm --task $DB_ID --harness devin --backend hc --kind ship --state $(q "$DB_STATE") --config $(q "$FM_HOME_DIR/config") --target $(q "$DB_T") --agent-bin $(q "$TMP_ROOT/doorbell-bin/devin") >/dev/null || true; $(q "$TMP_ROOT/doorbell-bin/devin") $(q "$DB_LOG"); $(q "$ROOT/bin/fm-osc7501.sh") disarm --state $(q "$DB_STATE") >/dev/null 2>&1 || true" "$DB_LABEL" \
+    || fail 'doorbell agent launch failed'
+  db_alive() { [ "$(fm_backend_agent_state hc "$DB_T" "$DB_LABEL")" = alive ]; }
+  wait_for 15 db_alive || fail "doorbell fake agent is not alive: $(fm_backend_agent_state hc "$DB_T" "$DB_LABEL")"
+  db_status() { fm_backend_hc_get "$DB_T" | jq -c '.status // {}'; }
+  db_msg_has() { db_status | jq -e --arg m "$1" '(.msg // "") | contains($m)' >/dev/null; }
+  db_doorbells() { grep -c 'Firstmate instruction waiting' "$DB_LOG" 2>/dev/null || true; }
+  db_doorbells_reach() { [ "$(db_doorbells)" -ge "$1" ]; }
+  db_send() { FM_SPAWN_NO_GUARD=1 bash "$ROOT/bin/fm-send.sh" "$DB_ID" "$@"; }
+  db_bridge_owns() { [ "$(db_status | jq -r '.app // empty')" = firstmate-devin ]; }
+  wait_for 15 db_bridge_owns || fail "the bridge never wrote a record: $(db_status)"
+
+  # An open keyed decision: the bridge publishes it, and the doorbell lands.
+  printf 'needs-decision [at=%s] [key=k1]: pick a or b\n' "$(date +%s)" >> "$DB_STATE/$DB_ID.status"
+  wait_for 15 db_msg_has 'Needs your decision: pick a or b' || fail "the bridge never published the open decision: $(db_status)"
+  db_send 'steer while k1 is open' 2> "$TMP_ROOT/doorbell-k1.err" || fail "fm-send failed with k1 open: $(cat "$TMP_ROOT/doorbell-k1.err")"
+  wait_for 10 db_doorbells_reach 1 \
+    || fail "the doorbell never reached the agent while a decision was open (status $(db_status)): $(cat "$TMP_ROOT/doorbell-k1.err")"
+  [ "$(db_status | jq -r '.state // empty')" != blocked ] \
+    || fail "the bridge published firstmate's own open decision as an input-gating hc blocked: $(db_status)"
+  pass 'hc doorbell: an open keyed decision is published without blocking, and the doorbell is delivered'
+
+  # The decision handed to a captain-held task keeps the message, not a block.
+  printf 'resolved [at=%s] [key=k1]: handed to the captain\ncaptain-held [at=%s]: tracked by plat-held-1\n' "$(date +%s)" "$(date +%s)" >> "$DB_STATE/$DB_ID.status"
+  wait_for 15 db_msg_has 'tracked by plat-held-1' || fail "the bridge never published the captain hold: $(db_status)"
+  db_send 'steer while captain-held' 2> "$TMP_ROOT/doorbell-held.err" || fail "fm-send failed while captain-held: $(cat "$TMP_ROOT/doorbell-held.err")"
+  wait_for 10 db_doorbells_reach 2 \
+    || fail "the doorbell never reached the agent while captain-held (status $(db_status)): $(cat "$TMP_ROOT/doorbell-held.err")"
+  [ "$(db_status | jq -r '.state // empty')" != blocked ] \
+    || fail "the bridge published a captain-held decision as an input-gating hc blocked: $(db_status)"
+  pass 'hc doorbell: a captain-held decision is published without blocking, and the doorbell is delivered'
+
+  # A program's own blocked record still makes hc refuse input: the refusal
+  # is a distinct loud verdict, never a silent ring.
+  DB_FG=$(fm_backend_hc_get "$DB_T" | jq -r '.foreground.pid // empty')
+  DB_PTY=/dev/$(ps -o tty= -p "$DB_FG" | tr -d ' ')
+  [ -w "$DB_PTY" ] || fail "doorbell agent tty is not writable: $DB_PTY"
+  printf '\033]7501;state=blocked:kind=question:app=devin\033\134' > "$DB_PTY"
+  db_blocked() { [ "$(db_status | jq -r '.state // empty')" = blocked ]; }
+  wait_for 10 db_blocked || fail "the native blocked record never landed: $(db_status)"
+  verdict=$(fm_backend_send_text_submit hc "$DB_T" ': adapter probe' 1 0.4 0 "$DB_LABEL" 2> "$TMP_ROOT/doorbell-probe.err")
+  assert_equals "$verdict" blocked 'hc refusal on a blocked status is the distinct blocked verdict'
+  RC=0
+  db_send 'steer while the program is blocked' 2> "$TMP_ROOT/doorbell-refused.err" || RC=$?
+  assert_equals "$RC" 0 'a refused doorbell still exits 0: the durable record is the delivery'
+  assert_grep 'doorbell not typed' "$TMP_ROOT/doorbell-refused.err" 'fm-send names the refused doorbell'
+  assert_grep 'blocked' "$TMP_ROOT/doorbell-refused.err" 'fm-send names the blocked status'
+  sleep 1
+  assert_equals "$(db_doorbells)" 2 'nothing was typed into the blocked program'
+  pass 'hc doorbell: a refusal on a blocked status is reported loudly and types nothing'
+  fm_backend_kill hc "$DB_T" '' "$DB_LABEL" || fail 'doorbell terminal close failed'
 
   # Measured on hc 0.1.17 and the CI pin 0.1.14: stopping the core SIGHUPs
   # every terminal, which finishes with reason server_stop. The adapter reads

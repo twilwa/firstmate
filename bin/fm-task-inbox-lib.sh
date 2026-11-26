@@ -27,7 +27,11 @@
 #   <task>.inbox/handled/      the worker's `mv` here IS the acknowledgement
 #   <task>.inbox/.seq.lock     serializes sequence allocation across writers
 #                              (the session and the away daemon)
-#   <task>.inbox/.ring-state   watcher re-ring ladder: "<msg>\t<count>\t<epoch>"
+#   <task>.inbox/.ring-state   watcher re-ring ladder, replaced atomically:
+#                              "<msg>\t<count>\t<epoch>\t<refused>", where
+#                              <refused> counts attempts the endpoint refused
+#                              because its status is blocked (ring 4); a
+#                              three-field row reads as 0 refusals
 #   <task>.inbox/.busy-state   frozen busy deferrals: "<msg>\t<count>[\t<progress>]"
 #   <task>.inbox/.escalated    oldest-message name already surfaced as stale,
 #                              so later polls suppress another escalation
@@ -79,7 +83,7 @@
 # Retry ring (fm_task_inbox_mark_retry): only while config/wait-no-turns is
 # present. A fire-and-forget record never enters the ladder, but when
 # fm-send's ring at enqueue did not land
-# (fm_task_inbox_ring returned 1 or 2) it marks the record, and one grace later
+# (fm_task_inbox_ring returned 1, 2, or 4) it marks the record, and one grace later
 # the due action is `retry`: once the worker has no open decision of its own,
 # the watcher rings once more and spends the mark
 # whatever the result, so the record never rings a third time and never
@@ -391,12 +395,15 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 
 # Ring the doorbell, best-effort: one endpoint-liveness pre-check, one advisory
 # composer pre-check, then the backend's submit machinery with a minimal retry
-# budget, verdict discarded.
+# budget; the verdict is read only for a failed send or a blocked refusal.
 # Returns 0 rang, 1 skipped because the composer PROVENLY holds pending text
 # other than our own doorbell (the watcher re-rings later), 2 the backend send
 # failed, 3 skipped because the endpoint is positively dead or missing (nothing
-# typed; recovery owns the record). No return value is delivery proof; the
-# acknowledgement move is the only delivery signal.
+# typed; recovery owns the record), 4 the endpoint refused input because its
+# program's status is blocked (hc's blocked verdict: nothing typed, never
+# forced; the record stays for the ladder). Only 0 counts as rung. No return
+# value is delivery proof; the acknowledgement move is the only delivery
+# signal.
 # The skip is deliberately narrow: only an exact `pending` verdict can defer,
 # because there our Enter could submit someone's real half-typed content.
 # `pending-unproven` and `unknown` still ring - the worst outcome is a garbled
@@ -435,9 +442,13 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   if ! verdict=$(fm_backend_send_text_submit "$backend" "$target" "$line" 2 0.4 0.3 "$label" 2>/dev/null); then
     return 2
   fi
-  # The verdict is read only to report a failed keystroke; every other value
-  # (empty, pending, unknown, ...) is deliberately ignored, never proof.
-  [ "$verdict" != send-failed ] || return 2
+  # The verdict is read only to report a failed keystroke or a refusal; every
+  # other value (empty, pending, unknown, ...) is deliberately ignored, never
+  # proof.
+  case "$verdict" in
+    send-failed) return 2 ;;
+    blocked) return 4 ;;
+  esac
   return 0
 }
 
@@ -507,7 +518,7 @@ fm_task_inbox_clear_retry() {  # <state-dir> <task-id> <record-path>
 # An empty inbox also resets the ladder bookkeeping so the next message starts
 # a fresh ladder.
 fm_task_inbox_due_action() {  # <state-dir> <task-id>
-  local dir oldest base now grace max ladder rec_base count last
+  local dir oldest base now grace max ladder rec_base count last refused
   dir=$(fm_task_inbox_dir "$1" "$2")
   if ! oldest=$(fm_task_inbox_oldest_unhandled "$1" "$2"); then
     rm -f "$dir/.ring-state" "$dir/.escalated" "$dir/.busy-state" 2>/dev/null || true
@@ -534,7 +545,7 @@ fm_task_inbox_due_action() {  # <state-dir> <task-id>
   count=0
   last=0
   ladder=$(cat "$dir/.ring-state" 2>/dev/null || true)
-  IFS=$(printf '\t') read -r rec_base count last <<EOF
+  IFS=$(printf '\t') read -r rec_base count last refused <<EOF
 $ladder
 EOF
   if [ -n "$rec_base" ] && [ "$rec_base" != "$base" ]; then
@@ -560,29 +571,63 @@ EOF
   printf 'ring %s' "$oldest"
 }
 
-# Advance the ladder after a delivery attempt. A failed ring or a composer-
-# protected skip still consumes budget so neither an unreadable pane nor a
-# permanently blocked composer can retry silently forever. A positively dead or
-# missing endpoint never enters the ladder: the watcher escalates it directly.
+# Advance the ladder after a delivery attempt. A failed ring, a composer-
+# protected skip, or a blocked refusal still consumes budget so neither an
+# unreadable pane nor a permanently blocked composer or program can retry
+# silently forever. A [ring-result] of 4 (refused: the endpoint's status is
+# blocked) is also tallied per record in the same row, so the escalation can
+# name it (fm_task_inbox_ring_refusals). The row is replaced atomically through
+# a temp file in the inbox directory and a rename, so the attempt count never
+# advances without its refusal tally; a failed replacement keeps the previous
+# row. A positively dead or missing endpoint never enters the ladder: the
+# watcher escalates it directly.
 # A concurrently removed inbox is a successful no-op; otherwise failure means
 # the caller must surface the unwritable ladder while the record remains
 # unhandled.
-fm_task_inbox_record_ring() {  # <state-dir> <task-id> <record-path>
-  local dir base ladder rec_base count last
+fm_task_inbox_record_ring() {  # <state-dir> <task-id> <record-path> [ring-result]
+  local dir base ladder rec_base count last refused tmp
   dir=$(fm_task_inbox_dir "$1" "$2")
   base=${3##*/}
   count=0
+  refused=0
   ladder=$(cat "$dir/.ring-state" 2>/dev/null || true)
-  IFS=$(printf '\t') read -r rec_base count last <<EOF
+  IFS=$(printf '\t') read -r rec_base count last refused <<EOF
 $ladder
 EOF
-  [ "$rec_base" = "$base" ] || count=0
+  if [ "$rec_base" != "$base" ]; then
+    count=0
+    refused=0
+  fi
   case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  case "$refused" in ''|*[!0-9]*) refused=0 ;; esac
+  [ "${4:-}" = 4 ] && refused=$((refused + 1))
   [ -d "$dir" ] || return 0
-  if ! { printf '%s\t%s\t%s\n' "$base" "$((count + 1))" "$(date +%s)" > "$dir/.ring-state"; } 2>/dev/null; then
+  # A non-file at the row's path would swallow the rename; treat it as unwritable.
+  if { [ -e "$dir/.ring-state" ] && [ ! -f "$dir/.ring-state" ]; } \
+    || ! tmp=$(mktemp "$dir/.ring-state.XXXXXX" 2>/dev/null); then
     [ -d "$dir" ] || return 0
     return 1
   fi
+  if ! { printf '%s\t%s\t%s\t%s\n' "$base" "$((count + 1))" "$(date +%s)" "$refused" > "$tmp"; } 2>/dev/null \
+    || ! mv -f "$tmp" "$dir/.ring-state" 2>/dev/null; then
+    rm -f "$tmp" 2>/dev/null || true
+    [ -d "$dir" ] || return 0
+    return 1
+  fi
+}
+
+# How many of <record-path>'s ladder attempts the endpoint refused because its
+# status is blocked, read from the fourth field of its .ring-state row; 0 when
+# none were recorded for that record or the row predates the field.
+fm_task_inbox_ring_refusals() {  # <state-dir> <task-id> <record-path>
+  local dir rec_base count last refused
+  dir=$(fm_task_inbox_dir "$1" "$2")
+  IFS=$(printf '\t') read -r rec_base count last refused <<EOF
+$(cat "$dir/.ring-state" 2>/dev/null || true)
+EOF
+  [ "$rec_base" = "${3##*/}" ] || refused=0
+  case "$refused" in ''|*[!0-9]*) refused=0 ;; esac
+  printf '%s' "$refused"
 }
 
 # Mark the current oldest as escalated after its stale wake is durably queued,
