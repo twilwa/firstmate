@@ -52,9 +52,9 @@
 #     --no-env, one --partition at a time) or in CI.
 #   - Only hosted CI's --changed run upgrades to the full canonical,
 #     source-aware set above when a lint-definition file changed (including a
-#     delete or rename of fm-lint.sh, fm-lint-workflows.sh, a pinned
-#     installer, or fm-timeout-lib.sh), or when a changed, deleted, or renamed
-#     file is sourced by another canonical script (via `# shellcheck source=`
+#     delete or rename of fm-lint.sh, fm-lint-cache-lib.sh,
+#     fm-lint-workflows.sh, a pinned installer, or fm-timeout-lib.sh), or
+#     when a changed, deleted, or renamed file is sourced by another canonical script (via `# shellcheck source=`
 #     on the merge-base tree). Local runs, including the no-mistakes lint step
 #     and a worker's own lint, never take that upgrade: the source-following
 #     full set needs many GiB per root and exhausts a shared dev host.
@@ -144,6 +144,20 @@
 # lines also stream to stderr, and an abnormal root end is always reported
 # there.
 #
+# Per-root pass cache: with FM_LINT_CACHE_DIR set to an absolute directory,
+# every mode (changed-file, partitions, explicit paths, --fast) looks up each
+# selected root's key in bin/fm-lint-cache-lib.sh, which owns the key, the
+# entry format, and the audit, and lints only the roots without a recorded
+# pass for that exact key. The run prints "lint cache: hits=N misses=N
+# stored=N uncacheable=N scope=local|hosted", and with --telemetry writes the
+# per-root sidecar <telemetry-without-.tsv>.cache.tsv. A corrupt entry or an
+# unreadable cache lints every root; a missing library lints every root with
+# a warning. --no-cache lints every root without reading or writing the
+# cache. --audit-cache <dir> and --audit-record <sidecar> (repeatable) imply
+# --no-cache and, after linting, report each root with findings whose key
+# <dir> records as a pass, or that a cached run's sidecar recorded as a hit
+# or stored pass, as "STALE LINT CACHE KEY <key>", exiting 3.
+#
 # Optional quiet telemetry writes one bounded TSV snapshot of content and source
 # graph identity, wall/CPU/RSS, shard load, and competing ShellCheck processes.
 # source_followed_directives counts directives only for roots whose final
@@ -157,6 +171,9 @@
 #   fm-lint.sh --partition <k>of<N>      lint one canonical CI partition (see fallback above)
 #   fm-lint.sh --changed ...            lint changed canonical roots (CI pull requests keep source-aware analysis; in hosted CI only, sourced helpers and lint-definition files upgrade to the full set)
 #   fm-lint.sh --telemetry <path> ...  write a quiet metrics snapshot
+#   fm-lint.sh --no-cache ...           lint every root, ignoring FM_LINT_CACHE_DIR
+#   fm-lint.sh --audit-cache <dir> [--audit-record <sidecar>]... ...
+#                                      uncached run that names stale cache keys
 #   fm-lint.sh --required-version      print the ShellCheck pin
 #   fm-lint.sh --list-files            print the file set that would be linted
 #   fm-lint.sh --help                  print this usage
@@ -194,6 +211,14 @@ cd "$ROOT" || exit 1
 if [ -r "$SELF_DIR/fm-timeout-lib.sh" ]; then
   # shellcheck source=bin/fm-timeout-lib.sh
   . "$SELF_DIR/fm-timeout-lib.sh"
+fi
+
+# The sibling cache library owns the per-root pass cache's key, entry format,
+# and stale-key audit; without it a requested cache is reported unavailable and
+# every root is linted.
+if [ -r "$SELF_DIR/fm-lint-cache-lib.sh" ]; then
+  # shellcheck source=bin/fm-lint-cache-lib.sh
+  . "$SELF_DIR/fm-lint-cache-lib.sh"
 fi
 
 FM_LINT_WORKER_RUN_PID=
@@ -363,6 +388,32 @@ fm_lint_known_heavy_root() {  # <path>
   return 1
 }
 
+# The worker's flags for a root's first attempt, from the selected analysis mode.
+fm_lint_build_worker_args() {
+  FM_LINT_WORKER_ARGS=(--norc)
+  if [ "${FM_LINT_INTERNAL_FOLLOW_SOURCES:-1}" -eq 1 ]; then
+    FM_LINT_WORKER_ARGS+=(--external-sources)
+  fi
+  if [ -n "${FM_LINT_INTERNAL_EXCLUDE:-}" ]; then
+    FM_LINT_WORKER_ARGS+=(--exclude="$FM_LINT_INTERNAL_EXCLUDE")
+  fi
+  if [ "${FM_LINT_INTERNAL_FAST:-0}" -eq 1 ]; then
+    FM_LINT_WORKER_ARGS+=(--extended-analysis=false)
+  fi
+}
+
+# The flags of a root's one final attempt absent a memory retry: the
+# known-heavy no-source flags or the worker's flags. The cache keys on these,
+# and fm_lint_run_root records the flags it actually ran beside each root.
+fm_lint_root_final_args() {  # <path>
+  if fm_lint_known_heavy_root "$1"; then
+    fm_lint_no_source_args
+    FM_LINT_ROOT_ARGS=("${FM_LINT_NO_SOURCE_ARGS[@]}")
+  else
+    FM_LINT_ROOT_ARGS=("${FM_LINT_WORKER_ARGS[@]}")
+  fi
+}
+
 # The memory retry's flags: the worker's flags without source following, plus
 # the cross-file codes a no-source pass cannot judge.
 fm_lint_no_source_args() {
@@ -384,6 +435,7 @@ fm_lint_run_root() {  # <index> <path> <output-dir> <shard-index>
   local fallback_out="$output_dir/root.$shard_index.$index.fallback.out"
   local fallback_err="$output_dir/root.$shard_index.$index.fallback.err"
   local fallback_rss="$output_dir/root.$shard_index.$index.fallback.rss"
+  local args_file="$output_dir/root.$shard_index.$index.args"
   local start_ms end_ms duration_ms invocation_rc=0 reason rss_kib initial_rc initial_reason
   local fallback_secs
   local final_follow_sources=${FM_LINT_INTERNAL_FOLLOW_SOURCES:-1}
@@ -399,6 +451,7 @@ fm_lint_run_root() {  # <index> <path> <output-dir> <shard-index>
   fi
   if fm_lint_known_heavy_root "$path"; then
     fm_lint_no_source_args
+    printf '%s\n' "${FM_LINT_NO_SOURCE_ARGS[@]}" > "$args_file"
     fm_lint_exec_root "$path" "$root_out" "$root_err" "$rss_file" \
       "$FM_LINT_INTERNAL_ROOT_SECS" "${FM_LINT_NO_SOURCE_ARGS[@]}"
     final_follow_sources=0
@@ -417,6 +470,7 @@ fm_lint_run_root() {  # <index> <path> <output-dir> <shard-index>
     fi
     cat "$root_out" "$root_err" >> "$output_dir/shard.$shard_index.out"
   else
+    printf '%s\n' "${FM_LINT_WORKER_ARGS[@]}" > "$args_file"
     fm_lint_exec_root "$path" "$root_out" "$root_err" "$rss_file" \
       "$FM_LINT_INTERNAL_ROOT_SECS" "${FM_LINT_WORKER_ARGS[@]}"
     invocation_rc=$FM_LINT_LAST_RC
@@ -438,6 +492,7 @@ fm_lint_run_root() {  # <index> <path> <output-dir> <shard-index>
     elif [ "$reason" = memory ] \
       && [ "${FM_LINT_INTERNAL_FOLLOW_SOURCES:-1}" -eq 1 ]; then
       fm_lint_no_source_args
+      printf '%s\n' "${FM_LINT_NO_SOURCE_ARGS[@]}" > "$args_file"
       fm_lint_exec_root "$path" "$fallback_out" "$fallback_err" "$fallback_rss" \
         "$fallback_secs" "${FM_LINT_NO_SOURCE_ARGS[@]}"
       final_follow_sources=0
@@ -491,16 +546,7 @@ fm_lint_worker() {  # <manifest> <output-dir> <shard-index>
     trap 'fm_lint_worker_stop; exit 129' HUP
     trap 'fm_lint_worker_stop; exit 130' INT
     trap 'fm_lint_worker_stop; exit 143' TERM
-    FM_LINT_WORKER_ARGS=(--norc)
-    if [ "${FM_LINT_INTERNAL_FOLLOW_SOURCES:-1}" -eq 1 ]; then
-      FM_LINT_WORKER_ARGS+=(--external-sources)
-    fi
-    if [ -n "${FM_LINT_INTERNAL_EXCLUDE:-}" ]; then
-      FM_LINT_WORKER_ARGS+=(--exclude="$FM_LINT_INTERNAL_EXCLUDE")
-    fi
-    if [ "${FM_LINT_INTERNAL_FAST:-0}" -eq 1 ]; then
-      FM_LINT_WORKER_ARGS+=(--extended-analysis=false)
-    fi
+    fm_lint_build_worker_args
     : > "$output.out"
     for entry in "${root_entries[@]}"; do
       index=${entry%%"$tab"*}
@@ -843,6 +889,9 @@ PARTITION=
 PARTITION_REQUESTED=0
 FORCE_CHANGED=0
 LIST_FILES=0
+NO_CACHE=0
+AUDIT_CACHE=
+AUDIT_RECORDS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --jobs)
@@ -887,6 +936,22 @@ while [ "$#" -gt 0 ]; do
       LIST_FILES=1
       shift
       ;;
+    --no-cache)
+      NO_CACHE=1
+      shift
+      ;;
+    --audit-cache)
+      [ "$#" -ge 2 ] || { printf 'fm-lint.sh: --audit-cache requires a directory.\n' >&2; exit 2; }
+      AUDIT_CACHE=$2
+      NO_CACHE=1
+      shift 2
+      ;;
+    --audit-record)
+      [ "$#" -ge 2 ] || { printf 'fm-lint.sh: --audit-record requires a cache sidecar path.\n' >&2; exit 2; }
+      AUDIT_RECORDS+=("$2")
+      NO_CACHE=1
+      shift 2
+      ;;
     --help|-h)
       fm_lint_usage
       exit 0
@@ -898,6 +963,16 @@ while [ "$#" -gt 0 ]; do
     *) break ;;
   esac
 done
+
+case "${FM_LINT_CACHE_DIR:-/}" in
+  /*) ;;
+  *) printf 'fm-lint.sh: FM_LINT_CACHE_DIR must be an absolute path, got %s.\n' "$FM_LINT_CACHE_DIR" >&2; exit 2 ;;
+esac
+if { [ -n "$AUDIT_CACHE" ] || [ "${#AUDIT_RECORDS[@]}" -gt 0 ]; } \
+  && ! declare -F fm_lint_cache_audit >/dev/null 2>&1; then
+  printf 'fm-lint.sh: the cache audit needs bin/fm-lint-cache-lib.sh beside fm-lint.sh.\n' >&2
+  exit 2
+fi
 
 JOBS_EXPLICIT=0
 if [ -z "$JOBS" ]; then
@@ -1070,12 +1145,17 @@ fm_lint_changed_paths() {  # <merge-base>
 # definition change: a PR that only lists those files still needs the full
 # canonical, source-aware gate rather than a changed-file subset. A delete or
 # rename of any of those paths counts, including the old name of a rename.
+# The same list is part of every cache key, so editing any of them misses every
+# cached root.
+FM_LINT_DEFINITION_FILES=(
+  bin/fm-lint.sh bin/fm-lint-cache-lib.sh bin/fm-lint-workflows.sh
+  bin/fm-install-shellcheck.sh bin/fm-install-actionlint.sh bin/fm-timeout-lib.sh
+)
 fm_lint_is_definition_path() {  # <path>
-  case "$1" in
-    bin/fm-lint.sh|bin/fm-lint-workflows.sh|bin/fm-install-shellcheck.sh|bin/fm-install-actionlint.sh|bin/fm-timeout-lib.sh)
-      return 0
-      ;;
-  esac
+  local definition
+  for definition in "${FM_LINT_DEFINITION_FILES[@]}"; do
+    [ "$1" != "$definition" ] || return 0
+  done
   return 1
 }
 
@@ -1903,6 +1983,10 @@ fm_lint_root_weights() {
         return 2
         ;;
     esac
+    if [ -n "${FM_LINT_CACHE_HIT[index]:-}" ]; then
+      index=$((index + 1))
+      continue
+    fi
     weight=1
     if [ -f "$path" ]; then
       weight=$(wc -c < "$path" 2>/dev/null | tr -d '[:space:]')
@@ -2185,6 +2269,19 @@ fi
   printf 'meta\t%s\t%s\n' 'timing_mechanism' "$BOUND_MECH"
 } >> "$ROOTS_LOG"
 
+# The per-root pass cache (bin/fm-lint-cache-lib.sh): with FM_LINT_CACHE_DIR
+# set, roots whose exact key holds a recorded pass are skipped; --no-cache and
+# the audit flags lint every selected root without reading or writing it.
+LINT_COUNT=$ROOT_COUNT
+FM_LINT_CACHE_STATE=off
+if [ -n "${FM_LINT_CACHE_DIR:-}" ] || [ "$NO_CACHE" -eq 1 ]; then
+  if declare -F fm_lint_cache_begin >/dev/null 2>&1; then
+    fm_lint_cache_begin
+  elif [ "$NO_CACHE" -eq 0 ]; then
+    printf 'fm-lint.sh: lint cache unavailable (bin/fm-lint-cache-lib.sh is missing); linting every root\n' >&2
+  fi
+fi
+
 SHARD_COUNT=2
 worker=0
 while [ "$worker" -lt "$SHARD_COUNT" ]; do
@@ -2193,7 +2290,7 @@ while [ "$worker" -lt "$SHARD_COUNT" ]; do
 done
 
 WORKER_LOADS=(0 0)
-if [ "$ROOT_COUNT" -gt 0 ]; then
+if [ "$LINT_COUNT" -gt 0 ]; then
   fm_lint_root_weights > "$WEIGHTS" || exit $?
 
   # Largest-first deterministic greedy assignment balances the two worker
@@ -2306,7 +2403,7 @@ fm_lint_wait_workers() {
 }
 
 overall_rc=0
-if [ "$ROOT_COUNT" -gt 0 ]; then
+if [ "$LINT_COUNT" -gt 0 ]; then
   if [ "$JOBS" -eq 1 ]; then
     worker=0
     while [ "$worker" -lt "$SHARD_COUNT" ]; do
@@ -2360,6 +2457,19 @@ EOF
     printf 'meta\t%s\t%s\n' 'roots_completed' "$roots_completed"
     printf 'meta\t%s\t%s\n' 'roots_unfinished' "$roots_unfinished"
   } >> "$ROOTS_LOG"
+fi
+
+if [ "$FM_LINT_CACHE_STATE" != off ]; then
+  fm_lint_cache_finish
+  fm_lint_cache_audit
+  if [ -n "$TELEMETRY" ]; then
+    fm_lint_cache_report "${TELEMETRY%.tsv}.cache.tsv"
+  else
+    fm_lint_cache_report ''
+  fi
+  if [ "${FM_LINT_CACHE_STALE:-0}" -gt 0 ]; then
+    overall_rc=3
+  fi
 fi
 
 purity_rc=0
@@ -2494,6 +2604,10 @@ EOF
     printf 'load_average_end\t%s\n' "$TELEMETRY_LOAD_END"
     printf 'aggregate_cpu_percent_start\t%s\n' "$TELEMETRY_CPU_START"
     printf 'aggregate_cpu_percent_end\t%s\n' "$TELEMETRY_CPU_END"
+    printf 'cache_state\t%s\n' "$FM_LINT_CACHE_STATE"
+    printf 'cache_hits\t%s\n' "${FM_LINT_CACHE_HITS:-0}"
+    printf 'cache_misses\t%s\n' "${FM_LINT_CACHE_MISSES:-$ROOT_COUNT}"
+    printf 'cache_stored\t%s\n' "${FM_LINT_CACHE_STORED:-0}"
     printf 'result_exit\t%s\n' "$overall_rc"
   } > "$telemetry_tmp"
   if ! mv -f "$telemetry_tmp" "$TELEMETRY"; then

@@ -1,0 +1,97 @@
+name: Lint nightly (uncached)
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lint-nightly
+  cancel-in-progress: false
+
+# The scheduled backstop for CI's per-root lint cache (bin/fm-lint-cache-lib.sh
+# owns the key and the audit). Every partition lints its full canonical set
+# without reading or writing the cache, then checks each root with findings
+# against the restored cache and against the cached CI push run for the same
+# commit, when one exists. A finding the cached run hid fails this run with
+# exit 3 and names the stale key.
+jobs:
+  lint-uncached:
+    name: Uncached lint ${{ matrix.partition }}
+    runs-on: ubuntu-24.04
+    # Matches the lint job's normal tier in ci.yml.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/fm-ci-tools
+          key: fm-ci-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bin/fm-install-shellcheck.sh', 'bin/fm-install-actionlint.sh') }}
+      - name: Install pinned ShellCheck
+        run: |
+          set -eu
+          bin/fm-install-shellcheck.sh "$RUNNER_TEMP/fm-ci-tools"
+          echo "$RUNNER_TEMP/fm-ci-tools" >> "$GITHUB_PATH"
+      - name: Install pinned actionlint
+        run: |
+          set -eu
+          bin/fm-install-actionlint.sh "$RUNNER_TEMP/fm-ci-tools"
+          echo "$RUNNER_TEMP/fm-ci-tools" >> "$GITHUB_PATH"
+      # Restored only to be audited; the lint below never reads it for a
+      # verdict and this workflow never saves it.
+      - name: Restore the lint result cache for audit
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/fm-lint-cache-audit
+          key: fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-audit-${{ github.run_id }}
+          restore-keys: |
+            fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-
+            fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-
+            fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-
+      - name: Download the same-commit cached run's lint sidecars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          dir="$RUNNER_TEMP/fm-lint-cached-run"
+          mkdir -p "$dir"
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=completed&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "::notice::no completed CI push run for $GITHUB_SHA; auditing against the restored cache only"
+            exit 0
+          fi
+          gh run download "$run_id" -R "$GITHUB_REPOSITORY" -p 'fm-lint-telemetry-*' -D "$dir" \
+            || echo "::warning::could not download the lint sidecars of CI run $run_id; auditing against the restored cache only"
+      - name: Lint every root uncached and audit the cache
+        env:
+          FM_LINT_REQUIRE_BOUNDS: '1'
+          FM_LINT_JOBS: '1'
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/fm-lint"
+          audit=(--audit-cache "$RUNNER_TEMP/fm-lint-cache-audit")
+          while IFS= read -r record; do
+            audit+=(--audit-record "$record")
+          done < <(find "$RUNNER_TEMP/fm-lint-cached-run" -type f -name '*.cache.tsv' | LC_ALL=C sort)
+          bin/fm-lint.sh --partition "${{ matrix.partition }}of${{ strategy.job-total }}" \
+            --telemetry "$RUNNER_TEMP/fm-lint/nightly-${{ matrix.partition }}.tsv" \
+            "${audit[@]}"
+      - name: Upload uncached lint telemetry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fm-lint-nightly-telemetry-${{ matrix.partition }}
+          path: |
+            ${{ runner.temp }}/fm-lint/nightly-${{ matrix.partition }}.tsv
+            ${{ runner.temp }}/fm-lint/nightly-${{ matrix.partition }}.roots.tsv
+            ${{ runner.temp }}/fm-lint/nightly-${{ matrix.partition }}.cache.tsv
+          if-no-files-found: warn

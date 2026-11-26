@@ -159,11 +159,14 @@ A known-heavy root (the script header owns that list) skips its source-following
 All 651 canonical roots have a sample.
 The smaller root sets and sequential workers limit peak ShellCheck memory without dropping any checks.
 Pull requests pass `--changed` so only the canonical-set files changed since the merge-base are analyzed, still with `--external-sources` and full dataflow.
-A change to lint definition files (`bin/fm-lint.sh`, `bin/fm-lint-workflows.sh`, the pinned installers, or `bin/fm-timeout-lib.sh`), including a delete or rename of any of those paths, upgrades that PR to the full canonical set.
+A change to lint definition files (`bin/fm-lint.sh`, `bin/fm-lint-cache-lib.sh`, `bin/fm-lint-workflows.sh`, the pinned installers, or `bin/fm-timeout-lib.sh`), including a delete or rename of any of those paths, upgrades that PR to the full canonical set.
 A change to a file that another canonical script sources, found from `# shellcheck source=` directives rather than a hand list, also upgrades to the full set so an unchanged consumer cannot hide a new ShellCheck finding from the PR and then fail the full gate on main.
 A delete or rename of that helper counts, including the old path of a rename.
 Main pushes keep the full canonical gate.
 CI caches the pinned ShellCheck and actionlint binaries and skips the download when the pin is already present.
+Each lint partition also restores and saves a per-root ShellCheck pass cache with `actions/cache`, so a root whose exact key holds a recorded pass is not linted again; `bin/fm-lint-cache-lib.sh` owns the key, the entry format, and the rule that only a recorded pass is ever replayed.
+Every cached run prints its hits and misses and uploads them per root as the `*.cache.tsv` sidecar beside its telemetry.
+The scheduled `.github/workflows/lint-nightly.yml` run lints every partition uncached and fails naming any stale key it proves against the restored cache or the same commit's cached run.
 CI requires its per-root bounds, so an unenforceable deadline or address-space limit refuses lint rather than running uncapped; the script header owns the envelope, per-root execution contract, memory fallback, and known-heavy list.
 Its `--list-files` interface exposes partition membership; `tests/fm-lint.test.sh` verifies complete/disjoint executed roots, `--changed` source-aware analysis, definition-file upgrades, and fallback reporting.
 The workflow uploads each partition's quiet telemetry plus its per-root lifecycle sidecar to distinguish analysis cost, memory use, and host contention.
