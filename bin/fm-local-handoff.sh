@@ -160,9 +160,8 @@ command_offer() {  # <task-id>
   [ "$(fm_local_handoff_field "$binding" parent_home)" = "$parent_home" ] \
     || die "project $project is bound to a different parent home than this home's parent route"
 
-  spawn_gen=$(meta_field "$meta" spawn_gen)
-  [ -n "$spawn_gen" ] || spawn_gen=0
-  fm_local_handoff_valid_spawn_gen "$spawn_gen" || die "task $id records a malformed incarnation"
+  fm_local_handoff_child_spawn_gen "$meta" "$id" || die "$FM_LOCAL_HANDOFF_ERROR"
+  spawn_gen=$FM_LOCAL_HANDOFF_RECORD
 
   branch=$(meta_field "$meta" branch)
   [ -n "$branch" ] || branch="fm/$id"

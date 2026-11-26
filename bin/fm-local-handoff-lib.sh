@@ -122,6 +122,32 @@ fm_local_handoff_valid_spawn_gen() {
   [[ $1 =~ ^([0-9]+|s[0-9]+\.[0-9]+\.[0-9]+)$ ]]
 }
 
+# The incarnation a child task record names, read once for every consumer.
+# A record with no spawn_gen field at all predates incarnations and is the
+# legacy 0; an empty field, a repeated field, an unreadable record, or a value
+# outside the incarnation shapes is damage and refuses rather than guessing.
+# Reports the value through FM_LOCAL_HANDOFF_RECORD.
+fm_local_handoff_child_spawn_gen() {  # <task-meta> <task-id>
+  local meta=$1 task=$2 lines rc=0
+  FM_LOCAL_HANDOFF_ERROR=
+  FM_LOCAL_HANDOFF_RECORD=
+  lines=$(grep '^spawn_gen=' "$meta" 2>/dev/null) || rc=$?
+  case $rc in
+    0) ;;
+    1) FM_LOCAL_HANDOFF_RECORD=0; return 0 ;;
+    *) FM_LOCAL_HANDOFF_ERROR="task $task record $meta is unreadable"; return 1 ;;
+  esac
+  case $lines in
+    *$'\n'*) FM_LOCAL_HANDOFF_ERROR="task $task records more than one incarnation"; return 1 ;;
+    spawn_gen=) FM_LOCAL_HANDOFF_ERROR="task $task records an empty incarnation"; return 1 ;;
+  esac
+  if ! fm_local_handoff_valid_spawn_gen "${lines#spawn_gen=}"; then
+    FM_LOCAL_HANDOFF_ERROR="task $task records a malformed incarnation"
+    return 1
+  fi
+  FM_LOCAL_HANDOFF_RECORD=${lines#spawn_gen=}
+}
+
 # A captain call's hold-set stamp and answer count, as emitted by the hold
 # owner. Keep the count bounded for safe arithmetic when verifying release.
 fm_local_handoff_valid_hold_identity() {
@@ -810,8 +836,11 @@ fm_local_handoff_offer_identity_proves() {
     FM_LOCAL_HANDOFF_ERROR="child task $task now records branch $meta_branch, not the offered $branch"
     return 1
   fi
-  meta_gen=$(grep '^spawn_gen=' "$meta" 2>/dev/null | head -1 | cut -d= -f2- || true)
-  [ -n "$meta_gen" ] || meta_gen=0
+  if ! fm_local_handoff_child_spawn_gen "$meta" "$task"; then
+    FM_LOCAL_HANDOFF_ERROR="child $FM_LOCAL_HANDOFF_ERROR"
+    return 1
+  fi
+  meta_gen=$FM_LOCAL_HANDOFF_RECORD
   if [ "$meta_gen" != "$spawn_gen" ]; then
     FM_LOCAL_HANDOFF_ERROR="child task $task is now incarnation $meta_gen, not the offered $spawn_gen"
     return 1

@@ -107,6 +107,15 @@ commit_child_work() {  # <text>
     commit -qm "$1"
 }
 
+# Replace every spawn_gen line in the child task record with <line>..., in
+# order; no arguments leaves the record with no incarnation, as a legacy one.
+set_child_spawn_gen_lines() {  # [line...]
+  local meta="$FX_CHILD/state/$FX_TASK.meta"
+  grep -v '^spawn_gen=' "$meta" > "$meta.tmp" || true
+  [ "$#" -eq 0 ] || printf '%s\n' "$@" >> "$meta.tmp"
+  mv "$meta.tmp" "$meta"
+}
+
 record_field() {  # <file> <key>
   grep "^$2=" "$1" | head -1 | cut -d= -f2-
 }
@@ -1679,6 +1688,19 @@ test_a_current_spawn_token_lands_through_to_its_receipt() {
   approve_current_offer
   assert_equals "$token" "$(record_field "$FX_LANDING_RECORD" spawn_gen)" \
     "the pinned landing does not carry the current spawn token"
+  # A respawn under the current writer is a new token, and the approval named
+  # the old one.
+  local respawned err status
+  respawned="${token}0"
+  set_child_spawn_gen_lines "spawn_gen=$respawned"
+  err="$TMP_ROOT/current-token.err"
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a landing accepted an offer from a superseded current-token incarnation"
+  assert_grep "is now incarnation $respawned, not the offered $token" "$err" \
+    "the refusal did not name the changed current-token incarnation"
+  set_child_spawn_gen_lines "spawn_gen=$token"
   out=$(run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" 2>&1) \
     || fail "the delegated landing of a current-token offer failed"$'\n'"$out"
   assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse HEAD)" \
@@ -1711,6 +1733,82 @@ test_a_malformed_incarnation_refuses_the_offer() {
   pass "a malformed incarnation still refuses the offer"
 }
 
+# The child's task record must name its incarnation at most once. An explicitly
+# empty field or two fields, such as a stale one left ahead of a newer one, are
+# a damaged record rather than a legacy one, so the offer refuses them.
+test_an_empty_or_duplicate_incarnation_refuses_the_offer() {
+  local name lines err status
+  for name in empty duplicate; do
+    case $name in
+      empty) lines='spawn_gen=' ;;
+      duplicate) lines=$'spawn_gen=7\nspawn_gen=s1795670254.12.34' ;;
+    esac
+    make_bound_fixture "offer-$name-incarnation"
+    set_child_spawn_gen_lines "$lines"
+    commit_child_work "$name incarnation change"
+    err="$TMP_ROOT/offer-$name-incarnation.err"
+    status=0
+    run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "an offer was published for a task record with an $name incarnation"
+    case $name in
+      empty) assert_grep "task $FX_TASK records an empty incarnation" "$err" \
+        "the refusal did not name the empty incarnation" ;;
+      duplicate) assert_grep "task $FX_TASK records more than one incarnation" "$err" \
+        "the refusal did not name the duplicate incarnation" ;;
+    esac
+    assert_absent "$FX_OFFER" "an $name incarnation left an offer behind"
+  done
+  pass "an empty or duplicate incarnation refuses the offer"
+}
+
+# A legacy task record with no incarnation at all is incarnation 0, so its
+# offer publishes and lands. Damaging that record after the offer is pinned
+# must still refuse the landing, rather than reading the empty field as the
+# same legacy 0 or reading only the first of two fields.
+test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing() {
+  local head err status pinned=0 lines before
+  make_bound_fixture pinned-incarnation
+  set_child_spawn_gen_lines
+  commit_child_work 'legacy incarnation change'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null \
+    || fail "a legacy task record with no incarnation could not publish its offer"
+  assert_equals 0 "$(record_field "$FX_OFFER" spawn_gen)" \
+    "a legacy task record with no incarnation was not offered as incarnation 0"
+  if prepare_landing_row land-app; then
+    approve_current_offer
+    pinned=1
+  else
+    echo "skip: tasks-axi not found (pinned incarnation landing; refusals still checked)"
+  fi
+  err="$TMP_ROOT/pinned-incarnation.err"
+  before=$(git -C "$FX_MAIN/projects/app" rev-parse main)
+
+  for lines in 'spawn_gen=' $'spawn_gen=0\nspawn_gen=8'; do
+    set_child_spawn_gen_lines "$lines"
+    status=0
+    run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+      >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "a landing accepted a child task record holding: $lines"
+    case $lines in
+      'spawn_gen=') assert_grep "child task $FX_TASK records an empty incarnation" "$err" \
+        "the refusal did not name the empty incarnation" ;;
+      *) assert_grep "child task $FX_TASK records more than one incarnation" "$err" \
+        "the refusal did not name the duplicate incarnation" ;;
+    esac
+    assert_equals "$before" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+      "a refused incarnation still moved the primary's default branch"
+  done
+
+  set_child_spawn_gen_lines
+  [ "$pinned" = 1 ] || { pass "an empty or duplicate incarnation blocks a pinned landing"; return 0; }
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" >/dev/null 2>"$err" \
+    || fail "the legacy-incarnation landing failed once its record was restored"$'\n'"$(cat "$err")"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse main)" \
+    "the restored legacy-incarnation landing did not fast-forward the primary"
+  pass "an empty or duplicate incarnation blocks a pinned landing"
+}
+
 test_seed_binds_the_local_only_clone
 test_seed_refuses_an_unbound_or_published_local_only_clone
 test_child_home_cannot_land_its_own_bound_clone
@@ -1719,6 +1817,8 @@ test_offer_uses_the_task_branch
 test_delegated_landing_fast_forwards_and_publishes_a_receipt
 test_a_current_spawn_token_lands_through_to_its_receipt
 test_a_malformed_incarnation_refuses_the_offer
+test_an_empty_or_duplicate_incarnation_refuses_the_offer
+test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing
 test_delegated_landing_refuses_an_unpinned_or_stale_approval
 test_a_released_approval_covers_only_the_head_it_pinned
 test_pinning_an_offer_needs_an_open_captain_call
