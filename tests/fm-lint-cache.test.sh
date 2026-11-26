@@ -560,6 +560,38 @@ SH
   pass "absolute source commands and directives key the file ShellCheck reads below the working directory"
 }
 
+test_real_directive_scope_ends_at_a_top_level_separator() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo
+  tmp=$(fm_test_tmproot fm-lint-cache-directive-scope)
+  fm_lint_cache_real_fixture "$tmp" "${FUNCNAME[0]}" || return 0
+  repo="$tmp/repo"
+  mkdir -p "$repo/lib"
+  printf '# shellcheck shell=bash\nexport from_a=1\n' > "$repo/lib/a.sh"
+  printf '# shellcheck shell=bash\nexport bar=1\n' > "$repo/lib/c.sh"
+  set -- semicolon 'true; . lib/c.sh' background 'true & . lib/c.sh' group '{ true; }; . lib/c.sh'
+  while [ "$#" -gt 0 ]; do
+    # shellcheck disable=SC2016 # Fixture source text, not an expansion.
+    printf '#!/usr/bin/env bash\necho hi\n# shellcheck source=lib/a.sh\n%s\nprintf "%%s\\n" "$bar"\n' "$2" > "$repo/tests/$1.sh"
+    shift 2
+  done
+  cat > "$repo/tests/nested.sh" <<'SH'
+#!/usr/bin/env bash
+f() { printf '%s\n' "$1"; }
+# shellcheck source=lib/c.sh
+( true; . "$(f lib/c.sh)"; printf '%s\n' "$bar" )
+SH
+  fm_lint_cache_run "$tmp" tests/semicolon.sh tests/background.sh tests/group.sh tests/nested.sh
+  [ "$LINT_RC" -eq 0 ] || fail "the clean directive-scope fixture did not pass real ShellCheck"$'\n'"$LINT_OUT"
+  assert_contains "$LINT_OUT" "stored=4" "a directive-covered source nested after a separator was not cacheable"
+  printf '# shellcheck shell=bash\n' > "$repo/lib/c.sh"
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source after a top-level ;" tests/semicolon.sh
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source after a top-level &" tests/background.sh
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a source after a closed group and ;" tests/group.sh
+  fm_lint_cache_expect_real_finding "$tmp" SC2154 "a directive-covered source inside a subshell" tests/nested.sh
+  pass "a source directive covers only its own and-or list, so a later top-level source enters the key"
+}
+
 test_real_bash_env_cannot_change_shellcheck_flags() {
   fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
   local tmp repo
@@ -858,6 +890,7 @@ fm_test_run \
   test_real_quoted_source_paths_enter_the_key \
   test_real_symlink_swap_between_candidates_misses \
   test_real_absolute_source_paths_resolve_from_the_working_directory \
+  test_real_directive_scope_ends_at_a_top_level_separator \
   test_real_bash_env_cannot_change_shellcheck_flags \
   test_unresolvable_source_expression_is_uncacheable \
   test_script_wrapper_shellcheck_disables_the_cache \

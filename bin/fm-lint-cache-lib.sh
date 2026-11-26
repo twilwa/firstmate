@@ -197,6 +197,10 @@ our %L;
 sub lex_fail { $L{problem} = "$L{path} near line " . line_of($L{i}) . " has $_[0]" if $L{problem} eq ''; $L{i} = length $L{s} }
 sub line_of { my $p = $_[0]; $p = length $L{s} if $p > length $L{s}; return (substr($L{s}, 0, $p) =~ tr/\n//) + 1 }
 
+# A whole-line source directive covers only the next and-or list at its own
+# nesting depth; $L{pending} is the lexer's depth relative to that list.
+sub nest { return unless defined $L{pending}; $L{pending} += $_[0]; undef $L{pending} if $L{pending} < 0 }
+
 sub directive_comment {
   my ($comment) = @_;
   return unless $comment =~ /\bshellcheck\b/ && $comment =~ /\bsource(?:-path)?=/;
@@ -312,14 +316,16 @@ sub expansion {
       local $L{s} = $inner;
       local $L{i} = 0;
       local $L{heredocs} = [];
+      nest(1);
       lex_list('');
+      nest(-1);
     }
     $L{i} = $k + 1;
     return;
   }
   my $two = substr($s, $L{i}, 3);
   if ($two eq '$((') { $L{i}++; return skip_balanced('(', ')') }
-  if (substr($s, $L{i}, 2) eq '$(') { $L{i} += 2; lex_list(')'); return }
+  if (substr($s, $L{i}, 2) eq '$(') { $L{i} += 2; nest(1); lex_list(')'); nest(-1); return }
   if (substr($s, $L{i}, 2) eq '${') { $L{i} += 2; return braced() }
   if (substr($s, $L{i} + 1) =~ /\A([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?\$!-])/) { $L{i} += 1 + length $1; return }
   $L{i}++;
@@ -342,7 +348,7 @@ sub skip_blank {
     my $whole = substr($s, $line_start, $L{i} - $line_start) !~ /\S/;
     $L{i} = $k;
     my $sources = directive_comment($comment);
-    if ($whole) { $L{pending} = 1 if $sources }
+    if ($whole) { $L{pending} = 0 if $sources }
     return $comment;
   }
   return undef;
@@ -405,7 +411,7 @@ sub lex_list {
     my $c = substr($s, $L{i}, 1);
     if ($c eq "\n") {
       $finish->("\n");
-      $L{pending} = 0 unless defined $comment && substr($s, rindex($s, "\n", $L{i} - 1) + 1, $L{i} - rindex($s, "\n", $L{i} - 1) - 1) =~ /\A\s*#/;
+      undef $L{pending} unless defined $comment && substr($s, rindex($s, "\n", $L{i} - 1) + 1, $L{i} - rindex($s, "\n", $L{i} - 1) - 1) =~ /\A\s*#/;
       $L{i}++;
       heredoc_bodies();
       $cmdstart = 1 unless @case && $case[-1] eq 'pattern';
@@ -424,6 +430,8 @@ sub lex_list {
         if ($op eq ')') { $case[-1] = 'command'; $cmdstart = 1 }
         next;
       }
+      nest($op eq '(' ? 1 : $op eq ')' ? -1 : 0);
+      undef $L{pending} if defined $L{pending} && $L{pending} == 0 && $op =~ /\A(?:;;?&?|&)\z/;
       if (@case && $op =~ /\A;;|;&/) { $case[-1] = 'pattern'; $cmdstart = 0; next }
       $cmdstart = 1;
       next;
@@ -446,26 +454,27 @@ sub lex_list {
     return if $L{problem} ne '';
     my $raw = $word->[0];
     if (@case && $case[-1] eq 'pattern') {
-      if ($raw eq 'esac') { pop @case; $cmdstart = 0 }
+      if ($raw eq 'esac') { pop @case; nest(-1); $cmdstart = 0 }
       next;
     }
     if ($source) { push @{$source->[1]}, $word; next }
     if ($cmdstart) {
       (my $plain = $raw) =~ s/['"\\]//g;
       if ($raw !~ /[\$`*?\[]/ && ($plain eq 'source' || $plain eq '.')) {
-        $source = [$L{i} - length $raw, [], 0, $prefixed, $L{pending}];
+        $source = [$L{i} - length $raw, [], 0, $prefixed, defined $L{pending}];
         $cmdstart = 0;
         next;
       }
       if ($raw =~ /\A[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/) { $prefixed = 1; next }
-      if ($raw eq 'case') { push @case, 'subject'; $cmdstart = 0; next }
-      if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
-      next if $RESERVED{$raw};
+      if ($raw eq 'case') { push @case, 'subject'; nest(1); $cmdstart = 0; next }
+      if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; nest(-1); next }
+      if ($RESERVED{$raw}) { nest($raw =~ /\A(?:\{|if|while|until)\z/ ? 1 : $raw =~ /\A(?:\}|fi|done)\z/ ? -1 : 0); next }
+      nest(1) if $raw eq 'for' || $raw eq 'select';
       $cmdstart = 0;
       next;
     }
     if (@case && $case[-1] eq 'subject' && $raw eq 'in') { $case[-1] = 'pattern'; next }
-    if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; next }
+    if (@case && $case[-1] eq 'command' && $raw eq 'esac') { pop @case; nest(-1); next }
   }
 }
 
@@ -555,12 +564,12 @@ sub root_key {
       }
       my @dirs = ('.', $root_dir, $file_dir, sort keys %bases);
       for my $ref (@{$refs->[0]}) {
-        my ($type, $value, $form) = @$ref;
+        my ($type, $value) = @$ref;
         my @candidates;
         for my $v (with_scriptdir($value, $root_dir, $file_dir)) {
           (my $rel = $v) =~ s{\A/+}{};
           push @candidates, map { join_path($_, $rel) } @dirs;
-          push @candidates, $v if $rel ne $v && ($form // '') ne 'tail';
+          push @candidates, $v if $rel ne $v;
         }
         for my $candidate (@candidates) {
           my $k = path_kind($candidate);
