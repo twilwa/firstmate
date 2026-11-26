@@ -28,7 +28,9 @@ fm_lint_cache_bounds_supported() {
 # answers --version with the pinned version, appends each analyzed root to
 # FM_TEST_SC_LOG, and reports a finding (exit 1) for a root whose content holds
 # LINT-BAD or whose path is listed in FM_TEST_SC_FAIL_LIST, a file outside every
-# cache key that models an input the key cannot see.
+# cache key that models an input the key cannot see. A root listed in
+# FM_TEST_SC_OOM_LIST exhausts memory under --external-sources and passes
+# without it; a root listed in FM_TEST_SC_SLOW_LIST outlives any deadline.
 fm_lint_cache_fixture() {
   local tmp=$1
   mkdir -p "$tmp/repo/bin" "$tmp/repo/tests" "$tmp/fakebin"
@@ -40,10 +42,22 @@ if [ "${1:-}" = --version ]; then
   printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
   exit 0
 fi
-while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
+external=0
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
+  [ "$1" != --external-sources ] || external=1
+  shift
+done
 [ "$#" -eq 0 ] || shift
 target=$1
 printf '%s\n' "$target" >> "$FM_TEST_SC_LOG"
+fm_test_listed() { [ -n "$1" ] && grep -Fxq "$target" "$1" 2>/dev/null; }
+if [ "$external" -eq 1 ] && fm_test_listed "${FM_TEST_SC_OOM_LIST:-}"; then
+  printf 'shellcheck: Heap exhausted;\n' >&2
+  exit 251
+fi
+if fm_test_listed "${FM_TEST_SC_SLOW_LIST:-}"; then
+  exec sleep 30
+fi
 if grep -q LINT-BAD "$target" 2>/dev/null \
   || { [ -n "${FM_TEST_SC_FAIL_LIST:-}" ] && grep -Fxq "$target" "$FM_TEST_SC_FAIL_LIST" 2>/dev/null; }; then
   printf '\nIn %s line 1:\n^-- SC2154 (warning): stub finding.\n' "$target"
@@ -214,6 +228,47 @@ test_failing_root_is_never_recorded_or_replayed() {
   pass "a root with findings is never recorded and never replayed"
 }
 
+test_unknown_verdict_is_never_recorded_or_replayed() {
+  fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
+  local tmp repo attempt entries
+  local -a roots=(tests/ok.sh tests/slow.sh tests/oom.sh)
+  tmp=$(fm_test_tmproot fm-lint-cache-unknown)
+  fm_lint_cache_fixture "$tmp"
+  repo="$tmp/repo"
+  printf '#!/usr/bin/env bash\necho ok\n' > "$repo/tests/ok.sh"
+  printf '#!/usr/bin/env bash\necho slow\n' > "$repo/tests/slow.sh"
+  printf '#!/usr/bin/env bash\necho oom\n' > "$repo/tests/oom.sh"
+  printf 'tests/slow.sh\n' > "$tmp/slow-list"
+  printf 'tests/oom.sh\n' > "$tmp/oom-list"
+  if [ "$(id -u)" -ne 0 ]; then
+    cat > "$repo/tests/hidden.sh" <<'SH'
+#!/usr/bin/env bash
+# shellcheck source=tests/secret.sh
+. "$(dirname "${BASH_SOURCE[0]}")/secret.sh"
+SH
+    printf 'secret=1\n' > "$repo/tests/secret.sh"
+    chmod 000 "$repo/tests/secret.sh"
+    roots+=(tests/hidden.sh)
+  fi
+  for attempt in 1 2; do
+    FM_LINT_ROOT_SECONDS=2 FM_LINT_ROOT_GRACE=1 \
+      FM_TEST_SC_SLOW_LIST="$tmp/slow-list" FM_TEST_SC_OOM_LIST="$tmp/oom-list" \
+      fm_lint_cache_run "$tmp" "${roots[@]}"
+    [ "$LINT_RC" -ne 0 ] || fail "run $attempt passed a root that timed out"$'\n'"$LINT_OUT"
+    assert_contains "$LINT_OUT" "reason=timeout" "run $attempt did not end the slow root on its deadline"
+    assert_contains "$LINT_OUT" "tests/oom.sh hit the memory ceiling with --external-sources" \
+      "run $attempt did not take the memory fallback"
+    fm_lint_cache_linted "$tmp" "${roots[@]:1}" \
+      || fail "run $attempt replayed a root whose verdict was never a recorded pass"$'\n'"$(cat "$tmp/sc.log")"$'\n'"$LINT_OUT"
+  done
+  ! fm_lint_cache_linted "$tmp" tests/ok.sh || fail "the clean control root did not replay its recorded pass"
+  [ "$(id -u)" -eq 0 ] || assert_contains "$LINT_OUT" "uncacheable=1" "the root with an unreadable source was not uncacheable"
+  chmod 644 "$repo/tests/secret.sh" 2>/dev/null || true
+  entries=$(find "$tmp/cache" -type f ! -name '.tmp.*' 2>/dev/null | wc -l | tr -d '[:space:]')
+  [ "$entries" -eq 1 ] || fail "expected only the control root's entry, found $entries"
+  pass "a timeout, a memory-fallback pass, or an uncacheable root is never recorded and never replayed"
+}
+
 test_corrupt_or_unreadable_cache_lints_everything() {
   fm_lint_cache_skip_unbounded "${FUNCNAME[0]}" && return
   local tmp entry
@@ -343,6 +398,7 @@ fm_test_run \
   test_changed_shellcheck_build_misses \
   test_changed_flag_or_lint_definition_misses \
   test_failing_root_is_never_recorded_or_replayed \
+  test_unknown_verdict_is_never_recorded_or_replayed \
   test_corrupt_or_unreadable_cache_lints_everything \
   test_local_and_hosted_entries_do_not_collide \
   test_uncached_audit_bypasses_the_cache_and_names_a_stale_key \

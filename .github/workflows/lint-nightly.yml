@@ -64,7 +64,8 @@ jobs:
           dir="$RUNNER_TEMP/fm-lint-cached-run"
           mkdir -p "$dir"
           run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=completed&per_page=1" \
-            --jq '.workflow_runs[0].id // empty')
+            --jq '.workflow_runs[0].id // empty') \
+            || { echo "::warning::could not look up the CI push run for $GITHUB_SHA; auditing against the restored cache only"; run_id=; }
           if [ -z "$run_id" ]; then
             echo "::notice::no completed CI push run for $GITHUB_SHA; auditing against the restored cache only"
             exit 0
