@@ -414,7 +414,16 @@ ready_for_qa_check() {
 
 SNAPSHOT_TEMP=0
 POST_MERGE_TEMP=
+WAIVER_AWAY_LOCK=
 cleanup_snapshot() {
+  if [ -n "$WAIVER_AWAY_LOCK" ]; then
+    trap '' HUP INT TERM
+    fm_lock_wait_pending_mutation
+    fm_lock_release "$WAIVER_AWAY_LOCK" || true
+    fm_lock_release "$WAIVER_AWAY_LOCK.steal" || true
+    fm_lock_discard_staged_owners "$WAIVER_AWAY_LOCK" "$FM_LOCK_OWNER_SCOPE" "$$" || true
+    FM_AFK_CONTRACT_LOCK_HELD=
+  fi
   fm_afk_contract_lock_release || true
   [ "$SNAPSHOT_TEMP" -eq 0 ] || rm -f -- "${SNAPSHOT:-}"
   [ -z "$POST_MERGE_TEMP" ] || rm -f -- "$POST_MERGE_TEMP"
@@ -562,7 +571,13 @@ case "$cmd" in
     [ "${#FM_PR_OPT_ALLOW_RED[@]}" -eq 0 ] || WAIVING=true
     if [ "$WAIVING" = true ]; then
       # A returning signal trap would release the lock and resume toward a
-      # publish, so these exit and leave the release to EXIT cleanup.
+      # publish, so these exit and leave the release to EXIT cleanup. That
+      # cleanup knows the lock path and this run's owner scope up front, so a
+      # signal between the lock's publication and the record of holding it
+      # still releases it.
+      fm_afk_contract_lock_helpers || die 'could not load the away-posture lock primitive'
+      FM_LOCK_OWNER_SCOPE="review.$$.$RANDOM.$RANDOM"
+      WAIVER_AWAY_LOCK=$(fm_afk_contract_lock_path "$STATE")
       trap 'exit 129' HUP
       trap 'exit 130' INT
       trap 'exit 143' TERM

@@ -5058,6 +5058,49 @@ SH
   pass "a signal while merge-decision stages a waiver decision ends the run with nothing published and no lock held"
 }
 
+# A signal that lands while merge-decision is still acquiring the away lock,
+# after the lock is published but before the run records holding it, ends the
+# run and still leaves no lock behind.
+test_signal_during_waiver_away_lock_acquisition_leaves_no_lock() {
+  local case_dir rc head url ledger low
+  head=a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/111
+  case_dir=$(make_case review-waiver-signal-acquire)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 111 "$low" no-attest
+  # The real mv publishes the lock owner's pid; once, that publication then
+  # signals the review shell that ran it.
+  cat > "$case_dir/fakebin/mv" <<SH
+#!/usr/bin/env bash
+"$REAL_MV" "\$@" || exit
+case "\${*: -1}" in
+  "$case_dir/state/.afk-contract.lock.owner."*/pid)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/mv"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-acquire: the away lock acquisition was never reached: $(cat "$case_dir/stderr")"
+  expect_code 143 "$rc" "review-waiver-signal-acquire: TERM during the away lock acquisition must end the run"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--111.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-acquire: the signalled run still published a merge decision"
+  [ ! -e "$case_dir/state/.afk-contract.lock" ] && [ ! -L "$case_dir/state/.afk-contract.lock" ] \
+    || fail "review-waiver-signal-acquire: the away lock was left behind when TERM landed during acquisition"
+  pass "a signal while merge-decision acquires the away lock for a waiver ends the run and leaves no lock"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -6724,6 +6767,7 @@ test_review_merge_records_only_the_waivers_the_guard_applies
 test_allow_red_single_hyphen_names_stay_data
 test_away_posture_publishes_and_accepts_no_waiver_decision
 test_signal_during_waiver_decision_staging_publishes_nothing
+test_signal_during_waiver_away_lock_acquisition_leaves_no_lock
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts
