@@ -1811,7 +1811,10 @@ persist_accepted_merge_authority() {
   fm_merge_authority_persist "$STATE" "$ID" "$META" \
     "$PROVIDER" "$PR_HOST" "$PR_PATH" "$PR_NUMBER" "$FM_PR_MERGE_AUTHORITY" \
     || status=1
-  [ "$status" -ne 0 ] || record_accepted_merge_waivers || status=1
+  if [ "$status" -eq 0 ] \
+    && { [ "${#ALLOW_RED[@]}" -gt 0 ] || grep -q '^merge_allow_red=' "$META"; }; then
+    record_accepted_merge_waivers || status=1
+  fi
   fm_lock_release "$MERGE_META_LOCK" || status=1
   MERGE_META_LOCK=
   if [ "$status" -eq 0 ]; then

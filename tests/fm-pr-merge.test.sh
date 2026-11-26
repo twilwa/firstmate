@@ -453,6 +453,20 @@ SH
   chmod +x "$case_dir/fakebin/mv"
 }
 
+add_failing_merge_meta_mv() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/mv" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    */.fm-pr-merge-meta.*) exit 1 ;;
+  esac
+done
+exec "$FM_TEST_REAL_MV" "$@"
+SH
+  chmod +x "$case_dir/fakebin/mv"
+}
+
 # glab mock recording every invocation together with the GITLAB_HOST it was
 # given, so a test can prove the instance came from the URL. `mr view` answers
 # from the case's JSON payload; marker files in the case dir drive the failure
@@ -4699,6 +4713,50 @@ test_allow_red_waives_each_named_check() {
   pass "fm-pr-merge waives each separately named red check and still refuses an unnamed one"
 }
 
+# A merge that waives nothing leaves the task metadata alone, so a failed
+# waived-check rewrite cannot fail it after the forge accepted it; an earlier
+# merge_allow_red= line is still dropped, and a waiving merge still records.
+test_allow_red_record_rewrites_metadata_only_when_waivers_change() {
+  local case_dir rc head
+  head=a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5
+
+  case_dir=$(make_case github-no-waiver-keeps-meta)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  add_failing_merge_meta_mv "$case_dir"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/108 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-no-waiver-keeps-meta: a green merge with no waiver failed on the waiver record"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 108 example/repo --squash
+  assert_no_grep 'waived-check record could not be persisted' "$case_dir/stderr" \
+    "github-no-waiver-keeps-meta: a merge with no waiver rewrote the task metadata"
+
+  case_dir=$(make_case github-waiver-record-failure)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_red_json "$case_dir" "$head" lint
+  add_failing_merge_meta_mv "$case_dir"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/109 \
+    --allow-red lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-waiver-record-failure: an unrecorded waiver must be reported"
+  assert_grep 'waived-check record could not be persisted' "$case_dir/stderr" \
+    "github-waiver-record-failure: the failed waiver record was not named"
+
+  case_dir=$(make_case github-no-waiver-drops-stale)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf 'merge_allow_red=["lint"]\n' >> "$case_dir/state/task-x1.meta"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/110 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "github-no-waiver-drops-stale: a green merge with no waiver should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_no_grep '^merge_allow_red=' "$case_dir/state/task-x1.meta" \
+    "github-no-waiver-drops-stale: an earlier merge's waivers survived a merge that waived none"
+  pass "fm-pr-merge rewrites the waived-check record only when a merge waives or clears one"
+}
+
 # A missing --allow-red value never borrows the next argument: an option or the
 # -- separator in the value slot refuses before any forge call, even when a
 # reported red check carries that literal name.
@@ -6597,6 +6655,7 @@ test_github_updated_head_failure_refuses_without_waiting_for_pending
 test_github_behind_updates_and_rechecks_before_merge
 test_github_red_checks_refuse_and_allow_red_waives_named
 test_allow_red_waives_each_named_check
+test_allow_red_record_rewrites_metadata_only_when_waivers_change
 test_allow_red_missing_value_never_consumes_an_option
 test_allow_red_matches_whole_names_across_line_breaks
 test_review_merge_records_only_the_waivers_the_guard_applies
