@@ -55,8 +55,8 @@ FX_TASK=
 FX_WT=
 FX_CLONE=
 FX_OFFER=
-make_bound_fixture() {  # <name> [task-id]
-  local name=$1 task=${2:-child-task} fx main child fakebin
+make_bound_fixture() {  # <name> [task-id] [spawn-gen]
+  local name=$1 task=${2:-child-task} spawn_gen=${3:-7} fx main child fakebin
   fx="$TMP_ROOT/$name"
   main="$fx/main"
   child="$fx/child"
@@ -95,7 +95,7 @@ make_bound_fixture() {  # <name> [task-id]
     "kind=ship" \
     "mode=local-only" \
     "yolo=off" \
-    "spawn_gen=7"
+    "spawn_gen=$spawn_gen"
   touch "$child/state/.last-watcher-beat" "$main/state/.last-watcher-beat"
 }
 
@@ -1167,6 +1167,15 @@ test_damaged_records_fail_closed() {
   expect_code 1 "$status" "a landing accepted an offer holding NUL bytes"
   assert_grep 'NUL bytes' "$err" "the refusal did not name the NUL bytes"
 
+  cp "$saved" "$FX_OFFER"
+  sed -i.bak 's/^spawn_gen=.*/spawn_gen=s1.2/' "$FX_OFFER"
+  rm -f "$FX_OFFER.bak"
+  status=0
+  run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" \
+    >/dev/null 2>"$err" || status=$?
+  expect_code 1 "$status" "a landing accepted an offer naming a malformed incarnation"
+  assert_grep 'has a malformed incarnation' "$err" "the refusal did not name the malformed incarnation"
+
   rm -f "$FX_OFFER"
   ln -s "$saved" "$FX_OFFER"
   status=0
@@ -1555,12 +1564,64 @@ test_a_pin_is_withdrawn_when_its_row_is_released_underneath_it() {
   pass "a pin whose row is released underneath it is withdrawn, not inherited"
 }
 
+# bin/fm-spawn.sh records each incarnation as s<epoch>.<pid>.<random>; a task
+# spawned today carries that token, not the legacy all-digit counter, and it
+# must survive the whole custody from offer to receipt and teardown.
+test_a_current_spawn_token_lands_through_to_its_receipt() {
+  local token head out receipt
+  token="s$(date +%s).$$.$RANDOM"
+  make_bound_fixture current-token child-task "$token"
+  commit_child_work 'current token change'
+  head=$(git -C "$FX_CLONE" rev-parse "refs/heads/fm/$FX_TASK")
+  out=$(run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" 2>&1) \
+    || fail "a task with a current spawn token could not publish its offer"$'\n'"$out"
+  assert_equals "$token" "$(record_field "$FX_OFFER" spawn_gen)" \
+    "the offer does not carry the current spawn token"
+  prepare_landing_row land-app \
+    || { echo "skip: tasks-axi not found (current spawn token landing)"; return 0; }
+  approve_current_offer
+  assert_equals "$token" "$(record_field "$FX_LANDING_RECORD" spawn_gen)" \
+    "the pinned landing does not carry the current spawn token"
+  out=$(run_home "$FX_MAIN" "$MERGE" land-app --offer "$FX_OFFER" --expect-head "$head" 2>&1) \
+    || fail "the delegated landing of a current-token offer failed"$'\n'"$out"
+  assert_equals "$head" "$(git -C "$FX_MAIN/projects/app" rev-parse HEAD)" \
+    "the primary's local default was not fast-forwarded to the offered head"
+  receipt="$FX_CHILD/state/$FX_TASK.local-receipt"
+  assert_equals landed "$(record_field "$FX_LANDING_RECORD" state)" \
+    "the landing record was not completed"
+  assert_equals "$token" "$(record_field "$receipt" spawn_gen)" \
+    "the receipt does not bind the current spawn token"
+  out=$(run_home "$FX_CHILD" "$TEARDOWN" "$FX_TASK" 2>&1) \
+    || fail "cleanup refused a current-token task whose receipt was published"$'\n'"$out"
+  pass "a current spawn token is carried from offer through landing to its receipt"
+}
+
+# Only the token shapes the spawn writer has produced are an incarnation;
+# anything else still refuses before an offer is published.
+test_a_malformed_incarnation_refuses_the_offer() {
+  local gen err status
+  for gen in s1795670254.12 s1795670254.12.x 'S1.2.3' 's1.2.3.4' '1.2' 'x7' '../7'; do
+    make_bound_fixture "malformed-${gen//[!A-Za-z0-9]/_}" child-task "$gen"
+    commit_child_work 'malformed incarnation change'
+    err="$TMP_ROOT/malformed-${gen//[!A-Za-z0-9]/_}.err"
+    status=0
+    run_home "$FX_CHILD" "$HANDOFF" offer "$FX_TASK" >/dev/null 2>"$err" || status=$?
+    expect_code 1 "$status" "an offer was published for the malformed incarnation $gen"
+    assert_grep "task $FX_TASK records a malformed incarnation" "$err" \
+      "the refusal for $gen did not name the malformed incarnation"
+    assert_absent "$FX_OFFER" "a malformed incarnation $gen left an offer behind"
+  done
+  pass "a malformed incarnation still refuses the offer"
+}
+
 test_seed_binds_the_local_only_clone
 test_seed_refuses_an_unbound_or_published_local_only_clone
 test_child_home_cannot_land_its_own_bound_clone
 test_offer_pins_the_head_and_republishes_unchanged
 test_offer_uses_the_task_branch
 test_delegated_landing_fast_forwards_and_publishes_a_receipt
+test_a_current_spawn_token_lands_through_to_its_receipt
+test_a_malformed_incarnation_refuses_the_offer
 test_delegated_landing_refuses_an_unpinned_or_stale_approval
 test_a_released_approval_covers_only_the_head_it_pinned
 test_pinning_an_offer_needs_an_open_captain_call

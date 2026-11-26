@@ -116,6 +116,12 @@ fm_local_handoff_valid_epoch() {
   esac
 }
 
+# A task incarnation as bin/fm-spawn.sh writes it, s<epoch>.<pid>.<random>, or
+# the legacy all-digit counter older records still carry.
+fm_local_handoff_valid_spawn_gen() {
+  [[ $1 =~ ^([0-9]+|s[0-9]+\.[0-9]+\.[0-9]+)$ ]]
+}
+
 # A captain call's hold-set stamp and answer count, as emitted by the hold
 # owner. Keep the count bounded for safe arithmetic when verifying release.
 fm_local_handoff_valid_hold_identity() {
@@ -354,6 +360,10 @@ fm_local_handoff_offer_load() {  # <offer-file>
     || ! fm_local_handoff_valid_slug "$(fm_local_handoff_field "$blob" secondmate)" \
     || ! fm_local_handoff_valid_slug "$(fm_local_handoff_field "$blob" project)"; then
     FM_LOCAL_HANDOFF_ERROR="offer at $path has a malformed identity"
+    return 1
+  fi
+  if ! fm_local_handoff_valid_spawn_gen "$(fm_local_handoff_field "$blob" spawn_gen)"; then
+    FM_LOCAL_HANDOFF_ERROR="offer at $path has a malformed incarnation"
     return 1
   fi
   if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
