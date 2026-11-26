@@ -1,0 +1,138 @@
+----- scenario: 1 owner's four bbchat checks red, all four named -> merges, head bound, all four recorded
+exit code: 0
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | verified: https://github.com/example/repo/pull/301 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+gh pr merge call: pr merge 301 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+forge calls total: 6
+task meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"]
+
+----- scenario: 2 three red + named fourth is green -> merges (named green harmless)
+exit code: 0
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | verified: https://github.com/example/repo/pull/301 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+gh pr merge call: pr merge 301 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+forge calls total: 6
+task meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"]
+
+----- scenario: 3 four red, only three named -> refuses naming the unnamed red check
+exit code: 1
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: refusing to merge https://github.com/example/repo/pull/301
+  |   - check 'dev-gate / web-tests' is not green
+  | error: these checks are not green: dev-gate / web-tests
+gh pr merge call: (none)
+forge calls total: 4
+task meta merge_allow_red: (absent)
+
+----- scenario: 4 adversarial: prefix 'dev-browser (shard 1)' does not waive 'dev-browser (shard 1) / check' (exact match)
+exit code: 1
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: refusing to merge https://github.com/example/repo/pull/301
+  |   - check 'dev-browser (shard 1) / check' is not green
+  | error: these checks are not green: dev-browser (shard 1) / check
+gh pr merge call: (none)
+forge calls total: 4
+task meta merge_allow_red: (absent)
+
+----- scenario: 5 duplicate name -> refuses before any forge call
+exit code: 2
+stderr:
+  | error: --allow-red names check 'dev-browser (shard 1) / check' more than once
+gh pr merge call: (none)
+forge calls total: 0
+task meta merge_allow_red: (absent)
+
+----- scenario: 6 five names -> refuses before any forge call
+exit code: 2
+stderr:
+  | error: --allow-red may name at most 4 checks
+gh pr merge call: (none)
+forge calls total: 0
+task meta merge_allow_red: (absent)
+
+----- scenario: 7 away record present -> four waivers refused (attended only)
+exit code: 2
+stderr:
+  | error: --allow-red is attended-only; while the away-posture record exists the green check is absolute
+gh pr merge call: (none)
+forge calls total: 0
+task meta merge_allow_red: (absent)
+
+----- scenario: 8 adversarial: required 'dev-gate / lint' never reported; --allow-red cannot waive a missing required check
+exit code: 1
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: refusing to merge https://github.com/example/repo/pull/301
+  |   - required check 'dev-gate / lint' has not reported at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+  | error: these required checks have not reported: dev-gate / lint
+gh pr merge call: (none)
+forge calls total: 4
+task meta merge_allow_red: (absent)
+
+----- scenario: 9 adversarial: required-check source unreadable -> waivers do not bypass it
+exit code: 1
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: refusing to merge https://github.com/example/repo/pull/301
+  |   - the branch protection summary for base branch main could not be read, so a required check that has not reported cannot be ruled out
+gh pr merge call: (none)
+forge calls total: 4
+task meta merge_allow_red: (absent)
+
+----- scenario: 10 fm-pr-review.sh merge forwards four waivers -> merges; ledger records them
+exit code: 0
+stderr:
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | verified: https://github.com/example/repo/pull/301 is open and mergeable, with every unwaived required check reported and every unwaived check green at head b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0
+gh pr merge call: pr merge 301 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+pr merge 301 --repo example/repo --match-head-commit b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0 --squash
+forge calls total: 27
+task meta merge_allow_red: merge_allow_red=["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"]
+
+review ledger merge_decision waivers: {"allowed_red_checks":["dev-browser (shard 1) / check","dev-browser (shard 2) / check","dev-gate / lint","dev-gate / web-tests"],"allowed_red_check":null}

@@ -1,16 +1,56 @@
-$ bin/fm-pr-merge.sh --help | grep -n -i "allow-red"
-17:    [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
-73:--allow-red <check-name> may be repeated for up to four distinct names, each
-82:green unless separately waived by --allow-red. It matches the required
-246:Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
-(exit 0)
+$ bin/fm-pr-merge.sh --help (allow-red excerpts)
+Usage:
+  fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch]
+    [--expected-head <full-sha>]
+    [--allow-red <check>]... [--allow-missing <check>] [--allow-no-pipeline]
+    [-- <forge merge flags>]
+  fm-pr-merge.sh -h | --help
+--allow-red <check-name> may be repeated for up to four distinct names, each
+as a separate argument; a missing, duplicate, or fifth name refuses before
+any forge call. Each occurrence waives only a check whose whole reported name
+equals it, every check not named must still be green, and the head is still
+bound. An accepted GitHub merge records its waived names, in order, as a JSON
+array in the task metadata's merge_allow_red= line. Its single-use
+twin, an attended --allow-missing <check-name>, follows the same rules for one
+required check that has not reported: it waives only that exact name, still
+requires every other required check to have reported and every check to be
+green unless separately waived by --allow-red. It matches the required
+context name even for an app-bound requirement, and never waives an unreadable
+required source or producer read. Both are
+refused while the away-posture record exists, and neither
+applies on GitLab, where a merge already requires the head pipeline to have
+succeeded, or on Forgejo, where a merge already requires the head's combined
+commit status to have succeeded. After gh returns success, GitHub's live
+Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch] [--expected-head <full-sha>] [--allow-red <check-name>]... [--allow-missing <check-name>] [--allow-no-pipeline] [-- <extra forge merge args>]
 
-$ bin/fm-pr-review.sh --help | grep -n -i "allow-red\|allowed-red"
-20:  fm-pr-review.sh merge-decision <pr-url> [--allowed-red-check <check>]... [--snapshot <snapshot.json>]
-31:untouched. Each `--allow-red <check>` in that prefix reaches `merge-decision`
-32:as one `--allowed-red-check <check>`, under the same limit of four distinct
+$ bin/fm-pr-review.sh --help (waiver excerpts)
+  fm-pr-review.sh release-hold <pr-url> <head> <evidence>
+  fm-pr-review.sh ready <pr-url> <head>
+  fm-pr-review.sh merge-decision <pr-url> [--allowed-red-check <check>]... [--snapshot <snapshot.json>]
+  fm-pr-review.sh merge <task-id> <pr-url> [fm-pr-merge args...]
+  fm-pr-review.sh post-merge <pr-url> <head> <evidence.json>
+  fm-pr-review.sh ready-for-qa <pr-url> <head>
+  fm-pr-review.sh show <pr-url>
+  fm-pr-review.sh poll
+  fm-pr-review.sh arm|disarm
 
-$ git diff base..HEAD -- docs/scripts.md .agents/skills/pr-review-policy/SKILL.md
+`merge` parses fm-pr-merge.sh's helper-option prefix with the same parser that
+guard uses (bin/fm-pr-merge-options-lib.sh), refusing a malformed prefix
+before it reads anything live, and leaves the forge extras after it
+untouched. Each `--allow-red <check>` in that prefix reaches `merge-decision`
+as one `--allowed-red-check <check>`, under the same limit of four distinct
+names, each its own argument and never starting with `--`. The review gate
+waives only those exact checks, and the merge decision records them in order
+as `allowed_red_checks`, with `allowed_red_check` holding the name only when
+exactly one was given. fm-pr-merge.sh records the same list for the accepted
+merge in the task metadata. Like the guard's own --allow-red, a waiver is
+attended-only: while the away-posture record exists `merge-decision` refuses
+any `--allowed-red-check` before reading a snapshot, and rechecks under the
+away record's lock before its first ledger write, holding that lock through
+its last, so a waiver request leaves the ledger untouched once away begins; fm-pr-merge.sh in turn refuses such a
+decision, whenever recorded, as away merge authority.
+
+$ git diff 38936b68..HEAD -- docs/scripts.md .agents/skills/pr-review-policy/SKILL.md
 diff --git a/.agents/skills/pr-review-policy/SKILL.md b/.agents/skills/pr-review-policy/SKILL.md
 index 2f950ec2..8861e6b7 100644
 --- a/.agents/skills/pr-review-policy/SKILL.md
