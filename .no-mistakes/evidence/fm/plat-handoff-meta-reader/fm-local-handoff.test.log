@@ -1,4 +1,4 @@
-Running as unit: run-u350486.scope; invocation ID: 59fafa9ff2a84b839b199f5d63977097
+Running as unit: run-u350816.scope; invocation ID: 757de752d2fe4bd5a09296a321e7826a
 ok - seeding a local-only project binds an independent child copy to its parent
 ok - local-only seeding is idempotent and refuses an unbound or published copy
 ok - a bound local-only copy refuses to land its own work
@@ -31,8 +31,4 @@ ok - a landing record still held for the captain blocks the delegated landing
 ok - overlapping requests cannot replace a published pin
 ok - a captain's answer cannot be recorded inside a pin's publication window
 ok - a pin whose row is released underneath it is withdrawn, not inherited
-
-real	10m45.171s
-user	4m23.142s
-sys	7m6.574s
-EXIT=0
+exit=0

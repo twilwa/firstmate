@@ -1,0 +1,69 @@
+### tree: /tmp/fm-evdrv.Dk51Dg/base  (ROOT=/tmp/fm-evdrv.Dk51Dg/base)
+--- OFFER case: absent
+  meta spawn_gen lines: 0 -> 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=0
+--- OFFER case: literal-zero
+  meta spawn_gen lines: 1 -> spawn_gen=0 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=0
+--- OFFER case: digits
+  meta spawn_gen lines: 1 -> spawn_gen=7 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=7
+--- OFFER case: current-token
+  meta spawn_gen lines: 1 -> spawn_gen=s1795670254.12.34 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=s1795670254.12.34
+--- OFFER case: empty
+  meta spawn_gen lines: 1 -> spawn_gen= 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=0
+--- OFFER case: duplicate-conflicting
+  meta spawn_gen lines: 2 -> spawn_gen=7 spawn_gen=s1795670254.12.34 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=7
+--- OFFER case: duplicate-identical
+  meta spawn_gen lines: 2 -> spawn_gen=7 spawn_gen=7 
+  $ fm-local-handoff.sh offer child-task  -> exit 0
+  offer published: spawn_gen=7
+--- OFFER case: malformed
+  meta spawn_gen lines: 1 -> spawn_gen=abc 
+  $ fm-local-handoff.sh offer child-task  -> exit 1
+  stderr: error: task child-task records a malformed incarnation
+  offer published: NONE
+
+=== Pinned legacy (absent) offer, then damage the child record before landing
+offer pinned spawn_gen=0 head=0906a1c00e7893927b3471e14f0496f922eeafc6
+--- LAND case: empty field
+  meta spawn_gen lines: 1 -> spawn_gen= 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 0906a1c00e7893927b3471e14f0496f922eeafc6  -> exit 0
+  primary main before=134d2c36f065f746200a33b7a17fbed8551a184e after=0906a1c00e7893927b3471e14f0496f922eeafc6
+--- LAND case: duplicate 0 then 8 (first matches pin)
+  meta spawn_gen lines: 2 -> spawn_gen=0 spawn_gen=8 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 0906a1c00e7893927b3471e14f0496f922eeafc6  -> exit 1
+  stderr: error: landing record land-app already recorded 0906a1c00e7893927b3471e14f0496f922eeafc6 as landed; further work needs its own held row and its own pinned offer
+  primary main before=0906a1c00e7893927b3471e14f0496f922eeafc6 after=0906a1c00e7893927b3471e14f0496f922eeafc6
+--- LAND case: literal 0 restored (equals legacy pin)
+  meta spawn_gen lines: 1 -> spawn_gen=0 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 0906a1c00e7893927b3471e14f0496f922eeafc6  -> exit 1
+  stderr: error: landing record land-app already recorded 0906a1c00e7893927b3471e14f0496f922eeafc6 as landed; further work needs its own held row and its own pinned offer
+  primary main before=0906a1c00e7893927b3471e14f0496f922eeafc6 after=0906a1c00e7893927b3471e14f0496f922eeafc6
+
+=== Pinned current-token offer, then respawn to a new current token
+offer pinned spawn_gen=s1795670254.12.34 head=5aea88373463340e82143c9c0649c751925ba2a9
+--- LAND case: current-token mismatch
+  meta spawn_gen lines: 1 -> spawn_gen=s1795670254.12.340 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 5aea88373463340e82143c9c0649c751925ba2a9  -> exit 1
+  stderr: error: child task child-task is now incarnation s1795670254.12.340, not the offered s1795670254.12.34
+  primary main before=8f13a8ed8a434215fe947a525f0f34fd93226d3e after=8f13a8ed8a434215fe947a525f0f34fd93226d3e
+--- LAND case: duplicate identical token
+  meta spawn_gen lines: 2 -> spawn_gen=s1795670254.12.34 spawn_gen=s1795670254.12.34 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 5aea88373463340e82143c9c0649c751925ba2a9  -> exit 0
+  primary main before=8f13a8ed8a434215fe947a525f0f34fd93226d3e after=5aea88373463340e82143c9c0649c751925ba2a9
+--- LAND case: token restored
+  meta spawn_gen lines: 1 -> spawn_gen=s1795670254.12.34 
+  $ fm-merge-local.sh land-app --offer <offer> --expect-head 5aea88373463340e82143c9c0649c751925ba2a9  -> exit 1
+  stderr: error: landing record land-app already recorded 5aea88373463340e82143c9c0649c751925ba2a9 as landed; further work needs its own held row and its own pinned offer
+  primary main before=5aea88373463340e82143c9c0649c751925ba2a9 after=5aea88373463340e82143c9c0649c751925ba2a9
+  landing receipt spawn_gen=s1795670254.12.34
