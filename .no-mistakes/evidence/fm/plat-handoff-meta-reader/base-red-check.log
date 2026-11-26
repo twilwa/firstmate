@@ -1,0 +1,6 @@
+=== BASE 0d599000: test_an_empty_or_duplicate_incarnation_refuses_the_offer
+not ok - an offer was published for a task record with an empty incarnation: expected exit 1, got 0
+exit=1
+=== BASE 0d599000: test_an_empty_or_duplicate_incarnation_blocks_a_pinned_landing
+not ok - a landing accepted a child task record holding: spawn_gen=: expected exit 1, got 0
+exit=1

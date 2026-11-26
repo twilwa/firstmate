@@ -1,0 +1,44 @@
+######## tree at 81a265e1
+tree ROOT=/tmp/fm-matrix/tree-81a265e1
+OFFER  absent (legacy)                    expect=0              -> published spawn_gen=0
+OFFER  literal 0                          expect=0              -> published spawn_gen=0
+OFFER  digits 42                          expect=42             -> published spawn_gen=42
+OFFER  current token                      expect=s1795670254.12.34 -> published spawn_gen=s1795670254.12.34
+OFFER  empty                              expect=refuse         -> refused rc=1: error: task child-task records an empty incarnation
+OFFER  conflicting dup old,new            expect=refuse         -> refused rc=1: error: task child-task records more than one incarnation
+OFFER  identical dup 7,7                  expect=refuse         -> refused rc=1: error: task child-task records more than one incarnation
+OFFER  empty then valid                   expect=refuse         -> refused rc=1: error: task child-task records more than one incarnation
+OFFER  CRLF 7\r                           expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+OFFER  leading space " 7"                 expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+OFFER  garbage abc                        expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+PINNED offer spawn_gen=s1795670254.55.66
+PINNED approval recorded
+LAND   empty                              -> refused rc=1 moved=no: error: child task child-task records an empty incarnation
+LAND   dup, first matches pin             -> refused rc=1 moved=no: error: child task child-task records more than one incarnation
+LAND   dup, second matches pin            -> refused rc=1 moved=no: error: child task child-task records more than one incarnation
+LAND   absent (legacy 0 != token)         -> refused rc=1 moved=no: error: child task child-task is now incarnation 0, not the offered s1795670254.55.66
+LAND   respawned token mismatch           -> refused rc=1 moved=no: error: child task child-task is now incarnation s1795670254.55.67, not the offered s1795670254.55.66
+LAND   unreadable                         -> refused rc=1 moved=no: error: child task child-task is no longer mode=local-only
+LAND   restored matching token            -> LANDED (primary main moved=yes)
+######## tree at 0d599000
+tree ROOT=/tmp/fm-matrix/tree-0d599000
+OFFER  absent (legacy)                    expect=0              -> published spawn_gen=0
+OFFER  literal 0                          expect=0              -> published spawn_gen=0
+OFFER  digits 42                          expect=42             -> published spawn_gen=42
+OFFER  current token                      expect=s1795670254.12.34 -> published spawn_gen=s1795670254.12.34
+OFFER  empty                              expect=refuse         -> published spawn_gen=0
+OFFER  conflicting dup old,new            expect=refuse         -> published spawn_gen=7
+OFFER  identical dup 7,7                  expect=refuse         -> published spawn_gen=7
+OFFER  empty then valid                   expect=refuse         -> published spawn_gen=0
+OFFER  CRLF 7\r                           expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+OFFER  leading space " 7"                 expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+OFFER  garbage abc                        expect=refuse         -> refused rc=1: error: task child-task records a malformed incarnation
+PINNED offer spawn_gen=s1795670254.55.66
+PINNED approval recorded
+LAND   empty                              -> refused rc=1 moved=no: error: child task child-task is now incarnation 0, not the offered s1795670254.55.66
+LAND   dup, first matches pin             -> LANDED (primary main moved=yes)
+LAND   dup, second matches pin            -> refused rc=1 moved=yes: error: child task child-task is now incarnation s1795670254.99.99, not the offered s1795670254.55.66
+LAND   absent (legacy 0 != token)         -> refused rc=1 moved=yes: error: child task child-task is now incarnation 0, not the offered s1795670254.55.66
+LAND   respawned token mismatch           -> refused rc=1 moved=yes: error: child task child-task is now incarnation s1795670254.55.67, not the offered s1795670254.55.66
+LAND   unreadable                         -> refused rc=1 moved=yes: error: child task child-task is no longer mode=local-only
+LAND   restored matching token            -> refused rc=1 moved=yes: error: landing record land-app already recorded 109699e3f82a28ec91e33fbc331177b0cb6d1c49 as landed; further work needs its own held row and its own pinned offer
