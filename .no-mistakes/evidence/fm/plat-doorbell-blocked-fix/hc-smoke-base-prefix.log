@@ -1,0 +1,22 @@
+lab core session fm-hclab-smoke-696057-20177 ready (server pid 696255)
+ok - hc smoke: create_task started fm-hclab-smoke-696057-20177:t1
+ok - hc smoke: current_path follows the shell's cwd
+ok - hc smoke: send_text_line ran the command and capture shows its output
+ok - hc smoke: send_text_submit delivers through send --wait (verdict unknown)
+ok - hc smoke: agent_state reads dead for a shell and alive for an agent-named foreground
+ok - hc smoke: kill closes and removes the terminal
+stopped hc-control-695939-3225 harness=claude backend=hc endpoint=fm-hclab-smoke-696057-20177:t2 worktree=/tmp/fm-backend-hc-smoke.Utre5t/wt
+ok - hc control: normal agent exit leaves a dead shell in the same terminal
+not ok - the doorbell never reached the agent while a decision was open (status {"app":"firstmate-devin","kind":"question","msg":"Needs your decision: pick a or b ","state":"blocked","title":"fm-hc-doorbell-695939-19318"}): ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2428127 1795697181 234955
+---
+> ~/.local/state/herdr-core/default/terminals.json 2428292 1795697220 234955

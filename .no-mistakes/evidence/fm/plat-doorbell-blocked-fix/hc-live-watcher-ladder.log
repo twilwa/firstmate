@@ -1,0 +1,16 @@
+lab core session fm-hclab-ladder-894445-27715 ready (server pid 894690)
+# pane root status: {"app":"devin","kind":"question","state":"blocked"}
+# enqueued /tmp/fm-live-ladder.FWme5X/home/state/hc-ladder-894332.inbox/001.msg; starting real fm-watch.sh with ring budget 2
+# watcher run 1 exited; wake lines: 1; ring-state: 001.msg 2 1795697456
+--- .wake-queue (escalation the watcher emitted):
+1795697458	1	stale	fm-hclab-ladder-894445-27715:t1	stale: fm-hclab-ladder-894445-27715:t1 (unread firstmate instruction: /tmp/fm-live-ladder.FWme5X/home/state/hc-ladder-894332.inbox/001.msg still unhandled after 2 doorbell delivery attempts; the endpoint refused input on every attempt because its program's status is blocked, waiting on a dialog, so nothing was typed and it was never forced; inspect the pane)
+--- .ring-refused tally: 001.msg	2
+--- doorbell lines received by the blocked program: 0
+ok - live hc watcher ladder: refusals tallied and escalation names the blocked refusal; nothing typed; record kept
+FM_LADDER_COMPLETE
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2428292 1795697444 234720
+---
+> ~/.local/state/herdr-core/default/terminals.json 2428292 1795697457 234838

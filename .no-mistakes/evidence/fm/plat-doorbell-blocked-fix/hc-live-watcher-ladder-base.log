@@ -1,0 +1,9 @@
+lab core session fm-hclab-ladder-919078-17927 ready (server pid 919429)
+# pane root status: {"app":"devin","kind":"question","state":"blocked"}
+# enqueued /tmp/fm-live-ladder.BU9i9I/home/state/hc-ladder-918927.inbox/001.msg; starting real fm-watch.sh with ring budget 2
+# watcher run 1 exited; wake lines: 1; ring-state: 001.msg 2 1795697480
+--- .wake-queue (escalation the watcher emitted):
+1795697482	1	stale	fm-hclab-ladder-919078-17927:t1	stale: fm-hclab-ladder-919078-17927:t1 (unread firstmate instruction: /tmp/fm-live-ladder.BU9i9I/home/state/hc-ladder-918927.inbox/001.msg still unhandled after 2 doorbell delivery attempts with an idle pane; inspect the worker)
+--- .ring-refused tally: 
+--- doorbell lines received by the blocked program: 0
+not ok - escalation does not name the refusal
