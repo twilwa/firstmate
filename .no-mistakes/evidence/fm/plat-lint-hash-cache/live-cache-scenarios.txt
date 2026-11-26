@@ -1,0 +1,196 @@
+fixture: tests/root.sh -> lib/a.sh -> lib/b.sh (defines foo); tests/abs.sh -> /lib/x.sh (cwd-relative, defines bar); tests/other.sh standalone
+shellcheck: ~/.local/bin/shellcheck version: 0.11.0
+
+===== S1 first run records passes; second run replays only recorded passes
+
+### run 1 (cold cache)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=local state=on
+exit=0
+entry: 915be6a27e84ecfbd7c0a1a7cf13d99828a5e1df128e3c3f22461cfad88d06bf
+entry: 9919fd8e612a0967723364a21e511099ff18918430f3156aa24632c2a3acaa5c
+entry: fe1fcace64a63b307887692d45dccf5cbf13ee51fa94b0253564c9fa4a353731
+
+### run 2 (unchanged)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+
+===== S2 change a sourced file two levels down (lib/b.sh: foo -> baz)
+
+### run 3 (b.sh edited)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/root.sh line 4:
+      ^--^ SC2154 (warning): foo is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- foo is referenced but not assigned.
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+--- S4 failing root is not recorded: rerun still lints it and still fails
+
+### run 4 (b.sh still broken)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/root.sh line 4:
+      ^--^ SC2154 (warning): foo is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- foo is referenced but not assigned.
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+===== S7 nightly audit: uncached run, names stale key
+
+### audit with no stale pass recorded
+$ bin/fm-lint.sh --audit-cache /tmp/fmlc-live.dR9bFD/cache tests/root.sh tests/other.sh tests/abs.sh
+In tests/root.sh line 4:
+      ^--^ SC2154 (warning): foo is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- foo is referenced but not assigned.
+fm-lint.sh: AUDIT INCOMPLETE: tests/root.sh has findings at commit ded6f6e1db7e693748d882a00cc5a26f963bee48 (partition all), but neither a same-commit cached run's sidecar nor the restored cache proves which key a cached run replayed; the recomputed candidate key 2610b1a2c76d35b9934166186bd0c822d5dd9b2267bedce86826a283f3066f4f is unproven
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=bypassed
+exit=1
+candidate key for broken tests/root.sh: 2610b1a2c76d35b9934166186bd0c822d5dd9b2267bedce86826a283f3066f4f
+--- forging a stale recorded pass for that exact key (simulates a key that missed a dependency)
+
+### cached run now replays the forged pass (the hazard the nightly backstops)
+$ bin/fm-lint.sh --telemetry /tmp/fmlc-live.dR9bFD/cached.tsv tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+sidecar rows:
+  meta	state	on
+  meta	scope	local
+  meta	git_head	ded6f6e1db7e693748d882a00cc5a26f963bee48
+  meta	partition	all
+  root	tests/root.sh	hit	2610b1a2c76d35b9934166186bd0c822d5dd9b2267bedce86826a283f3066f4f
+  root	tests/other.sh	hit	915be6a27e84ecfbd7c0a1a7cf13d99828a5e1df128e3c3f22461cfad88d06bf
+  root	tests/abs.sh	hit	fe1fcace64a63b307887692d45dccf5cbf13ee51fa94b0253564c9fa4a353731
+  meta	root_count	3
+  meta	hits	3
+  meta	misses	0
+  meta	stored	0
+  meta	uncacheable	0
+
+### nightly audit against restored cache
+$ bin/fm-lint.sh --audit-cache /tmp/fmlc-live.dR9bFD/cache tests/root.sh tests/other.sh tests/abs.sh
+In tests/root.sh line 4:
+      ^--^ SC2154 (warning): foo is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- foo is referenced but not assigned.
+fm-lint.sh: STALE LINT CACHE KEY 2610b1a2c76d35b9934166186bd0c822d5dd9b2267bedce86826a283f3066f4f: tests/root.sh has findings in this uncached run, but the cache at $T/cache recorded a pass for that key
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=bypassed
+exit=3
+audit left the cache byte/mtime-identical: yes
+
+### nightly audit via same-commit sidecar only (no cache)
+$ bin/fm-lint.sh --audit-record /tmp/fmlc-live.dR9bFD/cached.cache.tsv tests/root.sh tests/other.sh tests/abs.sh
+In tests/root.sh line 4:
+      ^--^ SC2154 (warning): foo is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- foo is referenced but not assigned.
+fm-lint.sh: STALE LINT CACHE KEY 2610b1a2c76d35b9934166186bd0c822d5dd9b2267bedce86826a283f3066f4f: tests/root.sh has findings in this uncached run, but the cached run's sidecar $T/cached.cache.tsv recorded a pass for that key
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=bypassed
+exit=3
+
+===== S3 changed linter flag / definition / ShellCheck build
+
+### run (b.sh restored; warm)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+
+### --fast (different ShellCheck flags)
+$ bin/fm-lint.sh --fast tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=local state=on
+exit=0
+
+### lint-definition file bin/fm-lint.sh edited
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=local state=on
+exit=0
+
+### warm again
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+(fakebin/shellcheck = real 0.11.0 binary with one appended byte: same --version, different build hash)
+
+### different ShellCheck build on PATH
+$ env PATH=/tmp/fmlc-live.dR9bFD/fakebin:~/.local/bin:~/.local/bin:~/.kimi-code/bin:~/.local/bin:~/.local/bin:~/.local/share/mise/shims:~/.ascii/bin:~/.local/bin:~/.local/share/mise/shims:~/.local/bin:~/go/bin:~/.cargo/bin:~/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=local state=on
+exit=0
+
+===== S5 local vs hosted scope do not share entries
+
+### local warm
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+
+### hosted scope (GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1)
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=0 misses=3 stored=3 uncacheable=0 scope=hosted state=on
+exit=0
+
+### hosted again
+$ env GITHUB_ACTIONS=true FM_LINT_REQUIRE_BOUNDS=1 bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=hosted state=on
+exit=0
+
+### local again
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+
+===== S6 corrupt / unreadable cache lints everything and never passes a finding
+
+### warm except other.sh now has a finding
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/other.sh line 3:
+      ^-----------------^ SC2154 (warning): undefined_var_here is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var_here is referenced ...
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+### one entry corrupted (appended byte)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/other.sh line 3:
+      ^-----------------^ SC2154 (warning): undefined_var_here is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var_here is referenced ...
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+### warm again
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/other.sh line 3:
+      ^-----------------^ SC2154 (warning): undefined_var_here is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var_here is referenced ...
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+### cache entries dir chmod 000
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: unreadable entry $T/cache/fm-lint-cache-v1/200fd9c7683d9414674cc069ccb9120cd73052f46068f3da4e1eaaa937f9fdcc: Permission denied; discarding every hit and linting every root
+fm-lint.sh: lint cache: unreadable entry $T/cache/fm-lint-cache-v1/df74392dd1b2e0d2fdd284259c9fb03ab91233c094101b6479668977e531ac34: Permission denied; discarding every hit and linting every root
+fm-lint.sh: lint cache: unreadable entry $T/cache/fm-lint-cache-v1/7707658ce3dd03b48d8b140726c830c7a7df809dd2af694528a70aa20c4bdb35: Permission denied; discarding every hit and linting every root
+In tests/other.sh line 3:
+      ^-----------------^ SC2154 (warning): undefined_var_here is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_var_here is referenced ...
+fm-lint.sh: lint cache: could not record the pass for tests/root.sh (error)
+fm-lint.sh: lint cache: could not record the pass for tests/abs.sh (error)
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+===== S8 absolute source path resolved cwd-relative (/lib/x.sh -> ./lib/x.sh)
+
+### warm
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+fm-lint.sh: lint cache: hits=3 misses=0 stored=0 uncacheable=0 scope=local state=on
+exit=0
+
+### lib/x.sh edited (bar removed)
+$ bin/fm-lint.sh tests/root.sh tests/other.sh tests/abs.sh
+In tests/abs.sh line 3:
+      ^--^ SC2154 (warning): bar is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- bar is referenced but not assigned.
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+direct shellcheck oracle on tests/abs.sh:
+      ^--^ SC2154 (warning): bar is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- bar is referenced but not assigned.
+
+fixture removed

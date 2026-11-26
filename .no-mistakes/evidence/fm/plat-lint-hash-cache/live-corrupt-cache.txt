@@ -1,0 +1,61 @@
+
+### cold
+$ bin/fm-lint.sh --telemetry /tmp/fmlc-corrupt.4bG9ds/t.tsv tests/one.sh tests/two.sh tests/bad.sh
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=0 misses=3 stored=2 uncacheable=0 scope=local state=on
+exit=1
+
+### warm
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=2 misses=1 stored=0 uncacheable=0 scope=local state=on
+exit=1
+corrupting looked-up entry for tests/one.sh: 7c95161242f96ca7e74ee2323107c0a922d98e33a475879f260ed8a32caed3d0 (flip last byte)
+
+### one looked-up entry corrupt
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+fm-lint.sh: lint cache: malformed entry $T/cache/fm-lint-cache-v1/7c95161242f96ca7e74ee2323107c0a922d98e33a475879f260ed8a32caed3d0; discarding every hit and linting every root
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=0 misses=3 stored=2 uncacheable=0 scope=local state=on
+exit=1
+--- truncated entry
+
+### one looked-up entry truncated to 0 bytes
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+fm-lint.sh: lint cache: malformed entry $T/cache/fm-lint-cache-v1/7c95161242f96ca7e74ee2323107c0a922d98e33a475879f260ed8a32caed3d0; discarding every hit and linting every root
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=0 misses=3 stored=2 uncacheable=0 scope=local state=on
+exit=1
+
+### rewarm
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=1 misses=2 stored=1 uncacheable=0 scope=local state=on
+exit=1
+
+### cache root dir chmod 000
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+fm-lint.sh: lint cache: $T/cache is not a readable directory; linting every root
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=disabled
+exit=1
+
+### entries path replaced by a regular file
+$ bin/fm-lint.sh tests/one.sh tests/two.sh tests/bad.sh
+fm-lint.sh: lint cache: cache entries path $T/cache/fm-lint-cache-v1 is not a directory; discarding every hit and linting every root
+fm-lint.sh: lint cache: cache entries path $T/cache/fm-lint-cache-v1 is not a directory; discarding every hit and linting every root
+fm-lint.sh: lint cache: cache entries path $T/cache/fm-lint-cache-v1 is not a directory; discarding every hit and linting every root
+      ^----------^ SC2154 (warning): undefined_x is referenced but not assigned.
+  https://www.shellcheck.net/wiki/SC2154 -- undefined_x is referenced but not...
+fm-lint.sh: lint cache: could not record the pass for tests/one.sh (error)
+fm-lint.sh: lint cache: could not record the pass for tests/two.sh (error)
+fm-lint.sh: lint cache: hits=0 misses=3 stored=0 uncacheable=0 scope=local state=on
+exit=1
+
+fixture removed
