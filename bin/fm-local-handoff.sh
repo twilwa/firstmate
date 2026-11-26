@@ -162,9 +162,7 @@ command_offer() {  # <task-id>
 
   spawn_gen=$(meta_field "$meta" spawn_gen)
   [ -n "$spawn_gen" ] || spawn_gen=0
-  case "$spawn_gen" in
-    ''|*[!0-9]*) die "task $id records a malformed incarnation" ;;
-  esac
+  fm_local_handoff_valid_spawn_gen "$spawn_gen" || die "task $id records a malformed incarnation"
 
   branch=$(meta_field "$meta" branch)
   [ -n "$branch" ] || branch="fm/$id"
