@@ -1,0 +1,21 @@
+
+=== RUN scenario_reported_shape
+
+=== launch=d66bc3e63df89ed0395c7336da60914f92220fd3  branch head=5d9d50bb2ecde620c93ccddf90accca7e10a0945  copy HEAD=d66bc3e63df89ed0395c7336da60914f92220fd3 (0 dirty paths, detached)
+offer=/tmp/fm-local-handoff.oGwGLu/reported/child/state/tf-sell-now.local-offer
+head=5d9d50bb2ecde620c93ccddf90accca7e10a0945
+
+=== offer head=5d9d50bb2ecde620c93ccddf90accca7e10a0945 branch=fm/tf-sell-now
+landed tf-sell-now at 5d9d50bb2ecde620c93ccddf90accca7e10a0945 into local main (d66bc3e63df89ed0395c7336da60914f92220fd3 -> 5d9d50b) in /tmp/fm-local-handoff.oGwGLu/reported/main/projects/app
+receipt=/tmp/fm-local-handoff.oGwGLu/reported/child/state/tf-sell-now.local-receipt
+
+=== parent main now at 5d9d50bb2ecde620c93ccddf90accca7e10a0945; receipt head=5d9d50bb2ecde620c93ccddf90accca7e10a0945
+
+=== launch IS an ancestor of landed head
+
+=== fm-teardown.sh tf-sell-now (child home)
+teardown tf-sell-now complete (window firstmate:fm-tf-sell-now, worktree /tmp/fm-local-handoff.oGwGLu/reported/child/work/tf-sell-now)
+Backlog: tf-sell-now just finished (this home keeps no markdown backlog at /tmp/fm-local-handoff.oGwGLu/reported/child/data/backlog.md). Update /tmp/fm-local-handoff.oGwGLu/reported/child/data/backlog.md - move tf-sell-now to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+
+=== teardown exit=0; meta present? no; copy dir present? yes
+ok - reported shape: copy detached at launch, ancestor of landed head, tears down

@@ -1,0 +1,24 @@
+
+=== RUN test_a_worktree_behind_the_landed_head_tears_down
+ok - a copy behind the landed head tears down, and a commit outside it still refuses
+
+=== RUN scenario_behind_unlanded_offer_refuses
+
+=== copy HEAD=ec992e07f352c95aaa9b0b35e567640052bb90b6 (ancestor of offered ef53aa7f3682662d5a7930ca12d79555fbe4efc8); NO landing performed, no receipt
+REFUSED: tf-sell-now has no durable proof that ef53aa7f3682662d5a7930ca12d79555fbe4efc8 reached the parent's default branch: record is missing or not an ordinary file: /tmp/fm-local-handoff.mjotlY/unlanded/child/state/tf-sell-now.local-receipt
+Have the parent land the offer at /tmp/fm-local-handoff.mjotlY/unlanded/child/state/tf-sell-now.local-offer, then retry; or get the captain's explicit OK to discard, then --force.
+
+=== teardown exit=1; meta present? yes
+ok - copy behind an unlanded offer still refuses for lack of a receipt
+
+=== RUN test_teardown_requires_the_parent_receipt
+ok - cleanup of a bound local-only task needs the parent's durable receipt
+
+=== RUN test_missing_worktree_refuses_a_later_unlanded_branch_head
+ok - a missing worktree cannot hide a later unlanded branch commit
+
+=== RUN test_a_deleted_task_branch_after_a_receipted_landing_tears_down
+ok - a receipted landing tears down after its task branch was already deleted
+
+=== RUN test_the_receipt_gate_survives_a_missing_worktree
+ok - an absent worktree still faces the receipt gate, and the parent's record outlives the child

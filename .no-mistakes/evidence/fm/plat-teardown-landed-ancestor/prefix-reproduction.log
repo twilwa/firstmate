@@ -1,0 +1,21 @@
+
+=== RUN scenario_reported_shape
+
+=== launch=ffa83a735216bc762b8efae9945b66a045289eef  branch head=3603cdbdb130afac76b2cd58d86bfa8f44ec42f5  copy HEAD=ffa83a735216bc762b8efae9945b66a045289eef (0 dirty paths, detached)
+offer=/tmp/fm-local-handoff.h9SK0K/reported/child/state/tf-sell-now.local-offer
+head=3603cdbdb130afac76b2cd58d86bfa8f44ec42f5
+
+=== offer head=3603cdbdb130afac76b2cd58d86bfa8f44ec42f5 branch=fm/tf-sell-now
+landed tf-sell-now at 3603cdbdb130afac76b2cd58d86bfa8f44ec42f5 into local main (ffa83a735216bc762b8efae9945b66a045289eef -> 3603cdb) in /tmp/fm-local-handoff.h9SK0K/reported/main/projects/app
+receipt=/tmp/fm-local-handoff.h9SK0K/reported/child/state/tf-sell-now.local-receipt
+
+=== parent main now at 3603cdbdb130afac76b2cd58d86bfa8f44ec42f5; receipt head=3603cdbdb130afac76b2cd58d86bfa8f44ec42f5
+
+=== launch IS an ancestor of landed head
+
+=== fm-teardown.sh tf-sell-now (child home)
+REFUSED: tf-sell-now has committed work at ffa83a735216bc762b8efae9945b66a045289eef after the 3603cdbdb130afac76b2cd58d86bfa8f44ec42f5 its parent was offered.
+Publish the new head with bin/fm-local-handoff.sh offer tf-sell-now and have the parent land that, or get the captain's explicit OK to discard, then --force.
+
+=== teardown exit=1; meta present? yes; copy dir present? yes
+not ok - REPORTED SHAPE: teardown refused a copy behind the landed head
