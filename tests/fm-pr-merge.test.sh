@@ -5015,6 +5015,49 @@ test_away_posture_publishes_and_accepts_no_waiver_decision() {
   pass "while away neither review-wrapper entry point touches the ledger for a waiver and the guard refuses a waiver-bearing or malformed decision"
 }
 
+# A signal while merge-decision stages a waiver-bearing decision ends the run:
+# it never resumes toward the publish after releasing the away lock, records no
+# waiver decision, and leaves no lock behind.
+test_signal_during_waiver_decision_staging_publishes_nothing() {
+  local case_dir rc head url ledger low
+  head=a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7
+  low='[{"filename":"tests/widget.test.sh","status":"modified","additions":10,"deletions":2}]'
+  url=https://github.com/example/repo/pull/110
+  case_dir=$(make_case review-waiver-signal-staging)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" "$head"
+  write_github_rollup_json "$case_dir" "$head" "$(check_run lint COMPLETED FAILURE)"
+  review_pull_request_for_merge "$case_dir" 110 "$low" no-attest
+  # The real jq stages the decision; once, the call that stages it first
+  # signals the review shell that ran it.
+  cat > "$case_dir/fakebin/jq" <<SH
+#!/usr/bin/env bash
+case "\$*" in
+  *'merge_decision={decision:"merge"'*)
+    if [ ! -e "$case_dir/signalled" ]; then
+      : > "$case_dir/signalled"
+      kill -TERM "\$PPID"
+    fi
+    ;;
+esac
+exec "$JQ_BIN" "\$@"
+SH
+  chmod +x "$case_dir/fakebin/jq"
+  set +e
+  FM_TEST_REVIEW_SUBCOMMAND=merge-decision FM_TEST_HOME="$case_dir/home" run_pr_merge "$case_dir" "$url" \
+    --allowed-red-check lint > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ -e "$case_dir/signalled" ] || fail "review-waiver-signal-staging: the decision staging was never reached: $(cat "$case_dir/stderr")"
+  [ "$rc" -ne 0 ] || fail "review-waiver-signal-staging: a signalled waiver decision run exited 0"
+  ledger="$case_dir/home/data/pr-review-ledger/github--example--repo--110.json"
+  assert_equals 'none' "$(jq -r '.generations[-1].merge_decision.decision // "none"' "$ledger")" \
+    "review-waiver-signal-staging: the signalled run still published a waiver-bearing decision"
+  [ ! -e "$case_dir/state/.afk-contract.lock" ] && [ ! -L "$case_dir/state/.afk-contract.lock" ] \
+    || fail "review-waiver-signal-staging: the away lock was left behind"
+  pass "a signal while merge-decision stages a waiver decision ends the run with nothing published and no lock held"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -6680,6 +6723,7 @@ test_allow_red_matches_whole_names_across_line_breaks
 test_review_merge_records_only_the_waivers_the_guard_applies
 test_allow_red_single_hyphen_names_stay_data
 test_away_posture_publishes_and_accepts_no_waiver_decision
+test_signal_during_waiver_decision_staging_publishes_nothing
 test_github_draft_or_unreadable_draft_state_refuses
 test_superseded_failed_check_run_no_longer_refuses
 test_check_runs_never_supersede_status_contexts

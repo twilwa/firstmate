@@ -561,6 +561,11 @@ case "$cmd" in
     WAIVING=false
     [ "${#FM_PR_OPT_ALLOW_RED[@]}" -eq 0 ] || WAIVING=true
     if [ "$WAIVING" = true ]; then
+      # A returning signal trap would release the lock and resume toward a
+      # publish, so these exit and leave the release to EXIT cleanup.
+      trap 'exit 129' HUP
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
       hold_away_lock_for_waiver
       refuse_away_waiver
       fm_afk_contract_lock_release
