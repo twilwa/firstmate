@@ -31,7 +31,9 @@
 #      retry waits while the worker has an open decision of its own.
 #   8. An hc endpoint that refuses the doorbell because its status is blocked
 #      returns a distinct ring result, never counted as rung, and the
-#      watcher's escalation names the refusal instead of an idle pane.
+#      watcher's escalation names the refusal instead of an idle pane; the
+#      attempt count and refusal tally share one atomically replaced ladder
+#      row, so a failed replacement keeps the prior row eligible for retry.
 set -u
 
 # shellcheck source=tests/wake-helpers.sh
@@ -1389,6 +1391,66 @@ test_watcher_names_a_blocked_refusal() {
   pass "watcher: an hc refusal on a blocked status escalates naming the refusal, never as rung"
 }
 
+# The attempt count and the refusal tally share one atomically replaced row.
+# When that replacement fails on the last allowed refused attempt, the prior
+# row stays put, so the budget is not spent without its verdict: the record
+# stays eligible for another ring, and once the row is writable again the
+# escalation still names every refusal rather than blaming an idle pane.
+test_watcher_keeps_the_ladder_row_when_its_replacement_fails() {
+  local dir state out pid rec tag row probe
+  dir=$(setup_watch_case hc-refused-unwritable)
+  state="$dir/state"; out="$dir/watch.out"
+  make_hc_fakebin "$dir" >/dev/null
+  tag=$(FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source hc; fm_backend_hometag' _ "$ROOT")
+  write_terminal "$dir" t1 live fm-t1 "$tag" claude claude
+  fm_write_meta "$dir/state/t1.meta" "window=fmtest:t1" "kind=ship" "harness=grok" \
+    "backend=hc" "hc_session=fmtest" "hc_terminal=t1"
+  printf '9\n' > "$dir/send.exit"
+  printf 'blocked\n' > "$dir/send.kind"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  age_path "$rec"
+  # A three-field row from before the refusal field: one attempt, no tally yet.
+  row="${rec##*/}"$'\t'1$'\t'0
+  printf '%s\n' "$row" > "$state/t1.inbox/.ring-state"
+  chmod 555 "$state/t1.inbox"
+  probe="$state/t1.inbox/.write-probe"
+  if : 2>/dev/null > "$probe"; then
+    rm -f "$probe"; chmod 755 "$state/t1.inbox"
+    pass "watcher: ladder row replacement failure (skipped: directory permissions do not bind this user)"
+    return 0
+  fi
+  watch_bg "$state" "$dir/fakebin" "$out" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$dir/fakebin/hc" HC_SESSION=fmtest FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    FM_TASK_INBOX_RING_MAX=2
+  pid=$!
+  wait_watcher_gone "$pid" 200 \
+    || { kill "$pid" 2>/dev/null; chmod 755 "$state/t1.inbox"; fail "the watcher never surfaced the failed ladder replacement"; }
+  chmod 755 "$state/t1.inbox"
+  assert_equals "$(grep -c $'\x1fsend\x1f' "$dir/log")" 1 "the last allowed attempt tried the refused doorbell once"
+  assert_equals "$(cat "$state/t1.inbox/.ring-state")" "$row" "a failed replacement keeps the previous ladder row"
+  grep -qF "$state/t1.inbox/.ring-state cannot be written" "$state/.wake-queue" \
+    || fail "the failed replacement should surface as unwritable bookkeeping:"$'\n'"$(cat "$state/.wake-queue" 2>/dev/null)"
+  grep -qF 'unread firstmate instruction' "$state/.wake-queue" \
+    && fail "a failed replacement must not spend the budget into an escalation:"$'\n'"$(cat "$state/.wake-queue")"
+  assert_equals "$(inbox_lib "$state" fm_task_inbox_due_action "$state" t1)" "ring $rec" \
+    "the prior row stays eligible for retry"
+  [ -z "$(find "$state/t1.inbox" -maxdepth 1 -name '.ring-state.*')" ] \
+    || fail "a failed replacement left a temp row behind"
+  # Once writable, the retried refused attempt spends the budget with its
+  # refusal recorded in the same row, so the escalation can still name it.
+  inbox_lib "$state" fm_task_inbox_record_ring "$state" t1 "$rec" 4 \
+    || fail "the retried attempt could not record its ladder row"
+  row=$(cut -f2,4 "$state/t1.inbox/.ring-state")
+  [ "$row" = "2"$'\t'"1" ] \
+    || fail "the retried attempt should record its count and refusal together, got '$row'"
+  assert_equals "$(FM_TASK_INBOX_RING_MAX=2 inbox_lib "$state" fm_task_inbox_due_action "$state" t1)" "escalate $rec 2" \
+    "the retried attempt spends the budget"
+  assert_equals "$(inbox_lib "$state" fm_task_inbox_ring_refusals "$state" t1 "$rec")" 1 \
+    "the escalation reader still sees the refusal"
+  [ -f "$rec" ] || fail "the durable record must survive"
+  pass "watcher: a failed ladder row replacement keeps the prior row eligible and never drops the refusal"
+}
+
 test_watcher_dead_pane_escalates_once_without_ringing() {
   local dir state out log pid rec
   dir=$(setup_watch_case dead-pane)
@@ -1491,5 +1553,6 @@ test_watcher_holds_retry_while_the_worker_decides
 test_watcher_retry_keeps_a_newer_mark
 test_watcher_escalates_once_after_budget
 test_watcher_names_a_blocked_refusal
+test_watcher_keeps_the_ladder_row_when_its_replacement_fails
 test_watcher_dead_pane_escalates_once_without_ringing
 test_watcher_dead_pane_ignores_stale_busy_state
