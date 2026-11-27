@@ -335,6 +335,20 @@ test_same_second_merges_use_history_order() {
   pass "same-second merges use first-parent history order"
 }
 
+test_same_second_merges_list_the_later_decision_first() {
+  local a b out
+  new_case same-second-rows
+  a=$(commit_on_dev a.txt 'older merge')
+  b=$(commit_on_dev b.txt 'newer merge')
+  # Same mergedAt second; the ledger glob reads the older 131 before the newer 132.
+  merged_pr 131 1100 2026-11-27T02:00:00Z "$a" '["a.txt"]' '[]' low "$NA_POST"
+  merged_pr 132 1200 2026-11-27T02:00:00Z "$b" '["b.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "same-second rows --json exits 0"
+  assert_equals '132 131' "$(printf '%s' "$out" | jq -r '[.merges[].number] | join(" ")')" \
+    "the later merge decision is listed first"
+  pass "same-second merges list the later decision first"
+}
+
 fm_test_run \
   test_contiguous_window_lists_merges_newest_first_with_one_range_revert \
   test_non_contiguous_window_names_interleaved_commits \
@@ -347,4 +361,5 @@ fm_test_run \
   test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref \
   test_cross_repo_closed_issue_reopens_in_its_own_repo \
   test_legacy_single_waiver_is_listed \
-  test_same_second_merges_use_history_order
+  test_same_second_merges_use_history_order \
+  test_same_second_merges_list_the_later_decision_first

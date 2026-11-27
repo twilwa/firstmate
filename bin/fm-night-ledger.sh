@@ -27,7 +27,7 @@
 # --json prints one object, schema "firstmate-night-ledger.v1":
 #   since, until            window bounds (epochs)
 #   repo                    the --repo filter, or null
-#   merges[]                newest first by merged_epoch:
+#   merges[]                newest first by merged_epoch, then decision_epoch:
 #     url, repo, number, title, base, merged_at (ISO), merged_epoch,
 #     decision_epoch, merged_commit (null when the forge reports none),
 #     closed_issues[]       {repo, number, url}: repo is the issue's own repository
@@ -165,7 +165,7 @@ for file in "$LEDGER_DIR/$prefix"*.json; do
 done
 
 MERGES=$(jq -sc '
-  sort_by(-.merged_epoch)
+  sort_by(-.merged_epoch, -.decision_epoch)
   | . as $all
   | map(. as $m | .revert_together = [$all[]
       | select(.merged_epoch >= $m.merged_epoch and .url != $m.url)
@@ -233,7 +233,7 @@ while IFS=$'\t' read -r repo base commits; do
   [ -n "$repo" ] || continue
   WHOLE_ROWS+=$(whole_night_group "$repo" "$base" "$commits")$'\n'
 done < <(jq -r 'group_by([.repo, .base])[]
-  | [.[0].repo, .[0].base, (sort_by(.merged_epoch) | map(.merged_commit) | tojson)] | @tsv' <<<"$MERGES")
+  | [.[0].repo, .[0].base, (sort_by(.merged_epoch, .decision_epoch) | map(.merged_commit) | tojson)] | @tsv' <<<"$MERGES")
 
 OUT=$({ printf '%s\n' "$MERGES"; jq -sc . <<<"$WHOLE_ROWS"; } | jq -n --argjson since "$SINCE" --argjson until "$UNTIL" --arg repo "$REPO" \
   --argjson not_merged "$NOT_MERGED" --argjson unreadable "$UNREADABLE" '
