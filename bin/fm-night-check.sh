@@ -4,43 +4,56 @@
 #
 # Single owner of the overnight stop-condition evaluation, its durable night
 # records under state/, its machine-readable verdict document for the morning
-# board (P3) and two-hour default gate (P2), and the hc night guard that
-# refuses herdr-core upgrades or stops while a night is active.
+# board (P3) and two-hour default gate (P2), and the hc night guard
+# (`hc-guard`) that refuses herdr-core installs, and any path that stops the
+# real core, while a night is active.
 #
 # Usage:
 #   fm-night-check.sh [check] [--json]
 #   fm-night-check.sh verdict [--json]
 #   fm-night-check.sh start
 #   fm-night-check.sh end
-#   fm-night-check.sh record-validation <id>
 #   fm-night-check.sh hc-guard
 #   fm-night-check.sh --help
 #
-# Verdicts (ordered from least to most severe; the most severe tripped
-# condition wins):
+# Verdicts (ordered from least to most severe; the most severe tripped,
+# unknown, or latched condition wins):
 #   continue       All evaluated conditions are healthy; dispatch, Claude work,
 #                  merges, validations, and two-hour defaults may proceed.
 #   stop_claude    ("stop new Claude work") Stop new Claude-harness work and
 #                  validations (e.g. Claude 5h/weekly quota < 25% or validation
-#                  cap reached); non-Claude builders may still dispatch, so
-#                  reserve-flag is not set.
+#                  cap reached); non-Claude builders may still dispatch.
 #   stop_dispatch  ("stop new dispatch") Admit no new work at all (e.g. past
 #                  last-dispatch cut-off, Claude quota < 12%, GitHub core API
 #                  < 1000, failure streak >= 3, failed post-merge check, >= 2
 #                  finished PRs waiting for a check slot, supervision stall,
-#                  sustained high host load, or ANY unreadable/unknown source);
-#                  sets the first configured reserve-flag in config/lane-capacity
-#                  so bin/fm-capacity.sh admits nothing new.
+#                  sustained high host load, or ANY unreadable/unknown source).
 #   end_night      ("end the night") The night is over (outside the configured
 #                  night window or hc core restarted); disallows dispatch,
-#                  Claude work, merges, validations, and two-hour defaults, and
-#                  sets reserve-flag.
+#                  Claude work, merges, validations, and two-hour defaults.
+#
+# Level and event conditions:
+#   Level conditions are re-evaluated on every `check` and only shape that
+#   verdict: night_window (window and last-dispatch cut-off), claude_quota,
+#   github_api, check_machine, validation_cap, host_load, and every "unknown"
+#   (unreadable) reading. A recovered reading gives `continue` on the next run.
+#   Event conditions latch while a night is active: when failure_streak,
+#   dev_health, supervision_stall, or hc_core reads "tripped", the event is
+#   added to the durable stop record's `latched` list, keeps shaping every
+#   later verdict of the night (status "latched"), and sets the first
+#   configured reserve-flag from config/lane-capacity so bin/fm-capacity.sh
+#   admits nothing new. Outside an active night nothing latches, no stop
+#   record is written, and no reserve-flag is set.
+#   The reserve-flag is created only when absent (never overwritten or
+#   restamped) and carries a first line `set_by=fm-night-check`. `end` removes
+#   it only when that first line is present; a flag created by anyone else is
+#   left untouched and reported as "set_externally". When config/lane-capacity
+#   names no reserve-flag, the verdict carries a warning that stop_dispatch
+#   cannot be enforced through admission.
 #
 # Non-destructive guarantee: this script never kills, interrupts, or tears down
-# any worker, terminal, or service. When a stop condition trips it writes the
-# durable night stop record under state/ through one owner path and (whenever
-# allow.dispatch is false) creates the existing reserve-flag from
-# config/lane-capacity.
+# any worker, terminal, or service. It only writes its own state/ records and
+# creates or removes its own reserve-flag.
 #
 # Unreadable-source invariant: any source that cannot be read, times out, or
 # returns malformed data reports that condition as status="unknown" with
@@ -50,10 +63,10 @@
 # by this script):
 #   state/night-active.json   (schema: fm-night-active.v1)
 #     Present while a night is on. Written by `start`, removed by `end`.
-#     Carries started_epoch, started_at, resolved window settings, optional
-#     hc_baseline {pid, core_id, holder_instance, uptime_ms, started_epoch},
-#     and recorded validation run ids. While present (or if unreadable/corrupt),
-#     `hc-guard` refuses herdr-core installs and core stops.
+#     Carries started_epoch, started_at, resolved window settings, and optional
+#     hc_baseline {pid, core_id, holder_instance, uptime_ms, started_epoch}.
+#     While present (or if unreadable/corrupt), `hc-guard` refuses herdr-core
+#     installs.
 #   state/night-verdict.json  (schema: fm-night-verdict.v1)
 #     Latest evaluation verdict, rewritten atomically on every `check` and
 #     served by `verdict [--json]` without re-polling external tools.
@@ -77,12 +90,22 @@
 #         "tripped": [
 #           {
 #             "condition": "<name>",
-#             "status": "tripped"|"unknown",
+#             "status": "tripped"|"unknown"|"latched",
 #             "verdict_effect": "stop_claude"|"stop_dispatch"|"end_night",
 #             "reason": "<plain-text reason>"
 #           }
 #         ],
 #         "reasons": ["<plain-text reason>", ...],
+#         "latched": [
+#           {
+#             "condition": "<event condition name>",
+#             "verdict_effect": "stop_dispatch"|"end_night",
+#             "reason": "<reason when it latched>",
+#             "latched_epoch": <int>,
+#             "latched_at": "<UTC ISO-8601>"
+#           }
+#         ],
+#         "warnings": ["<plain-text warning>", ...],
 #         "conditions": {
 #           "night_window":      { "status", "verdict_effect", "reason", "details" },
 #           "claude_quota":      { "status", "verdict_effect", "reason", "details" },
@@ -98,17 +121,20 @@
 #         "reserve_flag": {
 #           "configured": <bool>,
 #           "path": "<abs-path|null>",
-#           "set_by_check": <bool>
+#           "state": "not_configured"|"absent"|"set_by_night_check"|"set_externally"
 #         },
 #         "stop_record_path": "<abs-path|null>"
 #       }
 #   state/night-stop.json     (schema: fm-night-stop.v1)
-#     Durable stop record written by the single owner helper whenever any
-#     condition trips (verdict != "continue"). Preserves first_tripped_epoch,
-#     stall_since_epoch (when supervision_stall tripped), core_restarted
-#     (when hc_core tripped), latest verdict, and tripped reasons. Kept after
-#     `end` so the morning board can read why the night stopped; cleared when
-#     a new night starts via `start`.
+#     Durable stop record written by the single owner helper on every `check`
+#     of an active night once any event condition has latched. Carries the
+#     `latched` list, first_tripped_epoch, the earliest stall_since_epoch (when
+#     supervision_stall latched), core_restarted (when hc_core latched), latest
+#     verdict, and tripped reasons. Kept after `end` so the morning board can
+#     read why the night stopped; cleared when a new night starts via `start`.
+#     When it is unreadable or corrupt during an active night, the earlier
+#     latches are unknown, so a fail-closed "night_stop_record" latch replaces
+#     them.
 #
 # Home configuration: config/night-check (local, gitignored, home-local; schema
 # owned by docs/configuration.md "Night stop-and-health check").
@@ -121,8 +147,8 @@
 #   FM_HC_BIN                override herdr-core binary path (matching hc.sh)
 #
 # Exit status:
-#   check / start / end / record-validation: 0 on completion, 1 on refusal or
-#     state error, 2 on usage error or missing jq.
+#   check / start / end: 0 on completion, 1 on refusal or state error, 2 on
+#     usage error or missing jq.
 #   verdict: 0 when a valid latest verdict exists, 1 when absent or corrupt.
 #   hc-guard: 0 when no night is active, 1 with refusal reason on stderr when
 #     a night is active (or state/night-active.json is unreadable/corrupt).
@@ -181,7 +207,7 @@ die() {
 
 die_usage() {
   printf 'fm-night-check: %s\n' "$*" >&2
-  printf 'usage: fm-night-check.sh [check [--json] | verdict [--json] | start | end | record-validation <id> | hc-guard | --help]\n' >&2
+  printf 'usage: fm-night-check.sh [check [--json] | verdict [--json] | start | end | hc-guard | --help]\n' >&2
   exit 2
 }
 
@@ -444,19 +470,25 @@ first_lane_reserve_flag() {
   return 1
 }
 
-set_lane_reserve_flag() {  # <path> <verdict> <now_iso> <reasons_summary>
-  local path=$1 verdict=$2 iso=$3 summary=$4 dir tmp
-  dir=$(dirname "$path")
-  mkdir -p "$dir" 2>/dev/null || return 1
-  [ ! -L "$path" ] || return 1
-  tmp=$(mktemp "$dir/.fm-night-reserve.XXXXXX" 2>/dev/null) || return 1
-  if chmod 0600 "$tmp" 2>/dev/null \
-    && printf 'set_by=fm-night-check\nat=%s\nverdict=%s\nreasons=%s\n' "$iso" "$verdict" "$summary" > "$tmp" 2>/dev/null \
-    && mv -f -- "$tmp" "$path" 2>/dev/null; then
-    return 0
+reserve_flag_state() {  # <path> -> absent | set_by_night_check | set_externally
+  local path=$1 first=
+  if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+    printf 'absent\n'
+  elif [ -f "$path" ] && [ ! -L "$path" ] && [ -r "$path" ] \
+    && IFS= read -r first < "$path" && [ "$first" = "set_by=fm-night-check" ]; then
+    printf 'set_by_night_check\n'
+  else
+    printf 'set_externally\n'
   fi
-  rm -f -- "$tmp" 2>/dev/null || true
-  return 1
+}
+
+create_lane_reserve_flag() {  # <path> <verdict> <now_iso> <reasons_summary>
+  local path=$1 verdict=$2 iso=$3 summary=$4
+  mkdir -p "$(dirname "$path")" 2>/dev/null || return 1
+  ( umask 077
+    set -C
+    printf 'set_by=fm-night-check\nat=%s\nverdict=%s\nreasons=%s\n' "$iso" "$verdict" "$summary" > "$path"
+  ) 2>/dev/null
 }
 
 # --- hc-guard (fast path, no jq needed when night-active.json absent) -------
@@ -480,7 +512,7 @@ cmd_hc_guard() {
   exit 1
 }
 
-# --- start / end / verdict / record-validation ------------------------------
+# --- start / end / verdict ------------------------------------------------
 hc_backend_configured() {
   if [ "${FM_BACKEND:-}" = "hc" ]; then
     return 0
@@ -561,8 +593,7 @@ cmd_start() {
         end: $we,
         timezone: $tz
       },
-      hc_baseline: $hc_base,
-      validations: []
+      hc_baseline: $hc_base
     }') || die "could not build night-active record"
   atomic_write_json "$ACTIVE_FILE" "$doc" || die "could not write $ACTIVE_FILE"
   rm -f -- "$STOP_FILE" 2>/dev/null || true
@@ -571,6 +602,11 @@ cmd_start() {
 }
 
 cmd_end() {
+  local rf_path
+  if rf_path=$(first_lane_reserve_flag) && [ "$(reserve_flag_state "$rf_path")" = set_by_night_check ]; then
+    rm -f -- "$rf_path" || die "could not remove reserve-flag $rf_path"
+    printf 'night-check: cleared reserve-flag %s\n' "$rf_path"
+  fi
   if [ ! -e "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ]; then
     printf 'night-check: no active night run\n'
     exit 0
@@ -596,22 +632,6 @@ cmd_verdict() {
   else
     render_human_verdict "$VERDICT_FILE"
   fi
-}
-
-cmd_record_validation() {
-  local id=${1:-}
-  [ -n "$id" ] && [ "$#" -eq 1 ] || die_usage "record-validation requires one run id"
-  type -P jq >/dev/null 2>&1 || die_usage "jq is required"
-  [ -f "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ] && [ -r "$ACTIVE_FILE" ] \
-    || die "no active night record at $ACTIVE_FILE"
-  local now updated
-  now=$(now_epoch)
-  updated=$(jq --arg id "$id" --argjson now "$now" '
-    if .schema != "fm-night-active.v1" then error("invalid") else . end
-    | .validations = ((.validations // []) | if any(.[]; .id == $id) then . else . + [{id: $id, recorded_epoch: $now}] end)
-  ' "$ACTIVE_FILE" 2>/dev/null) || die "could not update $ACTIVE_FILE"
-  atomic_write_json "$ACTIVE_FILE" "$updated" || die "could not write $ACTIVE_FILE"
-  printf 'night-check: recorded validation %s\n' "$id"
 }
 
 # --- Condition evaluators ---------------------------------------------------
@@ -856,14 +876,14 @@ eval_failure_streak() {  # <since_epoch>
   '
 }
 
-eval_dev_health() {  # <since_epoch>
-  local since=$1 f failed_json="[]" count=0
+eval_dev_health() {
+  local f records_json="[]" count=0 rows
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
   fi
   if [ ! -e "$LEDGER_DIR" ] && [ ! -L "$LEDGER_DIR" ]; then
-    cond_json ok continue "" '{"failed_prs":[],"checked_ledgers":0}'
+    cond_json ok continue "" '{"failed_repos":[],"checked_ledgers":0}'
     return 0
   fi
   if [ -L "$LEDGER_DIR" ] || [ ! -d "$LEDGER_DIR" ] || [ ! -r "$LEDGER_DIR" ]; then
@@ -881,31 +901,24 @@ eval_dev_health() {  # <since_epoch>
       return 0
     fi
     count=$((count + 1))
-    local item
-    # shellcheck disable=SC2016
-    item=$(jq -c --argjson since "$since" '
-      (.generations[-1].post_merge_verifications // []) as $pmv
-      | if ($pmv | length) == 0 then empty
-        else
-          ($pmv[-1]) as $last
-          | if (($last.recorded_epoch // $since) >= $since)
-               and (($last.outcome // "") == "failed" or ($last.ready_for_qa // "") == "blocked") then
-              {url: .url, head: .current_head, outcome: ($last.outcome // "failed"), recorded_epoch: ($last.recorded_epoch // null)}
-            else empty end
-        end
+    rows=$(jq -c '
+      .url as $u
+      | ($u | sub("/(-/)?(pull|merge_requests)/.*$"; "")) as $repo
+      | [ .generations[] | (.post_merge_verifications // [])[]
+          | select(.outcome == "passed" or .outcome == "failed")
+          | {repo: $repo, url: $u, head: (.head // null), outcome: .outcome, recorded_epoch: (.recorded_epoch // 0)} ]
     ' "$f" 2>/dev/null) || {
       cond_json unknown stop_dispatch "failed to inspect review ledger $(basename "$f")" '{}'
       return 0
     }
-    if [ -n "$item" ]; then
-      failed_json=$(printf '%s\n' "$failed_json" | jq -c --argjson item "$item" '. + [$item]')
-    fi
+    records_json=$(jq -cn --argjson a "$records_json" --argjson b "$rows" '$a + $b')
   done
   # shellcheck disable=SC2016
-  printf '%s\n' "$failed_json" | jq -c --argjson checked "$count" '
-    {failed_prs: ., checked_ledgers: $checked} as $det
-    | if length > 0 then
-        {status: "tripped", verdict_effect: "stop_dispatch", reason: "failed post-merge check recorded in review ledger for \([.[].url] | join(", "))", details: $det}
+  printf '%s\n' "$records_json" | jq -c --argjson checked "$count" '
+    [ group_by(.repo)[] | max_by(.recorded_epoch) | select(.outcome == "failed") ] as $failed
+    | {failed_repos: $failed, checked_ledgers: $checked} as $det
+    | if ($failed | length) > 0 then
+        {status: "tripped", verdict_effect: "stop_dispatch", reason: "latest post-merge check failed in review ledger for \([$failed[].url] | join(", "))", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
@@ -999,7 +1012,7 @@ eval_check_machine() {
 }
 
 eval_validation_cap() {  # <since_epoch>
-  local since=$1 f runs_json="[]"
+  local since=$1 f runs_json="[]" rows
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
@@ -1019,19 +1032,20 @@ eval_validation_cap() {  # <since_epoch>
         cond_json unknown stop_dispatch "review ledger $(basename "$f") is malformed JSON" '{}'
         return 0
       fi
-      local rows line u h k a ce ep key
+      local u h a ce ep
       rows=$(jq -r '
         .url as $u
         | .generations[]
         | select((.risk.level // "") == "high")
         | (.created_epoch // 0) as $ce
         | (.attestations // [])[]
-        | [$u, (.head // ""), (.kind // ""), (.at // ""), ($ce | tostring)] | @tsv
+        | select(.kind == "no-mistakes")
+        | [$u, (.head // ""), (.at // ""), ($ce | tostring)] | @tsv
       ' "$f" 2>/dev/null) || {
         cond_json unknown stop_dispatch "failed to read attestations from $(basename "$f")" '{}'
         return 0
       }
-      while IFS=$'\t' read -r u h k a ce; do
+      while IFS=$'\t' read -r u h a ce; do
         [ -n "$u" ] || continue
         if [ -n "$a" ] && ep=$(iso_to_epoch "$a"); then
           :
@@ -1041,35 +1055,14 @@ eval_validation_cap() {  # <since_epoch>
           continue
         fi
         if [ "$ep" -ge "$since" ]; then
-          key="ledger:${u}:${h}:${k}:${a}"
-          runs_json=$(printf '%s\n' "$runs_json" | jq -c --arg key "$key" --arg src "review-ledger" --argjson ep "$ep" '
-            if any(.[]; .key == $key) then . else . + [{key: $key, source: $src, epoch: $ep}] end
+          runs_json=$(printf '%s\n' "$runs_json" | jq -c --arg url "$u" --arg head "$h" --argjson ep "$ep" '
+            if any(.[]; .url == $url and .head == $head) then . else . + [{url: $url, head: $head, epoch: $ep}] end
           ')
         fi
       done <<EOF
 $rows
 EOF
     done
-  fi
-  if [ -f "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ] && [ -r "$ACTIVE_FILE" ]; then
-    local rec_rows rid rep key
-    rec_rows=$(jq -r '
-      if .schema == "fm-night-active.v1" then
-        (.validations // [])[] | [(.id // ""), ((.recorded_epoch // 0) | tostring)] | @tsv
-      else empty end
-    ' "$ACTIVE_FILE" 2>/dev/null) || rec_rows=""
-    while IFS=$'\t' read -r rid rep; do
-      [ -n "$rid" ] || continue
-      is_uint "$rep" || continue
-      if [ "$rep" -ge "$since" ]; then
-        key="recorded:${rid}"
-        runs_json=$(printf '%s\n' "$runs_json" | jq -c --arg key "$key" --arg src "night-active" --argjson ep "$rep" '
-          if any(.[]; .key == $key) then . else . + [{key: $key, source: $src, epoch: $ep}] end
-        ')
-      fi
-    done <<EOF
-$rec_rows
-EOF
   fi
   # shellcheck disable=SC2016
   printf '%s\n' "$runs_json" | jq -c --argjson cap "$VALIDATION_CAP" --argjson since "$since" '
@@ -1134,9 +1127,16 @@ eval_supervision_stall() {  # <now>
       return 0
     fi
     local cd_val ra_val
+    ra_val=$(
+      # shellcheck source=bin/fm-wake-lib.sh
+      . "$SCRIPT_DIR/fm-wake-lib.sh" >/dev/null 2>&1 || exit 1
+      # shellcheck source=bin/fm-supervision-engine-lib.sh
+      . "$SCRIPT_DIR/fm-supervision-engine-lib.sh" >/dev/null 2>&1 || exit 1
+      fm_supervision_host_config "$CONFIG" "$(fm_supervision_host_primary)" || exit 1
+      fm_supervision_host_paused_until "$STATE"
+    ) || ra_val=""
     cd_val=$(sed -n 's/^cooldown=//p' "$hf" 2>/dev/null | head -1)
-    ra_val=$(sed -n 's/^retry_after=//p' "$hf" 2>/dev/null | head -1)
-    if is_uint "$cd_val" && is_uint "$ra_val" && [ "$cd_val" -gt 0 ] && [ "$ra_val" -gt "$now" ]; then
+    if is_uint "$ra_val" && is_uint "$cd_val"; then
       latch_stalled=1
       latch_cooldown=$cd_val
       latch_retry=$ra_val
@@ -1215,7 +1215,7 @@ eval_hc_core() {  # <now> <since_epoch>
 }
 
 eval_host_load() {  # <now>
-  local now=$1 os load1="" prev_since=null
+  local now=$1 os load1="" prev_since=null max_gap=$((HIGH_LOAD_MINUTES * 60))
   os=$(uname -s 2>/dev/null) || os=unknown
   if [ -n "${FM_PROC_ROOT_OVERRIDE:-}" ] || [ "$os" != Darwin ]; then
     if [ -f "$PROC_ROOT/loadavg" ] && [ -r "$PROC_ROOT/loadavg" ]; then
@@ -1229,9 +1229,11 @@ eval_host_load() {  # <now>
     return 0
   fi
   if [ -f "$VERDICT_FILE" ] && [ ! -L "$VERDICT_FILE" ] && [ -r "$VERDICT_FILE" ]; then
-    prev_since=$(jq -c --argjson now "$now" '
-      (.conditions.host_load.details.high_load_since_epoch // null)
-      | if (type == "number" and . <= $now) then . else null end
+    prev_since=$(jq -c --argjson now "$now" --argjson gap "$max_gap" '
+      if (.checked_epoch | type == "number") and .checked_epoch <= $now and ($now - .checked_epoch) <= $gap then
+        (.conditions.host_load.details.high_load_since_epoch // null)
+        | if (type == "number" and . <= $now) then . else null end
+      else null end
     ' "$VERDICT_FILE" 2>/dev/null) || prev_since=null
     [ -n "$prev_since" ] || prev_since=null
   fi
@@ -1245,12 +1247,12 @@ eval_host_load() {  # <now>
     ($load1 | tonumber) as $l
     | ($thresh | tonumber) as $t
     | ($mins * 60) as $dur_limit
-    | if $l >= $t then
+    | if $l > $t then
         ($prev_since // $now) as $since
         | ($now - $since) as $elapsed
         | {load1: $l, threshold: $t, limit_seconds: $dur_limit, high_load_since_epoch: $since, elapsed_seconds: $elapsed} as $det
         | if $elapsed >= $dur_limit then
-            {status: "tripped", verdict_effect: "stop_dispatch", reason: "host 1-minute load (\($l)) stayed >= \($t) for \($elapsed)s (limit \($dur_limit)s)", details: $det}
+            {status: "tripped", verdict_effect: "stop_dispatch", reason: "host 1-minute load (\($l)) stayed above \($t) for \($elapsed)s (limit \($dur_limit)s)", details: $det}
           else
             {status: "ok", verdict_effect: "continue", reason: "", details: $det}
           end
@@ -1279,7 +1281,9 @@ write_stop_record() {  # <verdict_json> <now> <iso>
     --argjson now "$now" \
     --arg iso "$iso" \
     --argjson prev_stall "$prev_stall" '
-    (.conditions.supervision_stall.details.stall_since_epoch // $prev_stall) as $stall_since
+    (if any(.latched[]; .condition == "supervision_stall") then
+       ([$prev_stall, .conditions.supervision_stall.details.stall_since_epoch?] | map(select(type == "number")) | min)
+     else $prev_stall end) as $stall_since
     | {
         schema: "fm-night-stop.v1",
         first_tripped_epoch: $first_epoch,
@@ -1292,8 +1296,9 @@ write_stop_record() {  # <verdict_json> <now> <iso>
         allow: .allow,
         tripped: .tripped,
         reasons: .reasons,
+        latched: .latched,
         stall_since_epoch: $stall_since,
-        core_restarted: (.conditions.hc_core.status == "tripped"),
+        core_restarted: any(.latched[]; .condition == "hc_core"),
         reserve_flag: .reserve_flag
       }
   ') || return 1
@@ -1303,8 +1308,25 @@ write_stop_record() {  # <verdict_json> <now> <iso>
 render_human_verdict() {  # <verdict_json_file>
   jq -r '
     "night-check: verdict=\(.verdict) (\(.verdict_label)) dispatch=\(.allow.dispatch) claude=\(.allow.claude) merge=\(.allow.merge) validation=\(.allow.validation) two_hour_default=\(.allow.two_hour_default)",
-    (.tripped[] | "  - \(.condition) (\(.status) -> \(.verdict_effect)): \(.reason)")
+    (.tripped[] | "  - \(.condition) (\(.status) -> \(.verdict_effect)): \(.reason)"),
+    ((.warnings // [])[] | "  warning: \(.)")
   ' "$1"
+}
+
+prior_latched_json() {  # <now> <iso> -> latched array from this night's stop record
+  local now=$1 iso=$2 out
+  if [ ! -e "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ]; then
+    printf '[]\n'
+    return 0
+  fi
+  if [ -f "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ] && [ -r "$STOP_FILE" ] \
+    && out=$(jq -c 'if .schema == "fm-night-stop.v1" and (.latched | type == "array") then .latched else error("invalid") end' "$STOP_FILE" 2>/dev/null) \
+    && [ -n "$out" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  jq -cn --argjson now "$now" --arg iso "$iso" \
+    '[{condition: "night_stop_record", verdict_effect: "stop_dispatch", reason: "state/night-stop.json is unreadable or corrupt, so earlier latched stops are unknown", latched_epoch: $now, latched_at: $iso}]'
 }
 
 # --- Main check flow --------------------------------------------------------
@@ -1348,14 +1370,19 @@ cmd_check() {
   c_quota=$(eval_claude_quota)
   c_gh=$(eval_github_api)
   c_streak=$(eval_failure_streak "$since_epoch")
-  c_dev=$(eval_dev_health "$since_epoch")
+  c_dev=$(eval_dev_health)
   c_cm=$(eval_check_machine)
   c_val=$(eval_validation_cap "$since_epoch")
   c_stall=$(eval_supervision_stall "$now")
   c_hc=$(eval_hc_core "$now" "$since_epoch")
   c_load=$(eval_host_load "$now")
 
-  local rf_configured=false rf_path="" rf_set=false
+  local prior_latched="[]"
+  if [ "$night_active" = true ]; then
+    prior_latched=$(prior_latched_json "$now" "$iso")
+  fi
+
+  local rf_configured=false rf_path=""
   if rf_path=$(first_lane_reserve_flag); then
     rf_configured=true
   else
@@ -1378,6 +1405,7 @@ cmd_check() {
     --argjson c_stall "$c_stall" \
     --argjson c_hc "$c_hc" \
     --argjson c_load "$c_load" \
+    --argjson prior_latched "$prior_latched" \
     --argjson rf_configured "$rf_configured" \
     --arg rf_path "$rf_path" \
     '
@@ -1391,7 +1419,8 @@ cmd_check() {
       elif . == "stop_dispatch" then "stop new dispatch"
       elif . == "stop_claude" then "stop new Claude work"
       else "continue" end;
-    {
+    ["failure_streak", "dev_health", "supervision_stall", "hc_core"] as $events
+    | {
       night_window: $c_window,
       claude_quota: $c_quota,
       github_api: $c_gh,
@@ -1403,23 +1432,26 @@ cmd_check() {
       hc_core: $c_hc,
       host_load: $c_load
     } as $conds
-    | [ $conds | to_entries[] | select(.value.status == "tripped" or .value.status == "unknown")
-        | {condition: .key, status: .value.status, verdict_effect: .value.verdict_effect, reason: .value.reason} ] as $tripped
+    | (if $night_active then
+         $prior_latched
+         + [ $conds | to_entries[]
+             | select(.key as $k | any($events[]; . == $k))
+             | select(.value.status == "tripped")
+             | select(.key as $k | any($prior_latched[]; .condition == $k) | not)
+             | {condition: .key, verdict_effect: .value.verdict_effect, reason: .value.reason, latched_epoch: $now, latched_at: $iso} ]
+       else [] end) as $latched
+    | ([ $conds | to_entries[] | select(.value.status == "tripped" or .value.status == "unknown")
+         | {condition: .key, status: .value.status, verdict_effect: .value.verdict_effect, reason: .value.reason} ]
+       + [ $latched[] | select(($conds[.condition].status // "") != "tripped")
+           | {condition: .condition, status: "latched", verdict_effect: .verdict_effect, reason: "latched at \(.latched_at): \(.reason)"} ]) as $tripped
     | (if ($tripped | length) == 0 then "continue"
        else ($tripped | max_by(.verdict_effect | rank) | .verdict_effect) end) as $verdict
+    | (any($tripped[]; .condition == "dev_health" or .condition == "supervision_stall" or .condition == "hc_core" or .condition == "night_stop_record")) as $health_blocked
     | ($verdict == "continue" or $verdict == "stop_claude") as $allow_dispatch
     | ($verdict == "continue") as $allow_claude
-    | ($verdict != "end_night"
-       and $conds.dev_health.status == "ok"
-       and $conds.supervision_stall.status == "ok"
-       and $conds.hc_core.status != "tripped"
-       and $conds.hc_core.status != "unknown") as $allow_merge
+    | ($verdict != "end_night" and ($health_blocked | not)) as $allow_merge
     | ($verdict == "continue") as $allow_validation
-    | (($verdict == "continue" or $verdict == "stop_claude")
-       and $conds.dev_health.status == "ok"
-       and $conds.supervision_stall.status == "ok"
-       and $conds.hc_core.status != "tripped"
-       and $conds.hc_core.status != "unknown") as $allow_default
+    | ($allow_dispatch and ($health_blocked | not)) as $allow_default
     | {
         schema: "fm-night-verdict.v1",
         checked_epoch: $now,
@@ -1437,40 +1469,44 @@ cmd_check() {
         },
         tripped: $tripped,
         reasons: [$tripped[].reason],
+        latched: $latched,
+        warnings: (if $rf_configured then []
+                   else ["config/lane-capacity names no reserve-flag, so stop_dispatch cannot be enforced through bin/fm-capacity.sh admission"] end),
         conditions: $conds,
         reserve_flag: {
           configured: $rf_configured,
           path: (if $rf_path == "" then null else $rf_path end),
-          set_by_check: false
+          state: "not_configured"
         },
         stop_record_path: null
       }
   ') || die "could not assemble verdict document"
 
-  local final_verdict allow_dispatch reasons_summary
+  local final_verdict latched_count latched_summary rf_state="not_configured"
   final_verdict=$(printf '%s\n' "$verdict_doc" | jq -r '.verdict')
-  allow_dispatch=$(printf '%s\n' "$verdict_doc" | jq -r '.allow.dispatch')
-  reasons_summary=$(printf '%s\n' "$verdict_doc" | jq -r '.reasons | join("; ")')
+  latched_count=$(printf '%s\n' "$verdict_doc" | jq -r '.latched | length')
+  latched_summary=$(printf '%s\n' "$verdict_doc" | jq -r '[.latched[].reason] | join("; ")')
 
-  if [ "$allow_dispatch" = "false" ] && [ "$rf_configured" = "true" ] && [ -n "$rf_path" ]; then
-    if set_lane_reserve_flag "$rf_path" "$final_verdict" "$iso" "$reasons_summary"; then
-      rf_set=true
-    else
-      printf 'fm-night-check: warning: could not write reserve-flag at %s\n' "$rf_path" >&2
+  if [ "$rf_configured" = "true" ]; then
+    rf_state=$(reserve_flag_state "$rf_path")
+    if [ "$latched_count" -gt 0 ] && [ "$rf_state" = absent ]; then
+      create_lane_reserve_flag "$rf_path" "$final_verdict" "$iso" "$latched_summary" \
+        || printf 'fm-night-check: warning: could not create reserve-flag at %s\n' "$rf_path" >&2
+      rf_state=$(reserve_flag_state "$rf_path")
     fi
   fi
 
   local stop_path_json="null"
-  if [ "$final_verdict" != "continue" ]; then
+  if [ "$latched_count" -gt 0 ]; then
     stop_path_json=$(jq -cn --arg p "$STOP_FILE" '$p')
   fi
 
   verdict_doc=$(printf '%s\n' "$verdict_doc" | jq \
-    --argjson rf_set "$rf_set" \
+    --arg rf_state "$rf_state" \
     --argjson stop_path "$stop_path_json" \
-    '.reserve_flag.set_by_check = $rf_set | .stop_record_path = $stop_path')
+    '.reserve_flag.state = $rf_state | .stop_record_path = $stop_path')
 
-  if [ "$final_verdict" != "continue" ]; then
+  if [ "$latched_count" -gt 0 ]; then
     write_stop_record "$verdict_doc" "$now" "$iso" || die "could not write $STOP_FILE"
   fi
   atomic_write_json "$VERDICT_FILE" "$verdict_doc" || die "could not write $VERDICT_FILE"
@@ -1509,10 +1545,6 @@ case "$cmd" in
     shift
     [ "$#" -eq 0 ] || die_usage "end takes no arguments"
     cmd_end
-    ;;
-  record-validation)
-    shift
-    cmd_record_validation "$@"
     ;;
   hc-guard)
     shift

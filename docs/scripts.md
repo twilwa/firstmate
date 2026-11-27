@@ -163,7 +163,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-tool-update-check.sh` | Report watched tooling with an update available, and updates installed but left inert by PATH order |
 | `fm-startup-growth-check.sh` | Daily metadata-only growth check for startup memory and tracked startup/instruction surfaces |
 | `fm-usage-warner.sh`     | Opt-in macOS threshold warner that notifies once when a configured Claude usage window crosses its percentage |
-| `fm-night-check.sh`      | Evaluate overnight stop-and-health conditions, publish the machine-readable verdict and durable stop record, set `config/lane-capacity`'s `reserve-flag` on dispatch stops, and enforce the active-night `hc` core guard |
+| `fm-night-check.sh`      | Evaluate overnight stop-and-health conditions, publish the machine-readable verdict and durable stop record, set `config/lane-capacity`'s `reserve-flag` when a night-stopping event latches, and refuse `hc` core installs during an active night |
 | `fm-pr-lib.sh`           | Own canonical task and PR validation, the GitHub required-check reader, the branch-to-PR lookup shared by teardown and the PR health monitor, plus private atomic PR-poll publication, merge-notification identity, and retirement |
 | `fm-pr-merge-options-lib.sh` | Parse the guarded merge helper-option prefix once for `fm-pr-merge.sh` and `fm-pr-review.sh merge`, including the repeatable `--allow-red` waiver limits |
 | `fm-pr-poll.sh`          | Provide the byte-static watcher program for validated pull-request, merge-request, and Gerrit-change poll sidecars; reports merged or post-ready degradation for GitHub checks, GitLab head pipelines, and merge-train drops (see [GitLab merge watch](gitlab-merge-watch.md)) |

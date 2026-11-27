@@ -42,15 +42,6 @@
 # the lab directory for inspection, never reducing the failure to a warning.
 set -u
 
-FM_HCLAB_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-fm_hclab_night_guard() {
-  if [ -x "$FM_HCLAB_SCRIPT_DIR/fm-night-check.sh" ]; then
-    "$FM_HCLAB_SCRIPT_DIR/fm-night-check.sh" hc-guard || return 1
-  fi
-  return 0
-}
-
 fm_hclab_error() {
   echo "fm-hc-lab: $*" >&2
 }
@@ -290,7 +281,6 @@ fm_hclab_run() { # <session> <hc arguments...>
 fm_hclab_stop() { # <session>
   local name=$1
   fm_hclab_validate_name "$name" || return 1
-  fm_hclab_night_guard || return 1
   [ -f "$(fm_hclab_tripwire_path "$name")" ] || {
     fm_hclab_error "missing fleet-state tripwire for '$name'; refusing stop"
     return 1
@@ -337,7 +327,6 @@ fm_hclab_session_pids() { # <session>
 fm_hclab_teardown() { # <session>
   local name=$1 dir pids sig i
   fm_hclab_validate_name "$name" || return 1
-  fm_hclab_night_guard || return 1
   dir=$(fm_hclab_session_dir "$name")
   [ -f "$(fm_hclab_tripwire_path "$name")" ] || {
     fm_hclab_error "missing fleet-state tripwire for '$name'; refusing destructive calls"

@@ -2884,16 +2884,22 @@ claude-stop-all-pct 12        # stop all new work below this remaining % on 5h o
 github-api-floor 1000         # stop new dispatch below this many GitHub core hourly requests left (default 1000)
 failure-streak-limit 3        # consecutive failed night tickets that stop new dispatch (default 3)
 check-queue-limit 2           # finished PRs waiting for a check slot that stop new builders (default 2)
-validation-cap 2              # high-stakes validation runs per night that stop further Claude work (default 2)
+validation-cap 2              # high-stakes no-mistakes runs (one per PR head) per night that stop further Claude work (default 2)
 stall-minutes 30              # oldest unacknowledged wake age in minutes that records a supervision stall (default 30)
-high-load-threshold 24        # 1-minute load threshold for the sustained-load stop (default 24)
-high-load-minutes 10          # sustained minutes at high-load-threshold before stopping dispatch and validations (default 10)
+high-load-threshold 24        # 1-minute load above which the sustained-load timer runs (default 24)
+high-load-minutes 10          # sustained minutes above high-load-threshold before stopping dispatch and validations (default 10)
 ```
 
 One `key value` pair appears per non-empty, non-comment line, with `#` starting a comment.
 Each key may appear at most once.
-When a condition stops new dispatch or ends the night, `bin/fm-night-check.sh` writes a durable stop record under `state/` and sets the first `reserve-flag` configured in `config/lane-capacity` so `bin/fm-capacity.sh` admits nothing new; it never kills, interrupts, or tears down running work.
-While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), `bin/fm-install-hc.sh` and core stop paths refuse with the reason.
+The night window, last-dispatch cut-off, Claude floors, GitHub API floor, check-machine rule, validation cap, host load, and any unreadable source are level conditions: each `check` re-reads them and they only shape that verdict, so a recovered reading gives `continue` on the next run.
+The failure streak, a failed latest post-merge check, a supervision stall, and an `hc` core restart are event conditions: once one trips during an active night it latches until `bin/fm-night-check.sh end`.
+Dev health reads, for each repository, the most recent passed or failed post-merge verification across its review ledgers, whenever it was recorded; the ledger names no target branch, and a not-applicable record neither clears nor sets red.
+A latched event writes a durable stop record under `state/` and creates the first `reserve-flag` configured in `config/lane-capacity`, so `bin/fm-capacity.sh` admits nothing new; the check never kills, interrupts, or tears down running work.
+The check creates the flag only when it is absent, and `end` removes it only when the check created it; a flag someone else created is left in place and reported as set externally.
+When `config/lane-capacity` names no `reserve-flag`, the verdict carries a warning that new dispatch cannot be stopped through admission.
+The stop record stays after `end` for the morning board and is cleared by the next `start`.
+While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), `bin/fm-install-hc.sh` refuses with the reason.
 
 ## Mail plane (.env)
 
