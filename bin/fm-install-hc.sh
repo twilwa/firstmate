@@ -16,8 +16,11 @@
 # the `herdr-core` binary, then refuses to finish unless the installed binary
 # reports `hc 0.1.14` exactly. The adapter (bin/backends/hc.sh) resolves
 # `herdr-core` before the `hc` alias, so the asset name is what gets installed.
+# Refuses before downloading when an overnight run is active
+# (bin/fm-night-check.sh hc-guard).
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_HC_PIN_VERSION=0.1.14
 # Bounded download ceiling (bytes). The largest official 0.1.14 tarball is
 # under 3 MiB.
@@ -30,6 +33,10 @@ die() {
 }
 
 DESTINATION=${1:?usage: fm-install-hc.sh <destination-directory>}
+
+if [ -x "$SCRIPT_DIR/fm-night-check.sh" ]; then
+  "$SCRIPT_DIR/fm-night-check.sh" hc-guard || exit 1
+fi
 
 os=$(uname -s)
 arch=$(uname -m)

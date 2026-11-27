@@ -2864,6 +2864,37 @@ That writes `state/usage-warner.check.sh` and binds its bytes with `bin/fm-check
 `arm` refuses on any platform other than macOS.
 `bin/fm-usage-warner.sh disarm` removes the shim, its trust binding, and the de-dupe record (`state/.usage-warner`).
 
+## Night stop-and-health check (config/night-check)
+
+The optional local, gitignored `config/night-check` file configures the overnight window, cut-off, quota floors, and health limits evaluated by [`bin/fm-night-check.sh`](../bin/fm-night-check.sh).
+When the file is absent, the defaults below apply.
+When the file is present but unreadable or malformed (an unknown key, a duplicate key, a missing or invalid value, `claude-stop-all-pct` above `claude-stop-claude-pct`, or `last-dispatch` outside the window), the check never guesses: it reports the condition as `unknown` and stops new dispatch.
+The file is home-local and is not inherited by secondmate homes.
+
+This section is the single owner of the `config/night-check` schema and defaults.
+[`bin/fm-night-check.sh`](../bin/fm-night-check.sh) owns evaluation mechanics, the `fm-night-verdict.v1` and `fm-night-stop.v1` JSON schemas, durable `state/` records, `reserve-flag` integration, and the `hc-guard` refusal contract.
+
+```text
+window-start 23:00            # local start of the night window (HH:MM, default 23:00)
+last-dispatch 06:30           # local cut-off after which no new work dispatches (HH:MM, default 06:30)
+window-end 07:30              # local end of the night window (HH:MM, default 07:30)
+timezone America/Los_Angeles  # IANA timezone for window times (default America/Los_Angeles)
+claude-stop-claude-pct 25     # stop new Claude work below this remaining % on 5h or weekly window (default 25)
+claude-stop-all-pct 12        # stop all new work below this remaining % on 5h or weekly window (default 12)
+github-api-floor 1000         # stop new dispatch below this many GitHub core hourly requests left (default 1000)
+failure-streak-limit 3        # consecutive failed night tickets that stop new dispatch (default 3)
+check-queue-limit 2           # finished PRs waiting for a check slot that stop new builders (default 2)
+validation-cap 2              # high-stakes validation runs per night that stop further Claude work (default 2)
+stall-minutes 30              # oldest unacknowledged wake age in minutes that records a supervision stall (default 30)
+high-load-threshold 24        # 1-minute load threshold for the sustained-load stop (default 24)
+high-load-minutes 10          # sustained minutes at high-load-threshold before stopping dispatch and validations (default 10)
+```
+
+One `key value` pair appears per non-empty, non-comment line, with `#` starting a comment.
+Each key may appear at most once.
+When a condition stops new dispatch or ends the night, `bin/fm-night-check.sh` writes a durable stop record under `state/` and sets the first `reserve-flag` configured in `config/lane-capacity` so `bin/fm-capacity.sh` admits nothing new; it never kills, interrupts, or tears down running work.
+While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), `bin/fm-install-hc.sh` and core stop paths refuse with the reason.
+
 ## Mail plane (.env)
 
 The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.

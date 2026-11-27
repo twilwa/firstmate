@@ -22,6 +22,8 @@
 #   fm-hc-ci-cleanup.sh teardown <snapshot-path>
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 die() {
   printf 'fm-hc-ci-cleanup.sh: %s\n' "$*" >&2
   exit 1
@@ -116,6 +118,9 @@ case "$cmd" in
     log "wrote lab session snapshot to $path ($(wc -l <"$path" | tr -d ' ') names)"
     ;;
   teardown)
+    if [ -x "$SCRIPT_DIR/fm-night-check.sh" ]; then
+      "$SCRIPT_DIR/fm-night-check.sh" hc-guard || exit 1
+    fi
     [ -f "$path" ] || die "snapshot file not found: $path"
     names=$(list_lab_names) || die "could not inventory lab sessions"
     failed=0
