@@ -52,6 +52,15 @@ case "${1:-}" in
       | if $all == 1 then .[] else .[:1][] end' "$FM_TEST_GH_DIR/$n.json" \
       | while IFS= read -r page; do jq -c "$expr" <<<"$page"; done
     ;;
+  issue)
+    [ "${2:-}" = view ] && [ "${4:-}" = --json ] || { printf 'unexpected gh call: %s\n' "$*" >&2; exit 91; }
+    # issue-states.json maps an issue URL to OPEN, CLOSED, or FAIL; unlisted issues are CLOSED.
+    state=CLOSED
+    [ ! -f "$FM_TEST_GH_DIR/issue-states.json" ] \
+      || state=$(jq -r --arg u "$3" '.[$u] // "CLOSED"' "$FM_TEST_GH_DIR/issue-states.json")
+    [ "$state" != FAIL ] || { printf 'HTTP 502: issue read failed\n' >&2; exit 1; }
+    jq -n --arg s "$state" '{state:$s, closedAt:(if $s == "CLOSED" then "2026-11-27T01:30:00Z" else null end)}'
+    ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
 esac
 SH
@@ -329,7 +338,7 @@ test_cross_repo_closed_issue_reopens_in_its_own_repo() {
     "$(printf '%s' "$out" | jq -r '[.not_undone.closed_issues[].reopen] | join(";")')" \
     "each closed issue reopens in its own repository"
   out=$(night --since 1000 --until 2000) || fail "cross-repo text exits 0"
-  assert_contains "$out" 'closed issues: #7 o/other#5' "the row names the other repository's issue"
+  assert_contains "$out" 'linked issues: #7 closed; o/other#5 closed' "the row names the other repository's issue"
   pass "a closed issue in another repository reopens there"
 }
 
@@ -380,6 +389,31 @@ test_same_second_merges_list_the_later_decision_first() {
   pass "same-second merges list the later decision first"
 }
 
+test_linked_issues_get_reopen_lines_only_when_the_forge_reports_them_closed() {
+  local a out
+  new_case linked-issue-states
+  a=$(commit_on_dev a.txt 'merge linking three issues')
+  merged_pr 141 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[7,8,9]' low "$NA_POST"
+  jq -n '{"https://github.com/o/r/issues/8":"OPEN","https://github.com/o/r/issues/9":"FAIL"}' > "$CASE/gh/issue-states.json"
+  out=$(night --since 1000 --until 2000 --json) || fail "linked-issue --json exits 0"
+  assert_equals '7:closed 8:open 9:unknown' \
+    "$(printf '%s' "$out" | jq -r '[.merges[0].linked_issues[] | "\(.number):\(.state)"] | join(" ")')" \
+    "each linked issue carries the state the forge reports, unknown when the read fails"
+  assert_equals 'gh issue reopen 7 --repo o/r' \
+    "$(printf '%s' "$out" | jq -r '[.not_undone.closed_issues[].reopen] | join(";")')" \
+    "only the closed issue gets a reopen line"
+  assert_equals 'https://github.com/o/r/issues/9' \
+    "$(printf '%s' "$out" | jq -r '[.not_undone.unknown_issues[].url] | join(";")')" \
+    "the issue whose state could not be read is listed as unknown"
+  out=$(night --since 1000 --until 2000) || fail "linked-issue text exits 0"
+  assert_contains "$out" 'linked issues: #7 closed; #8 linked, still open; #9 state unknown' "the row names each issue's state"
+  assert_contains "$out" 'gh issue reopen 7 --repo o/r' "the closed issue is reopened"
+  assert_not_contains "$out" 'gh issue reopen 8' "a still-open issue gets no reopen line"
+  assert_not_contains "$out" 'gh issue reopen 9' "an unknown issue gets no reopen line"
+  assert_contains "$out" 'https://github.com/o/r/issues/9' "the unknown issue is named"
+  pass "linked issues get reopen lines only when the forge reports them closed"
+}
+
 test_rebase_merged_multi_commit_pr_offers_no_whole_night_revert() {
   local a1 a2 s out
   new_case rebase-merge
@@ -399,6 +433,32 @@ test_rebase_merged_multi_commit_pr_offers_no_whole_night_revert() {
   assert_equals "git revert --no-edit $s^..$s" "$(printf '%s' "$out" | jq -r '.whole_night[0].commands[0]')" \
     "a squash of a multi-commit PR still gets the range revert"
   pass "a rebase-merged multi-commit PR offers no whole-night revert"
+}
+
+test_squash_after_a_nearby_merge_keeps_the_range_revert() {
+  local repo base b2 a s out
+  new_case context-drift
+  repo="$CASE/home/projects/r"
+  write_f() { printf '%s\n' "$@" > "$repo/f.txt"; git -C "$repo" add f.txt; git -C "$repo" -c user.name=t -c user.email=t@example.invalid commit -qm "f $*"; git -C "$repo" rev-parse HEAD; }
+  base=$(write_f 1 2 3 4 5 6 7 8 9 10 11 12)
+  # PR 172 branches before PR 171 and changes lines 10 and 11 in two commits.
+  git -C "$repo" checkout -q -b pr-172
+  write_f 1 2 3 4 5 6 7 8 9 ten 11 12 >/dev/null
+  b2=$(write_f 1 2 3 4 5 6 7 8 9 ten eleven 12)
+  git -C "$repo" checkout -q main
+  # PR 171 merges first and changes line 8, inside PR 172's diff context.
+  a=$(write_f 1 2 3 4 5 6 7 eight 9 10 11 12)
+  s=$(write_f 1 2 3 4 5 6 7 eight 9 ten eleven 12)
+  git -C "$repo" update-ref refs/remotes/origin/dev HEAD
+  pr_diff 172 "$base" "$b2"
+  merged_pr 171 1100 2026-11-27T01:00:00Z "$a" '["f.txt"]' '[]' low "$NA_POST"
+  MP_COMMITS=2 merged_pr 172 1200 2026-11-27T02:00:00Z "$s" '["f.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "context-drift --json exits 0"
+  assert_equals contiguous "$(printf '%s' "$out" | jq -r '.whole_night[0].status')" \
+    "a squash whose diff context moved under an earlier merge is still a squash"
+  assert_equals "git revert --no-edit $a^..$s" "$(printf '%s' "$out" | jq -r '.whole_night[0].commands[0]')" \
+    "the night keeps its range revert"
+  pass "a squash after a nearby merge keeps the range revert"
 }
 
 test_revert_together_stays_within_one_repository_and_base() {
@@ -558,7 +618,9 @@ fm_test_run \
   test_legacy_single_waiver_is_listed \
   test_same_second_merges_use_history_order \
   test_same_second_merges_list_the_later_decision_first \
+  test_linked_issues_get_reopen_lines_only_when_the_forge_reports_them_closed \
   test_rebase_merged_multi_commit_pr_offers_no_whole_night_revert \
+  test_squash_after_a_nearby_merge_keeps_the_range_revert \
   test_revert_together_stays_within_one_repository_and_base \
   test_merge_at_an_unreviewed_head_shows_review_fields_unknown \
   test_row_uses_the_ledger_as_first_read \

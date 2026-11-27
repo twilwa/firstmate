@@ -23,6 +23,7 @@
 # Sources, all read-only: the review ledger (risk, reviewers, attestations,
 # red-check waivers, post-merge record), `gh pr view` (title, base branch,
 # merged head, time and commit, commits, closing issues, changed-file count),
+# `gh issue view` (the state of each linked closing issue),
 # `gh api --paginate` (every changed file and a renamed file's previous path),
 # `gh pr diff` (only for a pull request with more than one commit), and `git` on
 # the local clone under FM_HOME/projects whose origin is exactly
@@ -44,7 +45,10 @@
 #     merged_head, commit_count,
 #     decision_epoch        null when the merged generation has no merge decision
 #     merged_commit         null when the forge reports none
-#     closed_issues[]       {repo, number, url}: repo is the issue's own repository
+#     linked_issues[]       {repo, number, url, state, closed_at}: issues the pull
+#                           request links as closing; repo is the issue's own
+#                           repository; state is "closed" or "open" as the forge
+#                           reports it, or "unknown" when the read fails
 #     review                "matched", or "unknown" when no ledger generation has
 #                           the merged head (then risk, reviewers, validation,
 #                           waiver, and post_merge are null)
@@ -77,11 +81,14 @@
 #     reason                why the status is unknown, else null. Unknown covers
 #                           a missing merged commit or clone or ref, a merged
 #                           commit with more than one parent, and a pull request
-#                           with more than one commit whose merged commit's diff
-#                           is not its whole diff (a rebase merge, judged by
-#                           `git patch-id --stable`)
+#                           with more than one commit whose merged commit's
+#                           changed lines differ from its whole diff (as after a
+#                           rebase merge; context lines and whitespace ignored)
 #   not_undone
-#     closed_issues[]       {repo, number, url, reopen:"gh issue reopen <n> --repo <owner/repo>"}
+#     closed_issues[]       linked issues the forge reports closed: {repo, number,
+#                           url, closed_at, reopen:"gh issue reopen <n> --repo <owner/repo>"}
+#     unknown_issues[]      {repo, number, url}: linked issues whose state could
+#                           not be read, so they may be closed
 #     notes[]               fixed reminders of what a revert leaves in place
 #   not_merged[]            ledger URLs with an in-window decision but no forge merge
 #   unreadable[]            paths of ledger files that could not be used
@@ -158,6 +165,10 @@ origin_slug() { # <remote-url> -> lowercase owner/repo when the remote is on git
   printf '%s\n' "${rest,,}"
 }
 
+diff_fingerprint() { # diff on stdin -> hash of its file headers and changed lines
+  grep -E '^(diff --git |[-+])' | tr -d ' \t\r' | git hash-object --stdin
+}
+
 clone_for() { # <owner/repo> -> local clone path under PROJECTS
   local dir origin slug
   for dir in "$PROJECTS"/*/; do
@@ -201,6 +212,17 @@ for file in "$LEDGER_DIR"/github--*.json; do
     NOT_MERGED=$(jq -c --arg u "$FM_PR_URL" '. + [$u]' <<<"$NOT_MERGED")
     continue
   fi
+  issue_states='{}'
+  while IFS= read -r issue_url; do
+    if issue=$(forge "$FM_PR_URL" "state of linked issue $issue_url" issue view "$issue_url" --json state,closedAt); then
+      issue=$(jq -ce '{state:(if .state == "CLOSED" then "closed" elif .state == "OPEN" then "open" else "unknown" end),
+        closed_at:(.closedAt // null)}' <<<"$issue" 2>/dev/null) || issue='{"state":"unknown","closed_at":null}'
+    else
+      [ "$?" -ne 124 ] || exit 1
+      issue='{"state":"unknown","closed_at":null}'
+    fi
+    issue_states=$(jq -c --arg u "$issue_url" --argjson s "$issue" '. + {($u): $s}' <<<"$issue_states")
+  done < <(jq -r '.closingIssuesReferences[]?.url | strings' <<<"$pr")
   files=$(forge "$FM_PR_URL" 'changed files' api --hostname "$FM_PR_HOST" --paginate \
     "repos/$FM_PR_OWNER/$FM_PR_REPO/pulls/$FM_PR_NUMBER/files?per_page=100" \
     --jq '.[] | {filename, previous_filename}') \
@@ -208,14 +230,14 @@ for file in "$LEDGER_DIR"/github--*.json; do
   patch_id=''
   if [ "$(jq '.commits | length' <<<"$pr")" -gt 1 ]; then
     if diff=$(forge "$FM_PR_URL" diff pr diff "$FM_PR_URL"); then
-      patch_id=$(printf '%s\n' "$diff" | git patch-id --stable | cut -d' ' -f1)
+      patch_id=$(diff_fingerprint <<<"$diff")
     else
       [ "$?" -ne 124 ] || exit 1
     fi
   fi
   ROWS+=$({ printf '%s\n%s\n' "$ledger" "$pr"; jq -sc . <<<"$files"; } | jq -nc \
     --arg repo "$FM_PR_OWNER/$FM_PR_REPO" --arg host "$FM_PR_HOST" --argjson number "$FM_PR_NUMBER" \
-    --arg url "$FM_PR_URL" --arg patch "$patch_id" --argjson since "$SINCE" --argjson until "$UNTIL" '
+    --arg url "$FM_PR_URL" --arg patch "$patch_id" --argjson states "$issue_states" --argjson since "$SINCE" --argjson until "$UNTIL" '
     input as $L | input as $gh | input as $F
     | ([$L.generations[] | select(.head == $gh.headRefOid)] | last) as $g
     | ($g != null) as $matched
@@ -227,7 +249,8 @@ for file in "$LEDGER_DIR"/github--*.json; do
        merged_head:$gh.headRefOid, commit_count:($gh.commits | length),
        decision_epoch:$d.verified_epoch,
        merged_commit:$gh.mergeCommit.oid,
-       closed_issues:[$gh.closingIssuesReferences[]? | {repo:(.repository.owner.login + "/" + .repository.name), number, url}],
+       linked_issues:[$gh.closingIssuesReferences[]? | {repo:(.repository.owner.login + "/" + .repository.name), number, url}
+         + ($states[.url // ""] // {state:"unknown", closed_at:null})],
        review:(if $matched then "matched" else "unknown" end),
        risk:(if $matched then ($g.risk // {level:null, reason:null}) else null end),
        reviewers:(if $matched then ([$g.review_items[]?.author | strings] | unique) else null end),
@@ -258,7 +281,7 @@ whole_unknown() { # <group-json> <reason>
 
 whole_night_group() { # <repo> <base> <merges-json oldest first: {sha, url, commits, patch, host}>
   local repo=$1 base=$2 merges=$3 ref="refs/remotes/origin/$2" commits clone history result group
-  local sha url local_patch rebased=''
+  local sha url local_diff local_patch rebased=''
   commits=$(jq -c 'map(.sha)' <<<"$merges")
   group=$(jq -cn --arg repo "$repo" --arg base "$base" --argjson c "$commits" \
     '{repo:$repo, base:$base, commits:$c, commands:[], interleaved:[], reason:null}')
@@ -309,11 +332,14 @@ whole_night_group() { # <repo> <base> <merges-json oldest first: {sha, url, comm
   fi
   while IFS=$'\t' read -r sha url patch; do
     [ -n "$sha" ] || continue
-    local_patch=$(git -C "$clone" diff "$sha^1" "$sha" 2>/dev/null | git patch-id --stable | cut -d' ' -f1) || local_patch=''
+    local_patch=''
+    if local_diff=$(git -C "$clone" diff "$sha^1" "$sha" 2>/dev/null); then
+      local_patch=$(diff_fingerprint <<<"$local_diff")
+    fi
     [ -n "$patch" ] && [ "$patch" = "$local_patch" ] || rebased+=" $url"
   done < <(jq -r '.[] | select(.commits > 1) | [.sha, .url, (.patch // "")] | @tsv' <<<"$merges")
   if [ -n "$rebased" ]; then
-    whole_unknown "$group" "pull request(s)$rebased have more than one commit and the merged commit is not a squash of them (a rebase merge, or the diff could not be compared); no single range revert"
+    whole_unknown "$group" "pull request(s)$rebased have more than one commit and the merged commit's changed lines differ from the pull request's diff (as after a rebase merge), or the diff could not be compared; no single range revert"
     return
   fi
   if jq -e '.interleaved | length > 0' <<<"$result" >/dev/null; then
@@ -338,8 +364,9 @@ OUT=$({ printf '%s\n' "$MERGES"; jq -sc . <<<"$WHOLE_ROWS"; } | jq -n --argjson 
     repo:(if $repo == "" then null else $repo end),
     merges:($merges | map(del(._host, ._patch))), whole_night:$whole,
     not_undone:{
-      closed_issues:[$merges[].closed_issues[]
-        | {repo, number, url, reopen:("gh issue reopen \(.number) --repo \(.repo)")}],
+      closed_issues:[$merges[].linked_issues[] | select(.state == "closed")
+        | {repo, number, url, closed_at, reopen:("gh issue reopen \(.number) --repo \(.repo)")}],
+      unknown_issues:[$merges[].linked_issues[] | select(.state == "unknown") | {repo, number, url}],
       notes:["Issues and comments filed overnight are not reverted by a code revert.",
         "Closed issues stay closed until reopened.",
         "Test data written to the disposable dev app is not removed by a code revert."]},
@@ -362,7 +389,10 @@ jq -r '
   (.merges[] |
     "\(.url)  \(.title)",
     "  merged: \(.merged_at) into \(.base) as \(.merged_commit // "unknown")",
-    "  closed issues: \(if (.closed_issues | length) == 0 then "none" else (.repo as $r | .closed_issues | map(if .repo == $r then "#\(.number)" else "\(.repo)#\(.number)" end) | join(" ")) end)",
+    "  linked issues: \(if (.linked_issues | length) == 0 then "none" else (.repo as $r | .linked_issues
+      | map((if .repo == $r then "#\(.number)" else "\(.repo)#\(.number)" end) + " "
+        + (if .state == "closed" then "closed" elif .state == "open" then "linked, still open" else "state unknown" end))
+      | join("; ")) end)",
     (if .review == "unknown" then
       "  review: unknown - no review ledger generation has the merged head \(.merged_head)"
     else
@@ -391,6 +421,7 @@ jq -r '
   (if (.whole_night | length) > 0 then "" else empty end),
   "What a code revert does not undo:",
   (.not_undone.closed_issues[] | "  \(.reopen)   # \(.url)"),
+  (.not_undone.unknown_issues[] | "  linked issue state unknown, check whether it was closed: \(.url)"),
   (.not_undone.notes[] | "  " + .),
   (if (.not_merged | length) > 0 then "", "Merge decision recorded but not merged on the forge:", (.not_merged[] | "  " + .) else empty end),
   (if (.unreadable | length) > 0 then "", "Unreadable review ledger files:", (.unreadable[] | "  " + .) else empty end)
