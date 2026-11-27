@@ -122,6 +122,21 @@ jobs:
           set -eu
           bin/fm-install-actionlint.sh "$RUNNER_TEMP/fm-ci-tools"
           echo "$RUNNER_TEMP/fm-ci-tools" >> "$GITHUB_PATH"
+      # Per-root ShellCheck pass cache: bin/fm-lint-cache-lib.sh owns the key
+      # and replays only a recorded pass for an exact key, so this restore
+      # can only skip work, never hide a finding. Restore takes the newest
+      # entry set for this partition, then any partition; the save below
+      # stores this run's set under a unique key. The scheduled
+      # lint-nightly.yml run lints everything uncached and fails naming any
+      # stale key it proves.
+      - name: Restore lint result cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/fm-lint-cache
+          key: fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-
+            fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-
       # Single owner of the lint definition (shell file set, config, version,
       # and GitHub workflow lint). Do not re-spell the checks here; keep CI
       # and the pre-push gate on this script so a self-broken ci.yml still
@@ -135,6 +150,7 @@ jobs:
           FM_LINT_REQUIRE_BOUNDS: '1'
           FM_LINT_JOBS: '1'
           FM_LINT_CHANGED: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          FM_LINT_CACHE_DIR: ${{ runner.temp }}/fm-lint-cache
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-lint"
@@ -153,7 +169,16 @@ jobs:
           path: |
             ${{ runner.temp }}/fm-lint/partition-${{ matrix.partition }}.tsv
             ${{ runner.temp }}/fm-lint/partition-${{ matrix.partition }}.roots.tsv
+            ${{ runner.temp }}/fm-lint/partition-${{ matrix.partition }}.cache.tsv
           if-no-files-found: warn
+      # Only recorded passes are ever written, so a run with findings still
+      # saves the passes it proved; a run that recorded nothing only warns.
+      - name: Save lint result cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/fm-lint-cache
+          key: fm-lint-results-v1-${{ runner.os }}-${{ runner.arch }}-p${{ matrix.partition }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   # One pooled job over the complete individually proven-isolated set, run by
   # the production runner at the worker bound proven by the hosted isolation
