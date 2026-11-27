@@ -20,9 +20,12 @@
 # unknown, or latched condition wins):
 #   continue       All evaluated conditions are healthy; dispatch, Claude work,
 #                  merges, validations, and two-hour defaults may proceed.
+#   stop_validation ("stop new validations") Start no new high-stakes
+#                  validation run (validation cap reached); dispatch and
+#                  Claude work may still proceed.
 #   stop_claude    ("stop new Claude work") Stop new Claude-harness work and
-#                  validations (e.g. Claude 5h/weekly quota < 25% or validation
-#                  cap reached); non-Claude builders may still dispatch.
+#                  validations (Claude 5h/weekly quota < 25%); non-Claude
+#                  builders may still dispatch.
 #   stop_dispatch  ("stop new dispatch") Admit no new work at all (e.g. past
 #                  last-dispatch cut-off, Claude quota < 12%, GitHub core API
 #                  < 1000, failure streak >= 3, failed post-merge check, >= 2
@@ -37,6 +40,9 @@
 #   verdict: night_window (window and last-dispatch cut-off), claude_quota,
 #   github_api, check_machine, validation_cap, host_load, and every "unknown"
 #   (unreadable) reading. A recovered reading gives `continue` on the next run.
+#   host_load keeps its sustained-load timer across runs only while
+#   consecutive checks are at most twice high-load-minutes apart, so `check`
+#   must run at least that often for sustained load to trip.
 #   Event conditions latch while a night is active: when failure_streak,
 #   dev_health, supervision_stall, or hc_core reads "tripped", the event is
 #   added to the durable stop record's `latched` list, keeps shaping every
@@ -78,7 +84,7 @@
 #         "checked_at": "<UTC ISO-8601>",
 #         "night_active": <bool>,
 #         "night_started_epoch": <int|null>,
-#         "verdict": "continue"|"stop_claude"|"stop_dispatch"|"end_night",
+#         "verdict": "continue"|"stop_validation"|"stop_claude"|"stop_dispatch"|"end_night",
 #         "verdict_label": "<human verdict phrase>",
 #         "allow": {
 #           "dispatch": <bool>,
@@ -91,7 +97,7 @@
 #           {
 #             "condition": "<name>",
 #             "status": "tripped"|"unknown"|"latched",
-#             "verdict_effect": "stop_claude"|"stop_dispatch"|"end_night",
+#             "verdict_effect": "stop_validation"|"stop_claude"|"stop_dispatch"|"end_night",
 #             "reason": "<plain-text reason>"
 #           }
 #         ],
@@ -1068,7 +1074,7 @@ EOF
   printf '%s\n' "$runs_json" | jq -c --argjson cap "$VALIDATION_CAP" --argjson since "$since" '
     {count: length, cap: $cap, since_epoch: $since, runs: .} as $det
     | if length >= $cap then
-        {status: "tripped", verdict_effect: "stop_claude", reason: "high-stakes validation cap reached (\(length) of \($cap) runs tonight)", details: $det}
+        {status: "tripped", verdict_effect: "stop_validation", reason: "high-stakes validation cap reached (\(length) of \($cap) runs tonight)", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
@@ -1215,7 +1221,7 @@ eval_hc_core() {  # <now> <since_epoch>
 }
 
 eval_host_load() {  # <now>
-  local now=$1 os load1="" prev_since=null max_gap=$((HIGH_LOAD_MINUTES * 60))
+  local now=$1 os load1="" prev_since=null max_gap=$((HIGH_LOAD_MINUTES * 120))
   os=$(uname -s 2>/dev/null) || os=unknown
   if [ -n "${FM_PROC_ROOT_OVERRIDE:-}" ] || [ "$os" != Darwin ]; then
     if [ -f "$PROC_ROOT/loadavg" ] && [ -r "$PROC_ROOT/loadavg" ]; then
@@ -1410,14 +1416,16 @@ cmd_check() {
     --arg rf_path "$rf_path" \
     '
     def rank:
-      if . == "end_night" then 3
-      elif . == "stop_dispatch" then 2
-      elif . == "stop_claude" then 1
+      if . == "end_night" then 4
+      elif . == "stop_dispatch" then 3
+      elif . == "stop_claude" then 2
+      elif . == "stop_validation" then 1
       else 0 end;
     def verdict_label:
       if . == "end_night" then "end the night"
       elif . == "stop_dispatch" then "stop new dispatch"
       elif . == "stop_claude" then "stop new Claude work"
+      elif . == "stop_validation" then "stop new validations"
       else "continue" end;
     ["failure_streak", "dev_health", "supervision_stall", "hc_core"] as $events
     | {
@@ -1447,8 +1455,8 @@ cmd_check() {
     | (if ($tripped | length) == 0 then "continue"
        else ($tripped | max_by(.verdict_effect | rank) | .verdict_effect) end) as $verdict
     | (any($tripped[]; .condition == "dev_health" or .condition == "supervision_stall" or .condition == "hc_core" or .condition == "night_stop_record")) as $health_blocked
-    | ($verdict == "continue" or $verdict == "stop_claude") as $allow_dispatch
-    | ($verdict == "continue") as $allow_claude
+    | ($verdict == "continue" or $verdict == "stop_validation" or $verdict == "stop_claude") as $allow_dispatch
+    | ($verdict == "continue" or $verdict == "stop_validation") as $allow_claude
     | ($verdict != "end_night" and ($health_blocked | not)) as $allow_merge
     | ($verdict == "continue") as $allow_validation
     | ($allow_dispatch and ($health_blocked | not)) as $allow_default

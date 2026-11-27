@@ -493,10 +493,11 @@ EOF
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "2 high-stakes validations check exits 0"
   assert_equals "2" "$(printf '%s\n' "$out" | jq -r '.conditions.validation_cap.details.count')" "high-stakes count is 2"
-  assert_equals "stop_claude" "$(printf '%s\n' "$out" | jq -r '.verdict')" "2 high-stakes validations trip stop_claude"
+  assert_equals "stop_validation" "$(printf '%s\n' "$out" | jq -r '.verdict')" "2 high-stakes validations trip stop_validation"
   assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.validation_cap.status')" "validation_cap tripped"
   assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.validation')" "further validations disallowed"
-  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "new Claude work disallowed"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "other Claude work stays allowed at the validation cap"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.dispatch')" "dispatch stays allowed at the validation cap"
   pass "fm-night-check: validation cap counts one run per high-stakes PR head and stops at 2"
 }
 
@@ -533,6 +534,14 @@ test_host_load_sustained_high_and_unreadable() {
   expect_code 0 "$rc" "missing loadavg emits verdict"
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unreadable loadavg stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.host_load.status')" "host_load unknown"
+
+  # Checks 15 minutes apart, within twice the 10-minute limit, still see sustained load
+  home=$(make_home load_sparse)
+  seed_healthy_stubs "$home"
+  printf '30.00 30.00 30.00 4/200 1234\n' > "$home/proc/loadavg"
+  run_night_check "$home" "$EPOCH_IN_WINDOW" check --json >/dev/null 2>&1 || fail "first sparse check must succeed"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 900)) check --json 2>&1) || rc=$?
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.host_load.status')" "two high samples 15m apart trip host load"
 
   # A load of exactly 24 is not above the threshold, however long it lasts
   home=$(make_home load_at_threshold)

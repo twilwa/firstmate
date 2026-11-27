@@ -2884,10 +2884,10 @@ claude-stop-all-pct 12        # stop all new work below this remaining % on 5h o
 github-api-floor 1000         # stop new dispatch below this many GitHub core hourly requests left (default 1000)
 failure-streak-limit 3        # consecutive failed night tickets that stop new dispatch (default 3)
 check-queue-limit 2           # finished PRs waiting for a check slot that stop new builders (default 2)
-validation-cap 2              # high-stakes no-mistakes runs (one per PR head) per night that stop further Claude work (default 2)
+validation-cap 2              # high-stakes no-mistakes runs (one per PR head) per night that stop further validations, not other Claude work (default 2)
 stall-minutes 30              # oldest unacknowledged wake age in minutes that records a supervision stall (default 30)
 high-load-threshold 24        # 1-minute load above which the sustained-load timer runs (default 24)
-high-load-minutes 10          # sustained minutes above high-load-threshold before stopping dispatch and validations (default 10)
+high-load-minutes 10          # sustained minutes above high-load-threshold before stopping dispatch and validations; checks must run at most twice this apart (default 10)
 ```
 
 One `key value` pair appears per non-empty, non-comment line, with `#` starting a comment.
