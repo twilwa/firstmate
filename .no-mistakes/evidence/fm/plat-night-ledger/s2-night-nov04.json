@@ -1,0 +1,238 @@
+{
+  "schema": "firstmate-night-ledger.v1",
+  "since": 1793746800,
+  "until": 1793768400,
+  "repo": "twilwa/firstmate",
+  "merges": [
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/82",
+      "repo": "twilwa/firstmate",
+      "number": 82,
+      "title": "fix(bin): match muse and Codex dispatch profiles to quota-axi provider IDs",
+      "base": "main",
+      "merged_at": "2026-11-04T04:00:58Z",
+      "merged_epoch": 1793764858,
+      "merged_head": "37732d5e304cea0b46daf0aed89b81669f297131",
+      "commit_count": 4,
+      "decision_epoch": 1793764798,
+      "merged_commit": "b87136ab4a9a357f14b94abaf6a54fad6226ed38",
+      "linked_issues": [
+        {
+          "repo": "twilwa/firstmate",
+          "number": 78,
+          "url": "https://github.com/twilwa/firstmate/issues/78",
+          "state": "closed",
+          "closed_at": "2026-11-04T04:01:00Z"
+        }
+      ],
+      "review": "matched",
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "37732d5e304cea0b46daf0aed89b81669f297131"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": false
+      },
+      "files": [
+        "bin/fm-quota-axi-lib.sh",
+        "docs/configuration.md",
+        "docs/examples/crew-dispatch.json",
+        "tests/fm-dispatch-resolve.test.sh",
+        "tests/fm-quota-choose.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/82",
+      "revert_together": [],
+      "revert_together_incomplete": []
+    },
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/77",
+      "repo": "twilwa/firstmate",
+      "number": 77,
+      "title": "fix(bin): keep Pi workers busy during post-settlement compaction",
+      "base": "main",
+      "merged_at": "2026-11-04T02:54:02Z",
+      "merged_epoch": 1793760842,
+      "merged_head": "4b46be1960d8c748a95a0bd9a0dae617070ede06",
+      "commit_count": 4,
+      "decision_epoch": 1793760782,
+      "merged_commit": "1d17432dc60a2b7b63a6c4f05aea268d3d58af57",
+      "linked_issues": [
+        {
+          "repo": "twilwa/firstmate",
+          "number": 70,
+          "url": "https://github.com/twilwa/firstmate/issues/70",
+          "state": "closed",
+          "closed_at": "2026-11-04T02:54:04Z"
+        }
+      ],
+      "review": "matched",
+      "risk": {
+        "level": "medium",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "4b46be1960d8c748a95a0bd9a0dae617070ede06"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": false
+      },
+      "files": [
+        ".agents/skills/harness-adapters/references/harness/pi.md",
+        "bin/fm-busy-lib.sh",
+        "bin/fm-spawn.sh",
+        "bin/fm-test-run.sh",
+        "docs/configuration.md",
+        "docs/verification/runtime-backends.md",
+        "tests/fm-busy-adapter-wiring.test.sh",
+        "tests/fm-busy-state.test.sh",
+        "tests/fm-pi-compaction-live-e2e.test.sh",
+        "tests/fm-pi-compaction-live.mjs",
+        "tests/fm-pi-worker-stream-live-e2e.test.sh",
+        "tests/fm-watcher-lock.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/77",
+      "revert_together": [
+        {
+          "url": "https://github.com/twilwa/firstmate/pull/82",
+          "files": [
+            "docs/configuration.md"
+          ]
+        }
+      ],
+      "revert_together_incomplete": []
+    },
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/74",
+      "repo": "twilwa/firstmate",
+      "number": 74,
+      "title": "fix(bin): report paused agents that stop or vanish during a pause",
+      "base": "main",
+      "merged_at": "2026-11-04T00:08:12Z",
+      "merged_epoch": 1793750892,
+      "merged_head": "b01a8be03f015aa8e3d14ce36beb89a4e61ac6b9",
+      "commit_count": 6,
+      "decision_epoch": 1793750832,
+      "merged_commit": "f6c9fd9bbfd2151dcef23ca027c45ad1f0775d67",
+      "linked_issues": [
+        {
+          "repo": "twilwa/firstmate",
+          "number": 67,
+          "url": "https://github.com/twilwa/firstmate/issues/67",
+          "state": "closed",
+          "closed_at": "2026-11-04T00:08:14Z"
+        }
+      ],
+      "review": "matched",
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "b01a8be03f015aa8e3d14ce36beb89a4e61ac6b9"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": false
+      },
+      "files": [
+        "bin/fm-watch.sh",
+        "docs/architecture.md",
+        "tests/fm-watch-triage-pause.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/74",
+      "revert_together": [],
+      "revert_together_incomplete": []
+    }
+  ],
+  "whole_night": [
+    {
+      "repo": "twilwa/firstmate",
+      "base": "main",
+      "commits": [
+        "f6c9fd9bbfd2151dcef23ca027c45ad1f0775d67",
+        "1d17432dc60a2b7b63a6c4f05aea268d3d58af57",
+        "b87136ab4a9a357f14b94abaf6a54fad6226ed38"
+      ],
+      "commands": [],
+      "interleaved": [
+        {
+          "sha": "92e68b136dd1605745eed3867869b8e7350e655a",
+          "subject": "feat(bin): add fm-send --park so parking answers declare a paused wait (#80)"
+        },
+        {
+          "sha": "1d829d28a8b48897353e4cf54bc20cf89985910e",
+          "subject": "fix(bin): pre-approve Pi project trust for registered-project ship and scout launches (#72)"
+        }
+      ],
+      "reason": null,
+      "status": "not-contiguous"
+    }
+  ],
+  "not_undone": {
+    "closed_issues": [
+      {
+        "repo": "twilwa/firstmate",
+        "number": 78,
+        "url": "https://github.com/twilwa/firstmate/issues/78",
+        "closed_at": "2026-11-04T04:01:00Z",
+        "reopen": "gh issue reopen 78 --repo twilwa/firstmate"
+      },
+      {
+        "repo": "twilwa/firstmate",
+        "number": 70,
+        "url": "https://github.com/twilwa/firstmate/issues/70",
+        "closed_at": "2026-11-04T02:54:04Z",
+        "reopen": "gh issue reopen 70 --repo twilwa/firstmate"
+      },
+      {
+        "repo": "twilwa/firstmate",
+        "number": 67,
+        "url": "https://github.com/twilwa/firstmate/issues/67",
+        "closed_at": "2026-11-04T00:08:14Z",
+        "reopen": "gh issue reopen 67 --repo twilwa/firstmate"
+      }
+    ],
+    "unknown_issues": [],
+    "notes": [
+      "Issues and comments filed overnight are not reverted by a code revert.",
+      "Closed issues stay closed until reopened.",
+      "Test data written to the disposable dev app is not removed by a code revert."
+    ]
+  },
+  "not_merged": [],
+  "unreadable": [
+    "/tmp/fm-night-lab.SBlFvO/home/data/pr-review-ledger/github--twilwa--firstmate--999.json"
+  ]
+}

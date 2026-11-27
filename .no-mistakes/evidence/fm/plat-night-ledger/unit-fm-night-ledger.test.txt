@@ -1,0 +1,34 @@
+1..26
+ok - a contiguous window lists merges newest first with one range revert
+ok - a non-contiguous window names the interleaved commits
+ok - revert-together marks later merges that touched the same files
+ok - an empty window reports no merges
+ok - missing post-merge data is reported as not recorded
+ok - a split night on a long history is still not contiguous
+ok - a night with a merge commit offers no whole-night revert
+ok - files past the first page still mark revert-together
+ok - the whole-night revert is unknown without a merged commit or an origin ref
+ok - a closed issue in another repository reopens there
+ok - a legacy single waiver is listed
+ok - same-second merges use first-parent history order
+ok - same-second merges list the later decision first
+HTTP 502: issue read failed
+HTTP 502: issue read failed
+ok - linked issues get reopen lines only when the forge reports them closed
+ok - a rebase-merged multi-commit PR offers no whole-night revert
+ok - a squash after a nearby merge keeps the range revert
+ok - revert-together marks stay within one repository and base
+ok - a merge at an unreviewed head shows its review fields unknown
+ok - the row uses the ledger as first read
+ok - the clone origin must be github.com exactly
+ok - a truncated file list marks the overlap result incomplete
+ok - a malformed merge decision is listed unreadable
+ok - a renamed file marks merges on its old path
+ok - equal-second merges order by number and never mark each other
+ok - the repo filter matches the repository exactly
+ok - a stalled forge call stops with an error naming the PR
+FM_TEST_COMPLETE
+
+real	0m21.949s
+user	0m5.854s
+sys	0m15.943s

@@ -1,0 +1,51 @@
+$ bin/fm-night-ledger.sh --since 1793746800 --until 1793768400 --repo twilwa/firstmate   # 2026-11-03 23:00Z..11-04 05:00Z
+Night ledger 2026-11-03T23:00:00Z .. 2026-11-04T05:00:00Z for twilwa/firstmate: 3 merge(s)
+
+https://github.com/twilwa/firstmate/pull/82  fix(bin): match muse and Codex dispatch profiles to quota-axi provider IDs
+  merged: 2026-11-04T04:00:58Z into main as b87136ab4a9a357f14b94abaf6a54fad6226ed38
+  linked issues: #78 closed
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not recorded
+  revert: gh pr revert https://github.com/twilwa/firstmate/pull/82
+
+https://github.com/twilwa/firstmate/pull/77  fix(bin): keep Pi workers busy during post-settlement compaction
+  merged: 2026-11-04T02:54:02Z into main as 1d17432dc60a2b7b63a6c4f05aea268d3d58af57
+  linked issues: #70 closed
+  risk: medium (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not recorded
+  revert: gh pr revert https://github.com/twilwa/firstmate/pull/77
+  revert together with: https://github.com/twilwa/firstmate/pull/82 (shared: docs/configuration.md)
+
+https://github.com/twilwa/firstmate/pull/74  fix(bin): report paused agents that stop or vanish during a pause
+  merged: 2026-11-04T00:08:12Z into main as f6c9fd9bbfd2151dcef23ca027c45ad1f0775d67
+  linked issues: #67 closed
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not recorded
+  revert: gh pr revert https://github.com/twilwa/firstmate/pull/74
+
+Whole-night revert:
+  twilwa/firstmate main: not contiguous; no single range revert. Interleaved commits:
+    92e68b136dd1605745eed3867869b8e7350e655a feat(bin): add fm-send --park so parking answers declare a paused wait (#80)
+    1d829d28a8b48897353e4cf54bc20cf89985910e fix(bin): pre-approve Pi project trust for registered-project ship and scout launches (#72)
+  Revert each merge newest first with its own command instead.
+
+What a code revert does not undo:
+  gh issue reopen 78 --repo twilwa/firstmate   # https://github.com/twilwa/firstmate/issues/78
+  gh issue reopen 70 --repo twilwa/firstmate   # https://github.com/twilwa/firstmate/issues/70
+  gh issue reopen 67 --repo twilwa/firstmate   # https://github.com/twilwa/firstmate/issues/67
+  Issues and comments filed overnight are not reverted by a code revert.
+  Closed issues stay closed until reopened.
+  Test data written to the disposable dev app is not removed by a code revert.
+
+Unreadable review ledger files:
+  /tmp/fm-night-lab.SBlFvO/home/data/pr-review-ledger/github--twilwa--firstmate--999.json
+exit=0

@@ -1,0 +1,185 @@
+{
+  "schema": "firstmate-night-ledger.v1",
+  "since": 1795683600,
+  "until": 1795694400,
+  "repo": null,
+  "merges": [
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/129",
+      "repo": "twilwa/firstmate",
+      "number": 129,
+      "title": "feat(bin): accept up to four distinct --allow-red waivers in the guarded merge",
+      "base": "main",
+      "merged_at": "2026-11-26T10:28:30Z",
+      "merged_epoch": 1795688910,
+      "merged_head": "f292e9a75edc5217a5c3e9dfea770bd3910149cb",
+      "commit_count": 9,
+      "decision_epoch": 1795688820,
+      "merged_commit": "842b6a2bf608cfb5878c39ee8aad856931aca858",
+      "linked_issues": [],
+      "review": "matched",
+      "risk": {
+        "level": "medium",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "f292e9a75edc5217a5c3e9dfea770bd3910149cb"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "applicable",
+        "outcome": "pass",
+        "reason": "dev check green",
+        "bug": null
+      },
+      "files": [
+        ".agents/skills/pr-review-policy/SKILL.md",
+        "bin/fm-afk-contract.sh",
+        "bin/fm-pr-lib.sh",
+        "bin/fm-pr-merge-options-lib.sh",
+        "bin/fm-pr-merge.sh",
+        "bin/fm-pr-review.sh",
+        "docs/scripts.md",
+        "tests/fm-pr-merge.test.sh",
+        "tests/fm-pr-review.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/129",
+      "revert_together": [],
+      "revert_together_incomplete": []
+    },
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/131",
+      "repo": "twilwa/firstmate",
+      "number": 131,
+      "title": "fix(local-handoff): refuse empty or duplicate child incarnation fields",
+      "base": "main",
+      "merged_at": "2026-11-26T10:22:29Z",
+      "merged_epoch": 1795688549,
+      "merged_head": "47d0cb7921283e8935fc92e1bbd13f03343a005d",
+      "commit_count": 2,
+      "decision_epoch": 1795688459,
+      "merged_commit": "3b2b6fa93e46511b59096952d699c258e4943fcc",
+      "linked_issues": [],
+      "review": "matched",
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "47d0cb7921283e8935fc92e1bbd13f03343a005d"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": false
+      },
+      "files": [
+        "bin/fm-local-handoff-lib.sh",
+        "bin/fm-local-handoff.sh",
+        "tests/fm-local-handoff.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/131",
+      "revert_together": [],
+      "revert_together_incomplete": []
+    },
+    {
+      "url": "https://github.com/twilwa/firstmate/pull/132",
+      "repo": "twilwa/firstmate",
+      "number": 132,
+      "title": "fix(teardown): treat a bound local-only copy behind its landed offer as landed",
+      "base": "main",
+      "merged_at": "2026-11-26T10:10:37Z",
+      "merged_epoch": 1795687837,
+      "merged_head": "8c384523235aef5c87a5ca0fedf0cef77805efb8",
+      "commit_count": 3,
+      "decision_epoch": 1795687747,
+      "merged_commit": "452dc2824e76eb14b0c6cfe1c94dcdac47a3a578",
+      "linked_issues": [],
+      "review": "matched",
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "8c384523235aef5c87a5ca0fedf0cef77805efb8"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": false
+      },
+      "files": [
+        "bin/fm-teardown.sh",
+        "tests/fm-local-handoff.test.sh"
+      ],
+      "files_complete": true,
+      "revert": "gh pr revert https://github.com/twilwa/firstmate/pull/132",
+      "revert_together": [
+        {
+          "url": "https://github.com/twilwa/firstmate/pull/131",
+          "files": [
+            "tests/fm-local-handoff.test.sh"
+          ]
+        }
+      ],
+      "revert_together_incomplete": []
+    }
+  ],
+  "whole_night": [
+    {
+      "repo": "twilwa/firstmate",
+      "base": "main",
+      "commits": [
+        "452dc2824e76eb14b0c6cfe1c94dcdac47a3a578",
+        "3b2b6fa93e46511b59096952d699c258e4943fcc",
+        "842b6a2bf608cfb5878c39ee8aad856931aca858"
+      ],
+      "commands": [
+        "git revert --no-edit 452dc2824e76eb14b0c6cfe1c94dcdac47a3a578^..842b6a2bf608cfb5878c39ee8aad856931aca858"
+      ],
+      "interleaved": [],
+      "reason": null,
+      "status": "contiguous"
+    }
+  ],
+  "not_undone": {
+    "closed_issues": [],
+    "unknown_issues": [],
+    "notes": [
+      "Issues and comments filed overnight are not reverted by a code revert.",
+      "Closed issues stay closed until reopened.",
+      "Test data written to the disposable dev app is not removed by a code revert."
+    ]
+  },
+  "not_merged": [
+    "https://github.com/twilwa/firstmate/pull/136"
+  ],
+  "unreadable": [
+    "/tmp/fm-night-lab.SBlFvO/home/data/pr-review-ledger/github--twilwa--firstmate--999.json"
+  ]
+}

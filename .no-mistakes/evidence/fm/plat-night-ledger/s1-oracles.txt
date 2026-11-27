@@ -1,0 +1,27 @@
+## Oracle 1: independent file overlap from git (not the ledger)
+452dc282: 2 files
+3b2b6fa9: 3 files
+842b6a2b: 9 files
+132(452dc282) ∩ 131(3b2b6fa9): tests/fm-local-handoff.test.sh 
+132(452dc282) ∩ 129(842b6a2b): 
+131(3b2b6fa9) ∩ 129(842b6a2b): 
+
+## Oracle 2: apply the printed whole-night command on a scratch branch and compare to the pre-night tree
+command: git revert --no-edit 452dc2824e76eb14b0c6cfe1c94dcdac47a3a578^..842b6a2bf608cfb5878c39ee8aad856931aca858
+revert exit=0
+2ffbb1ef Revert "fix(teardown): treat a bound local-only copy behind its landed offer as l
+a1337bc8 Revert "fix(local-handoff): refuse empty or duplicate child incarnation fields (#
+5b605bd8 Revert "feat(bin): accept up to four distinct --allow-red waivers in the guarded 
+b71870d4 fix(bin): surface hc blocked refusals and stop ledger waits from blocking hc door
+tree after revert:                 b8618eb3b361e76b464c62e2a95c51f638a411e4
+tree of 0d599000 (pre-night main): b4c4a2046ccb9c32819cefb1d67d0cb8a0bacbf4
+
+## Oracle 2a: on the current main tip, the net effect of the printed revert equals the inverse of the night (0d599000..842b6a2b)
+patch-id(revert net diff)=36375f4e21c230949bd309a21755668162c8d2ba
+patch-id(inverse night)  =36375f4e21c230949bd309a21755668162c8d2ba
+MATCH
+## Oracle 2b: same command on a branch at the night's last merge restores the pre-night tree
+revert exit=0
+tree after revert:                 b4c4a2046ccb9c32819cefb1d67d0cb8a0bacbf4
+tree of 0d599000 (pre-night main): b4c4a2046ccb9c32819cefb1d67d0cb8a0bacbf4
+MATCH: restores exactly the pre-night tree

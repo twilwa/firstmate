@@ -1,0 +1,32 @@
+### A. stale clone: origin/main at 0d599000 (before the night), ssh-style origin URL
+[{"repo":"twilwa/firstmate","base":"main","commits":["452dc2824e76eb14b0c6cfe1c94dcdac47a3a578","3b2b6fa93e46511b59096952d699c258e4943fcc","842b6a2bf608cfb5878c39ee8aad856931aca858"],"commands":[],"interleaved":[],"reason":"merged commit(s) 452dc2824e76eb14b0c6cfe1c94dcdac47a3a578 3b2b6fa93e46511b59096952d699c258e4943fcc 842b6a2bf608cfb5878c39ee8aad856931aca858 not on refs/remotes/origin/main; fetch the clone and rerun","status":"unknown"}]
+### B. foreign origin (github.com.example.invalid/twilwa/firstmate) => no clone matched
+[{"repo":"twilwa/firstmate","base":"main","commits":["452dc2824e76eb14b0c6cfe1c94dcdac47a3a578","3b2b6fa93e46511b59096952d699c258e4943fcc","842b6a2bf608cfb5878c39ee8aad856931aca858"],"commands":[],"interleaved":[],"reason":"no local clone of twilwa/firstmate under /tmp/fm-night-lab.SBlFvO/home2/projects","status":"unknown"}]
+### C. no clones at all
+Whole-night revert:
+  twilwa/firstmate main: no whole-night revert - no local clone of twilwa/firstmate under /tmp/fm-night-lab.SBlFvO/home2/projects
+
+### D. --repo filter for another repository => no merges, no gh reads needed
+{"repo":"twilwa/other","merges":0,"whole_night":[],"not_merged":[]}
+### E. bad arguments
+fm-night-ledger: --since must be an epoch in seconds
+exit=1
+fm-night-ledger: --until is before --since
+exit=1
+fm-night-ledger: --repo must be owner/repo
+exit=1
+### F. gh bounded: FM_NIGHT_LEDGER_GH_TIMEOUT=1 against the real forge
+exit=0 stdout/stderr:
+Night ledger 2026-11-26T09:00:00Z .. 2026-11-26T12:00:00Z: 3 merge(s)
+
+https://github.com/twilwa/firstmate/pull/129  feat(bin): accept up to four distinct --allow-red waivers in the guarded merge
+### G. ledger generation head (000..131) differs from the forge's merged head of #131 => review unknown, still listed with revert
+https://github.com/twilwa/firstmate/pull/131  fix(local-handoff): refuse empty or duplicate child incarnation fields
+  merged: 2026-11-26T10:22:29Z into main as 3b2b6fa93e46511b59096952d699c258e4943fcc
+  linked issues: none
+  review: unknown - no review ledger generation has the merged head 47d0cb7921283e8935fc92e1bbd13f03343a005d
+  revert: gh pr revert https://github.com/twilwa/firstmate/pull/131
+
+  revert together with: https://github.com/twilwa/firstmate/pull/131 (shared: tests/fm-local-handoff.test.sh)
+
+{"review":"unknown","risk":null,"waiver":null,"decision_epoch":null,"revert":"gh pr revert https://github.com/twilwa/firstmate/pull/131"}

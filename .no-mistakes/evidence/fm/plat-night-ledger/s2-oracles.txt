@@ -1,0 +1,12 @@
+## Oracle: first-parent commits strictly between #74 (f6c9fd9b) and #82 (b87136ab), from git log
+92e68b136dd1605745eed3867869b8e7350e655a feat(bin): add fm-send --park so parking answers declare a paused wait (#80)
+1d17432dc60a2b7b63a6c4f05aea268d3d58af57 fix(bin): keep Pi workers busy during post-settlement compaction (#77)
+1d829d28a8b48897353e4cf54bc20cf89985910e fix(bin): pre-approve Pi project trust for registered-project ship and scout launches (#72)
+## Oracle: file overlap among night merges, from git
+74∩77: 
+74∩82: 
+77∩82: docs/configuration.md 
+## Oracle: forge issue states
+#67 CLOSED 2026-11-04T00:08:14Z
+#70 CLOSED 2026-11-04T02:54:04Z
+#78 CLOSED 2026-11-04T04:01:00Z
