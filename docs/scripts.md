@@ -178,6 +178,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-pr-risk.sh`          | Classify a complete PR changed-file surface as low or high stakes with a one-line reason, resolving uncertainty to high |
 | `fm-pr-review-snapshot.sh` | Collect a head-stable GitHub snapshot of required checks, requested reviews, top-level comments, review submissions, and every inline thread |
 | `fm-pr-review.sh`        | Own the durable per-PR/per-head review ledger, delayed watcher checkpoint, dispositions, high-stakes attestations, reviewed-head merge handoff, and post-merge Ready for QA gate |
+| `fm-night-ledger.sh`     | Read-only: list a window's reviewed merges with per-PR and whole-night revert commands and what a revert does not undo |
 | `fm-merge-outcome-lib.sh` | Publish a confirmed merge's durable, role-routed supervision outcome                 |
 | `fm-merge-authority-lib.sh` | Resolve merge authority at the gate, persist it against the accepted canonical PR, and identity-check its later poll consumption |
 | `fm-parent-channel-lib.sh` | Resolve a secondmate home's parent channel and append a captain-facing outcome line to it at most once |
