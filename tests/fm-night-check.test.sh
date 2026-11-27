@@ -1101,9 +1101,12 @@ test_supervision_stall_old_wake_latch_and_corrupt_files() {
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "corrupt host-health stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "corrupt host-health reports unknown"
 
-  # .supervision-host-health present when engine key cannot be resolved (no state/.lock) -> unknown
+  # .supervision-host-health present when an enabled host's engine key cannot be
+  # resolved (no state/.lock) -> unknown. The host is enabled explicitly so the
+  # case does not depend on which primary harness runs the suite.
   home=$(make_home stall_unresolvable_key)
   seed_healthy_stubs "$home"
+  printf 'claude sonnet\n' > "$home/config/supervision-host"
   printf 'key=some-session|claude|sonnet\nerrors=2\ncooldown=300\nretry_after=%d\n' $((EPOCH_IN_WINDOW + 300)) > "$home/state/.supervision-host-health"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "unresolvable engine key exits 0"
