@@ -63,6 +63,7 @@ commit_on_dev() { # file subject -> prints the new commit sha
 }
 
 # merged_pr number decision-epoch merged-iso merge-sha files-json issues-json risk [post-merge-json]
+# issues-json entries are issue numbers in o/r or "owner/repo#n" strings.
 merged_pr() {
   local n=$1 epoch=$2 merged_at=$3 sha=$4 files=$5 issues=$6 risk=$7 post=${8:-}
   local url="https://github.com/o/r/pull/$n" head
@@ -81,7 +82,11 @@ merged_pr() {
     --argjson files "$files" --argjson issues "$issues" '{
       title:$title,state:"MERGED",mergedAt:$merged_at,baseRefName:"dev",
       mergeCommit:(if $sha == "" then null else {oid:$sha} end),files:($files | map({path:.})),
-      closingIssuesReferences:($issues | map({number:.,url:("https://github.com/o/r/issues/" + tostring)}))}' \
+      closingIssuesReferences:($issues | map(
+        (if type == "number" then {owner:"o", name:"r", number:.}
+         else capture("^(?<owner>[^/]+)/(?<name>[^#]+)#(?<number>[0-9]+)$") | .number |= tonumber end)
+        | {number, url:"https://github.com/\(.owner)/\(.name)/issues/\(.number)",
+           repository:{name, owner:{login:.owner}}}))}' \
     > "$CASE/gh/$n.json"
 }
 
@@ -283,6 +288,53 @@ test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref() {
   pass "the whole-night revert is unknown without a merged commit or an origin ref"
 }
 
+test_cross_repo_closed_issue_reopens_in_its_own_repo() {
+  local a out
+  new_case cross-repo-issue
+  a=$(commit_on_dev a.txt 'merge closing issues in two repos')
+  merged_pr 101 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[7,"o/other#5"]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "cross-repo --json exits 0"
+  assert_equals 'gh issue reopen 7 --repo o/r;gh issue reopen 5 --repo o/other' \
+    "$(printf '%s' "$out" | jq -r '[.not_undone.closed_issues[].reopen] | join(";")')" \
+    "each closed issue reopens in its own repository"
+  out=$(night --since 1000 --until 2000) || fail "cross-repo text exits 0"
+  assert_contains "$out" 'closed issues: #7 o/other#5' "the row names the other repository's issue"
+  pass "a closed issue in another repository reopens there"
+}
+
+test_legacy_single_waiver_is_listed() {
+  local a out ledger
+  new_case legacy-waiver
+  a=$(commit_on_dev a.txt 'merge with a legacy waiver')
+  merged_pr 111 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[]' low "$NA_POST"
+  ledger="$CASE/home/data/pr-review-ledger/github--o--r--111.json"
+  jq '.generations[0].merge_decision |= (del(.allowed_red_checks) | .allowed_red_check = "e2e")' "$ledger" > "$ledger.new"
+  mv "$ledger.new" "$ledger"
+  out=$(night --since 1000 --until 2000 --json) || fail "legacy waiver --json exits 0"
+  assert_equals '["e2e"]' "$(printf '%s' "$out" | jq -c '.merges[0].waiver')" "a legacy single waiver is listed"
+  out=$(night --since 1000 --until 2000) || fail "legacy waiver text exits 0"
+  assert_contains "$out" 'waiver: e2e' "the text names the legacy waiver"
+  pass "a legacy single waiver is listed"
+}
+
+test_same_second_merges_use_history_order() {
+  local a b out
+  new_case same-second
+  a=$(commit_on_dev shared.txt 'older merge in history')
+  b=$(commit_on_dev shared.txt 'newer merge in history')
+  # Same mergedAt second; the ledger glob reads 121 before 122.
+  merged_pr 121 1200 2026-11-27T02:00:00Z "$b" '["shared.txt"]' '[]' low "$NA_POST"
+  merged_pr 122 1100 2026-11-27T02:00:00Z "$a" '["shared.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "same-second --json exits 0"
+  assert_equals "git revert --no-edit $a^..$b" "$(printf '%s' "$out" | jq -r '.whole_night[0].commands[0]')" \
+    "the range runs from the older to the newer commit in history"
+  assert_equals "$a $b" "$(printf '%s' "$out" | jq -r '.whole_night[0].commits | join(" ")')" "commits are oldest first in history"
+  assert_equals 'https://github.com/o/r/pull/121' \
+    "$(printf '%s' "$out" | jq -r '.merges[] | select(.number == 122) | [.revert_together[].url] | join(";")')" \
+    "a same-second merge on the same file is still marked"
+  pass "same-second merges use first-parent history order"
+}
+
 fm_test_run \
   test_contiguous_window_lists_merges_newest_first_with_one_range_revert \
   test_non_contiguous_window_names_interleaved_commits \
@@ -292,4 +344,7 @@ fm_test_run \
   test_split_night_on_a_long_history_is_still_not_contiguous \
   test_merge_commit_night_offers_no_whole_night_revert \
   test_files_past_the_first_page_still_mark_revert_together \
-  test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref
+  test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref \
+  test_cross_repo_closed_issue_reopens_in_its_own_repo \
+  test_legacy_single_waiver_is_listed \
+  test_same_second_merges_use_history_order

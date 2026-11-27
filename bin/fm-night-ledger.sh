@@ -30,20 +30,22 @@
 #   merges[]                newest first by merged_epoch:
 #     url, repo, number, title, base, merged_at (ISO), merged_epoch,
 #     decision_epoch, merged_commit (null when the forge reports none),
-#     closed_issues[]       {number, url}
+#     closed_issues[]       {repo, number, url}: repo is the issue's own repository
 #     risk                  {level, reason} from the merged generation
 #     reviewers[]           distinct review-item authors
 #     validation[]          {kind, by, head}: no-mistakes model or reviewer actor
 #     waiver[]              allowed red checks recorded on the merge decision
+#                           (allowed_red_checks, else a legacy allowed_red_check)
 #     post_merge            {recorded:false} or {recorded:true, applicability,
 #                           outcome, reason, bug}
 #     files[]               paths the pull request changed
 #     revert                "gh pr revert <url>"
-#     revert_together[]     {url, files[]}: later in-window merges that touched
+#     revert_together[]     {url, files[]}: later (or same-second) in-window merges that touched
 #                           any of the same files
 #   whole_night[]           one per repo and base branch with merges:
 #     repo, base, status    "contiguous", "not-contiguous", or "unknown"
-#     commits[]             merged commits, oldest first
+#     commits[]             merged commits, oldest first (by first-parent
+#                           position once found on the ref, else by merged time)
 #     commands[]            when contiguous: one `git revert --no-edit
 #                           <first>^..<last>`
 #     interleaved[]         when not contiguous: {sha, subject} of first-parent
@@ -149,11 +151,11 @@ for file in "$LEDGER_DIR/$prefix"*.json; do
        merged_at:$gh.mergedAt, merged_epoch:($gh.mergedAt | fromdateiso8601),
        decision_epoch:$g.merge_decision.verified_epoch,
        merged_commit:$gh.mergeCommit.oid,
-       closed_issues:[$gh.closingIssuesReferences[]? | {number, url}],
+       closed_issues:[$gh.closingIssuesReferences[]? | {repo:(.repository.owner.login + "/" + .repository.name), number, url}],
        risk:($g.risk // {level:null, reason:null}),
        reviewers:([$g.review_items[]?.author | strings] | unique),
        validation:[$g.attestations[]? | {kind, by:(.model // .actor), head}],
-       waiver:($g.merge_decision.allowed_red_checks // []),
+       waiver:($g.merge_decision.allowed_red_checks // [$g.merge_decision.allowed_red_check | strings]),
        post_merge:(if $pm == null then {recorded:false}
          else {recorded:true, applicability:$pm.applicability, outcome:$pm.outcome,
            reason:$pm.reason, bug:$pm.bug.url?} end),
@@ -166,7 +168,7 @@ MERGES=$(jq -sc '
   sort_by(-.merged_epoch)
   | . as $all
   | map(. as $m | .revert_together = [$all[]
-      | select(.merged_epoch > $m.merged_epoch)
+      | select(.merged_epoch >= $m.merged_epoch and .url != $m.url)
       | {url, files:([.files[] | select(IN($m.files[]; .))] | unique)}
       | select(.files | length > 0)])' <<<"$ROWS")
 
@@ -203,7 +205,8 @@ whole_night_group() { # <repo> <base> <commits-json oldest first>
           {missing:[range(0; $c | length) as $i | select($pos[$i] == null) | $c[$i]]}
         else
           ($pos | min) as $lo | ($pos | max) as $hi
-          | {interleaved:[$h[$lo:$hi + 1][] | select(.sha as $s | $c | index($s) | not) | {sha, subject}],
+          | {commits:[$pos | sort | reverse[] | $h[.].sha],
+             interleaved:[$h[$lo:$hi + 1][] | select(.sha as $s | $c | index($s) | not) | {sha, subject}],
              merges:[$pos[] as $p | $h[$p] | select(.parents | length > 1) | .sha]}
         end' <<<"$history"); then
     whole_unknown "$group" "could not compare the merged commits with the history of $ref"
@@ -213,6 +216,7 @@ whole_night_group() { # <repo> <base> <commits-json oldest first>
     whole_unknown "$group" "merged commit(s) $(jq -r '.missing | join(" ")' <<<"$result") not on $ref; fetch the clone and rerun"
     return
   fi
+  group=$(jq -c --argjson g "$group" '.commits as $c | $g | .commits = $c' <<<"$result")
   if jq -e '.interleaved | length > 0' <<<"$result" >/dev/null; then
     jq -c --argjson g "$group" '.interleaved as $i | $g | .status = "not-contiguous" | .interleaved = $i' <<<"$result"
     return
@@ -238,8 +242,8 @@ OUT=$({ printf '%s\n' "$MERGES"; jq -sc . <<<"$WHOLE_ROWS"; } | jq -n --argjson 
     repo:(if $repo == "" then null else $repo end),
     merges:$merges, whole_night:$whole,
     not_undone:{
-      closed_issues:[$merges[] as $m | $m.closed_issues[]
-        | {repo:$m.repo, number, url, reopen:("gh issue reopen \(.number) --repo \($m.repo)")}],
+      closed_issues:[$merges[].closed_issues[]
+        | {repo, number, url, reopen:("gh issue reopen \(.number) --repo \(.repo)")}],
       notes:["Issues and comments filed overnight are not reverted by a code revert.",
         "Closed issues stay closed until reopened.",
         "Test data written to the disposable dev app is not removed by a code revert."]},
@@ -262,7 +266,7 @@ jq -r '
   (.merges[] |
     "\(.url)  \(.title)",
     "  merged: \(.merged_at) into \(.base) as \(.merged_commit // "unknown")",
-    "  closed issues: \(if (.closed_issues | length) == 0 then "none" else (.closed_issues | map("#\(.number)") | join(" ")) end)",
+    "  closed issues: \(if (.closed_issues | length) == 0 then "none" else (.repo as $r | .closed_issues | map(if .repo == $r then "#\(.number)" else "\(.repo)#\(.number)" end) | join(" ")) end)",
     "  risk: \(.risk.level // "unknown")\(if .risk.reason then " (" + .risk.reason + ")" else "" end)",
     "  reviewers: \(if (.reviewers | length) == 0 then "none recorded" else (.reviewers | join(", ")) end)",
     "  validation: \(if (.validation | length) == 0 then "none recorded" else (.validation | map("\(.kind) \(.by)") | join(", ")) end)",
