@@ -5,8 +5,8 @@
 # Single owner of the overnight stop-condition evaluation, its durable night
 # records under state/, its machine-readable verdict document for the morning
 # board (P3) and two-hour default gate (P2), and the hc night guard
-# (`hc-guard`) that refuses herdr-core installs, and any path that stops the
-# real core, while a night is active.
+# (`hc-guard`) that refuses herdr-core installs (bin/fm-install-hc.sh) while a
+# night is active.
 #
 # Usage:
 #   fm-night-check.sh [check] [--json]
