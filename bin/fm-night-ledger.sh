@@ -8,18 +8,29 @@
 # (data/<ledger_directory>/github--OWNER--REPO--N.json under FM_HOME, the
 # directory named by .github/firstmate-review-policy.json and written by
 # bin/fm-pr-review.sh) holds a "merge" decision whose verified_epoch lies in
-# [since, until]; --until defaults to now. The forge must also report the pull
-# request merged; a recorded decision the forge does not report merged is listed
-# under not_merged instead. A review ledger file that does not parse as
-# firstmate-pr-review-ledger.v1 is listed under unreadable.
+# [since, until]; --until defaults to now. --repo must be owner/repo and selects
+# ledgers whose pull-request URL names exactly that repository. Each ledger file
+# is read once, and both the window check and its row come from that read.
+#
+# The forge must report the pull request merged; a recorded decision the forge
+# does not report merged is listed under not_merged instead. Review fields come
+# only from the ledger generation whose head is the forge's merged head; a merge
+# decision on that generation must itself lie in the window. When no generation
+# has that head, the merge is still listed, with review "unknown" and its review
+# fields null. A ledger file that is not a firstmate-pr-review-ledger.v1 object
+# with well-formed generations and merge decisions is listed under unreadable.
 #
 # Sources, all read-only: the review ledger (risk, reviewers, attestations,
 # red-check waivers, post-merge record), `gh pr view` (title, base branch,
-# merged time and commit, closing issues), `gh api --paginate` (every changed
-# file), and `git` on the local clone under FM_HOME/projects whose origin is the
-# pull request's repository (first-parent history of refs/remotes/origin/<base>).
+# merged head, time and commit, commits, closing issues, changed-file count),
+# `gh api --paginate` (every changed file and a renamed file's previous path),
+# `gh pr diff` (only for a pull request with more than one commit), and `git` on
+# the local clone under FM_HOME/projects whose origin is exactly
+# github.com/<owner>/<repo> (first-parent history of refs/remotes/origin/<base>).
 # It never fetches, so contiguity reflects the clone's current refs. It writes
-# nothing and never runs a revert.
+# nothing and never runs a revert. Each gh call is bounded by
+# FM_NIGHT_LEDGER_GH_TIMEOUT seconds (default 60); a call that hits the bound
+# stops the run with an error naming the pull request and prints no ledger.
 #
 # Text output lists one block per merge, newest first, then the whole-night
 # revert per repository and base branch, then what a code revert does not undo.
@@ -27,10 +38,16 @@
 # --json prints one object, schema "firstmate-night-ledger.v1":
 #   since, until            window bounds (epochs)
 #   repo                    the --repo filter, or null
-#   merges[]                newest first by merged_epoch, then decision_epoch:
+#   merges[]                newest first by merged_epoch, then decision_epoch,
+#                           then PR number:
 #     url, repo, number, title, base, merged_at (ISO), merged_epoch,
-#     decision_epoch, merged_commit (null when the forge reports none),
+#     merged_head, commit_count,
+#     decision_epoch        null when the merged generation has no merge decision
+#     merged_commit         null when the forge reports none
 #     closed_issues[]       {repo, number, url}: repo is the issue's own repository
+#     review                "matched", or "unknown" when no ledger generation has
+#                           the merged head (then risk, reviewers, validation,
+#                           waiver, and post_merge are null)
 #     risk                  {level, reason} from the merged generation
 #     reviewers[]           distinct review-item authors
 #     validation[]          {kind, by, head}: no-mistakes model or reviewer actor
@@ -38,26 +55,36 @@
 #                           (allowed_red_checks, else a legacy allowed_red_check)
 #     post_merge            {recorded:false} or {recorded:true, applicability,
 #                           outcome, reason, bug}
-#     files[]               paths the pull request changed
+#     files[]               paths the pull request changed, plus renamed files'
+#                           previous paths
+#     files_complete        false when the forge listed fewer files than it
+#                           reports changed (its file listing is capped)
 #     revert                "gh pr revert <url>"
-#     revert_together[]     {url, files[]}: later (or same-second) in-window merges that touched
-#                           any of the same files
+#     revert_together[]     {url, files[]}: later in-window merges into the same
+#                           repository and base that touched any of the same files
+#     revert_together_incomplete[]
+#                           URLs of this merge and those later same-scope merges
+#                           whose file lists are incomplete
 #   whole_night[]           one per repo and base branch with merges:
 #     repo, base, status    "contiguous", "not-contiguous", or "unknown"
 #     commits[]             merged commits, oldest first (by first-parent
-#                           position once found on the ref, else by merged time)
+#                           position once found on the ref, else by merge order)
 #     commands[]            when contiguous: one `git revert --no-edit
 #                           <first>^..<last>`
 #     interleaved[]         when not contiguous: {sha, subject} of first-parent
 #                           commits between the first and last merge that are
 #                           not night merges
-#     reason                why the status is unknown (including a merged
-#                           commit with more than one parent), else null
+#     reason                why the status is unknown, else null. Unknown covers
+#                           a missing merged commit or clone or ref, a merged
+#                           commit with more than one parent, and a pull request
+#                           with more than one commit whose merged commit's diff
+#                           is not its whole diff (a rebase merge, judged by
+#                           `git patch-id --stable`)
 #   not_undone
 #     closed_issues[]       {repo, number, url, reopen:"gh issue reopen <n> --repo <owner/repo>"}
 #     notes[]               fixed reminders of what a revert leaves in place
 #   not_merged[]            ledger URLs with an in-window decision but no forge merge
-#   unreadable[]            ledger file names that could not be parsed
+#   unreadable[]            paths of ledger files that could not be used
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,88 +127,147 @@ case "$LEDGER_REL" in
 esac
 LEDGER_DIR="$DATA/$LEDGER_REL"
 
-repo_slug() { # <remote-url> -> owner/repo for a GitHub remote, else empty
-  printf '%s' "$1" | sed -n 's#.*github\.com[:/]\([^/]*/[^/]*\)$#\1#p' | sed 's#\.git$##'
+GH_TIMEOUT=${FM_NIGHT_LEDGER_GH_TIMEOUT:-60}
+case "$GH_TIMEOUT" in ''|*[!0-9]*|0) die 'FM_NIGHT_LEDGER_GH_TIMEOUT must be a positive integer of seconds' ;; esac
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
+
+forge() { # <pr-url> <what> <gh args...>: bounded gh call; nonzero 124 on timeout
+  local url=$1 what=$2 status=0
+  shift 2
+  fm_run_timed "$GH_TIMEOUT" env GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh "$@" || status=$?
+  if [ "$status" -ne 0 ] && fm_timed_out "$status"; then
+    printf 'fm-night-ledger: gh timed out after %ss reading the %s of %s; no ledger printed\n' \
+      "$GH_TIMEOUT" "$what" "$url" >&2
+    return 124
+  fi
+  return "$status"
 }
 
-clone_for() { # <owner/repo> -> local clone path
-  local dir origin
+origin_slug() { # <remote-url> -> lowercase owner/repo when the remote is on github.com exactly
+  local rest
+  case "$1" in
+    https://github.com/*) rest=${1#https://github.com/} ;;
+    ssh://git@github.com/*) rest=${1#ssh://git@github.com/} ;;
+    git@github.com:*) rest=${1#git@github.com:} ;;
+    *) return 1 ;;
+  esac
+  rest=${rest%/}
+  rest=${rest%.git}
+  [[ $rest =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "${rest,,}"
+}
+
+clone_for() { # <owner/repo> -> local clone path under PROJECTS
+  local dir origin slug
   for dir in "$PROJECTS"/*/; do
     [ -d "$dir" ] || continue
     origin=$(git -C "$dir" remote get-url origin 2>/dev/null) || continue
-    [ "$(repo_slug "$origin")" = "$1" ] && { printf '%s\n' "${dir%/}"; return 0; }
+    slug=$(origin_slug "$origin") || continue
+    [ "$slug" = "${1,,}" ] && { printf '%s\n' "${dir%/}"; return 0; }
   done
   return 1
 }
 
+VALID_LEDGER='
+  select(type == "object" and .schema == "firstmate-pr-review-ledger.v1"
+    and (.url | type == "string")
+    and (.generations | type == "array" and length > 0 and all(.[];
+      type == "object" and (.head | type == "string")
+      and (.merge_decision == null or (.merge_decision | type == "object"
+        and (if .decision == "merge" then (.verified_epoch | type == "number") else true end))))))
+  | .url'
+
 ROWS='' NOT_MERGED='[]' UNREADABLE='[]'
-prefix=github--
-[ -z "$REPO" ] || prefix="github--${REPO%%/*}--${REPO#*/}--"
-for file in "$LEDGER_DIR/$prefix"*.json; do
-  [ -e "$file" ] || continue
-  name=${file##*/}
-  if ! [ -f "$file" ] || [ -L "$file" ] || ! url=$(jq -er '
-      select(.schema == "firstmate-pr-review-ledger.v1" and (.generations | type == "array"))
-      | .url | strings' "$file" 2>/dev/null); then
-    UNREADABLE=$(jq -c --arg f "$name" '. + [$f]' <<<"$UNREADABLE")
+unreadable() { UNREADABLE=$(jq -c --arg f "$1" '. + [$f]' <<<"$UNREADABLE"); }
+for file in "$LEDGER_DIR"/github--*.json; do
+  [ -e "$file" ] || [ -L "$file" ] || continue
+  ledger='' url=''
+  if ! [ -f "$file" ] || [ -L "$file" ] || ! ledger=$(cat -- "$file" 2>/dev/null) \
+    || ! url=$(jq -er "$VALID_LEDGER" <<<"$ledger" 2>/dev/null) \
+    || ! fm_pr_url_parse "$url" || [ "$FM_PR_PROVIDER" != github ]; then
+    unreadable "$file"
     continue
   fi
+  [ -z "$REPO" ] || [ "${FM_PR_OWNER,,}/${FM_PR_REPO,,}" = "${REPO,,}" ] || continue
   jq -e --argjson since "$SINCE" --argjson until "$UNTIL" '
-    [.generations[] | select(.merge_decision.decision? == "merge")] | last
-    | .merge_decision.verified_epoch | numbers | . >= $since and . <= $until' "$file" >/dev/null 2>&1 || continue
-  fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ] || {
-    UNREADABLE=$(jq -c --arg f "$name" '. + [$f]' <<<"$UNREADABLE"); continue; }
-  forge=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh pr view "$FM_PR_URL" \
-    --json title,state,mergedAt,mergeCommit,baseRefName,closingIssuesReferences) \
-    || die "gh could not read $FM_PR_URL"
-  if [ "$(jq -r '.state' <<<"$forge")" != MERGED ]; then
+    any(.generations[]; .merge_decision.decision? == "merge"
+      and .merge_decision.verified_epoch >= $since and .merge_decision.verified_epoch <= $until)' \
+    <<<"$ledger" >/dev/null || continue
+  pr=$(forge "$FM_PR_URL" 'pull request' pr view "$FM_PR_URL" \
+    --json title,state,mergedAt,mergeCommit,baseRefName,headRefOid,commits,closingIssuesReferences,changedFiles) \
+    || { [ "$?" -ne 124 ] || exit 1; die "gh could not read $FM_PR_URL"; }
+  if [ "$(jq -r '.state' <<<"$pr")" != MERGED ]; then
     NOT_MERGED=$(jq -c --arg u "$FM_PR_URL" '. + [$u]' <<<"$NOT_MERGED")
     continue
   fi
-  paths=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh api --hostname "$FM_PR_HOST" --paginate \
-    "repos/$FM_PR_OWNER/$FM_PR_REPO/pulls/$FM_PR_NUMBER/files?per_page=100" --jq '.[].filename') \
-    || die "gh could not list the files of $FM_PR_URL"
-  row=$(jq -Rsc --slurpfile ledger "$file" --argjson gh "$forge" --arg repo "$FM_PR_OWNER/$FM_PR_REPO" \
-    --argjson number "$FM_PR_NUMBER" --arg url "$FM_PR_URL" '
-    (split("\n") | map(select(length > 0))) as $files
-    | $ledger[0]
-    | ([.generations[] | select(.merge_decision.decision? == "merge")] | last) as $g
-    | (($g.post_merge_verifications // []) | last) as $pm
+  files=$(forge "$FM_PR_URL" 'changed files' api --hostname "$FM_PR_HOST" --paginate \
+    "repos/$FM_PR_OWNER/$FM_PR_REPO/pulls/$FM_PR_NUMBER/files?per_page=100" \
+    --jq '.[] | {filename, previous_filename}') \
+    || { [ "$?" -ne 124 ] || exit 1; die "gh could not list the files of $FM_PR_URL"; }
+  patch_id=''
+  if [ "$(jq '.commits | length' <<<"$pr")" -gt 1 ]; then
+    if diff=$(forge "$FM_PR_URL" diff pr diff "$FM_PR_URL"); then
+      patch_id=$(printf '%s\n' "$diff" | git patch-id --stable | cut -d' ' -f1)
+    else
+      [ "$?" -ne 124 ] || exit 1
+    fi
+  fi
+  ROWS+=$({ printf '%s\n%s\n' "$ledger" "$pr"; jq -sc . <<<"$files"; } | jq -nc \
+    --arg repo "$FM_PR_OWNER/$FM_PR_REPO" --arg host "$FM_PR_HOST" --argjson number "$FM_PR_NUMBER" \
+    --arg url "$FM_PR_URL" --arg patch "$patch_id" --argjson since "$SINCE" --argjson until "$UNTIL" '
+    input as $L | input as $gh | input as $F
+    | ([$L.generations[] | select(.head == $gh.headRefOid)] | last) as $g
+    | ($g != null) as $matched
+    | (if $matched and $g.merge_decision.decision? == "merge" then $g.merge_decision else null end) as $d
+    | select($d == null or ($d.verified_epoch >= $since and $d.verified_epoch <= $until))
+    | (if $matched then (($g.post_merge_verifications // []) | last) else null end) as $pm
     | {url:$url, repo:$repo, number:$number, title:$gh.title, base:$gh.baseRefName,
        merged_at:$gh.mergedAt, merged_epoch:($gh.mergedAt | fromdateiso8601),
-       decision_epoch:$g.merge_decision.verified_epoch,
+       merged_head:$gh.headRefOid, commit_count:($gh.commits | length),
+       decision_epoch:$d.verified_epoch,
        merged_commit:$gh.mergeCommit.oid,
        closed_issues:[$gh.closingIssuesReferences[]? | {repo:(.repository.owner.login + "/" + .repository.name), number, url}],
-       risk:($g.risk // {level:null, reason:null}),
-       reviewers:([$g.review_items[]?.author | strings] | unique),
-       validation:[$g.attestations[]? | {kind, by:(.model // .actor), head}],
-       waiver:($g.merge_decision.allowed_red_checks // [$g.merge_decision.allowed_red_check | strings]),
-       post_merge:(if $pm == null then {recorded:false}
+       review:(if $matched then "matched" else "unknown" end),
+       risk:(if $matched then ($g.risk // {level:null, reason:null}) else null end),
+       reviewers:(if $matched then ([$g.review_items[]?.author | strings] | unique) else null end),
+       validation:(if $matched then [$g.attestations[]? | {kind, by:(.model // .actor), head}] else null end),
+       waiver:(if $d == null then null else ($d.allowed_red_checks // [$d.allowed_red_check | strings]) end),
+       post_merge:(if $matched | not then null elif $pm == null then {recorded:false}
          else {recorded:true, applicability:$pm.applicability, outcome:$pm.outcome,
            reason:$pm.reason, bug:$pm.bug.url?} end),
-       files:$files,
-       revert:("gh pr revert " + $url)}' <<<"$paths")
-  ROWS+=$row$'\n'
+       files:([$F[] | .filename, (.previous_filename // empty)] | unique),
+       files_complete:(($F | length) >= ($gh.changedFiles // 0)),
+       revert:("gh pr revert " + $url),
+       _host:$host, _patch:(if $patch == "" then null else $patch end)}')$'\n'
 done
 
 MERGES=$(jq -sc '
-  sort_by(-.merged_epoch, -.decision_epoch)
+  sort_by(.merged_epoch, (.decision_epoch // -1), .number) | reverse
   | . as $all
-  | map(. as $m | .revert_together = [$all[]
-      | select(.merged_epoch >= $m.merged_epoch and .url != $m.url)
-      | {url, files:([.files[] | select(IN($m.files[]; .))] | unique)}
-      | select(.files | length > 0)])' <<<"$ROWS")
+  | [range(0; length) as $i | $all[$i] as $m
+    | ($all[0:$i] | map(select(.repo == $m.repo and .base == $m.base))) as $later
+    | $m + {revert_together:[$later[]
+          | {url, files:([.files[] | select(IN($m.files[]; .))] | unique)}
+          | select(.files | length > 0)],
+        revert_together_incomplete:[([$m] + $later)[] | select(.files_complete | not) | .url]}]' <<<"$ROWS")
 
 whole_unknown() { # <group-json> <reason>
   jq -c --arg r "$2" '.status = "unknown" | .reason = $r' <<<"$1"
 }
 
-whole_night_group() { # <repo> <base> <commits-json oldest first>
-  local repo=$1 base=$2 commits=$3 ref="refs/remotes/origin/$2" clone history result group
+whole_night_group() { # <repo> <base> <merges-json oldest first: {sha, url, commits, patch, host}>
+  local repo=$1 base=$2 merges=$3 ref="refs/remotes/origin/$2" commits clone history result group
+  local sha url local_patch rebased=''
+  commits=$(jq -c 'map(.sha)' <<<"$merges")
   group=$(jq -cn --arg repo "$repo" --arg base "$base" --argjson c "$commits" \
     '{repo:$repo, base:$base, commits:$c, commands:[], interleaved:[], reason:null}')
   if jq -e 'any(.[]; . == null)' <<<"$commits" >/dev/null; then
     whole_unknown "$group" "the forge reported no merged commit for at least one merge"
+    return
+  fi
+  if jq -e 'any(.[]; .host != "github.com")' <<<"$merges" >/dev/null; then
+    whole_unknown "$group" "the pull requests are not on github.com, so no local clone is matched"
     return
   fi
   if ! clone=$(clone_for "$repo"); then
@@ -217,30 +303,40 @@ whole_night_group() { # <repo> <base> <commits-json oldest first>
     return
   fi
   group=$(jq -c --argjson g "$group" '.commits as $c | $g | .commits = $c' <<<"$result")
-  if jq -e '.interleaved | length > 0' <<<"$result" >/dev/null; then
-    jq -c --argjson g "$group" '.interleaved as $i | $g | .status = "not-contiguous" | .interleaved = $i' <<<"$result"
-    return
-  fi
   if jq -e '.merges | length > 0' <<<"$result" >/dev/null; then
     whole_unknown "$group" "merged commit(s) $(jq -r '.merges | join(" ")' <<<"$result") have more than one parent; no single range revert"
+    return
+  fi
+  while IFS=$'\t' read -r sha url patch; do
+    [ -n "$sha" ] || continue
+    local_patch=$(git -C "$clone" diff "$sha^1" "$sha" 2>/dev/null | git patch-id --stable | cut -d' ' -f1) || local_patch=''
+    [ -n "$patch" ] && [ "$patch" = "$local_patch" ] || rebased+=" $url"
+  done < <(jq -r '.[] | select(.commits > 1) | [.sha, .url, (.patch // "")] | @tsv' <<<"$merges")
+  if [ -n "$rebased" ]; then
+    whole_unknown "$group" "pull request(s)$rebased have more than one commit and the merged commit is not a squash of them (a rebase merge, or the diff could not be compared); no single range revert"
+    return
+  fi
+  if jq -e '.interleaved | length > 0' <<<"$result" >/dev/null; then
+    jq -c --argjson g "$group" '.interleaved as $i | $g | .status = "not-contiguous" | .interleaved = $i' <<<"$result"
     return
   fi
   jq -c '.status = "contiguous" | .commands = ["git revert --no-edit " + .commits[0] + "^.." + .commits[-1]]' <<<"$group"
 }
 
 WHOLE_ROWS=''
-while IFS=$'\t' read -r repo base commits; do
+while IFS=$'\t' read -r repo base group_merges; do
   [ -n "$repo" ] || continue
-  WHOLE_ROWS+=$(whole_night_group "$repo" "$base" "$commits")$'\n'
+  WHOLE_ROWS+=$(whole_night_group "$repo" "$base" "$group_merges")$'\n'
 done < <(jq -r 'group_by([.repo, .base])[]
-  | [.[0].repo, .[0].base, (sort_by(.merged_epoch, .decision_epoch) | map(.merged_commit) | tojson)] | @tsv' <<<"$MERGES")
+  | [.[0].repo, .[0].base, (sort_by(.merged_epoch, (.decision_epoch // -1), .number)
+      | map({sha:.merged_commit, url, commits:.commit_count, patch:._patch, host:._host}) | tojson)] | @tsv' <<<"$MERGES")
 
 OUT=$({ printf '%s\n' "$MERGES"; jq -sc . <<<"$WHOLE_ROWS"; } | jq -n --argjson since "$SINCE" --argjson until "$UNTIL" --arg repo "$REPO" \
   --argjson not_merged "$NOT_MERGED" --argjson unreadable "$UNREADABLE" '
   input as $merges | input as $whole | {
     schema:"firstmate-night-ledger.v1", since:$since, until:$until,
     repo:(if $repo == "" then null else $repo end),
-    merges:$merges, whole_night:$whole,
+    merges:($merges | map(del(._host, ._patch))), whole_night:$whole,
     not_undone:{
       closed_issues:[$merges[].closed_issues[]
         | {repo, number, url, reopen:("gh issue reopen \(.number) --repo \(.repo)")}],
@@ -267,13 +363,20 @@ jq -r '
     "\(.url)  \(.title)",
     "  merged: \(.merged_at) into \(.base) as \(.merged_commit // "unknown")",
     "  closed issues: \(if (.closed_issues | length) == 0 then "none" else (.repo as $r | .closed_issues | map(if .repo == $r then "#\(.number)" else "\(.repo)#\(.number)" end) | join(" ")) end)",
-    "  risk: \(.risk.level // "unknown")\(if .risk.reason then " (" + .risk.reason + ")" else "" end)",
-    "  reviewers: \(if (.reviewers | length) == 0 then "none recorded" else (.reviewers | join(", ")) end)",
-    "  validation: \(if (.validation | length) == 0 then "none recorded" else (.validation | map("\(.kind) \(.by)") | join(", ")) end)",
-    "  waiver: \(if (.waiver | length) == 0 then "none" else (.waiver | join(", ")) end)",
-    "  post-merge: \(.post_merge | post)",
+    (if .review == "unknown" then
+      "  review: unknown - no review ledger generation has the merged head \(.merged_head)"
+    else
+      "  risk: \(.risk.level // "unknown")\(if .risk.reason then " (" + .risk.reason + ")" else "" end)",
+      "  reviewers: \(if (.reviewers | length) == 0 then "none recorded" else (.reviewers | join(", ")) end)",
+      "  validation: \(if (.validation | length) == 0 then "none recorded" else (.validation | map("\(.kind) \(.by)") | join(", ")) end)",
+      "  waiver: \(if .waiver == null then "unknown (no merge decision on the merged head)" elif (.waiver | length) == 0 then "none" else (.waiver | join(", ")) end)",
+      "  post-merge: \(.post_merge | post)"
+    end),
     "  revert: \(.revert)",
     (.revert_together[] | "  revert together with: \(.url) (shared: \(.files | join(", ")))"),
+    (if (.revert_together_incomplete | length) > 0 then
+      "  revert together: incomplete - changed-file list truncated for \(.revert_together_incomplete | join(", "))"
+    else empty end),
     ""),
   (if (.whole_night | length) > 0 then "Whole-night revert:" else empty end),
   (.whole_night[] |
