@@ -1,0 +1,58 @@
+lab home: /tmp/fm-lab.p078dP
+Fri Nov 27 13:19:50 PST 2026
+night-check: started at 2026-11-27T21:19:50Z (window 12:00-21:00, last-dispatch 20:00 America/Los_Angeles)
+
+### S4 baseline: fm-capacity.sh --admit before any stop
+admit rc=0
+
+### S4 a running 'worker' process that must survive the stop
+worker pid 3507596
+
+### S4 three night ship tickets failed in a row (a scout done + a pre-night ship done interleaved, both excluded) -> stop_dispatch, failure_streak latched
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"tripped","verdict_effect":"stop_dispatch","reason":"failure streak of 3 consecutive failed night ship tickets (n1, n2, n3)"}],"latched":["failure_streak"],"reserve_flag":"set_by_night_check","warnings":[]}
+{"streak":3,"limit":3,"since_epoch":1795814390,"failed_tasks":["n1","n2","n3"],"total_completed":3}
+reserve-flag contents:
+set_by=fm-night-check
+token=fm-night-1795814395-3512366-14044
+at=2026-11-27T21:19:55Z
+verdict=stop_dispatch
+reasons=failure streak of 3 consecutive failed night ship tickets (n1, n2, n3)
+night-active created_reserve_flags:
+[{"path":"/tmp/fm-lab.p078dP/state/night.reserve","token":"fm-night-1795814395-3512366-14044"}]
+
+### S4 fm-capacity.sh --admit now refuses
+deferred: lane capacity of this home (/tmp/fm-lab.p078dP/config/lane-capacity) does not admit another lane: captain reserve: night stop
+admit rc=75
+
+### S4 non-destructive: worker still alive?
+worker 3507596 alive
+
+### S4 a later night ship succeeds: live streak ok but latch persists
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"latched","verdict_effect":"stop_dispatch","reason":"latched at 2026-11-27T21:19:55Z: failure streak of 3 consecutive failed night ship tickets (n1, n2, n3)"}],"latched":["failure_streak"],"reserve_flag":"set_by_night_check","warnings":[]}
+{"live":"ok"}
+
+### S4 adversarial: operator edits config/lane-capacity to a different reserve-flag path mid-night; end must still clear the owned flag
+night-check: cleared reserve-flag /tmp/fm-lab.p078dP/state/night.reserve
+night-check: ended active night run
+end rc=0
+ls: cannot access '/tmp/fm-lab.p078dP/state/night.reserve': No such file or directory
+stop record kept:
+{"schema":"fm-night-stop.v1","latched":["failure_streak"],"first_tripped_at":"2026-11-27T21:19:55Z","verdict":"stop_dispatch"}
+admit rc after end=0
+worker 3507596 still alive after end
+
+### S5 adversarial: foreign (captain-set) reserve-flag is not overwritten and survives end
+
+### S9 oldest unacked wake is 60 min old (>30) -> supervision_stall latched with stall start time
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"supervision_stall","status":"tripped","verdict_effect":"stop_dispatch","reason":"supervision stall: oldest unacknowledged wake is 3600s old (limit 1800s)"}],"latched":["supervision_stall"],"reserve_flag":"set_externally","warnings":[]}
+{"stall_since_epoch":1795810796,"latched":[{"condition":"supervision_stall","latched_at":"2026-11-27T21:19:56Z"}]}
+flag content (must be unchanged):
+captain manual hold
+after end flag:
+captain manual hold
+
+### S5 adversarial: corrupt state/night-stop.json during an active night
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"tripped","verdict_effect":"stop_dispatch","reason":"failure streak of 3 consecutive failed night ship tickets (m5, m6, m7)"},{"condition":"night_stop_record","status":"unknown","verdict_effect":"stop_dispatch","reason":"state/night-stop.json is unreadable or corrupt, so earlier latched stops are unknown"}],"latched":["failure_streak"],"reserve_flag":"absent","warnings":[]}
+night-stop.json untouched (not overwritten)
+ls: cannot access '/tmp/fm-lab.p078dP/state/night.reserve': No such file or directory
+lab removed: yes

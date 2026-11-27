@@ -1,0 +1,42 @@
+lab home: /tmp/fm-lab.I7X6mg
+Fri Nov 27 13:20:34 PST 2026
+night-check: started at 2026-11-27T21:20:34Z (window 12:00-21:00, last-dispatch 20:00 America/Los_Angeles)
+
+### S10 failed post-merge on dev recorded BEFORE the night (still latest) + passed on main later -> dev stays red, merges blocked, no reserve-flag
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"dev_health","status":"tripped","verdict_effect":"stop_dispatch","reason":"latest post-merge check failed in review ledger for https://github.com/example-org/labrepo/pull/101 (dev)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+[{"repo":"https://github.com/example-org/labrepo","url":"https://github.com/example-org/labrepo/pull/101","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_ref":"dev","outcome":"failed","recorded_epoch":1795812634}]
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"history":[{"condition":"dev_health","first_tripped_at":"2026-11-27T21:20:34Z","last_tripped_at":"2026-11-27T21:20:34Z"}]}
+ls: cannot access '/tmp/fm-lab.I7X6mg/state/night.reserve': No such file or directory
+
+### S10 a later passing post-merge on dev -> latest wins: continue, stop record snapshot follows recovery, history kept
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"history_len":1,"last_checked_at":"2026-11-27T21:20:36Z"}
+
+### S10 dev fails again -> a second history entry (recovery not merged away)
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"dev_health","status":"tripped","verdict_effect":"stop_dispatch","reason":"latest post-merge check failed in review ledger for https://github.com/example-org/labrepo/pull/101 (dev)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+[{"first_tripped_epoch":1795814434,"last_tripped_epoch":1795814434},{"first_tripped_epoch":1795814439,"last_tripped_epoch":1795814439}]
+
+### S12 validation cap: 2 high-risk PR generations created tonight (+1 low-risk, +1 high pre-night) -> stop_validation only
+{"verdict":"stop_validation","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":false,"two_hour_default":true},"tripped":[{"condition":"validation_cap","status":"tripped","verdict_effect":"stop_validation","reason":"high-stakes validation cap reached (2 of 2 high-stakes PRs created tonight)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+{"count":2,"cap":2,"since_epoch":1795814434,"runs":[{"url":"https://github.com/example-org/labrepo/pull/201","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_epoch":1795814435},{"url":"https://github.com/example-org/labrepo/pull/202","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_epoch":1795814436}]}
+
+### S12 only 1 high-risk tonight -> continue
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S7 hc-guard while night active: real bin/fm-install-hc.sh refuses before downloading
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-27T21:20:34Z; run bin/fm-night-check.sh end first)
+install rc=1
+dest contents: []
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-27T21:20:34Z; run bin/fm-night-check.sh end first)
+hc-guard rc=1
+
+### S7 adversarial: corrupt state/night-active.json -> guard still refuses (fails closed)
+fm-night-check: hc core operation refused while overnight run marker /tmp/fm-lab.I7X6mg/state/night-active.json is present (run bin/fm-night-check.sh end first)
+hc-guard rc=1
+fm-night-check: hc core operation refused while overnight run marker /tmp/fm-lab.I7X6mg/state/night-active.json is present (run bin/fm-night-check.sh end first)
+install rc=1
+dest contents: []
+
+### S7 after end: hc-guard allows (installer itself NOT run, to avoid a real download)
+hc-guard rc=0
+lab removed: yes

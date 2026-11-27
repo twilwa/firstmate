@@ -1,0 +1,44 @@
+hc lab session: fm-hclab-night-3563379-19870
+lab core session fm-hclab-night-3563379-19870 ready (server pid 3563874)
+lab socket: /tmp/fm-hc-lab-1001/fm-hclab-night-3563379-19870.sock
+lab home: /tmp/fm-lab.WkGYtN
+
+### S11 start night on backend=hc pinned to the lab core: saves (session, socket) target + baseline
+night-check: started at 2026-11-27T21:21:05Z (window 12:00-21:00, last-dispatch 20:00 America/Los_Angeles)
+start rc=0
+{"hc_target":{"session":"fm-hclab-night-3563379-19870","socket":"/tmp/fm-hc-lab-1001/fm-hclab-night-3563379-19870.sock"},"hc_baseline":{"pid":3563874,"core_id":"b831859100d92bf2e41f7050e498f121","holder_instance":"","uptime_ms":243,"started_epoch":1795814465}}
+
+### S11 check with core unchanged -> hc_core ok, continue
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+"ok"
+
+### S11 adversarial: ambient HC_SOCKET pointing elsewhere is ignored (saved target socket used)
+{"verdict":"continue","hc":"ok"}
+
+### S11 restart the lab core (guarded lab stop, then auto-start on next contact)
+{"stopped":true}
+stop rc=0
+lab core restarted via run ls (rc=0)
+
+### S11 check after restart -> hc_core tripped, end_night, latched, reserve-flag set, core_restarted in stop record
+{"verdict":"end_night","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"hc_core","status":"tripped","verdict_effect":"end_night","reason":"hc core restarted during the night: hc core pid changed (3563874 -> 3567188)"}],"latched":["hc_core"],"reserve_flag":"set_by_night_check","warnings":[]}
+{"baseline":3563874,"current":3567188}
+{"core_restarted":true,"latched":[{"condition":"hc_core","verdict_effect":"end_night","latched_at":"2026-11-27T21:21:07Z"}]}
+
+### S11 hc-guard refuses install during the night
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-27T21:21:05Z; run bin/fm-night-check.sh end first)
+hc-guard rc=1
+night-check: cleared reserve-flag /tmp/fm-lab.WkGYtN/state/night.reserve
+night-check: ended active night run
+end rc=0
+{"verdict":"end_night","night_active":false,"two_hour_default":false,"latched":["hc_core"]}
+fm lab removed: yes
+
+### teardown hc lab
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2447247 1795814461 154485
+---
+> ~/.local/state/herdr-core/default/terminals.json 2447251 1795814470 154480
+teardown rc=1

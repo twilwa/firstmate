@@ -1,0 +1,16 @@
+
+### S13 synthetic loadavg 24.00 (not above 24) at T0
+{"verdict":"continue","allow":{"dispatch":true,"validation":true},"host_load":{"status":"ok","reason":"","since":null,"elapsed":0}}
+
+### S13 loadavg 30 at T0+10s (timer starts)
+{"verdict":"continue","allow":{"dispatch":true,"validation":true},"host_load":{"status":"ok","reason":"","since":1795814541,"elapsed":0}}
+
+### S13 loadavg 30 at T0+5min (still under 10min)
+{"verdict":"continue","allow":{"dispatch":true,"validation":true},"host_load":{"status":"ok","reason":"","since":1795814541,"elapsed":300}}
+
+### S13 loadavg 30 at T0+10min+10s -> stop_dispatch, validations stopped
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"validation":false},"host_load":{"status":"tripped","reason":"host 1-minute load (30.00) stayed above 24 for 610s (limit 600s)","since":1795814541,"elapsed":610}}
+
+### S13 load recovers to 5 -> continue
+{"verdict":"continue","allow":{"dispatch":true,"validation":true},"host_load":{"status":"ok","reason":"","since":null,"elapsed":0}}
+lab removed: yes

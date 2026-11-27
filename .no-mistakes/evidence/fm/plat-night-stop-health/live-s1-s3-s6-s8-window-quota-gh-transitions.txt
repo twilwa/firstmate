@@ -1,0 +1,61 @@
+lab home: /tmp/fm-lab.v2EwrS
+Fri Nov 27 13:19:09 PST 2026
+
+### S1 start a night (window 12:00-21:00 America/Los_Angeles, real clock) and run live check --json with REAL gh rate_limit + REAL /proc load
+night-check: started at 2026-11-27T21:19:09Z (window 12:00-21:00, last-dispatch 20:00 America/Los_Angeles)
+start rc=0
+{"schema":"fm-night-active.v1","started_at":"2026-11-27T21:19:09Z","window":{"start":"12:00","last_dispatch":"20:00","end":"21:00","timezone":"America/Los_Angeles"},"hc_target":null,"created_reserve_flags":[]}
+check rc=0
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+{"gh":{"remaining":4975,"limit":5000,"reset_epoch":1795817860,"floor":1000},"load":{"load1":10.68,"threshold":24,"limit_seconds":600,"high_load_since_epoch":null,"elapsed_seconds":0},"quota":"ok","hc":"not_applicable","night_started_epoch":1795814349}
+
+### S1b human-readable check
+night-check: verdict=continue (continue) dispatch=true claude=true merge=true validation=true two_hour_default=true
+rc=0
+
+### S2 Claude 5h at 20% (<25) -> stop_claude
+{"verdict":"stop_claude","night_active":true,"allow":{"dispatch":true,"claude":false,"merge":true,"validation":false,"two_hour_default":true},"tripped":[{"condition":"claude_quota","status":"tripped","verdict_effect":"stop_claude","reason":"Claude five_hour quota remaining (20%) is below 25% Claude-work floor"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S2 Claude weekly at 25% exactly (strict <) -> continue
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S2 Claude weekly at 11% (<12) -> stop_dispatch
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"tripped","verdict_effect":"stop_dispatch","reason":"Claude seven_day quota remaining (11%) is below 12% all-work floor"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S2 stale reading -> unknown / stop_dispatch
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"unknown","verdict_effect":"stop_dispatch","reason":"quota-axi Claude reading is stale or not fresh (status=fresh, stale=true)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S2 adversarial: config tries to weaken floor to 20 -> rejected, fails closed
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"night_window","status":"unknown","verdict_effect":"stop_dispatch","reason":"config/night-check line 5: claude-stop-claude-pct must be 25..100 (cannot weaken approved floor)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S2 adversarial: quota-axi emits garbage -> unknown / stop_dispatch
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"unknown","verdict_effect":"stop_dispatch","reason":"quota-axi returned an unexpected JSON schema"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S3 GitHub core remaining 999 (<1000) -> stop_dispatch, no reserve-flag (level)
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"github_api","status":"tripped","verdict_effect":"stop_dispatch","reason":"GitHub core API remaining (999) is below floor (1000)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+ls: cannot access '/tmp/fm-lab.v2EwrS/state/night.reserve': No such file or directory
+
+### S3 GitHub core remaining 1000 -> continue (recovered level)
+{"verdict":"continue","night_active":true,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S3 adversarial: gh api fails -> unknown / stop_dispatch
+{"verdict":"stop_dispatch","night_active":true,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"github_api","status":"unknown","verdict_effect":"stop_dispatch","reason":"gh api rate_limit failed (exit 1)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+
+### S8 end: stored verdict marked inactive, two_hour_default false, history preserved; verdict --json serves it
+night-check: ended active night run
+end rc=0
+ls: cannot access '/tmp/fm-lab.v2EwrS/state/night-active.json': No such file or directory
+{"verdict":"stop_dispatch","night_active":false,"allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":["github_api"],"checked_at":"2026-11-27T21:19:16Z"}
+
+### S8 start again clears prior-night verdict
+start rc=0
+fm-night-check: no stored night verdict at /tmp/fm-lab.v2EwrS/state/night-verdict.json
+verdict rc=1 (expect 1: no verdict yet)
+
+### S6 check with NO active night but past window end (cfg window 12:00-13:00) -> end_night, no reserve-flag, two_hour_default false
+{"verdict":"end_night","night_active":false,"allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"night_window","status":"tripped","verdict_effect":"end_night","reason":"outside night window (13:19 America/Los_Angeles is not within 12:00-13:00)"}],"latched":[],"reserve_flag":"absent","warnings":[]}
+ls: cannot access '/tmp/fm-lab.v2EwrS/state/night.reserve': No such file or directory
+
+### S6 check with NO active night inside window -> two_hour_default false (no live night)
+{"verdict":"continue","night_active":false,"allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":false},"tripped":[],"latched":[],"reserve_flag":"absent","warnings":[]}
+lab removed: yes

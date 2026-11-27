@@ -1,0 +1,65 @@
+FM_TEST_BEGIN 2026-11-27T21:17:42Z tests/fm-night-check.test.sh family=pure-contract-unit expected_gate_skip=none
+1..24
+ok - fm-night-check: help and usage
+ok - fm-night-check: healthy night verdict and stored machine-readable consumption
+ok - fm-night-check: allow.two_hour_default requires active night and transitions cleanly across end and new start
+ok - fm-night-check: last-dispatch cutoff stops dispatch as a level condition without the reserve-flag
+ok - fm-night-check: window end produces end_night verdict
+ok - fm-night-check: a check outside an active night latches nothing and sets no reserve-flag
+ok - fm-night-check: malformed config, dangling symlink, and nonexistent timezone fail closed as unknown
+ok - fm-night-check: Claude quota floors, equality boundaries, recovery, and config floor bounds
+ok - fm-night-check: partial, stale, and unreadable Claude quota readings fail closed as unknown
+ok - fm-night-check: GitHub API floor pauses dispatch only while low, and an unreadable source fails closed
+ok - fm-night-check: failure streak latches the reserve-flag until end, which clears it and keeps the stop record
+ok - fm-night-check: failure streak limits to night-spawned kind=ship tasks and ignores scouts, secondmates, and pre-night tasks
+ok - fm-night-check: corrupt stop record fails closed without latching, overwriting, or setting reserve-flag
+ok - fm-night-check: end clears recorded reserve-flags by exact path+token even after config edits
+ok - fm-night-check: a reserve-flag someone else created is never overwritten or cleared
+ok - fm-night-check: a missing reserve-flag config carries an explicit enforcement warning
+ok - fm-night-check: dev health tracks per-branch latest post-merge records, resolves legacy records, and consumes fm-pr-review base_ref
+ok - fm-night-check: check-machine rule counts deduplicated CI-admission waits via fm-crew-state and excludes running/passed checks
+ok - fm-night-check: validation cap counts night-created high-stakes generations at PR-ready time and stops at 2
+ok - fm-night-check: sustained host load above 24 for 10m, stale timers, and unreadable loadavg
+ok - fm-night-check: supervision stall latches on >30m wake or engine latch, and corrupt/unresolvable files fail closed
+ok - fm-night-check: hc core restart, auto-detected app-terminal target, ambient HC_SOCKET strip, and unreadable/unresolvable fail-closed
+ok - fm-night-check: hc guard blocks fm-install-hc.sh while night is active and leaves lab paths alone
+ok - fm-night-check: stop conditions never kill, interrupt, or tear down workers
+FM_TEST_COMPLETE
+FM_TEST_END 2026-11-27T21:18:42Z tests/fm-night-check.test.sh exit=0 duration_ms=59900 gate_skip=false
+FM_TEST_BEGIN 2026-11-27T21:18:42Z tests/fm-pr-review.test.sh family=pr-forge expected_gate_skip=none
+ok - poll preserves ordered checkpoint output for 600 ledgers (0s)
+ok - pending reviews retry, and top-level comments, submissions, and inline threads all require dispositions
+ok - a new head invalidates prior checks and review coverage
+ok - high-stakes readiness requires the configured model and no independent review when the policy count is zero
+ok - the risk classifier resolves incomplete changed-surface evidence to high stakes with a reason
+ok - authentication and authorization filenames are high stakes
+ok - conventional migrate directories are high stakes
+ok - public API definitions and conventional production infrastructure paths are high stakes
+ok - PR review, merge, shared identity, captain-hold, snapshot, classifier, and policy surfaces are high stakes
+ok - attestation changes invalidate and become part of the bound final disposition state
+ok - merge decisions bind the immediately verified head to the reviewed ledger generation
+ok - live collection reads top-level comments, submitted reviews, inline threads, and pending reviewers
+ok - only an observed exact ledger-bound final-disposition post is excluded from reviewer input
+ok - unreported required checks remain pending instead of satisfying readiness
+ok - the collector records no required checks only when the base branch provably requires none
+ok - a complete review is ready on a base that requires no checks, and an unreadable required set still blocks it
+ok - imported ledgers keep holds and null dispositions blocking ready and merge-decision
+ok - human holds survive head changes and require an evidenced release
+ok - the review wrapper applies each named red-check waiver and forwards guarded options
+ok - the merge wrapper binds its task id to the task recorded in the review ledger
+ok - review checkpoints reuse the authenticated watcher check without another monitor
+ok - non-browser changes record a head-keyed N/A reason that a new head invalidates
+ok - post-merge verification requires a forge merge of the reviewed source head
+ok - post-merge validation and recording use one exact JSON document
+ok - post-merge validates and records the same immutable staged evidence object
+ok - browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence
+ok - post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims
+ok - a failed post-merge smoke requires an owning bug and blocks Ready for QA
+FM_TEST_END 2026-11-27T21:19:32Z tests/fm-pr-review.test.sh exit=0 duration_ms=49371 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=110314
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=49371 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=59900 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-night-check.test.sh duration_ms=59900
+FM_TEST_SLOWEST rank=2 script=tests/fm-pr-review.test.sh duration_ms=49371
+FM_TEST_LISTENERS found=0
+EXIT=0
