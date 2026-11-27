@@ -12,9 +12,36 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fake")
 cat > "$FAKEBIN/gh" <<'SH'
 #!/usr/bin/env bash
 set -eu
-[ "${1:-} ${2:-}" = "pr view" ] || { printf 'unexpected gh call: %s\n' "$*" >&2; exit 91; }
-n=${3##*/}
-cat "$FM_TEST_GH_DIR/$n.json"
+case "${1:-}" in
+  pr)
+    [ "${2:-}" = view ] || { printf 'unexpected gh call: %s\n' "$*" >&2; exit 91; }
+    n=${3##*/}
+    # gh pr view --json files returns at most the first 100 files.
+    jq '.files |= .[:100]' "$FM_TEST_GH_DIR/$n.json"
+    ;;
+  api)
+    shift
+    paginate=0 endpoint='' expr=''
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --paginate) paginate=1; shift ;;
+        --hostname) shift 2 ;;
+        --jq) expr=$2; shift 2 ;;
+        repos/*) endpoint=$1; shift ;;
+        *) printf 'unexpected gh api argument: %s\n' "$1" >&2; exit 91 ;;
+      esac
+    done
+    [[ $endpoint =~ ^repos/o/r/pulls/([0-9]+)/files\?per_page=100$ ]] \
+      || { printf 'unexpected gh api endpoint: %s\n' "$endpoint" >&2; exit 91; }
+    n=${BASH_REMATCH[1]}
+    # The REST endpoint serves 100 files per page; without --paginate gh reads only the first.
+    jq -c --argjson all "$paginate" '[.files[] | {filename:.path}] as $f
+      | [range(0; $f | length; 100) as $i | $f[$i:$i + 100]]
+      | if $all == 1 then .[] else .[:1][] end' "$FM_TEST_GH_DIR/$n.json" \
+      | while IFS= read -r page; do jq -r "$expr" <<<"$page"; done
+    ;;
+  *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
+esac
 SH
 chmod +x "$FAKEBIN/gh"
 
@@ -53,7 +80,7 @@ merged_pr() {
   jq -n --arg title "PR $n title" --arg merged_at "$merged_at" --arg sha "$sha" \
     --argjson files "$files" --argjson issues "$issues" '{
       title:$title,state:"MERGED",mergedAt:$merged_at,baseRefName:"dev",
-      mergeCommit:{oid:$sha},files:($files | map({path:.})),
+      mergeCommit:(if $sha == "" then null else {oid:$sha} end),files:($files | map({path:.})),
       closingIssuesReferences:($issues | map({number:.,url:("https://github.com/o/r/issues/" + tostring)}))}' \
     > "$CASE/gh/$n.json"
 }
@@ -84,11 +111,13 @@ test_contiguous_window_lists_merges_newest_first_with_one_range_revert() {
   assert_contains "$out" 'PR 11 title' "rows carry the PR title"
   assert_contains "$out" 'claude-opus-5-5' "rows carry the validation"
   assert_contains "$out" 'not reverted' "issues and comments filed overnight are named as not reverted"
+  assert_contains "$out" 'disposable dev app' "test data on the dev app is named as not removed"
   out=$(night --since 1000 --until 2000 --json) || fail "contiguous --json exits 0"
   assert_equals '12 11' "$(printf '%s' "$out" | jq -r '[.merges[].number] | join(" ")')" "json merges are newest first"
   assert_equals contiguous "$(printf '%s' "$out" | jq -r '.whole_night[0].status')" "json reports contiguity"
   assert_equals "git revert --no-edit $a^..$b" "$(printf '%s' "$out" | jq -r '.whole_night[0].commands[0]')" "json carries the range revert"
   assert_equals 'gh issue reopen 501 --repo o/r' "$(printf '%s' "$out" | jq -r '.not_undone.closed_issues[0].reopen')" "json carries reopen lines"
+  assert_equals 1 "$(printf '%s' "$out" | jq -r '[.not_undone.notes[] | select(test("disposable dev app"))] | length')" "json notes name dev app test data"
   pass "a contiguous window lists merges newest first with one range revert"
 }
 
@@ -162,9 +191,105 @@ test_missing_post_merge_data_is_reported_not_recorded() {
   pass "missing post-merge data is reported as not recorded"
 }
 
+deep_history() { # count: append that many empty first-parent commits on dev
+  local repo="$CASE/home/projects/r" from i
+  from=$(git -C "$repo" rev-parse HEAD)
+  for ((i = 1; i <= $1; i++)); do
+    printf 'commit refs/heads/deep\ncommitter t <t@example.invalid> 1000000000 +0000\ndata 1\nc\n'
+    [ "$i" -gt 1 ] || printf 'from %s\n' "$from"
+    printf '\n'
+  done | git -C "$repo" fast-import --quiet
+  git -C "$repo" update-ref HEAD refs/heads/deep
+  git -C "$repo" update-ref refs/remotes/origin/dev HEAD
+}
+
+test_split_night_on_a_long_history_is_still_not_contiguous() {
+  local a b out
+  new_case deep
+  # More first-parent commits than fit in one 128 KiB command-line argument.
+  deep_history 4000
+  a=$(commit_on_dev a.txt 'first merge')
+  commit_on_dev hotfix.txt 'daytime hotfix on a long history' >/dev/null
+  b=$(commit_on_dev b.txt 'second merge')
+  merged_pr 61 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[]' low "$NA_POST"
+  merged_pr 62 1200 2026-11-27T02:00:00Z "$b" '["b.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "long-history --json exits 0"
+  assert_equals not-contiguous "$(printf '%s' "$out" | jq -r '.whole_night[0].status')" "a split night on a long history is not contiguous"
+  assert_equals 'daytime hotfix on a long history' "$(printf '%s' "$out" | jq -r '.whole_night[0].interleaved[0].subject')" "the interleaved commit is named"
+  assert_equals 0 "$(printf '%s' "$out" | jq -r '.whole_night[0].commands | length')" "no range command is offered"
+  pass "a split night on a long history is still not contiguous"
+}
+
+test_merge_commit_night_offers_no_whole_night_revert() {
+  local repo a m out
+  new_case merge-commit
+  repo="$CASE/home/projects/r"
+  a=$(commit_on_dev a.txt 'first merge')
+  git -C "$repo" checkout -q -b side
+  printf 'side\n' > "$repo/side.txt"
+  git -C "$repo" add side.txt
+  git -C "$repo" -c user.name=t -c user.email=t@example.invalid commit -qm 'side work'
+  git -C "$repo" checkout -q main
+  git -C "$repo" -c user.name=t -c user.email=t@example.invalid merge -q --no-ff -m 'second merge as a merge commit' side
+  git -C "$repo" update-ref refs/remotes/origin/dev HEAD
+  m=$(git -C "$repo" rev-parse HEAD)
+  merged_pr 71 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[]' low "$NA_POST"
+  merged_pr 72 1200 2026-11-27T02:00:00Z "$m" '["side.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "merge-commit --json exits 0"
+  assert_equals unknown "$(printf '%s' "$out" | jq -r '.whole_night[0].status')" "a night with a merge commit has no whole-night revert"
+  assert_contains "$(printf '%s' "$out" | jq -r '.whole_night[0].reason')" "$m" "the reason names the merge commit"
+  assert_equals 0 "$(printf '%s' "$out" | jq -r '.whole_night[0].commands | length')" "no whole-night command is offered"
+  out=$(night --since 1000 --until 2000) || fail "merge-commit text exits 0"
+  assert_contains "$out" 'gh pr revert https://github.com/o/r/pull/72' "the merge keeps its own revert command"
+  assert_not_contains "$out" 'git revert' "no git revert is offered"
+  pass "a night with a merge commit offers no whole-night revert"
+}
+
+test_files_past_the_first_page_still_mark_revert_together() {
+  local a b many out
+  new_case many-files
+  a=$(commit_on_dev a.txt 'first touches many files')
+  b=$(commit_on_dev b.txt 'second touches the last of them')
+  many=$(jq -cn '[range(0; 101) | "f\(.).txt"]')
+  merged_pr 81 1100 2026-11-27T01:00:00Z "$a" "$many" '[]' low "$NA_POST"
+  merged_pr 82 1200 2026-11-27T02:00:00Z "$b" '["f100.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "many-files --json exits 0"
+  assert_equals 101 "$(printf '%s' "$out" | jq -r '.merges[] | select(.number == 81) | .files | length')" "every changed file is listed"
+  assert_equals 'https://github.com/o/r/pull/82 f100.txt' \
+    "$(printf '%s' "$out" | jq -r '.merges[] | select(.number == 81) | .revert_together | map("\(.url) \(.files | join(","))") | join(";")')" \
+    "a file past the first hundred still marks the later merge"
+  pass "files past the first page still mark revert-together"
+}
+
+test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref() {
+  local repo a out
+  new_case no-merge-commit
+  commit_on_dev a.txt 'merge the forge reports no commit for' >/dev/null
+  merged_pr 91 1100 2026-11-27T01:00:00Z '' '["a.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "no-merge-commit --json exits 0"
+  assert_equals 'null unknown' "$(printf '%s' "$out" | jq -r '"\(.merges[0].merged_commit) \(.whole_night[0].status)"')" \
+    "a merge without a forge merge commit shows it unknown and gives no whole-night revert"
+  out=$(night --since 1000 --until 2000) || fail "no-merge-commit text exits 0"
+  assert_contains "$out" 'into dev as unknown' "the text shows the merged commit as unknown"
+  new_case no-origin-ref
+  repo="$CASE/home/projects/r"
+  a=$(commit_on_dev a.txt 'merge only on a local branch')
+  git -C "$repo" branch dev
+  git -C "$repo" update-ref -d refs/remotes/origin/dev
+  merged_pr 92 1100 2026-11-27T01:00:00Z "$a" '["a.txt"]' '[]' low "$NA_POST"
+  out=$(night --since 1000 --until 2000 --json) || fail "no-origin-ref --json exits 0"
+  assert_equals unknown "$(printf '%s' "$out" | jq -r '.whole_night[0].status')" "a local dev branch does not stand in for origin/dev"
+  assert_contains "$(printf '%s' "$out" | jq -r '.whole_night[0].reason')" 'refs/remotes/origin/dev' "the reason names the missing ref"
+  pass "the whole-night revert is unknown without a merged commit or an origin ref"
+}
+
 fm_test_run \
   test_contiguous_window_lists_merges_newest_first_with_one_range_revert \
   test_non_contiguous_window_names_interleaved_commits \
   test_revert_together_marks_later_merges_touching_the_same_files \
   test_empty_window_reports_no_merges \
-  test_missing_post_merge_data_is_reported_not_recorded
+  test_missing_post_merge_data_is_reported_not_recorded \
+  test_split_night_on_a_long_history_is_still_not_contiguous \
+  test_merge_commit_night_offers_no_whole_night_revert \
+  test_files_past_the_first_page_still_mark_revert_together \
+  test_whole_night_is_unknown_without_a_merged_commit_or_origin_ref
