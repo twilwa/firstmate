@@ -43,7 +43,8 @@
 # decision, whenever recorded, as away merge authority.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
-# records its actual merge commit separately from the reviewed head.
+# records its actual merge commit separately from the reviewed head, plus the
+# forge's base branch as `base_ref` when the payload names one.
 # It accepts `firstmate-post-merge-verification.v1` JSON.
 # A non-browser record uses `applicability:"not-applicable"`, the reviewed
 # `head`, and a non-empty `reason`.
