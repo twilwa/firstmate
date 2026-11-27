@@ -56,8 +56,11 @@
 #                     written by `bin/fm-pr-review.sh post-merge`; older
 #                     records without it resolve `baseRefName` once via a
 #                     bounded `gh pr view --json baseRefName` (failure yields
-#                     `unknown`). Not-applicable records neither clear nor set
-#                     red.
+#                     `unknown` and is retried on the next check); each
+#                     successful lookup is kept in
+#                     `state/night-pr-base-refs.json`, so a legacy record costs
+#                     one forge call ever. Not-applicable records neither clear
+#                     nor set red.
 #   check_machine     Counts distinct current PR heads whose `fm-crew-state.sh`
 #                     current state is `paused` declaring a wait for CI or
 #                     check-slot admission. Excludes active/working tasks and
@@ -75,14 +78,19 @@
 #                     than `stall-minutes`, or a latched supervision-host
 #                     engine validated against `fm_supervision_host_health_key`
 #                     (a corrupt health file or unresolvable engine key reports
-#                     `unknown`).
+#                     `unknown`). When `fm_supervision_host_config` reports the
+#                     supervision host disabled for this home, a leftover
+#                     health file is ignored and no engine latch is read.
 #   hc_core           Uses `bin/fm-backend.sh`'s backend resolution
 #                     (`fm_backend_resolve`) and `bin/backends/hc.sh`'s session
 #                     and socket pinning (`HC_SESSION`, stripping ambient
 #                     `HC_SOCKET` unless `FM_HC_SOCKET` pins it). Saves the
 #                     resolved target and baseline at `start` and queries that
 #                     target during the night; any unresolvable or unreadable
-#                     target reports `unknown`.
+#                     target reports `unknown`. With a baseline, a restart is a
+#                     changed pid, holder instance, or core id; only without
+#                     one (the night started on another backend) does a core
+#                     whose uptime starts after the night began count.
 #   host_load         1-minute load strictly above `high-load-threshold` for at
 #                     least `high-load-minutes`. Keeps its sustained-load timer
 #                     across runs only while consecutive checks are at most
@@ -91,12 +99,16 @@
 #
 # Level and event conditions:
 #   Level conditions are re-evaluated on every `check` and only shape that
-#   verdict: night_window, claude_quota, github_api, check_machine,
-#   validation_cap, host_load, and every "unknown" (unreadable/corrupt)
-#   reading (including an unreadable `state/night-stop.json`). A recovered
-#   reading gives `continue` on the next run.
+#   verdict: night_window, claude_quota, github_api, dev_health,
+#   check_machine, validation_cap, host_load, and every "unknown"
+#   (unreadable/corrupt) reading (including an unreadable
+#   `state/night-stop.json`). A recovered reading gives `continue` on the next
+#   run. A dev_health trip during an active night is also kept in the durable
+#   stop record's `history` list for the morning board, without latching or
+#   setting a reserve-flag; a later passing record on the same target branch
+#   clears it.
 #   Event conditions latch while a night is active: when failure_streak,
-#   dev_health, supervision_stall, or hc_core reads "tripped", the event is
+#   supervision_stall, or hc_core reads "tripped", the event is
 #   added to the durable stop record's `latched` list, keeps shaping every
 #   later verdict of the night (status "latched"), and sets the first
 #   configured `reserve-flag` from `config/lane-capacity` so
@@ -199,13 +211,22 @@
 #       }
 #   state/night-stop.json     (schema: fm-night-stop.v1)
 #     Durable stop record written by the single owner helper on every `check`
-#     of an active night once any event condition has latched. Carries the
-#     `latched` list, first_tripped_epoch, earliest stall_since_epoch (when
+#     of an active night once any event condition has latched or while
+#     dev_health is tripped. Carries the `latched` list, the `history` list of
+#     dev_health trips ({condition, verdict_effect, reason,
+#     first_tripped_epoch, first_tripped_at, last_tripped_epoch,
+#     last_tripped_at}), first_tripped_epoch, earliest stall_since_epoch (when
 #     supervision_stall latched), core_restarted (when hc_core latched), latest
 #     verdict, and tripped reasons. Kept after `end` for P3; cleared by the
 #     next `start`. When unreadable or corrupt during an active night, `check`
 #     reports `night_stop_record` as a level `unknown`/`stop_dispatch` without
 #     inventing a latch, overwriting the file, or changing any reserve-flag.
+#   state/night-pr-base-refs.json  (schema: fm-night-pr-base-refs.v1)
+#     Cache of `{refs: {"<canonical PR URL>": "<base branch>"}}` filled only by
+#     successful `gh pr view --json baseRefName` lookups for legacy post-merge
+#     records without `base_ref`. A merged PR's base branch never changes, so
+#     entries are kept across nights; an unreadable or invalid cache is
+#     ignored and rebuilt from fresh lookups.
 #
 # Home configuration: config/night-check (local, gitignored, home-local; schema
 # owned by docs/configuration.md "Night stop-and-health check").
@@ -239,6 +260,7 @@ LANE_CONFIG="$CONFIG/lane-capacity"
 ACTIVE_FILE="$STATE/night-active.json"
 VERDICT_FILE="$STATE/night-verdict.json"
 STOP_FILE="$STATE/night-stop.json"
+BASE_REF_CACHE="$STATE/night-pr-base-refs.json"
 POLICY_FILE="${FM_REVIEW_POLICY_OVERRIDE:-$FM_ROOT/.github/firstmate-review-policy.json}"
 PROC_ROOT="${FM_PROC_ROOT_OVERRIDE:-/proc}"
 CREW_STATE_BIN="${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}"
@@ -1119,9 +1141,21 @@ resolve_pr_base_ref() {  # <pr-url> -> prints baseRefName or returns 1
   printf '%s\n' "$ref"
 }
 
+load_base_ref_cache() {  # -> prints {"<pr-url>": "<base ref>"} (empty when absent or invalid)
+  local out
+  if [ -f "$BASE_REF_CACHE" ] && [ ! -L "$BASE_REF_CACHE" ] && [ -r "$BASE_REF_CACHE" ] \
+    && out=$(jq -c 'if .schema == "fm-night-pr-base-refs.v1" and (.refs | type == "object") then .refs | with_entries(select(.value | type == "string" and length > 0)) else error("invalid") end' "$BASE_REF_CACHE" 2>/dev/null) \
+    && [ -n "$out" ]; then
+    printf '%s\n' "$out"
+  else
+    printf '{}\n'
+  fi
+}
+
 eval_dev_health() {
   local f records_json="[]" count=0 rows url fallback_ref
-  local resolved_cache="" cached_line
+  local base_refs
+  base_refs=$(load_base_ref_cache)
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
@@ -1164,17 +1198,14 @@ eval_dev_health() {
     }
     if printf '%s\n' "$rows" | jq -e 'any(.[]; .base_ref == "")' >/dev/null 2>&1; then
       url=$(jq -r '.url' "$f")
-      fallback_ref=""
-      cached_line=$(printf '%s\n' "$resolved_cache" | awk -F '\t' -v u="$url" '$1 == u { print $2; exit }')
-      if [ -n "$cached_line" ]; then
-        fallback_ref=$cached_line
-      else
+      fallback_ref=$(printf '%s\n' "$base_refs" | jq -r --arg u "$url" '.[$u] // empty')
+      if [ -z "$fallback_ref" ]; then
         if ! fallback_ref=$(resolve_pr_base_ref "$url"); then
           cond_json unknown stop_dispatch "could not resolve target branch for post-merge verification on $url" '{}'
           return 0
         fi
-        resolved_cache="${resolved_cache}${url}	${fallback_ref}
-"
+        base_refs=$(printf '%s\n' "$base_refs" | jq -c --arg u "$url" --arg r "$fallback_ref" '.[$u] = $r')
+        atomic_write_json "$BASE_REF_CACHE" "$(jq -cn --argjson refs "$base_refs" '{schema: "fm-night-pr-base-refs.v1", refs: $refs}')" || true
       fi
       rows=$(printf '%s\n' "$rows" | jq -c --arg ref "$fallback_ref" '
         map(if .base_ref == "" then .base_ref = $ref else . end)
@@ -1425,12 +1456,23 @@ eval_supervision_stall() {  # <now>
     fi
   fi
 
+  local key_rc=0 cur_key=""
   if [ -e "$hf" ] || [ -L "$hf" ]; then
+    cur_key=$(
+      # shellcheck source=bin/fm-wake-lib.sh
+      . "$SCRIPT_DIR/fm-wake-lib.sh" >/dev/null 2>&1 || exit 1
+      # shellcheck source=bin/fm-supervision-engine-lib.sh
+      . "$SCRIPT_DIR/fm-supervision-engine-lib.sh" >/dev/null 2>&1 || exit 1
+      fm_supervision_host_config "$CONFIG" "$(fm_supervision_host_primary)" || exit 3
+      fm_supervision_host_health_key "$STATE"
+    ) || key_rc=$?
+  fi
+  if { [ -e "$hf" ] || [ -L "$hf" ]; } && [ "$key_rc" -ne 3 ]; then
     if [ -L "$hf" ] || [ ! -f "$hf" ] || [ ! -r "$hf" ]; then
       cond_json unknown stop_dispatch "supervision-host health file $hf is unreadable or unsafe" '{}'
       return 0
     fi
-    local f_key cd_val ra_val err_val cur_key
+    local f_key cd_val ra_val err_val
     f_key=$(sed -n 's/^key=//p' "$hf" 2>/dev/null | head -1)
     cd_val=$(sed -n 's/^cooldown=//p' "$hf" 2>/dev/null | head -1)
     ra_val=$(sed -n 's/^retry_after=//p' "$hf" 2>/dev/null | head -1)
@@ -1439,17 +1481,10 @@ eval_supervision_stall() {  # <now>
       cond_json unknown stop_dispatch "supervision-host health file $hf has malformed fields" '{}'
       return 0
     fi
-    cur_key=$(
-      # shellcheck source=bin/fm-wake-lib.sh
-      . "$SCRIPT_DIR/fm-wake-lib.sh" >/dev/null 2>&1 || exit 1
-      # shellcheck source=bin/fm-supervision-engine-lib.sh
-      . "$SCRIPT_DIR/fm-supervision-engine-lib.sh" >/dev/null 2>&1 || exit 1
-      fm_supervision_host_config "$CONFIG" "$(fm_supervision_host_primary)" || exit 1
-      fm_supervision_host_health_key "$STATE"
-    ) || {
+    if [ "$key_rc" -ne 0 ]; then
       cond_json unknown stop_dispatch "supervision-host health file $hf is present but current engine key could not be resolved" '{}'
       return 0
-    }
+    fi
     if [ "$f_key" = "$cur_key" ] && [ "$cd_val" -gt 0 ]; then
       latch_stalled=1
       latch_cooldown=$cd_val
@@ -1543,7 +1578,7 @@ eval_hc_core() {  # <now> <since_epoch>
        "hc core holder instance changed (\($base.holder_instance) -> \($cur.holder_instance))"
      elif $base != null and (($base.core_id // "") != "") and (($cur.core_id // "") != "") and $cur.core_id != $base.core_id then
        "hc core id changed (\($base.core_id) -> \($cur.core_id))"
-     elif $cur.started_epoch > ($since + 5) then
+     elif $base == null and $cur.started_epoch > ($since + 5) then
        "hc core started after night began (started_epoch \($cur.started_epoch) > night_start \($since), uptime \($cur.uptime_ms)ms)"
      else "" end) as $restart_reason
     | {target: $target, baseline: $base, current: $cur} as $det
@@ -1606,25 +1641,37 @@ eval_host_load() {  # <now>
 # --- Durable stop record (single owner path) --------------------------------
 write_stop_record() {  # <verdict_json> <now> <iso>
   local verdict_json=$1 now=$2 iso=$3
-  local first_epoch=$now first_at=$iso prev_stall=null doc
+  local first_epoch=$now first_at=$iso prev_stall=null prev_history="[]" doc
   if [ -f "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ] && [ -r "$STOP_FILE" ]; then
-    local pe pa ps
+    local pe pa ps ph
     pe=$(jq -r 'if .schema == "fm-night-stop.v1" and (.first_tripped_epoch | type == "number") then .first_tripped_epoch else empty end' "$STOP_FILE" 2>/dev/null) || pe=""
     pa=$(jq -r 'if .schema == "fm-night-stop.v1" and (.first_tripped_at | type == "string") then .first_tripped_at else empty end' "$STOP_FILE" 2>/dev/null) || pa=""
     ps=$(jq -c 'if .schema == "fm-night-stop.v1" and (.stall_since_epoch | type == "number") then .stall_since_epoch else null end' "$STOP_FILE" 2>/dev/null) || ps=null
+    ph=$(jq -c 'if .schema == "fm-night-stop.v1" and (.history | type == "array") then .history else [] end' "$STOP_FILE" 2>/dev/null) || ph="[]"
     [ -z "$pe" ] || first_epoch=$pe
     [ -z "$pa" ] || first_at=$pa
     prev_stall=${ps:-null}
+    prev_history=${ph:-[]}
   fi
   doc=$(printf '%s\n' "$verdict_json" | jq \
     --argjson first_epoch "$first_epoch" \
     --arg first_at "$first_at" \
     --argjson now "$now" \
     --arg iso "$iso" \
-    --argjson prev_stall "$prev_stall" '
+    --argjson prev_stall "$prev_stall" \
+    --argjson prev_history "$prev_history" '
     (if any(.latched[]; .condition == "supervision_stall") then
        ([$prev_stall, .conditions.supervision_stall.details.stall_since_epoch?] | map(select(type == "number")) | min)
      else $prev_stall end) as $stall_since
+    | (.conditions.dev_health) as $dev
+    | (if $dev.status != "tripped" then $prev_history
+       elif (([$prev_history[] | select(.condition == "dev_health")] | last) // {}).reason == $dev.reason then
+         ([$prev_history | to_entries[] | select(.value.condition == "dev_health") | .key] | last) as $i
+         | $prev_history | .[$i].last_tripped_epoch = $now | .[$i].last_tripped_at = $iso
+       else
+         $prev_history + [{condition: "dev_health", verdict_effect: $dev.verdict_effect, reason: $dev.reason,
+                           first_tripped_epoch: $now, first_tripped_at: $iso, last_tripped_epoch: $now, last_tripped_at: $iso}]
+       end) as $history
     | {
         schema: "fm-night-stop.v1",
         first_tripped_epoch: $first_epoch,
@@ -1638,6 +1685,7 @@ write_stop_record() {  # <verdict_json> <now> <iso>
         tripped: .tripped,
         reasons: .reasons,
         latched: .latched,
+        history: $history,
         stall_since_epoch: $stall_since,
         core_restarted: any(.latched[]; .condition == "hc_core"),
         reserve_flag: .reserve_flag
@@ -1769,7 +1817,7 @@ cmd_check() {
       elif . == "stop_claude" then "stop new Claude work"
       elif . == "stop_validation" then "stop new validations"
       else "continue" end;
-    ["failure_streak", "dev_health", "supervision_stall", "hc_core"] as $events
+    ["failure_streak", "supervision_stall", "hc_core"] as $events
     | {
       night_window: $c_window,
       claude_quota: $c_quota,
@@ -1854,8 +1902,15 @@ cmd_check() {
     fi
   fi
 
+  local record_stop=0 dev_tripped
+  dev_tripped=$(printf '%s\n' "$verdict_doc" | jq -r '.conditions.dev_health.status == "tripped"')
+  if [ "$stop_record_bad" -eq 0 ] && { [ "$latched_count" -gt 0 ] \
+    || { [ "$night_active" = true ] && [ "$active_bad" -eq 0 ] && [ "$dev_tripped" = true ]; }; }; then
+    record_stop=1
+  fi
+
   local stop_path_json="null"
-  if [ "$latched_count" -gt 0 ] && [ "$stop_record_bad" -eq 0 ]; then
+  if [ "$record_stop" -eq 1 ]; then
     stop_path_json=$(jq -cn --arg p "$STOP_FILE" '$p')
   fi
 
@@ -1864,7 +1919,7 @@ cmd_check() {
     --argjson stop_path "$stop_path_json" \
     '.reserve_flag.state = $rf_state | .stop_record_path = $stop_path')
 
-  if [ "$latched_count" -gt 0 ] && [ "$stop_record_bad" -eq 0 ]; then
+  if [ "$record_stop" -eq 1 ]; then
     write_stop_record "$verdict_doc" "$now" "$iso" || die "could not write $STOP_FILE"
   fi
   atomic_write_json "$VERDICT_FILE" "$verdict_doc" || die "could not write $VERDICT_FILE"

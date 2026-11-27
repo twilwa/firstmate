@@ -673,7 +673,20 @@ test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   assert_equals "dev" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.failed_targets[0].base_ref')" "failed_targets names target branch"
   assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "failed post-merge stops merges"
   assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.two_hour_default')" "failed post-merge disallows two-hour default"
-  [ -f "$home/state/night.reserve" ] || fail "a red dev target latches the reserve-flag"
+  assert_no_reserve_flag "$home" "a red dev target is a level stop and sets no reserve-flag"
+  assert_equals "0" "$(printf '%s\n' "$out" | jq -r '.latched | length')" "a red dev target does not latch"
+  assert_equals "dev_health" "$(jq -r '.history[0].condition' "$home/state/night-stop.json")" "the stop record history keeps the dev trip for the morning board"
+  assert_equals "$EPOCH_IN_WINDOW" "$(jq -r '.history[0].first_tripped_epoch' "$home/state/night-stop.json")" "the history entry records when dev went red"
+
+  # A later passing record on the same target branch clears the night's dev stop
+  write_review_ledger "$home" 1444 "$(dev_ledger 1444 passed $((EPOCH_IN_WINDOW + 300)) dev)"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 600)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "dev recovery during the night exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a later dev pass clears dev_health"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "fail then pass on the same branch continues"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "a recovered dev allows merges again"
+  assert_equals "1" "$(jq -r '.history | length' "$home/state/night-stop.json")" "the recovered dev trip stays in the stop history"
+  assert_no_reserve_flag "$home" "a recovered dev target leaves no reserve-flag"
 
   # 2. Same-branch recovery: older dev failure followed by later dev pass -> dev is green
   home=$(make_home dev_same_branch_recover)
@@ -713,6 +726,23 @@ EOF
   assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "legacy fallback preserves per-branch red state"
   assert_equals "dev" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.failed_targets[0].base_ref')" "legacy fallback identifies dev branch"
 
+  # Resolved legacy base refs are cached durably: a later check makes no gh pr view call
+  cat > "$home/fakebin/gh" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "api" ] && [ "\${2:-}" = "rate_limit" ]; then
+  printf '{"resources":{"core":{"limit":5000,"used":800,"remaining":4200,"reset":1795800000}}}\n'
+  exit 0
+fi
+printf '%s\n' "\$*" >> "$home/gh-calls.log"
+exit 1
+EOF
+  chmod +x "$home/fakebin/gh"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 300)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "cached legacy base_ref check exits 0"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "cached base refs keep per-branch red state"
+  assert_equals "dev" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.failed_targets[0].base_ref')" "cached base ref identifies dev branch"
+  [ ! -e "$home/gh-calls.log" ] || fail "a cached legacy base ref must not call gh pr view again: $(cat "$home/gh-calls.log")"
+
   # 4. Legacy record when gh pr view fails -> unknown + stop_dispatch
   home=$(make_home dev_legacy_fail)
   seed_healthy_stubs "$home"
@@ -721,6 +751,23 @@ EOF
   expect_code 0 "$rc" "unresolvable legacy base_ref emits verdict"
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unresolvable legacy base_ref stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "unresolvable legacy base_ref reports dev_health unknown"
+  [ ! -e "$home/state/night-pr-base-refs.json" ] || fail "a failed base_ref lookup must not be cached"
+  cat > "$home/fakebin/gh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "rate_limit" ]; then
+  printf '{"resources":{"core":{"limit":5000,"used":800,"remaining":4200,"reset":1795800000}}}\n'
+  exit 0
+fi
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then
+  printf '{"baseRefName":"dev"}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/gh"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 300)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "retried legacy base_ref lookup exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "an uncached failed lookup is retried on the next check"
 
   # 5. Corrupt review ledger fails closed as unknown
   home=$(make_home dev_corrupt)
@@ -1051,6 +1098,17 @@ test_supervision_stall_old_wake_latch_and_corrupt_files() {
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unresolvable engine key stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "unresolvable engine key reports unknown"
 
+  # A leftover health file after the home opted out of the supervision host is not a latch
+  home=$(make_home stall_host_disabled)
+  seed_healthy_stubs "$home"
+  key=$(supervision_latch_key "$home") || fail "could not compute the latch key"
+  printf 'key=%s\nerrors=2\ncooldown=300\nretry_after=%d\n' "$key" $((EPOCH_IN_WINDOW + 300)) > "$home/state/.supervision-host-health"
+  : > "$home/config/supervision-host-off"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "disabled supervision host exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "a disabled supervision host has no engine latch"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a disabled supervision host does not stop dispatch"
+
   # Corrupt wake queue fails closed as unknown
   home=$(make_home stall_corrupt)
   seed_healthy_stubs "$home"
@@ -1091,6 +1149,14 @@ test_hc_core_restart_auto_detect_ambient_strip_and_unreadable() {
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "steady hc core continues"
   assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "hc_core ok"
   assert_contains "$(cat "$hc_log")" "HC_SESSION=real-sess|HC_SOCKET=$home/expected.sock|" "check uses saved hc target and ignores conflicting ambient HC_SOCKET/HC_SESSION"
+
+  # Same pid, holder instance, and core id with an uptime that drifted behind wall time
+  # (e.g. host sleep) is not a restart when a baseline exists
+  fake_herdr_core "$home/fakebin" 3995 "inst-original" 12000 "$hc_log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "drifted hc uptime exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "uptime drift with unchanged identity is not a restart"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "uptime drift with unchanged identity continues"
 
   # Core restarted (new pid + new holder instance + short uptime) -> end_night
   fake_herdr_core "$home/fakebin" 8812 "inst-restarted" 12000 "$hc_log"
