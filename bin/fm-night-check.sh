@@ -211,11 +211,13 @@
 #       }
 #   state/night-stop.json     (schema: fm-night-stop.v1)
 #     Durable stop record written by the single owner helper on every `check`
-#     of an active night once any event condition has latched or while
-#     dev_health is tripped. Carries the `latched` list, the `history` list of
-#     dev_health trips ({condition, verdict_effect, reason,
-#     first_tripped_epoch, first_tripped_at, last_tripped_epoch,
-#     last_tripped_at}), first_tripped_epoch, earliest stall_since_epoch (when
+#     of an active night from the first latched event or dev_health trip
+#     onward, so its latest-verdict snapshot stays current. Carries the
+#     `latched` list, the `history` list of dev_health trips ({condition,
+#     verdict_effect, reason, first_tripped_epoch, first_tripped_at,
+#     last_tripped_epoch, last_tripped_at}; one entry per run of consecutive
+#     tripped checks with the same reason), first_tripped_epoch, earliest
+#     stall_since_epoch (when
 #     supervision_stall latched), core_restarted (when hc_core latched), latest
 #     verdict, and tripped reasons. Kept after `end` for P3; cleared by the
 #     next `start`. When unreadable or corrupt during an active night, `check`
@@ -1641,17 +1643,19 @@ eval_host_load() {  # <now>
 # --- Durable stop record (single owner path) --------------------------------
 write_stop_record() {  # <verdict_json> <now> <iso>
   local verdict_json=$1 now=$2 iso=$3
-  local first_epoch=$now first_at=$iso prev_stall=null prev_history="[]" doc
+  local first_epoch=$now first_at=$iso prev_stall=null prev_history="[]" prev_dev_tripped=false doc
   if [ -f "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ] && [ -r "$STOP_FILE" ]; then
-    local pe pa ps ph
+    local pe pa ps ph pd
     pe=$(jq -r 'if .schema == "fm-night-stop.v1" and (.first_tripped_epoch | type == "number") then .first_tripped_epoch else empty end' "$STOP_FILE" 2>/dev/null) || pe=""
     pa=$(jq -r 'if .schema == "fm-night-stop.v1" and (.first_tripped_at | type == "string") then .first_tripped_at else empty end' "$STOP_FILE" 2>/dev/null) || pa=""
     ps=$(jq -c 'if .schema == "fm-night-stop.v1" and (.stall_since_epoch | type == "number") then .stall_since_epoch else null end' "$STOP_FILE" 2>/dev/null) || ps=null
     ph=$(jq -c 'if .schema == "fm-night-stop.v1" and (.history | type == "array") then .history else [] end' "$STOP_FILE" 2>/dev/null) || ph="[]"
+    pd=$(jq -r '.schema == "fm-night-stop.v1" and any((.tripped // [])[]; .condition == "dev_health")' "$STOP_FILE" 2>/dev/null) || pd=false
     [ -z "$pe" ] || first_epoch=$pe
     [ -z "$pa" ] || first_at=$pa
     prev_stall=${ps:-null}
     prev_history=${ph:-[]}
+    [ "$pd" = true ] && prev_dev_tripped=true
   fi
   doc=$(printf '%s\n' "$verdict_json" | jq \
     --argjson first_epoch "$first_epoch" \
@@ -1659,13 +1663,14 @@ write_stop_record() {  # <verdict_json> <now> <iso>
     --argjson now "$now" \
     --arg iso "$iso" \
     --argjson prev_stall "$prev_stall" \
-    --argjson prev_history "$prev_history" '
+    --argjson prev_history "$prev_history" \
+    --argjson prev_dev_tripped "$prev_dev_tripped" '
     (if any(.latched[]; .condition == "supervision_stall") then
        ([$prev_stall, .conditions.supervision_stall.details.stall_since_epoch?] | map(select(type == "number")) | min)
      else $prev_stall end) as $stall_since
     | (.conditions.dev_health) as $dev
     | (if $dev.status != "tripped" then $prev_history
-       elif (([$prev_history[] | select(.condition == "dev_health")] | last) // {}).reason == $dev.reason then
+       elif $prev_dev_tripped and (([$prev_history[] | select(.condition == "dev_health")] | last) // {}).reason == $dev.reason then
          ([$prev_history | to_entries[] | select(.value.condition == "dev_health") | .key] | last) as $i
          | $prev_history | .[$i].last_tripped_epoch = $now | .[$i].last_tripped_at = $iso
        else
@@ -1904,8 +1909,8 @@ cmd_check() {
 
   local record_stop=0 dev_tripped
   dev_tripped=$(printf '%s\n' "$verdict_doc" | jq -r '.conditions.dev_health.status == "tripped"')
-  if [ "$stop_record_bad" -eq 0 ] && { [ "$latched_count" -gt 0 ] \
-    || { [ "$night_active" = true ] && [ "$active_bad" -eq 0 ] && [ "$dev_tripped" = true ]; }; }; then
+  if [ "$stop_record_bad" -eq 0 ] && [ "$night_active" = true ] && [ "$active_bad" -eq 0 ] \
+    && { [ "$latched_count" -gt 0 ] || [ "$dev_tripped" = true ] || [ -e "$STOP_FILE" ]; }; then
     record_stop=1
   fi
 

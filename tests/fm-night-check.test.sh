@@ -686,7 +686,19 @@ test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "fail then pass on the same branch continues"
   assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "a recovered dev allows merges again"
   assert_equals "1" "$(jq -r '.history | length' "$home/state/night-stop.json")" "the recovered dev trip stays in the stop history"
+  assert_equals "continue" "$(jq -r '.verdict' "$home/state/night-stop.json")" "the stop record snapshot follows the recovered verdict"
+  assert_equals "true" "$(jq -r '.allow.merge' "$home/state/night-stop.json")" "the stop record snapshot no longer blocks merges after recovery"
+  assert_equals "$((EPOCH_IN_WINDOW + 600))" "$(jq -r '.last_checked_epoch' "$home/state/night-stop.json")" "the stop record is rewritten on the recovered check"
   assert_no_reserve_flag "$home" "a recovered dev target leaves no reserve-flag"
+
+  # The same failure returning after a recovery is a new trip, not one continuous one
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_IN_WINDOW + 900)) dev)"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 1200)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "dev failing again exits 0"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "dev_health trips again"
+  assert_equals "2" "$(jq -r '.history | length' "$home/state/night-stop.json")" "a repeat failure after recovery adds a second history entry"
+  assert_equals "$EPOCH_IN_WINDOW" "$(jq -r '.history[0].last_tripped_epoch' "$home/state/night-stop.json")" "the first trip ends before the recovery"
+  assert_equals "$((EPOCH_IN_WINDOW + 1200))" "$(jq -r '.history[1].first_tripped_epoch' "$home/state/night-stop.json")" "the second trip starts at the repeat failure"
 
   # 2. Same-branch recovery: older dev failure followed by later dev pass -> dev is green
   home=$(make_home dev_same_branch_recover)
