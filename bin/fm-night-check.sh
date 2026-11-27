@@ -5,8 +5,9 @@
 # Single owner of the overnight stop-condition evaluation, its durable night
 # records under state/, its machine-readable verdict document for the morning
 # board (P3) and two-hour default gate (P2), and the hc night guard
-# (`hc-guard`) that refuses herdr-core installs (bin/fm-install-hc.sh) while a
-# night is active.
+# (`hc-guard`) that refuses herdr-core installs (`bin/fm-install-hc.sh`) while
+# a night is active. A direct upstream `hc` / `herdr-core` stop is outside what
+# this repository can intercept.
 #
 # Usage:
 #   fm-night-check.sh [check] [--json]
@@ -18,66 +19,131 @@
 #
 # Verdicts (ordered from least to most severe; the most severe tripped,
 # unknown, or latched condition wins):
-#   continue       All evaluated conditions are healthy; dispatch, Claude work,
-#                  merges, validations, and two-hour defaults may proceed.
+#   continue        All evaluated conditions are healthy; dispatch, Claude work,
+#                   merges, validations, and (when a night is active) two-hour
+#                   defaults may proceed.
 #   stop_validation ("stop new validations") Start no new high-stakes
-#                  validation run (validation cap reached); dispatch and
-#                  Claude work may still proceed.
-#   stop_claude    ("stop new Claude work") Stop new Claude-harness work and
-#                  validations (Claude 5h/weekly quota < 25%); non-Claude
-#                  builders may still dispatch.
-#   stop_dispatch  ("stop new dispatch") Admit no new work at all (e.g. past
-#                  last-dispatch cut-off, Claude quota < 12%, GitHub core API
-#                  < 1000, failure streak >= 3, failed post-merge check, >= 2
-#                  finished PRs waiting for a check slot, supervision stall,
-#                  sustained high host load, or ANY unreadable/unknown source).
-#   end_night      ("end the night") The night is over (outside the configured
-#                  night window or hc core restarted); disallows dispatch,
-#                  Claude work, merges, validations, and two-hour defaults.
+#                   validation run (validation cap reached); dispatch and
+#                   Claude work may still proceed.
+#   stop_claude     ("stop new Claude work") Stop new Claude-harness work and
+#                   validations (Claude 5h or weekly quota < 25%); non-Claude
+#                   builders may still dispatch.
+#   stop_dispatch   ("stop new dispatch") Admit no new work at all (e.g. past
+#                   last-dispatch cut-off, Claude quota < 12%, GitHub core API
+#                   < 1000, failure streak >= 3, failed latest post-merge check,
+#                   >= 2 distinct PR heads waiting for CI/check admission,
+#                   supervision stall, sustained high host load, or ANY
+#                   unreadable/unknown source).
+#   end_night       ("end the night") The night is over (outside the configured
+#                   night window or hc core restarted); disallows dispatch,
+#                   Claude work, merges, validations, and two-hour defaults.
+#
+# Condition sources and boundaries:
+#   night_window      Local time in configured IANA timezone against
+#                     [window-start, last-dispatch, window-end].
+#   claude_quota      Requires one valid, current (fresh, non-stale) reading
+#                     for BOTH five_hour and seven_day from `quota-axi`. Strict
+#                     `<` comparison against the floors (defaults 25 and 12;
+#                     config may only raise them, never lower below 25/12).
+#   github_api        `gh api rate_limit` `.resources.core.remaining < floor`.
+#   failure_streak    Limited to `kind=ship` tasks spawned inside the night
+#                     window (`spawn_gen` epoch >= night start, excluding
+#                     scouts, secondmates, and pre-night tasks) ordered by
+#                     terminal status epoch.
+#   dev_health        Latest passed or failed post-merge verification record
+#                     per `(repo, target_branch)` across review ledgers, with
+#                     no night-start filter. New records carry `base_ref`
+#                     written by `bin/fm-pr-review.sh post-merge`; older
+#                     records without it resolve `baseRefName` once via a
+#                     bounded `gh pr view --json baseRefName` (failure yields
+#                     `unknown`). Not-applicable records neither clear nor set
+#                     red.
+#   check_machine     Counts distinct current PR heads whose `fm-crew-state.sh`
+#                     current state is `paused` declaring a wait for CI or
+#                     check-slot admission. Excludes active/working tasks and
+#                     any PR whose current head has running checks or completed
+#                     required checks (`status == "COMPLETED"` with
+#                     `conclusion == "pass"` or `"skipping"`, matching
+#                     `bin/fm-pr-review.sh`).
+#   validation_cap    Counts high-stakes PRs whose current review-ledger
+#                     generation was created during the night (`risk.level ==
+#                     "high"` and `created_epoch >= night_start`), deduplicated
+#                     by canonical PR URL and head. This counts at PR-ready
+#                     time, not at validation run start, and emits only
+#                     `stop_validation`.
+#   supervision_stall Oldest unacknowledged wake in `state/.wake-queue` older
+#                     than `stall-minutes`, or a latched supervision-host
+#                     engine validated against `fm_supervision_host_health_key`
+#                     (a corrupt health file or unresolvable engine key reports
+#                     `unknown`).
+#   hc_core           Uses `bin/fm-backend.sh`'s backend resolution
+#                     (`fm_backend_resolve`) and `bin/backends/hc.sh`'s session
+#                     and socket pinning (`HC_SESSION`, stripping ambient
+#                     `HC_SOCKET` unless `FM_HC_SOCKET` pins it). Saves the
+#                     resolved target and baseline at `start` and queries that
+#                     target during the night; any unresolvable or unreadable
+#                     target reports `unknown`.
+#   host_load         1-minute load strictly above `high-load-threshold` for at
+#                     least `high-load-minutes`. Keeps its sustained-load timer
+#                     across runs only while consecutive checks are at most
+#                     twice `high-load-minutes` apart, so `check` must run at
+#                     least that often for sustained load to trip.
 #
 # Level and event conditions:
 #   Level conditions are re-evaluated on every `check` and only shape that
-#   verdict: night_window (window and last-dispatch cut-off), claude_quota,
-#   github_api, check_machine, validation_cap, host_load, and every "unknown"
-#   (unreadable) reading. A recovered reading gives `continue` on the next run.
-#   host_load keeps its sustained-load timer across runs only while
-#   consecutive checks are at most twice high-load-minutes apart, so `check`
-#   must run at least that often for sustained load to trip.
+#   verdict: night_window, claude_quota, github_api, check_machine,
+#   validation_cap, host_load, and every "unknown" (unreadable/corrupt)
+#   reading (including an unreadable `state/night-stop.json`). A recovered
+#   reading gives `continue` on the next run.
 #   Event conditions latch while a night is active: when failure_streak,
 #   dev_health, supervision_stall, or hc_core reads "tripped", the event is
 #   added to the durable stop record's `latched` list, keeps shaping every
 #   later verdict of the night (status "latched"), and sets the first
-#   configured reserve-flag from config/lane-capacity so bin/fm-capacity.sh
-#   admits nothing new. Outside an active night nothing latches, no stop
-#   record is written, and no reserve-flag is set.
+#   configured `reserve-flag` from `config/lane-capacity` so
+#   `bin/fm-capacity.sh` admits nothing new. Outside an active night nothing
+#   latches, no stop record is written, and no reserve-flag is set.
 #   The reserve-flag is created only when absent (never overwritten or
-#   restamped) and carries a first line `set_by=fm-night-check`. `end` removes
-#   it only when that first line is present; a flag created by anyone else is
-#   left untouched and reported as "set_externally". When config/lane-capacity
-#   names no reserve-flag, the verdict carries a warning that stop_dispatch
-#   cannot be enforced through admission.
+#   restamped) with `set_by=fm-night-check` and a per-creation `token=<id>`
+#   line; its exact path and ownership token are persisted in
+#   `state/night-active.json`. `end` removes only flags recorded in
+#   `state/night-active.json` whose on-disk first two lines still match that
+#   ownership token, independent of current `config/lane-capacity`; a foreign
+#   or replaced flag is left untouched and reported as "set_externally". When
+#   `config/lane-capacity` names no reserve-flag, the verdict carries a warning
+#   that `stop_dispatch` cannot be enforced through admission.
+#
+# Historical verdict vs. live permission (P3 and P2):
+#   `verdict [--json]` serves the stored historical `state/night-verdict.json`
+#   snapshot for the morning board (P3) without re-polling external sources.
+#   `end` clears `night_active` and `allow.two_hour_default` on the stored
+#   verdict while retaining the night's historical diagnosis, and `start`
+#   clears the previous night's stored verdict and stop record.
+#   For live authorization (P2's two-hour default), callers MUST run a fresh
+#   `bin/fm-night-check.sh check --json` and verify exit 0,
+#   `night_active == true`, matching `night_started_epoch`, and
+#   `allow.two_hour_default == true`, refusing on any mismatch or failure.
 #
 # Non-destructive guarantee: this script never kills, interrupts, or tears down
-# any worker, terminal, or service. It only writes its own state/ records and
-# creates or removes its own reserve-flag.
+# any worker, terminal, or service. It only writes its own `state/` records and
+# creates or removes its own token-owned reserve-flag.
 #
 # Unreadable-source invariant: any source that cannot be read, times out, or
-# returns malformed data reports that condition as status="unknown" with
-# verdict_effect="stop_dispatch"; it never reads as healthy.
+# returns malformed data reports that condition as `status="unknown"` with
+# `verdict_effect="stop_dispatch"`; it never reads as healthy.
 #
 # Durable state files under $STATE (written atomically, mode 0600, owned solely
 # by this script):
 #   state/night-active.json   (schema: fm-night-active.v1)
 #     Present while a night is on. Written by `start`, removed by `end`.
-#     Carries started_epoch, started_at, resolved window settings, and optional
-#     hc_baseline {pid, core_id, holder_instance, uptime_ms, started_epoch}.
-#     While present (or if unreadable/corrupt), `hc-guard` refuses herdr-core
-#     installs.
+#     Carries started_epoch, started_at, resolved window settings, optional
+#     hc_target {session, socket}, optional hc_baseline {pid, core_id,
+#     holder_instance, uptime_ms, started_epoch}, and created_reserve_flags
+#     [{path, token}]. While present (or if unreadable/corrupt), `hc-guard`
+#     refuses `bin/fm-install-hc.sh`.
 #   state/night-verdict.json  (schema: fm-night-verdict.v1)
 #     Latest evaluation verdict, rewritten atomically on every `check` and
-#     served by `verdict [--json]` without re-polling external tools.
-#     Machine-readable shape consumed by P2 (check allow.two_hour_default) and
-#     P3 (morning board):
+#     served by `verdict [--json]` as historical evidence for P3.
+#     Machine-readable shape:
 #       {
 #         "schema": "fm-night-verdict.v1",
 #         "checked_epoch": <int>,
@@ -134,13 +200,12 @@
 #   state/night-stop.json     (schema: fm-night-stop.v1)
 #     Durable stop record written by the single owner helper on every `check`
 #     of an active night once any event condition has latched. Carries the
-#     `latched` list, first_tripped_epoch, the earliest stall_since_epoch (when
+#     `latched` list, first_tripped_epoch, earliest stall_since_epoch (when
 #     supervision_stall latched), core_restarted (when hc_core latched), latest
-#     verdict, and tripped reasons. Kept after `end` so the morning board can
-#     read why the night stopped; cleared when a new night starts via `start`.
-#     When it is unreadable or corrupt during an active night, the earlier
-#     latches are unknown, so a fail-closed "night_stop_record" latch replaces
-#     them.
+#     verdict, and tripped reasons. Kept after `end` for P3; cleared by the
+#     next `start`. When unreadable or corrupt during an active night, `check`
+#     reports `night_stop_record` as a level `unknown`/`stop_dispatch` without
+#     inventing a latch, overwriting the file, or changing any reserve-flag.
 #
 # Home configuration: config/night-check (local, gitignored, home-local; schema
 # owned by docs/configuration.md "Night stop-and-health check").
@@ -150,7 +215,9 @@
 #   FM_NIGHT_NOW_EPOCH       override current epoch seconds (tests)
 #   FM_PROC_ROOT_OVERRIDE    override /proc root for Linux loadavg (tests)
 #   FM_REVIEW_POLICY_OVERRIDE override review policy path (tests)
+#   FM_CREW_STATE_BIN        override fm-crew-state.sh path (tests)
 #   FM_HC_BIN                override herdr-core binary path (matching hc.sh)
+#   FM_HC_SOCKET             pin hc core socket (matching hc.sh)
 #
 # Exit status:
 #   check / start / end: 0 on completion, 1 on refusal or state error, 2 on
@@ -174,6 +241,11 @@ VERDICT_FILE="$STATE/night-verdict.json"
 STOP_FILE="$STATE/night-stop.json"
 POLICY_FILE="${FM_REVIEW_POLICY_OVERRIDE:-$FM_ROOT/.github/firstmate-review-policy.json}"
 PROC_ROOT="${FM_PROC_ROOT_OVERRIDE:-/proc}"
+CREW_STATE_BIN="${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}"
+
+# Approved minimum Claude allowance floors (config may only raise these).
+MIN_CLAUDE_STOP_CLAUDE_PCT=25
+MIN_CLAUDE_STOP_ALL_PCT=12
 
 # Defaults (docs/configuration.md "Night stop-and-health check")
 WINDOW_START="23:00"
@@ -241,6 +313,27 @@ hhmm_to_minutes() {
   printf '%s\n' $(( 10#${v%:*} * 60 + 10#${v#*:} ))
 }
 
+validate_iana_timezone() {  # <tz>
+  local tz=${1:-} dir
+  case "$tz" in
+    ''|/*|*..*|*//*) return 1 ;;
+    *[!A-Za-z0-9._+/:-]*) return 1 ;;
+  esac
+  case "$tz" in
+    UTC|GMT|Etc/UTC|Etc/GMT) return 0 ;;
+  esac
+  for dir in "${TZDIR:-}" /usr/share/zoneinfo /var/db/timezone/zoneinfo /usr/lib/zoneinfo; do
+    [ -n "$dir" ] && [ -d "$dir" ] || continue
+    [ -f "$dir/$tz" ] && [ -r "$dir/$tz" ] && return 0
+    return 1
+  done
+  if type -P python3 >/dev/null 2>&1; then
+    python3 -c 'import sys; from zoneinfo import ZoneInfo; ZoneInfo(sys.argv[1])' "$tz" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
 now_epoch() {
   if [ -n "${FM_NIGHT_NOW_EPOCH:-}" ]; then
     is_uint "$FM_NIGHT_NOW_EPOCH" || die "FM_NIGHT_NOW_EPOCH must be an unsigned integer"
@@ -260,6 +353,7 @@ epoch_to_iso() {
 
 epoch_to_tz_hhmm() {
   local e=$1 tz=$2 out
+  validate_iana_timezone "$tz" || return 1
   out=$(TZ="$tz" date -d "@$e" '+%H:%M' 2>/dev/null) || \
     out=$(TZ="$tz" date -r "$e" '+%H:%M' 2>/dev/null) || \
     return 1
@@ -272,16 +366,6 @@ file_mtime() {
   m=$(stat -c %Y "$1" 2>/dev/null) || m=""
   is_uint "$m" || m=$(/usr/bin/stat -f %m "$1" 2>/dev/null) || m=""
   is_uint "$m" && printf '%s\n' "$m"
-}
-
-iso_to_epoch() {
-  local s=${1:-} out
-  [ -n "$s" ] || return 1
-  out=$(date -u -d "$s" +%s 2>/dev/null) || \
-    out=$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$s" +%s 2>/dev/null) || \
-    return 1
-  is_uint "$out" || return 1
-  printf '%s\n' "$out"
 }
 
 LEDGER_DIR=""
@@ -337,7 +421,9 @@ parse_night_config() {
   local line lineno=0 key rest value seen=""
   local s_min l_min e_min
   CONFIG_ERROR=
-  [ -e "$NIGHT_CONFIG" ] || return 0
+  # Reject dangling symlinks: `[ -e ]` is false for a broken symlink, so check
+  # `[ -L ]` too before treating the file as absent.
+  [ -e "$NIGHT_CONFIG" ] || [ -L "$NIGHT_CONFIG" ] || return 0
   if [ ! -f "$NIGHT_CONFIG" ] || [ -L "$NIGHT_CONFIG" ] || [ ! -r "$NIGHT_CONFIG" ]; then
     CONFIG_ERROR="config/night-check is unreadable or unsafe"
     return 1
@@ -373,24 +459,24 @@ parse_night_config() {
         WINDOW_END=$value
         ;;
       timezone)
-        case "$value" in
-          ''|*..*|*[!A-Za-z0-9._+/:-]*)
-            CONFIG_ERROR="config/night-check line $lineno: invalid timezone '$value'"
-            return 1
-            ;;
-        esac
+        if ! validate_iana_timezone "$value"; then
+          CONFIG_ERROR="config/night-check line $lineno: unknown or invalid IANA timezone '$value'"
+          return 1
+        fi
         WINDOW_TZ=$value
         ;;
       claude-stop-claude-pct)
-        if ! is_num "$value" || ! jq -en --arg v "$value" '($v|tonumber) >= 0 and ($v|tonumber) <= 100' >/dev/null 2>&1; then
-          CONFIG_ERROR="config/night-check line $lineno: claude-stop-claude-pct must be 0..100"
+        if ! is_num "$value" || ! jq -en --arg v "$value" --argjson min "$MIN_CLAUDE_STOP_CLAUDE_PCT" \
+          '($v|tonumber) >= $min and ($v|tonumber) <= 100' >/dev/null 2>&1; then
+          CONFIG_ERROR="config/night-check line $lineno: claude-stop-claude-pct must be $MIN_CLAUDE_STOP_CLAUDE_PCT..100 (cannot weaken approved floor)"
           return 1
         fi
         CLAUDE_STOP_CLAUDE_PCT=$value
         ;;
       claude-stop-all-pct)
-        if ! is_num "$value" || ! jq -en --arg v "$value" '($v|tonumber) >= 0 and ($v|tonumber) <= 100' >/dev/null 2>&1; then
-          CONFIG_ERROR="config/night-check line $lineno: claude-stop-all-pct must be 0..100"
+        if ! is_num "$value" || ! jq -en --arg v "$value" --argjson min "$MIN_CLAUDE_STOP_ALL_PCT" \
+          '($v|tonumber) >= $min and ($v|tonumber) <= 100' >/dev/null 2>&1; then
+          CONFIG_ERROR="config/night-check line $lineno: claude-stop-all-pct must be $MIN_CLAUDE_STOP_ALL_PCT..100 (cannot weaken approved floor)"
           return 1
         fi
         CLAUDE_STOP_ALL_PCT=$value
@@ -459,7 +545,7 @@ expand_home_path() {
 
 first_lane_reserve_flag() {
   local line key rest value path
-  [ -f "$LANE_CONFIG" ] && [ -r "$LANE_CONFIG" ] || return 1
+  [ -f "$LANE_CONFIG" ] && [ ! -L "$LANE_CONFIG" ] && [ -r "$LANE_CONFIG" ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%%#*}
     line=$(printf '%s' "$line" | tr '\t\r' '  ' | sed 's/^ *//; s/ *$//')
@@ -476,8 +562,15 @@ first_lane_reserve_flag() {
   return 1
 }
 
+reserve_flag_matches_token() {  # <path> <token>
+  local path=$1 token=$2 line1="" line2=""
+  [ -f "$path" ] && [ ! -L "$path" ] && [ -r "$path" ] || return 1
+  { IFS= read -r line1 && IFS= read -r line2; } < "$path" || return 1
+  [ "$line1" = "set_by=fm-night-check" ] && [ "$line2" = "token=$token" ]
+}
+
 reserve_flag_state() {  # <path> -> absent | set_by_night_check | set_externally
-  local path=$1 first=
+  local path=$1 first=""
   if [ ! -e "$path" ] && [ ! -L "$path" ]; then
     printf 'absent\n'
   elif [ -f "$path" ] && [ ! -L "$path" ] && [ -r "$path" ] \
@@ -488,13 +581,26 @@ reserve_flag_state() {  # <path> -> absent | set_by_night_check | set_externally
   fi
 }
 
-create_lane_reserve_flag() {  # <path> <verdict> <now_iso> <reasons_summary>
-  local path=$1 verdict=$2 iso=$3 summary=$4
+create_lane_reserve_flag() {  # <path> <token> <verdict> <now_iso> <reasons_summary>
+  local path=$1 token=$2 verdict=$3 iso=$4 summary=$5
   mkdir -p "$(dirname "$path")" 2>/dev/null || return 1
   ( umask 077
     set -C
-    printf 'set_by=fm-night-check\nat=%s\nverdict=%s\nreasons=%s\n' "$iso" "$verdict" "$summary" > "$path"
+    printf 'set_by=fm-night-check\ntoken=%s\nat=%s\nverdict=%s\nreasons=%s\n' \
+      "$token" "$iso" "$verdict" "$summary" > "$path"
   ) 2>/dev/null
+}
+
+record_created_reserve_flag() {  # <path> <token>
+  local path=$1 token=$2 updated
+  [ -f "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ] && [ -r "$ACTIVE_FILE" ] || return 1
+  updated=$(jq --arg path "$path" --arg token "$token" '
+    if .schema != "fm-night-active.v1" then error("invalid") else . end
+    | .created_reserve_flags = ((.created_reserve_flags // [])
+        | if any(.[]; .path == $path and .token == $token) then .
+          else . + [{path: $path, token: $token}] end)
+  ' "$ACTIVE_FILE" 2>/dev/null) || return 1
+  atomic_write_json "$ACTIVE_FILE" "$updated"
 }
 
 # --- hc-guard (fast path, no jq needed when night-active.json absent) -------
@@ -518,17 +624,65 @@ cmd_hc_guard() {
   exit 1
 }
 
-# --- start / end / verdict ------------------------------------------------
-hc_backend_configured() {
-  if [ "${FM_BACKEND:-}" = "hc" ]; then
+# --- hc backend & target resolution (via bin/fm-backend.sh + backends/hc.sh)
+# Resolves the active backend with fm_backend_resolve (explicit FM_BACKEND,
+# config/backend, or runtime auto-detection including app-terminal), and when hc
+# is selected resolves the exact session and socket pin the hc adapter uses
+# (stripping ambient HC_SOCKET unless FM_HC_SOCKET supplies the pin).
+HC_TARGET_RESOLVED_BACKEND=""
+HC_TARGET_SESSION=""
+HC_TARGET_SOCKET=""
+HC_TARGET_ERROR=""
+
+resolve_hc_target() {
+  local res backend session socket signal
+  HC_TARGET_RESOLVED_BACKEND=""
+  HC_TARGET_SESSION=""
+  HC_TARGET_SOCKET=""
+  HC_TARGET_ERROR=""
+  if [ -e "$CONFIG/backend" ] || [ -L "$CONFIG/backend" ]; then
+    if [ -L "$CONFIG/backend" ] || [ ! -f "$CONFIG/backend" ] || [ ! -r "$CONFIG/backend" ]; then
+      HC_TARGET_RESOLVED_BACKEND="hc"
+      HC_TARGET_ERROR="config/backend is unreadable or unsafe"
+      return 1
+    fi
+  fi
+  res=$(
+    FM_HOME="$FM_HOME" FM_CONFIG_OVERRIDE="$CONFIG" FM_STATE_OVERRIDE="$STATE" \
+      bash -c '
+        # shellcheck source=bin/fm-backend.sh
+        . "$1/fm-backend.sh" || exit 1
+        fm_backend_resolve 2>/dev/null || exit 1
+        fm_backend_validate "${FM_BACKEND_RESOLVED:-}" >/dev/null 2>&1 || exit 1
+        printf "%s\t%s\n" "${FM_BACKEND_RESOLVED:-}" "${FM_BACKEND_DETECT_SIGNAL:-}"
+      ' _ "$SCRIPT_DIR" 2>/dev/null
+  ) || {
+    HC_TARGET_RESOLVED_BACKEND="hc"
+    HC_TARGET_ERROR="could not resolve runtime backend via bin/fm-backend.sh"
+    return 1
+  }
+  backend=${res%%	*}
+  signal=${res#*	}
+  HC_TARGET_RESOLVED_BACKEND=$backend
+  if [ "$backend" != "hc" ]; then
+    if [ "$signal" = "app-terminal-unusable" ]; then
+      HC_TARGET_RESOLVED_BACKEND="hc"
+      HC_TARGET_ERROR="live hc app-terminal detected but hc toolchain is unusable"
+      return 1
+    fi
     return 0
   fi
-  if [ -f "$CONFIG/backend" ] && [ ! -L "$CONFIG/backend" ] && [ -r "$CONFIG/backend" ]; then
-    local val
-    val=$(sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' "$CONFIG/backend" 2>/dev/null | awk 'NF { print $1; exit }')
-    [ "$val" = "hc" ] && return 0
-  fi
-  return 1
+  session="${HC_SESSION:-default}"
+  case "$session" in
+    ''|-*|*[!A-Za-z0-9._-]*)
+      HC_TARGET_ERROR="invalid hc session name '$session'"
+      return 1
+      ;;
+  esac
+  socket="${FM_HC_SOCKET:-}"
+  HC_TARGET_SESSION=$session
+  HC_TARGET_SOCKET=$socket
+  return 0
 }
 
 hc_resolve_bin() {
@@ -542,13 +696,29 @@ hc_resolve_bin() {
   return 1
 }
 
-read_hc_status_json() {  # <now> -> prints normalized hc status object or returns 1
-  local now=$1 hbin json rc=0 parsed
+read_hc_status_json() {  # <now> <session> [socket] -> normalized hc status JSON or return 1
+  local now=$1 session=$2 socket=${3:-} hbin json rc=0 parsed
+  case "$session" in
+    ''|-*|*[!A-Za-z0-9._-]*) return 1 ;;
+  esac
   hbin=$(hc_resolve_bin) || return 1
-  json=$(
-    unset HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE
-    fm_run_timed "$HC_TIMEOUT" "$hbin" server status --json 2>/dev/null </dev/null
-  ) || rc=$?
+  # Match bin/backends/hc.sh fm_backend_hc_env_run: always strip
+  # HC_TERMINAL_ID/HC_TERMINAL_SOCKET/HC_SCOPE, always strip ambient HC_SOCKET
+  # unless an explicit socket pin (FM_HC_SOCKET saved in target) is supplied,
+  # and export exact HC_SESSION.
+  if [ -n "$socket" ]; then
+    json=$(
+      unset HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE
+      HC_SESSION="$session" HC_SOCKET="$socket" \
+        fm_run_timed "$HC_TIMEOUT" "$hbin" server status --json 2>/dev/null </dev/null
+    ) || rc=$?
+  else
+    json=$(
+      unset HC_TERMINAL_ID HC_TERMINAL_SOCKET HC_SCOPE HC_SOCKET
+      HC_SESSION="$session" \
+        fm_run_timed "$HC_TIMEOUT" "$hbin" server status --json 2>/dev/null </dev/null
+    ) || rc=$?
+  fi
   [ "$rc" -eq 0 ] && [ -n "$json" ] || return 1
   # shellcheck disable=SC2016
   parsed=$(printf '%s\n' "$json" | jq -c --argjson now "$now" '
@@ -568,6 +738,7 @@ read_hc_status_json() {  # <now> -> prints normalized hc status object or return
   printf '%s\n' "$parsed"
 }
 
+# --- start / end / verdict ------------------------------------------------
 cmd_start() {
   type -P jq >/dev/null 2>&1 || die_usage "jq is required"
   load_check_libs
@@ -575,11 +746,17 @@ cmd_start() {
     die "a night run is already active ($ACTIVE_FILE); run 'end' before starting a new night"
   fi
   parse_night_config || die "$CONFIG_ERROR"
-  local now iso hc_base=null doc
+  local now iso hc_target=null hc_base=null doc
   now=$(now_epoch)
   iso=$(epoch_to_iso "$now")
-  if hc_backend_configured; then
-    hc_base=$(read_hc_status_json "$now") || die "backend=hc is configured but herdr-core server status could not be read for baseline"
+  if ! resolve_hc_target; then
+    die "$HC_TARGET_ERROR"
+  fi
+  if [ "$HC_TARGET_RESOLVED_BACKEND" = "hc" ]; then
+    hc_target=$(jq -cn --arg s "$HC_TARGET_SESSION" --arg sock "$HC_TARGET_SOCKET" \
+      '{session: $s, socket: (if $sock == "" then null else $sock end)}')
+    hc_base=$(read_hc_status_json "$now" "$HC_TARGET_SESSION" "$HC_TARGET_SOCKET") \
+      || die "backend=hc resolved (session '$HC_TARGET_SESSION') but herdr-core server status could not be read for baseline"
   fi
   doc=$(jq -n \
     --argjson now "$now" \
@@ -588,6 +765,7 @@ cmd_start() {
     --arg ld "$LAST_DISPATCH" \
     --arg we "$WINDOW_END" \
     --arg tz "$WINDOW_TZ" \
+    --argjson hc_target "$hc_target" \
     --argjson hc_base "$hc_base" \
     '{
       schema: "fm-night-active.v1",
@@ -599,19 +777,43 @@ cmd_start() {
         end: $we,
         timezone: $tz
       },
-      hc_baseline: $hc_base
+      hc_target: $hc_target,
+      hc_baseline: $hc_base,
+      created_reserve_flags: []
     }') || die "could not build night-active record"
   atomic_write_json "$ACTIVE_FILE" "$doc" || die "could not write $ACTIVE_FILE"
-  rm -f -- "$STOP_FILE" 2>/dev/null || true
+  rm -f -- "$STOP_FILE" "$VERDICT_FILE" 2>/dev/null || true
   printf 'night-check: started at %s (window %s-%s, last-dispatch %s %s)\n' \
     "$iso" "$WINDOW_START" "$WINDOW_END" "$LAST_DISPATCH" "$WINDOW_TZ"
 }
 
 cmd_end() {
-  local rf_path
-  if rf_path=$(first_lane_reserve_flag) && [ "$(reserve_flag_state "$rf_path")" = set_by_night_check ]; then
-    rm -f -- "$rf_path" || die "could not remove reserve-flag $rf_path"
-    printf 'night-check: cleared reserve-flag %s\n' "$rf_path"
+  local rows rf_path rf_token updated
+  if [ -f "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ] && [ -r "$ACTIVE_FILE" ] && type -P jq >/dev/null 2>&1; then
+    rows=$(jq -r '
+      if .schema == "fm-night-active.v1" then
+        (.created_reserve_flags // [])[]
+        | select((.path | type == "string" and length > 0) and (.token | type == "string" and length > 0))
+        | [.path, .token] | @tsv
+      else empty end
+    ' "$ACTIVE_FILE" 2>/dev/null) || rows=""
+    while IFS=$'\t' read -r rf_path rf_token; do
+      [ -n "$rf_path" ] && [ -n "$rf_token" ] || continue
+      if reserve_flag_matches_token "$rf_path" "$rf_token"; then
+        rm -f -- "$rf_path" || die "could not remove reserve-flag $rf_path"
+        printf 'night-check: cleared reserve-flag %s\n' "$rf_path"
+      fi
+    done <<EOF
+$rows
+EOF
+  fi
+  # Mark any stored historical verdict inactive so it can never be mistaken for
+  # live two-hour-default authorization after `end`, while keeping the night's
+  # diagnosis intact for P3's morning board.
+  if [ -f "$VERDICT_FILE" ] && [ ! -L "$VERDICT_FILE" ] && [ -r "$VERDICT_FILE" ] && type -P jq >/dev/null 2>&1; then
+    if updated=$(jq 'if .schema == "fm-night-verdict.v1" then .night_active = false | .allow.two_hour_default = false else error("invalid") end' "$VERDICT_FILE" 2>/dev/null); then
+      atomic_write_json "$VERDICT_FILE" "$updated" || true
+    fi
   fi
   if [ ! -e "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ]; then
     printf 'night-check: no active night run\n'
@@ -719,15 +921,26 @@ eval_claude_quota() {
     quota_row(.; "claude"; "") as $row
     | if ($row // null) == null then
         {status: "unknown", verdict_effect: "stop_dispatch", reason: "quota-axi snapshot has no claude provider row", details: {}}
+      elif (($row.state | type) != "object")
+           or ($row.state.stale != false)
+           or (($row.state.status // "") != "fresh") then
+        {
+          status: "unknown",
+          verdict_effect: "stop_dispatch",
+          reason: "quota-axi Claude reading is stale or not fresh (status=\($row.state.status // "missing"), stale=\($row.state.stale // "missing"))",
+          details: {state_status: ($row.state.status // null), state_stale: ($row.state.stale // null)}
+        }
       else
         ([ ($row.windows // [])[] | select(.id == "five_hour") | rem | select(. != null) ] | first // null) as $five
         | ([ ($row.windows // [])[] | select(.id == "seven_day") | rem | select(. != null) ] | first // null) as $week
-        | ([ (if $five != null then {id: "five_hour", rem: $five} else empty end),
-             (if $week != null then {id: "seven_day", rem: $week} else empty end) ]) as $avail
-        | if ($avail | length) == 0 then
+        | if $five == null and $week == null then
             {status: "unknown", verdict_effect: "stop_dispatch", reason: "quota-axi returned neither five_hour nor seven_day Claude window", details: {five_hour_remaining_pct: null, seven_day_remaining_pct: null}}
+          elif $five == null then
+            {status: "unknown", verdict_effect: "stop_dispatch", reason: "quota-axi reading is missing five_hour Claude window", details: {five_hour_remaining_pct: null, seven_day_remaining_pct: $week}}
+          elif $week == null then
+            {status: "unknown", verdict_effect: "stop_dispatch", reason: "quota-axi reading is missing seven_day Claude window", details: {five_hour_remaining_pct: $five, seven_day_remaining_pct: null}}
           else
-            ($avail | min_by(.rem)) as $worst
+            (if $five <= $week then {id: "five_hour", rem: $five} else {id: "seven_day", rem: $week} end) as $worst
             | {
                 five_hour_remaining_pct: $five,
                 seven_day_remaining_pct: $week,
@@ -753,14 +966,18 @@ eval_claude_quota() {
   printf '%s\n' "$parsed"
 }
 
+resolve_gh_bin() {
+  if [ -n "${FM_NIGHT_GH_BIN:-}" ]; then
+    [ -x "$FM_NIGHT_GH_BIN" ] || return 1
+    printf '%s\n' "$FM_NIGHT_GH_BIN"
+    return 0
+  fi
+  type -P gh 2>/dev/null
+}
+
 eval_github_api() {
   local gbin json rc=0 parsed
-  if [ -n "${FM_NIGHT_GH_BIN:-}" ]; then
-    [ -x "$FM_NIGHT_GH_BIN" ] || { cond_json unknown stop_dispatch "FM_NIGHT_GH_BIN is not executable" '{}'; return 0; }
-    gbin=$FM_NIGHT_GH_BIN
-  else
-    gbin=$(type -P gh 2>/dev/null) || { cond_json unknown stop_dispatch "gh CLI is not installed" '{}'; return 0; }
-  fi
+  gbin=$(resolve_gh_bin) || { cond_json unknown stop_dispatch "gh CLI is not installed" '{}'; return 0; }
   json=$(fm_run_timed "$GH_TIMEOUT" "$gbin" api rate_limit 2>/dev/null </dev/null) || rc=$?
   if [ "$rc" -eq 124 ]; then
     cond_json unknown stop_dispatch "gh api rate_limit timed out after ${GH_TIMEOUT}s" '{}'
@@ -814,37 +1031,48 @@ extract_terminal_status() {  # <file> -> prints "<epoch>\t<verb>" or empty
   printf '%s\t%s\n' "$at" "$verb"
 }
 
-eval_failure_streak() {  # <since_epoch>
-  local since=$1 rows="" f id res at verb
-  local -a candidates=()
-  for f in "$STATE"/*.status; do
-    [ -e "$f" ] || [ -L "$f" ] || continue
-    candidates+=("$f")
-  done
-  if [ -d "$DATA" ]; then
-    for f in "$DATA"/*/status.log "$DATA"/*/status.[0-9]*.log; do
-      [ -e "$f" ] || [ -L "$f" ] || continue
-      candidates+=("$f")
-    done
+meta_spawn_epoch() {  # <meta-file> -> prints spawn epoch or returns 1
+  local meta=$1 sg
+  sg=$(sed -n 's/^spawn_gen=s\([0-9][0-9]*\)\..*/\1/p' "$meta" 2>/dev/null | head -1)
+  if is_uint "$sg"; then
+    printf '%s\n' "$sg"
+    return 0
   fi
-  for f in ${candidates[@]+"${candidates[@]}"}; do
-    if [ -L "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
-      cond_json unknown stop_dispatch "status log $f is unreadable or unsafe" '{}'
+  sg=$(sed -n 's/^spawned_epoch=\([0-9][0-9]*\)$/\1/p' "$meta" 2>/dev/null | head -1)
+  if is_uint "$sg"; then
+    printf '%s\n' "$sg"
+    return 0
+  fi
+  file_mtime "$meta"
+}
+
+eval_failure_streak() {  # <since_epoch>
+  local since=$1 rows="" meta id kind spawn_ep sf res at verb
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || [ -L "$meta" ] || continue
+    if [ -L "$meta" ] || [ ! -f "$meta" ] || [ ! -r "$meta" ]; then
+      cond_json unknown stop_dispatch "task metadata $meta is unreadable or unsafe" '{}'
       return 0
     fi
-    case "$f" in
-      "$STATE"/*.status)
-        id=$(basename "$f" .status)
-        ;;
-      *)
-        id=$(basename "$(dirname "$f")")
-        ;;
-    esac
-    if [ -f "$STATE/$id.meta" ] && grep -qx 'kind=secondmate' "$STATE/$id.meta" 2>/dev/null; then
-      continue
+    kind=$(sed -n 's/^kind=//p' "$meta" 2>/dev/null | head -1)
+    # Limit failure streak strictly to kind=ship tasks (leave out scouts,
+    # secondmates, and untyped records).
+    [ "$kind" = "ship" ] || continue
+    spawn_ep=$(meta_spawn_epoch "$meta") || {
+      cond_json unknown stop_dispatch "could not determine spawn epoch from $meta" '{}'
+      return 0
+    }
+    # Only count ship tasks spawned inside the night window.
+    [ "$spawn_ep" -ge "$since" ] || continue
+    id=$(basename "$meta" .meta)
+    sf="$STATE/$id.status"
+    [ -e "$sf" ] || [ -L "$sf" ] || continue
+    if [ -L "$sf" ] || [ ! -f "$sf" ] || [ ! -r "$sf" ]; then
+      cond_json unknown stop_dispatch "status log $sf is unreadable or unsafe" '{}'
+      return 0
     fi
-    res=$(extract_terminal_status "$f") || {
-      cond_json unknown stop_dispatch "could not read terminal status from $f" '{}'
+    res=$(extract_terminal_status "$sf") || {
+      cond_json unknown stop_dispatch "could not read terminal status from $sf" '{}'
       return 0
     }
     [ -n "$res" ] || continue
@@ -875,21 +1103,31 @@ eval_failure_streak() {  # <since_epoch>
         total_completed: ($all | length)
       } as $det
     | if $res.streak >= $limit then
-        {status: "tripped", verdict_effect: "stop_dispatch", reason: "failure streak of \($res.streak) consecutive failed night tickets (\($res.ids | join(", ")))", details: $det}
+        {status: "tripped", verdict_effect: "stop_dispatch", reason: "failure streak of \($res.streak) consecutive failed night ship tickets (\($res.ids | join(", ")))", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
   '
 }
 
+resolve_pr_base_ref() {  # <pr-url> -> prints baseRefName or returns 1
+  local url=$1 gbin json rc=0 ref
+  gbin=$(resolve_gh_bin) || return 1
+  json=$(fm_run_timed "$GH_TIMEOUT" "$gbin" pr view "$url" --json baseRefName 2>/dev/null </dev/null) || rc=$?
+  [ "$rc" -eq 0 ] && [ -n "$json" ] || return 1
+  ref=$(printf '%s\n' "$json" | jq -er '.baseRefName | select(type == "string" and length > 0)' 2>/dev/null) || return 1
+  printf '%s\n' "$ref"
+}
+
 eval_dev_health() {
-  local f records_json="[]" count=0 rows
+  local f records_json="[]" count=0 rows url fallback_ref
+  local resolved_cache="" cached_line
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
   fi
   if [ ! -e "$LEDGER_DIR" ] && [ ! -L "$LEDGER_DIR" ]; then
-    cond_json ok continue "" '{"failed_repos":[],"checked_ledgers":0}'
+    cond_json ok continue "" '{"failed_targets":[],"checked_ledgers":0}'
     return 0
   fi
   if [ -L "$LEDGER_DIR" ] || [ ! -d "$LEDGER_DIR" ] || [ ! -r "$LEDGER_DIR" ]; then
@@ -912,19 +1150,44 @@ eval_dev_health() {
       | ($u | sub("/(-/)?(pull|merge_requests)/.*$"; "")) as $repo
       | [ .generations[] | (.post_merge_verifications // [])[]
           | select(.outcome == "passed" or .outcome == "failed")
-          | {repo: $repo, url: $u, head: (.head // null), outcome: .outcome, recorded_epoch: (.recorded_epoch // 0)} ]
+          | {
+              repo: $repo,
+              url: $u,
+              head: (.head // null),
+              base_ref: (.base_ref // .baseRefName // .target_branch // ""),
+              outcome: .outcome,
+              recorded_epoch: (.recorded_epoch // 0)
+            } ]
     ' "$f" 2>/dev/null) || {
       cond_json unknown stop_dispatch "failed to inspect review ledger $(basename "$f")" '{}'
       return 0
     }
+    if printf '%s\n' "$rows" | jq -e 'any(.[]; .base_ref == "")' >/dev/null 2>&1; then
+      url=$(jq -r '.url' "$f")
+      fallback_ref=""
+      cached_line=$(printf '%s\n' "$resolved_cache" | awk -F '\t' -v u="$url" '$1 == u { print $2; exit }')
+      if [ -n "$cached_line" ]; then
+        fallback_ref=$cached_line
+      else
+        if ! fallback_ref=$(resolve_pr_base_ref "$url"); then
+          cond_json unknown stop_dispatch "could not resolve target branch for post-merge verification on $url" '{}'
+          return 0
+        fi
+        resolved_cache="${resolved_cache}${url}	${fallback_ref}
+"
+      fi
+      rows=$(printf '%s\n' "$rows" | jq -c --arg ref "$fallback_ref" '
+        map(if .base_ref == "" then .base_ref = $ref else . end)
+      ')
+    fi
     records_json=$(jq -cn --argjson a "$records_json" --argjson b "$rows" '$a + $b')
   done
   # shellcheck disable=SC2016
   printf '%s\n' "$records_json" | jq -c --argjson checked "$count" '
-    [ group_by(.repo)[] | max_by(.recorded_epoch) | select(.outcome == "failed") ] as $failed
-    | {failed_repos: $failed, checked_ledgers: $checked} as $det
+    [ group_by([.repo, .base_ref])[] | max_by(.recorded_epoch) | select(.outcome == "failed") ] as $failed
+    | {failed_targets: $failed, checked_ledgers: $checked} as $det
     | if ($failed | length) > 0 then
-        {status: "tripped", verdict_effect: "stop_dispatch", reason: "latest post-merge check failed in review ledger for \([$failed[].url] | join(", "))", details: $det}
+        {status: "tripped", verdict_effect: "stop_dispatch", reason: "latest post-merge check failed in review ledger for \([$failed[] | "\(.url) (\(.base_ref))"] | join(", "))", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
@@ -948,10 +1211,28 @@ pr_url_ledger_path() {  # <pr-url> -> prints ledger path if GitHub PR URL
   return 1
 }
 
+crew_state_waiting_for_ci() {  # <fm-crew-state-line> -> 0 if declared wait for check/CI admission
+  local line=$1 detail lower
+  case "$line" in
+    'state: paused '*) ;;
+    *) return 1 ;;
+  esac
+  # Strip prefix up to the second " · " separator (`state: paused · source: <src> · <detail>`)
+  detail=${line#*' · '}
+  detail=${detail#*' · '}
+  detail=${detail%%' · budget:'*}
+  lower=$(printf '%s' "$detail" | tr '[:upper:]' '[:lower:]')
+  printf '%s\n' "$lower" | grep -Eq '(ci[[:space:]_-]*(admission|slot|lease|queue|check|run)|check[[:space:]_-]*(slot|machine|admission|lease|queue)|waiting (for|on) (ci|check|a check|a ci)|awaiting (ci|check|a check|a ci))'
+}
+
 eval_check_machine() {
-  local meta id kind pr sf done_line ledger_path waiting_json="[]"
+  local meta id kind pr pr_head cs_out cs_rc ledger_path head_key waiting_json="[]"
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
+    return 0
+  fi
+  if [ ! -x "$CREW_STATE_BIN" ]; then
+    cond_json unknown stop_dispatch "crew state reader $CREW_STATE_BIN is unavailable" '{}'
     return 0
   fi
   for meta in "$STATE"/*.meta; do
@@ -964,53 +1245,79 @@ eval_check_machine() {
     case "$kind" in secondmate|scout) continue ;; esac
     pr=$(sed -n 's/^pr=//p' "$meta" 2>/dev/null | head -1)
     [ -n "$pr" ] || continue
+    pr_head=$(sed -n 's/^pr_head=//p' "$meta" 2>/dev/null | head -1)
     id=$(basename "$meta" .meta)
     # Skip PRs already merged or whose poll was retired
     if [ -f "$STATE/$id.pr-poll-merge-notified" ] || [ -f "$STATE/$id.pr-poll-retirement" ]; then
       continue
     fi
-    # Check status file if present: a "checks green" done line means CI already passed
-    sf="$STATE/$id.status"
-    if [ -e "$sf" ] || [ -L "$sf" ]; then
-      if [ -L "$sf" ] || [ ! -f "$sf" ] || [ ! -r "$sf" ]; then
-        cond_json unknown stop_dispatch "status file $sf is unreadable or unsafe" '{}'
-        return 0
-      fi
-      done_line=$(awk '/^done([[:space:]]+\[[^]]+\])*:/ { last = $0 } END { if (last != "") print last }' "$sf" 2>/dev/null)
-      case "$done_line" in
-        *'checks green'*) continue ;;
-      esac
+    cs_rc=0
+    cs_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_CONFIG_OVERRIDE="$CONFIG" \
+      FM_DATA_OVERRIDE="$DATA" FM_CREW_STATE_NO_FORGE=1 "$CREW_STATE_BIN" "$id" 2>/dev/null) || cs_rc=$?
+    if [ "$cs_rc" -ne 0 ] || [ -z "$cs_out" ]; then
+      cond_json unknown stop_dispatch "could not read current crew state for $id" '{}'
+      return 0
     fi
-    # Check review ledger if one exists for this PR
+    if ! crew_state_waiting_for_ci "$cs_out"; then
+      continue
+    fi
+    # Exclude any PR whose current head has running checks or completed
+    # required checks using fm-pr-review.sh's own normalized check status
+    # (COMPLETED with pass or skipping).
     if ledger_path=$(pr_url_ledger_path "$pr") && { [ -e "$ledger_path" ] || [ -L "$ledger_path" ]; }; then
       if [ -L "$ledger_path" ] || [ ! -f "$ledger_path" ] || [ ! -r "$ledger_path" ]; then
         cond_json unknown stop_dispatch "review ledger $ledger_path is unreadable or unsafe" '{}'
         return 0
       fi
-      local ledger_state
-      ledger_state=$(jq -r '
-        if .schema != "firstmate-pr-review-ledger.v1" or (.generations | type != "array" or length == 0) then "invalid"
-        elif (.generations[-1].merge_decision.decision // "") == "merge" then "done"
-        elif ((.generations[-1].checkpoints // []) | length) > 0
-             and (((.generations[-1].checkpoints[-1].checks // []) | length) > 0)
-             and (all((.generations[-1].checkpoints[-1].checks // [])[]; .status == "completed" and .conclusion == "success")) then "done"
-        else "waiting" end
-      ' "$ledger_path" 2>/dev/null) || ledger_state="invalid"
+      local ledger_info ledger_state ledger_head
+      ledger_info=$(jq -r --arg head "$pr_head" '
+        if .schema != "firstmate-pr-review-ledger.v1" or (.generations | type != "array" or length == 0) then
+          "invalid\t"
+        else
+          (.generations[-1]) as $g
+          | (.current_head // $g.head // "") as $cur
+          | (if $head != "" then $head else $cur end) as $target
+          | if ($g.merge_decision.decision // "") == "merge" then
+              "done\t\($target)"
+            elif (($g.checkpoints // []) | length) > 0
+                 and ($target == "" or ($g.checkpoints[-1].head // "") == $target)
+                 and ((($g.checkpoints[-1].checks // []) | length) > 0) then
+              ($g.checkpoints[-1].checks) as $checks
+              | if any($checks[]; (.status // "") != "COMPLETED") then
+                  "running\t\($target)"
+                elif all($checks[]; .status == "COMPLETED" and (.conclusion == "pass" or .conclusion == "skipping")) then
+                  "done\t\($target)"
+                else
+                  "waiting\t\($target)"
+                end
+            else
+              "waiting\t\($target)"
+            end
+        end
+      ' "$ledger_path" 2>/dev/null) || ledger_info="invalid	"
+      ledger_state=${ledger_info%%	*}
+      ledger_head=${ledger_info#*	}
       case "$ledger_state" in
         invalid)
           cond_json unknown stop_dispatch "review ledger $(basename "$ledger_path") is malformed" '{}'
           return 0
           ;;
-        done) continue ;;
+        done|running) continue ;;
       esac
+      [ -n "$pr_head" ] || pr_head=$ledger_head
     fi
-    waiting_json=$(printf '%s\n' "$waiting_json" | jq -c --arg id "$id" --arg pr "$pr" '. + [{task: $id, pr: $pr}]')
+    head_key="${pr}#${pr_head:-unknown}"
+    waiting_json=$(printf '%s\n' "$waiting_json" | jq -c \
+      --arg id "$id" --arg pr "$pr" --arg head "$pr_head" --arg key "$head_key" '
+      if any(.[]; .key == $key) then .
+      else . + [{key: $key, task: $id, pr: $pr, head: (if $head == "" then null else $head end)}] end
+    ')
   done
   # shellcheck disable=SC2016
   printf '%s\n' "$waiting_json" | jq -c --argjson limit "$CHECK_QUEUE_LIMIT" '
-    {waiting_count: length, limit: $limit, waiting_prs: .} as $det
+    {waiting_count: length, limit: $limit, waiting_prs: map({task, pr, head})} as $det
     | if length >= $limit then
-        {status: "tripped", verdict_effect: "stop_dispatch", reason: "\(length) finished PRs waiting for a check slot (limit \($limit)): \([.[].task] | join(", "))", details: $det}
+        {status: "tripped", verdict_effect: "stop_dispatch", reason: "\(length) distinct PR heads waiting for CI/check admission (limit \($limit)): \([.[].task] | join(", "))", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
@@ -1018,7 +1325,7 @@ eval_check_machine() {
 }
 
 eval_validation_cap() {  # <since_epoch>
-  local since=$1 f runs_json="[]" rows
+  local since=$1 f runs_json="[]" row u h ce
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
@@ -1038,43 +1345,34 @@ eval_validation_cap() {  # <since_epoch>
         cond_json unknown stop_dispatch "review ledger $(basename "$f") is malformed JSON" '{}'
         return 0
       fi
-      local u h a ce ep
-      rows=$(jq -r '
-        .url as $u
-        | .generations[]
-        | select((.risk.level // "") == "high")
-        | (.created_epoch // 0) as $ce
-        | (.attestations // [])[]
-        | select(.kind == "no-mistakes")
-        | [$u, (.head // ""), (.at // ""), ($ce | tostring)] | @tsv
+      # Count high-stakes PRs whose current generation was created during the
+      # night (PR-ready time, deduplicated by PR URL and head).
+      row=$(jq -r --argjson since "$since" '
+        .generations[-1] as $g
+        | if ($g.risk.level // "") == "high"
+             and ($g.created_epoch | type == "number")
+             and $g.created_epoch >= $since then
+            [.url, ($g.head // .current_head // ""), ($g.created_epoch | tostring)] | @tsv
+          else empty end
       ' "$f" 2>/dev/null) || {
-        cond_json unknown stop_dispatch "failed to read attestations from $(basename "$f")" '{}'
+        cond_json unknown stop_dispatch "failed to inspect review ledger $(basename "$f")" '{}'
         return 0
       }
-      while IFS=$'\t' read -r u h a ce; do
-        [ -n "$u" ] || continue
-        if [ -n "$a" ] && ep=$(iso_to_epoch "$a"); then
-          :
-        elif is_uint "$ce"; then
-          ep=$ce
-        else
-          continue
-        fi
-        if [ "$ep" -ge "$since" ]; then
-          runs_json=$(printf '%s\n' "$runs_json" | jq -c --arg url "$u" --arg head "$h" --argjson ep "$ep" '
-            if any(.[]; .url == $url and .head == $head) then . else . + [{url: $url, head: $head, epoch: $ep}] end
-          ')
-        fi
-      done <<EOF
-$rows
+      [ -n "$row" ] || continue
+      IFS=$'\t' read -r u h ce <<EOF
+$row
 EOF
+      runs_json=$(printf '%s\n' "$runs_json" | jq -c --arg url "$u" --arg head "$h" --argjson ep "$ce" '
+        if any(.[]; .url == $url and .head == $head) then .
+        else . + [{url: $url, head: $head, created_epoch: $ep}] end
+      ')
     done
   fi
   # shellcheck disable=SC2016
   printf '%s\n' "$runs_json" | jq -c --argjson cap "$VALIDATION_CAP" --argjson since "$since" '
     {count: length, cap: $cap, since_epoch: $since, runs: .} as $det
     | if length >= $cap then
-        {status: "tripped", verdict_effect: "stop_validation", reason: "high-stakes validation cap reached (\(length) of \($cap) runs tonight)", details: $det}
+        {status: "tripped", verdict_effect: "stop_validation", reason: "high-stakes validation cap reached (\(length) of \($cap) high-stakes PRs created tonight)", details: $det}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det}
       end
@@ -1132,17 +1430,27 @@ eval_supervision_stall() {  # <now>
       cond_json unknown stop_dispatch "supervision-host health file $hf is unreadable or unsafe" '{}'
       return 0
     fi
-    local cd_val ra_val
-    ra_val=$(
+    local f_key cd_val ra_val err_val cur_key
+    f_key=$(sed -n 's/^key=//p' "$hf" 2>/dev/null | head -1)
+    cd_val=$(sed -n 's/^cooldown=//p' "$hf" 2>/dev/null | head -1)
+    ra_val=$(sed -n 's/^retry_after=//p' "$hf" 2>/dev/null | head -1)
+    err_val=$(sed -n 's/^errors=//p' "$hf" 2>/dev/null | head -1)
+    if [ -z "$f_key" ] || ! is_uint "$cd_val" || ! is_uint "$ra_val" || { [ -n "$err_val" ] && ! is_uint "$err_val"; }; then
+      cond_json unknown stop_dispatch "supervision-host health file $hf has malformed fields" '{}'
+      return 0
+    fi
+    cur_key=$(
       # shellcheck source=bin/fm-wake-lib.sh
       . "$SCRIPT_DIR/fm-wake-lib.sh" >/dev/null 2>&1 || exit 1
       # shellcheck source=bin/fm-supervision-engine-lib.sh
       . "$SCRIPT_DIR/fm-supervision-engine-lib.sh" >/dev/null 2>&1 || exit 1
       fm_supervision_host_config "$CONFIG" "$(fm_supervision_host_primary)" || exit 1
-      fm_supervision_host_paused_until "$STATE"
-    ) || ra_val=""
-    cd_val=$(sed -n 's/^cooldown=//p' "$hf" 2>/dev/null | head -1)
-    if is_uint "$ra_val" && is_uint "$cd_val"; then
+      fm_supervision_host_health_key "$STATE"
+    ) || {
+      cond_json unknown stop_dispatch "supervision-host health file $hf is present but current engine key could not be resolved" '{}'
+      return 0
+    }
+    if [ "$f_key" = "$cur_key" ] && [ "$cd_val" -gt 0 ]; then
       latch_stalled=1
       latch_cooldown=$cd_val
       latch_retry=$ra_val
@@ -1184,21 +1492,48 @@ eval_supervision_stall() {  # <now>
 }
 
 eval_hc_core() {  # <now> <since_epoch>
-  local now=$1 since=$2 has_base=0 base_json=null cur_json
+  local now=$1 since=$2 has_target=0 target_json=null base_json=null session="" socket="" cur_json
   if [ -f "$ACTIVE_FILE" ] && [ ! -L "$ACTIVE_FILE" ] && [ -r "$ACTIVE_FILE" ]; then
+    target_json=$(jq -c 'if .schema == "fm-night-active.v1" and (.hc_target | type == "object") then .hc_target else null end' "$ACTIVE_FILE" 2>/dev/null) || target_json=null
     base_json=$(jq -c 'if .schema == "fm-night-active.v1" and (.hc_baseline | type == "object") then .hc_baseline else null end' "$ACTIVE_FILE" 2>/dev/null) || base_json=null
-    [ "$base_json" != "null" ] && has_base=1
+    if [ "$target_json" != "null" ] || [ "$base_json" != "null" ]; then
+      has_target=1
+    fi
   fi
-  if ! hc_backend_configured && [ "$has_base" -eq 0 ]; then
-    cond_json not_applicable continue "" '{}'
-    return 0
+  if [ "$has_target" -eq 1 ]; then
+    if [ "$target_json" != "null" ]; then
+      session=$(printf '%s\n' "$target_json" | jq -r '.session // ""' 2>/dev/null) || session=""
+      socket=$(printf '%s\n' "$target_json" | jq -r '.socket // ""' 2>/dev/null) || socket=""
+    else
+      session="${HC_SESSION:-default}"
+      socket="${FM_HC_SOCKET:-}"
+    fi
+    if [ -z "$session" ]; then
+      cond_json unknown stop_dispatch "saved hc target in state/night-active.json has no session" '{}'
+      return 0
+    fi
+  else
+    if ! resolve_hc_target; then
+      cond_json unknown stop_dispatch "$HC_TARGET_ERROR" '{}'
+      return 0
+    fi
+    if [ "$HC_TARGET_RESOLVED_BACKEND" != "hc" ]; then
+      cond_json not_applicable continue "" '{}'
+      return 0
+    fi
+    session=$HC_TARGET_SESSION
+    socket=$HC_TARGET_SOCKET
+    target_json=$(jq -cn --arg s "$session" --arg sock "$socket" \
+      '{session: $s, socket: (if $sock == "" then null else $sock end)}')
   fi
-  if ! cur_json=$(read_hc_status_json "$now"); then
-    cond_json unknown stop_dispatch "herdr-core server status could not be read" '{}'
+  if ! cur_json=$(read_hc_status_json "$now" "$session" "$socket"); then
+    cond_json unknown stop_dispatch "herdr-core server status could not be read for session '$session'" \
+      "$(jq -cn --argjson target "$target_json" '{target: $target}')"
     return 0
   fi
   # shellcheck disable=SC2016
   jq -cn \
+    --argjson target "$target_json" \
     --argjson cur "$cur_json" \
     --argjson base "$base_json" \
     --argjson since "$since" '
@@ -1211,7 +1546,7 @@ eval_hc_core() {  # <now> <since_epoch>
      elif $cur.started_epoch > ($since + 5) then
        "hc core started after night began (started_epoch \($cur.started_epoch) > night_start \($since), uptime \($cur.uptime_ms)ms)"
      else "" end) as $restart_reason
-    | {baseline: $base, current: $cur} as $det
+    | {target: $target, baseline: $base, current: $cur} as $det
     | if $restart_reason != "" then
         {status: "tripped", verdict_effect: "end_night", reason: "hc core restarted during the night: \($restart_reason)", details: $det}
       else
@@ -1319,20 +1654,23 @@ render_human_verdict() {  # <verdict_json_file>
   ' "$1"
 }
 
-prior_latched_json() {  # <now> <iso> -> latched array from this night's stop record
-  local now=$1 iso=$2 out
+PRIOR_LATCHED="[]"
+STOP_RECORD_BAD=0
+load_prior_latched_json() {  # sets PRIOR_LATCHED and STOP_RECORD_BAD (call directly, not in a subshell)
+  local out
+  PRIOR_LATCHED="[]"
+  STOP_RECORD_BAD=0
   if [ ! -e "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ]; then
-    printf '[]\n'
     return 0
   fi
   if [ -f "$STOP_FILE" ] && [ ! -L "$STOP_FILE" ] && [ -r "$STOP_FILE" ] \
     && out=$(jq -c 'if .schema == "fm-night-stop.v1" and (.latched | type == "array") then .latched else error("invalid") end' "$STOP_FILE" 2>/dev/null) \
     && [ -n "$out" ]; then
-    printf '%s\n' "$out"
+    PRIOR_LATCHED=$out
     return 0
   fi
-  jq -cn --argjson now "$now" --arg iso "$iso" \
-    '[{condition: "night_stop_record", verdict_effect: "stop_dispatch", reason: "state/night-stop.json is unreadable or corrupt, so earlier latched stops are unknown", latched_epoch: $now, latched_at: $iso}]'
+  STOP_RECORD_BAD=1
+  return 0
 }
 
 # --- Main check flow --------------------------------------------------------
@@ -1383,9 +1721,11 @@ cmd_check() {
   c_hc=$(eval_hc_core "$now" "$since_epoch")
   c_load=$(eval_host_load "$now")
 
-  local prior_latched="[]"
-  if [ "$night_active" = true ]; then
-    prior_latched=$(prior_latched_json "$now" "$iso")
+  local prior_latched="[]" stop_record_bad=0
+  if [ "$night_active" = true ] && [ "$active_bad" -eq 0 ]; then
+    load_prior_latched_json
+    prior_latched=$PRIOR_LATCHED
+    stop_record_bad=$STOP_RECORD_BAD
   fi
 
   local rf_configured=false rf_path=""
@@ -1400,7 +1740,9 @@ cmd_check() {
     --argjson now "$now" \
     --arg iso "$iso" \
     --argjson night_active "$night_active" \
+    --argjson active_bad "$active_bad" \
     --argjson night_started "$night_started" \
+    --argjson stop_record_bad "$stop_record_bad" \
     --argjson c_window "$c_window" \
     --argjson c_quota "$c_quota" \
     --argjson c_gh "$c_gh" \
@@ -1440,7 +1782,7 @@ cmd_check() {
       hc_core: $c_hc,
       host_load: $c_load
     } as $conds
-    | (if $night_active then
+    | (if $night_active and $active_bad == 0 then
          $prior_latched
          + [ $conds | to_entries[]
              | select(.key as $k | any($events[]; . == $k))
@@ -1450,6 +1792,9 @@ cmd_check() {
        else [] end) as $latched
     | ([ $conds | to_entries[] | select(.value.status == "tripped" or .value.status == "unknown")
          | {condition: .key, status: .value.status, verdict_effect: .value.verdict_effect, reason: .value.reason} ]
+       + (if $stop_record_bad == 1 then
+            [{condition: "night_stop_record", status: "unknown", verdict_effect: "stop_dispatch", reason: "state/night-stop.json is unreadable or corrupt, so earlier latched stops are unknown"}]
+          else [] end)
        + [ $latched[] | select(($conds[.condition].status // "") != "tripped")
            | {condition: .condition, status: "latched", verdict_effect: .verdict_effect, reason: "latched at \(.latched_at): \(.reason)"} ]) as $tripped
     | (if ($tripped | length) == 0 then "continue"
@@ -1459,7 +1804,7 @@ cmd_check() {
     | ($verdict == "continue" or $verdict == "stop_validation") as $allow_claude
     | ($verdict != "end_night" and ($health_blocked | not)) as $allow_merge
     | ($verdict == "continue") as $allow_validation
-    | ($allow_dispatch and ($health_blocked | not)) as $allow_default
+    | ($night_active and $active_bad == 0 and $allow_dispatch and ($health_blocked | not)) as $allow_default
     | {
         schema: "fm-night-verdict.v1",
         checked_epoch: $now,
@@ -1490,22 +1835,27 @@ cmd_check() {
       }
   ') || die "could not assemble verdict document"
 
-  local final_verdict latched_count latched_summary rf_state="not_configured"
+  local final_verdict latched_count latched_summary rf_state="not_configured" rf_token=""
   final_verdict=$(printf '%s\n' "$verdict_doc" | jq -r '.verdict')
   latched_count=$(printf '%s\n' "$verdict_doc" | jq -r '.latched | length')
   latched_summary=$(printf '%s\n' "$verdict_doc" | jq -r '[.latched[].reason] | join("; ")')
 
   if [ "$rf_configured" = "true" ]; then
     rf_state=$(reserve_flag_state "$rf_path")
-    if [ "$latched_count" -gt 0 ] && [ "$rf_state" = absent ]; then
-      create_lane_reserve_flag "$rf_path" "$final_verdict" "$iso" "$latched_summary" \
-        || printf 'fm-night-check: warning: could not create reserve-flag at %s\n' "$rf_path" >&2
+    if [ "$latched_count" -gt 0 ] && [ "$stop_record_bad" -eq 0 ] && [ "$rf_state" = absent ]; then
+      rf_token="fm-night-${now}-$$-${RANDOM}"
+      if create_lane_reserve_flag "$rf_path" "$rf_token" "$final_verdict" "$iso" "$latched_summary"; then
+        record_created_reserve_flag "$rf_path" "$rf_token" \
+          || printf 'fm-night-check: warning: could not record reserve-flag ownership for %s\n' "$rf_path" >&2
+      else
+        printf 'fm-night-check: warning: could not create reserve-flag at %s\n' "$rf_path" >&2
+      fi
       rf_state=$(reserve_flag_state "$rf_path")
     fi
   fi
 
   local stop_path_json="null"
-  if [ "$latched_count" -gt 0 ]; then
+  if [ "$latched_count" -gt 0 ] && [ "$stop_record_bad" -eq 0 ]; then
     stop_path_json=$(jq -cn --arg p "$STOP_FILE" '$p')
   fi
 
@@ -1514,7 +1864,7 @@ cmd_check() {
     --argjson stop_path "$stop_path_json" \
     '.reserve_flag.state = $rf_state | .stop_record_path = $stop_path')
 
-  if [ "$latched_count" -gt 0 ]; then
+  if [ "$latched_count" -gt 0 ] && [ "$stop_record_bad" -eq 0 ]; then
     write_stop_record "$verdict_doc" "$now" "$iso" || die "could not write $STOP_FILE"
   fi
   atomic_write_json "$VERDICT_FILE" "$verdict_doc" || die "could not write $VERDICT_FILE"

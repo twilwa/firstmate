@@ -22,10 +22,14 @@ set -eu
 case "${1:-} ${2:-}" in
   "api /repos/o/r/pulls/7")
     head=${FM_TEST_PR_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+    base_json=""
+    if [ -n "${FM_TEST_PR_BASE:-}" ]; then
+      base_json=$(printf ',"base":{"ref":"%s"}' "$FM_TEST_PR_BASE")
+    fi
     if [ "${FM_TEST_PR_MERGED:-true}" = true ]; then
-      printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}}\n' "$head"
+      printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}%s}\n' "$head" "$base_json"
     else
-      printf '{"merged":false,"merge_commit_sha":null,"head":{"sha":"%s"}}\n' "$head"
+      printf '{"merged":false,"merge_commit_sha":null,"head":{"sha":"%s"}%s}\n' "$head" "$base_json"
     fi
     ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
@@ -948,8 +952,10 @@ test_post_merge_browser_pass_requires_full_local_evidence() {
     || fail 'complete passing browser evidence did not satisfy the Ready for QA gate'
   linear_evidence="$TMP_ROOT/post-merge-pass-linear.json"
   jq '.posted_evidence_url="https://linear.app/example/issue/TES-79"' "$evidence" > "$linear_evidence"
-  post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null \
+  FM_TEST_PR_BASE=dev post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null \
     || fail 'a concrete Linear issue evidence URL was refused'
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].base_ref // ""' "$path")" = dev ] \
+    || fail 'post-merge record did not retain the forge base branch'
   pass 'browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence'
 }
 

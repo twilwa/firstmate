@@ -2868,7 +2868,7 @@ That writes `state/usage-warner.check.sh` and binds its bytes with `bin/fm-check
 
 The optional local, gitignored `config/night-check` file configures the overnight window, cut-off, quota floors, and health limits evaluated by [`bin/fm-night-check.sh`](../bin/fm-night-check.sh).
 When the file is absent, the defaults below apply.
-When the file is present but unreadable or malformed (an unknown key, a duplicate key, a missing or invalid value, `claude-stop-all-pct` above `claude-stop-claude-pct`, or `last-dispatch` outside the window), the check never guesses: it reports the condition as `unknown` and stops new dispatch.
+When the file is present (including a dangling symlink) but unreadable or malformed (an unknown key, a duplicate key, a missing or invalid value, an unknown IANA timezone, `claude-stop-claude-pct` below 25, `claude-stop-all-pct` below 12, `claude-stop-all-pct` above `claude-stop-claude-pct`, or `last-dispatch` outside the window), the check never guesses: it reports `night_window` as `unknown` and stops new dispatch.
 The file is home-local and is not inherited by secondmate homes.
 
 This section is the single owner of the `config/night-check` schema and defaults.
@@ -2878,13 +2878,13 @@ This section is the single owner of the `config/night-check` schema and defaults
 window-start 23:00            # local start of the night window (HH:MM, default 23:00)
 last-dispatch 06:30           # local cut-off after which no new work dispatches (HH:MM, default 06:30)
 window-end 07:30              # local end of the night window (HH:MM, default 07:30)
-timezone America/Los_Angeles  # IANA timezone for window times (default America/Los_Angeles)
-claude-stop-claude-pct 25     # stop new Claude work below this remaining % on 5h or weekly window (default 25)
-claude-stop-all-pct 12        # stop all new work below this remaining % on 5h or weekly window (default 12)
+timezone America/Los_Angeles  # installed IANA timezone for window times (default America/Los_Angeles)
+claude-stop-claude-pct 25     # stop new Claude work below this remaining % on 5h or weekly window (min/default 25)
+claude-stop-all-pct 12        # stop all new work below this remaining % on 5h or weekly window (min/default 12)
 github-api-floor 1000         # stop new dispatch below this many GitHub core hourly requests left (default 1000)
-failure-streak-limit 3        # consecutive failed night tickets that stop new dispatch (default 3)
-check-queue-limit 2           # finished PRs waiting for a check slot that stop new builders (default 2)
-validation-cap 2              # high-stakes no-mistakes runs (one per PR head) per night that stop further validations, not other Claude work (default 2)
+failure-streak-limit 3        # consecutive failed night ship tickets that stop new dispatch (default 3)
+check-queue-limit 2           # distinct PR heads waiting for CI/check admission that stop new builders (default 2)
+validation-cap 2              # high-stakes PR generations created tonight (one per PR head) that stop further validations (default 2)
 stall-minutes 30              # oldest unacknowledged wake age in minutes that records a supervision stall (default 30)
 high-load-threshold 24        # 1-minute load above which the sustained-load timer runs (default 24)
 high-load-minutes 10          # sustained minutes above high-load-threshold before stopping dispatch and validations; checks must run at most twice this apart (default 10)
@@ -2892,14 +2892,15 @@ high-load-minutes 10          # sustained minutes above high-load-threshold befo
 
 One `key value` pair appears per non-empty, non-comment line, with `#` starting a comment.
 Each key may appear at most once.
-The night window, last-dispatch cut-off, Claude floors, GitHub API floor, check-machine rule, validation cap, host load, and any unreadable source are level conditions: each `check` re-reads them and they only shape that verdict, so a recovered reading gives `continue` on the next run.
-The failure streak, a failed latest post-merge check, a supervision stall, and an `hc` core restart are event conditions: once one trips during an active night it latches until `bin/fm-night-check.sh end`.
-Dev health reads, for each repository, the most recent passed or failed post-merge verification across its review ledgers, whenever it was recorded; the ledger names no target branch, and a not-applicable record neither clears nor sets red.
+The night window, last-dispatch cut-off, Claude floors (requiring a fresh reading for both `five_hour` and `seven_day`), GitHub API floor, check-machine rule (counting distinct PR heads whose `fm-crew-state.sh` state is a declared wait for CI or check admission and whose current head has neither running nor completed passing/skipping checks), validation cap (counting high-stakes review-ledger generations at PR-ready `created_epoch`), host load, and any unreadable source (including a corrupt `state/night-stop.json`) are level conditions: each `check` re-reads them and they only shape that verdict, so a recovered reading gives `continue` on the next run.
+The failure streak (limited to `kind=ship` tasks spawned during the night), a failed latest post-merge check, a supervision stall, and an `hc` core restart are event conditions: once one trips during an active night it latches until `bin/fm-night-check.sh end`.
+Dev health reads, for each `(repo, target_branch)` pair, the most recent passed or failed post-merge verification across review ledgers, whenever it was recorded; new records persist `base_ref` in `bin/fm-pr-review.sh post-merge`, older records without it resolve `baseRefName` via a bounded `gh pr view` (or report `unknown`), and a not-applicable record neither clears nor sets red.
 A latched event writes a durable stop record under `state/` and creates the first `reserve-flag` configured in `config/lane-capacity`, so `bin/fm-capacity.sh` admits nothing new; the check never kills, interrupts, or tears down running work.
-The check creates the flag only when it is absent, and `end` removes it only when the check created it; a flag someone else created is left in place and reported as set externally.
+The check creates the flag only when it is absent, records its path and ownership token in `state/night-active.json`, and `end` removes only recorded flags whose on-disk token still matches, independent of later config edits; a foreign or replaced flag is left in place and reported as set externally.
 When `config/lane-capacity` names no `reserve-flag`, the verdict carries a warning that new dispatch cannot be stopped through admission.
+`bin/fm-night-check.sh verdict` serves the stored historical verdict for the morning board (cleared by `start` and marked inactive by `end`); live two-hour-default authorization requires a fresh `bin/fm-night-check.sh check --json` confirming an active night and `allow.two_hour_default == true`.
 The stop record stays after `end` for the morning board and is cleared by the next `start`.
-While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), `bin/fm-install-hc.sh` refuses with the reason.
+While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), the guard covers `bin/fm-install-hc.sh` and refuses with the reason; a direct upstream `hc` stop is outside what this repository can intercept.
 
 ## Mail plane (.env)
 
