@@ -474,7 +474,7 @@ family_for_basename() {
       printf '%s\n' backend-dispatch
       ;;
     fm-check-unregister.test.sh|fm-park.test.sh|fm-pipeline-spend.test.sh|fm-pr-check-security.test.sh|\
-    fm-pr-health.test.sh|fm-pr-merge.test.sh|fm-pr-review.test.sh|fm-pr-reviewers.test.sh|fm-pr-state.test.sh|\
+    fm-night-ledger.test.sh|fm-pr-health.test.sh|fm-pr-merge.test.sh|fm-pr-review.test.sh|fm-pr-reviewers.test.sh|fm-pr-state.test.sh|\
     fm-review-diff.test.sh|fm-teardown.test.sh|fm-x-mode.test.sh)
       printf '%s\n' pr-forge
       ;;
@@ -933,6 +933,7 @@ tests/fm-mail-check.test.sh 8121
 tests/fm-mail.test.sh 10496
 tests/fm-muse-harness.test.sh 50559
 tests/fm-muse-signals-live-e2e.test.sh 80
+tests/fm-night-ledger.test.sh 3900
 tests/fm-nm-respond.test.sh 331
 tests/fm-nm-test-contract.test.sh 1131
 tests/fm-no-mistakes-required.test.sh 386
