@@ -1,0 +1,107 @@
+== S1 healthy night: start, check --json, verdict --json (P2/P3 consumer view)
+night-check: started at 2026-11-27T07:00:00Z (window 23:00-07:30, last-dispatch 06:30 America/Los_Angeles)
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[],"latched":[],"reserve_flag":"absent"}
+  PASS: verdict (=continue)
+  PASS: two_hour_default (=true)
+  PASS: stored verdict schema (=fm-night-verdict.v1)
+  PASS: stored verdict == latest (=1795770000)
+  human: night-check: verdict=continue (continue) dispatch=true claude=true merge=true validation=true two_hour_default=true 
+== S2 Claude floors (25% / 12%)
+  PASS: exactly 25% remaining -> verdict (=continue)
+{"verdict":"stop_claude","allow":{"dispatch":true,"claude":false,"merge":true,"validation":false,"two_hour_default":true},"tripped":[{"condition":"claude_quota","status":"tripped","verdict_effect":"stop_claude"}],"latched":[],"reserve_flag":"absent"}
+  PASS: weekly 24% -> verdict (=stop_claude)
+  PASS: dispatch still allowed (=true)
+  PASS: claude disallowed (=false)
+  PASS: admit (non-Claude) under stop_claude (=0)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":[],"reserve_flag":"absent"}
+  PASS: 5h 11% -> verdict (=stop_dispatch)
+  PASS: dispatch (=false)
+  PASS: recovered quota (level) -> verdict (=continue)
+== S3 GitHub API floor (1000 of 5000)
+  PASS: 1000 remaining -> verdict (=continue)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"github_api","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":[],"reserve_flag":"absent"}
+  PASS: 999 remaining -> verdict (=stop_dispatch)
+  PASS: github_api status (=tripped)
+== S4 failure streak 3 -> stop flag via reserve-flag, non-destructive, end clears
+  PASS: 2 failures -> verdict (=continue)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":["failure_streak"],"reserve_flag":"set_by_night_check"}
+  PASS: 3 failures -> verdict (=stop_dispatch)
+  PASS: failure_streak latched (=failure_streak)
+  PASS: reserve-flag file exists (=yes)
+  flag: set_by=fm-night-check
+  PASS: fm-capacity --admit refuses (75) (=75)
+  admit: deferred: lane capacity of this home (/tmp/fm-lab.1kZpRF/s4/config/lane-capacity) does not admit another lane: captain reserve: night stop
+  PASS: latched survives a later success (=stop_dispatch)
+  PASS: running worker untouched (=alive)
+  PASS: stop record schema (=fm-night-stop.v1)
+night-check: cleared reserve-flag /tmp/fm-lab.1kZpRF/s4/state/night.reserve
+night-check: ended active night run
+  PASS: end removes own flag (=gone)
+  PASS: admit after end (=0)
+  PASS: stop record kept after end (=kept)
+  -- adversarial: externally-set flag is not overwritten or removed
+  PASS: flag state (=set_externally)
+  PASS: captain flag content kept after end (=captain hold)
+== S5 dev health: failed post-merge check in review ledger
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"dev_health","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":["dev_health"],"reserve_flag":"set_by_night_check"}
+  PASS: verdict (=stop_dispatch)
+  PASS: merge disallowed (=false)
+  PASS: dev_health status (=tripped)
+== S6 check-machine rule: 2 finished PRs waiting
+  PASS: 1 waiting -> verdict (=continue)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"check_machine","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":[],"reserve_flag":"absent"}
+  PASS: 2 waiting -> verdict (=stop_dispatch)
+  PASS: check_machine (=tripped)
+== S7 validation cap: 2 high-stakes runs per night
+  PASS: 1 high-stakes PR (no-mistakes+independent review) -> verdict (=continue)
+  PASS: counted runs (=1)
+{"verdict":"stop_validation","allow":{"dispatch":true,"claude":true,"merge":true,"validation":false,"two_hour_default":true},"tripped":[{"condition":"validation_cap","status":"tripped","verdict_effect":"stop_validation"}],"latched":[],"reserve_flag":"absent"}
+  PASS: 2 runs -> verdict (=stop_validation)
+  PASS: validation disallowed (=false)
+  PASS: claude still allowed (=true)
+  PASS: dispatch still allowed (=true)
+== S8 host load > 24 sustained 10 min
+  PASS: load exactly 24 -> verdict (=continue)
+  PASS: load 30 first sample -> verdict (=continue)
+  PASS: load 30 at +5min (=continue)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"host_load","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":[],"reserve_flag":"absent"}
+  PASS: load 30 at +10min -> verdict (=stop_dispatch)
+  PASS: validation disallowed (=false)
+  -- adversarial: stale since from a check 15h earlier must not trip
+  PASS: first night sample with stale since (=ok)
+== S9 supervision stall: wake older than 30 min
+  PASS: 25-min wake -> verdict (=continue)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"supervision_stall","status":"tripped","verdict_effect":"stop_dispatch"}],"latched":["supervision_stall"],"reserve_flag":"set_by_night_check"}
+  PASS: 31.6-min wake -> verdict (=stop_dispatch)
+  PASS: stop record stall_since_epoch (=1795768100)
+  PASS: reserve-flag set (=yes)
+== S10 hc core restart ends night; hc-guard refuses install
+  PASS: steady core (=continue)
+{"verdict":"end_night","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"hc_core","status":"tripped","verdict_effect":"end_night"}],"latched":["hc_core"],"reserve_flag":"set_by_night_check"}
+  PASS: restarted core -> verdict (=end_night)
+  PASS: stop record core_restarted (=true)
+  PASS: hc-guard exit during night (=1)
+  fm-night-check: hc core operation refused while overnight run is active (started 2026-11-27T07:00:00Z; run bin/fm-night-check.sh end first)
+  PASS: fm-install-hc.sh exit during night (=1)
+  fm-night-check: hc core operation refused while overnight run is active (started 2026-11-27T07:00:00Z; run bin/fm-night-check.sh end first)
+  PASS: no download attempted (=none)
+  PASS: hc-guard after end (=0)
+  -- adversarial: corrupt night-active marker fails closed
+  PASS: hc-guard with corrupt marker (=1)
+== S11 unreadable sources fail closed
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"unknown","verdict_effect":"stop_dispatch"}],"latched":[],"reserve_flag":"absent"}
+  PASS: quota-axi failing -> claude_quota (=unknown)
+  PASS: verdict (=stop_dispatch)
+  PASS: gh failing -> github_api (=unknown)
+  PASS: verdict (=stop_dispatch)
+  PASS: loadavg garbage -> host_load (=unknown)
+  PASS: corrupt ledger -> dev_health (=unknown)
+  PASS: verdict (=stop_dispatch)
+== S12 night window and cut-off; checks outside a night set nothing
+  PASS: 06:35 past last-dispatch -> verdict (=stop_dispatch)
+  PASS: flag not set by level cut-off (=none)
+  PASS: 07:35 past window-end -> verdict (=end_night)
+  PASS: 22:50 preflight, no night: night_active (=false)
+  PASS: no reserve-flag outside night (=none)
+  PASS: admit outside night (=0)
+TOTAL PASS=71 FAIL=0

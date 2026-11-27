@@ -1,0 +1,31 @@
+FM_TEST_BEGIN 2026-11-27T19:34:09Z tests/fm-night-check.test.sh family=pure-contract-unit expected_gate_skip=none
+1..22
+ok - fm-night-check: help and usage
+ok - fm-night-check: healthy night verdict and stored machine-readable consumption
+ok - fm-night-check: last-dispatch cutoff stops dispatch as a level condition without the reserve-flag
+ok - fm-night-check: window end produces end_night verdict
+ok - fm-night-check: a check outside an active night latches nothing and sets no reserve-flag
+ok - fm-night-check: malformed config fails closed as unknown and stops dispatch
+ok - fm-night-check: Claude quota below 25% stops Claude work only
+ok - fm-night-check: Claude quota below 12% stops all dispatch until the window resets
+ok - fm-night-check: unreadable quota-axi reports unknown and stops dispatch
+ok - fm-night-check: GitHub API floor pauses dispatch only while low, and an unreadable source fails closed
+ok - fm-night-check: failure streak latches the reserve-flag until end, which clears it and keeps the stop record
+ok - fm-night-check: a corrupt stop record during a night fails closed as a latch
+ok - fm-night-check: a reserve-flag someone else created is never overwritten or cleared
+ok - fm-night-check: a missing reserve-flag config carries an explicit enforcement warning
+ok - fm-night-check: dev health reads the latest post-merge record per repo, and a corrupt ledger fails closed
+ok - fm-night-check: check-machine rule stops dispatch at >=2 finished PRs waiting for a slot
+ok - fm-night-check: validation cap counts one run per high-stakes PR head and stops at 2
+ok - fm-night-check: sustained host load above 24 for 10m, stale timers, and unreadable loadavg
+ok - fm-night-check: supervision stall latches on a >30m wake or the engine latch, and a corrupt queue fails closed
+ok - fm-night-check: hc core restart ends night and unreadable core stops dispatch
+ok - fm-night-check: hc guard blocks fm-install-hc.sh while night is active and leaves lab paths alone
+ok - fm-night-check: stop conditions never kill, interrupt, or tear down workers
+FM_TEST_COMPLETE
+FM_TEST_END 2026-11-27T19:34:33Z tests/fm-night-check.test.sh exit=0 duration_ms=23770 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=24252
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=23770 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-night-check.test.sh duration_ms=23770
+FM_TEST_LISTENERS found=0
+exit=0
