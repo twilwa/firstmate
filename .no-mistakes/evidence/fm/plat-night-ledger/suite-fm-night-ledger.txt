@@ -1,0 +1,15 @@
+1..13
+ok - a contiguous window lists merges newest first with one range revert
+ok - a non-contiguous window names the interleaved commits
+ok - revert-together marks later merges that touched the same files
+ok - an empty window reports no merges
+ok - missing post-merge data is reported as not recorded
+ok - a split night on a long history is still not contiguous
+ok - a night with a merge commit offers no whole-night revert
+ok - files past the first page still mark revert-together
+ok - the whole-night revert is unknown without a merged commit or an origin ref
+ok - a closed issue in another repository reopens there
+ok - a legacy single waiver is listed
+ok - same-second merges use first-parent history order
+ok - same-second merges list the later decision first
+FM_TEST_COMPLETE

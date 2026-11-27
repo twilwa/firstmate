@@ -1,0 +1,12 @@
+$ FM_HOME=<lab> bin/fm-night-ledger.sh --since 1795700000 --until 1795710000   # quiet window, ledgers exist outside it
+Night ledger 2026-11-26T13:33:20Z .. 2026-11-26T16:20:00Z: 0 merge(s)
+
+No merges recorded in this window.
+
+What a code revert does not undo:
+  Issues and comments filed overnight are not reverted by a code revert.
+  Closed issues stay closed until reopened.
+  Test data written to the disposable dev app is not removed by a code revert.
+exit=0
+$ ... --json | jq -c "{merges, whole_night, closed: .not_undone.closed_issues}"
+{"merges":[],"whole_night":[],"closed":[]}

@@ -1,0 +1,17 @@
+# Independent oracle 1: file overlaps computed from gh api file lists (comm), earlier -> later merge
+23393 -> 23238 : crates/uv-lock/src/lock/mod.rs 
+23392 -> 23398 : Cargo.lock Cargo.toml 
+23398 -> 23407 : docs/guides/integration/docker.md 
+# Ledger JSON revert_together:
+23398 -> 23407 : docs/guides/integration/docker.md 
+23392 -> 23398 : Cargo.lock Cargo.toml 
+23393 -> 23238 : crates/uv-lock/src/lock/mod.rs 
+# gh pr view --json files count for 23398 (capped):
+100
+# ledger files[] count for 23398:
+175
+
+# Independent oracle 2: commits the emitted range selects vs forge merge commits
+emitted: git revert --no-edit 1b5a6bf4c35bae0d2cecfe513e0124af58449fc3^..9bf01bef71c76643290ca17635970076fab1bd0d
+range selects 8 commits; forge merges 8; diff:
+IDENTICAL

@@ -1,0 +1,311 @@
+{
+  "schema": "firstmate-night-ledger.v1",
+  "since": 1795538400,
+  "until": 1795723200,
+  "repo": null,
+  "merges": [
+    {
+      "url": "https://github.com/cli/cli/pull/15175",
+      "repo": "cli/cli",
+      "number": 15175,
+      "title": "Add WordPress Studio support to `gh skill`",
+      "base": "trunk",
+      "merged_at": "2026-11-26T19:38:30Z",
+      "merged_epoch": 1795721910,
+      "decision_epoch": 1795721850,
+      "merged_commit": "aec38089147ae38264668843fa6126022c56a0e4",
+      "closed_issues": [
+        {
+          "repo": "cli/cli",
+          "number": 15174,
+          "url": "https://github.com/cli/cli/issues/15174"
+        }
+      ],
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "0000000000000000000000000000000000015175"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "not-applicable",
+        "outcome": null,
+        "reason": "tooling-only change",
+        "bug": null
+      },
+      "files": [
+        "internal/skills/registry/registry.go",
+        "internal/skills/registry/registry_test.go",
+        "pkg/cmd/skills/install/install_test.go"
+      ],
+      "revert": "gh pr revert https://github.com/cli/cli/pull/15175",
+      "revert_together": []
+    },
+    {
+      "url": "https://github.com/cli/cli/pull/15173",
+      "repo": "cli/cli",
+      "number": 15173,
+      "title": "chore(deps): Bump github.com/sigstore/sigstore-go from 1.4.0 to 1.4.1",
+      "base": "trunk",
+      "merged_at": "2026-11-26T16:03:43Z",
+      "merged_epoch": 1795709023,
+      "decision_epoch": 1795708963,
+      "merged_commit": "d1d33e5e1cc62e9feac69b7b0c476a3bb056a9a4",
+      "closed_issues": [],
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "0000000000000000000000000000000000015173"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "not-applicable",
+        "outcome": null,
+        "reason": "tooling-only change",
+        "bug": null
+      },
+      "files": [
+        "go.mod",
+        "go.sum"
+      ],
+      "revert": "gh pr revert https://github.com/cli/cli/pull/15173",
+      "revert_together": []
+    },
+    {
+      "url": "https://github.com/cli/cli/pull/15172",
+      "repo": "cli/cli",
+      "number": 15172,
+      "title": "test(gh skill install): skip control character filename test on Windows",
+      "base": "trunk",
+      "merged_at": "2026-11-26T12:46:59Z",
+      "merged_epoch": 1795697219,
+      "decision_epoch": 1795697159,
+      "merged_commit": "b620bf7e75cbd57c071da9db303b71e6396604a1",
+      "closed_issues": [],
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "0000000000000000000000000000000000015172"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "not-applicable",
+        "outcome": null,
+        "reason": "tooling-only change",
+        "bug": null
+      },
+      "files": [
+        "pkg/cmd/skills/install/install_test.go"
+      ],
+      "revert": "gh pr revert https://github.com/cli/cli/pull/15172",
+      "revert_together": [
+        {
+          "url": "https://github.com/cli/cli/pull/15175",
+          "files": [
+            "pkg/cmd/skills/install/install_test.go"
+          ]
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/astral-sh/uv/pull/23238",
+      "repo": "astral-sh/uv",
+      "number": 23238,
+      "title": "Validate locked dependency versions",
+      "base": "main",
+      "merged_at": "2026-11-24T17:24:34Z",
+      "merged_epoch": 1795541074,
+      "decision_epoch": 1795541014,
+      "merged_commit": "da44f83741f1f1c5b38ceda45c5d0fbc50a1db9a",
+      "closed_issues": [
+        {
+          "repo": "astral-sh/uv",
+          "number": 12276,
+          "url": "https://github.com/astral-sh/uv/issues/12276"
+        },
+        {
+          "repo": "astral-sh/uv",
+          "number": 23073,
+          "url": "https://github.com/astral-sh/uv/issues/23073"
+        }
+      ],
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "0000000000000000000000000000000000023238"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "not-applicable",
+        "outcome": null,
+        "reason": "tooling-only change",
+        "bug": null
+      },
+      "files": [
+        "crates/uv-lock-operations/src/error.rs",
+        "crates/uv-lock-operations/src/lock.rs",
+        "crates/uv-lock/src/lib.rs",
+        "crates/uv-lock/src/lock/mod.rs",
+        "crates/uv-lock/src/lock/versions.rs",
+        "crates/uv-project-commands/src/lock.rs",
+        "crates/uv-project-commands/src/sync.rs",
+        "crates/uv-workspace-commands/src/metadata.rs",
+        "crates/uv/tests/lock/lock.rs",
+        "crates/uv/tests/project/run.rs",
+        "crates/uv/tests/sync/sync.rs"
+      ],
+      "revert": "gh pr revert https://github.com/astral-sh/uv/pull/23238",
+      "revert_together": []
+    },
+    {
+      "url": "https://github.com/astral-sh/uv/pull/23394",
+      "repo": "astral-sh/uv",
+      "number": 23394,
+      "title": "Ignore pins with unsatisfiable markers in `uv pip compile --universal`",
+      "base": "main",
+      "merged_at": "2026-11-24T16:45:37Z",
+      "merged_epoch": 1795538737,
+      "decision_epoch": 1795538677,
+      "merged_commit": "a46b3db9c9a9c87081793a22a399a2f2ae76d3ce",
+      "closed_issues": [],
+      "risk": {
+        "level": "low",
+        "reason": "lab fixture"
+      },
+      "reviewers": [
+        "coderabbitai",
+        "sourcery-ai"
+      ],
+      "validation": [
+        {
+          "kind": "no-mistakes",
+          "by": "claude-opus-5-5",
+          "head": "0000000000000000000000000000000000023394"
+        }
+      ],
+      "waiver": [],
+      "post_merge": {
+        "recorded": true,
+        "applicability": "not-applicable",
+        "outcome": null,
+        "reason": "tooling-only change",
+        "bug": null
+      },
+      "files": [
+        "crates/uv-resolver/src/preferences.rs",
+        "crates/uv/tests/pip_compile/pip_compile.rs"
+      ],
+      "revert": "gh pr revert https://github.com/astral-sh/uv/pull/23394",
+      "revert_together": []
+    }
+  ],
+  "whole_night": [
+    {
+      "repo": "astral-sh/uv",
+      "base": "main",
+      "commits": [
+        "a46b3db9c9a9c87081793a22a399a2f2ae76d3ce",
+        "da44f83741f1f1c5b38ceda45c5d0fbc50a1db9a"
+      ],
+      "commands": [],
+      "interleaved": [
+        {
+          "sha": "a1d8663dd4cb7eccf73681d146515fa54aedbaf1",
+          "subject": "zip: reject conflicting compression methods (#23392)"
+        }
+      ],
+      "reason": null,
+      "status": "not-contiguous"
+    },
+    {
+      "repo": "cli/cli",
+      "base": "trunk",
+      "commits": [
+        "b620bf7e75cbd57c071da9db303b71e6396604a1",
+        "d1d33e5e1cc62e9feac69b7b0c476a3bb056a9a4",
+        "aec38089147ae38264668843fa6126022c56a0e4"
+      ],
+      "commands": [],
+      "interleaved": [],
+      "reason": "merged commit(s) b620bf7e75cbd57c071da9db303b71e6396604a1 d1d33e5e1cc62e9feac69b7b0c476a3bb056a9a4 have more than one parent; no single range revert",
+      "status": "unknown"
+    }
+  ],
+  "not_undone": {
+    "closed_issues": [
+      {
+        "repo": "cli/cli",
+        "number": 15174,
+        "url": "https://github.com/cli/cli/issues/15174",
+        "reopen": "gh issue reopen 15174 --repo cli/cli"
+      },
+      {
+        "repo": "astral-sh/uv",
+        "number": 12276,
+        "url": "https://github.com/astral-sh/uv/issues/12276",
+        "reopen": "gh issue reopen 12276 --repo astral-sh/uv"
+      },
+      {
+        "repo": "astral-sh/uv",
+        "number": 23073,
+        "url": "https://github.com/astral-sh/uv/issues/23073",
+        "reopen": "gh issue reopen 23073 --repo astral-sh/uv"
+      }
+    ],
+    "notes": [
+      "Issues and comments filed overnight are not reverted by a code revert.",
+      "Closed issues stay closed until reopened.",
+      "Test data written to the disposable dev app is not removed by a code revert."
+    ]
+  },
+  "not_merged": [
+    "https://github.com/astral-sh/uv/pull/23414"
+  ],
+  "unreadable": [
+    "github--astral-sh--uv--99999.json"
+  ]
+}

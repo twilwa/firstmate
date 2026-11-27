@@ -1,0 +1,39 @@
+# Execute the emitted whole-night command on a scratch copy of the lab clone
+$ git revert --no-edit 1b5a6bf4c35bae0d2cecfe513e0124af58449fc3^..9bf01bef71c76643290ca17635970076fab1bd0d
+[detached HEAD 9ef5f86] Revert "Add the Python 3.15 hardened Docker image (#23407)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 2 files changed, 2 deletions(-)
+[detached HEAD 8e78647] Revert "Bump version to 0.13.10 (#23398)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 175 files changed, 434 insertions(+), 473 deletions(-)
+[detached HEAD cf9bea9] Revert "Sync latest Python releases (#23397)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 3 files changed, 1215 insertions(+), 1215 deletions(-)
+[detached HEAD aad01fe] Revert "Use gpt-6-astra for PR code quality reviews (#23395)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[detached HEAD 45abebc] Revert "Validate locked dependency versions (#23238)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 11 files changed, 372 insertions(+), 3574 deletions(-)
+ delete mode 100644 crates/uv-lock/src/lock/versions.rs
+[detached HEAD af7efe5] Revert "zip: reject conflicting compression methods (#23392)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 5 files changed, 3 insertions(+), 72 deletions(-)
+[detached HEAD 13822e1] Revert "Ignore pins with unsatisfiable markers in `uv pip compile --universal` (#23394)"
+ Date: Fri Nov 27 11:21:56 2026 -0800
+ 2 files changed, 40 deletions(-)
+[detached HEAD 8cffff9] Revert "Deduplicate root requirement handling (#23393)"
+ Date: Fri Nov 27 11:21:57 2026 -0800
+ 2 files changed, 35 insertions(+), 16 deletions(-)
+revert exit=0
+  8cffff9 Revert "Deduplicate root requirement handling (#23393)"
+  13822e1 Revert "Ignore pins with unsatisfiable markers in `uv pip compile --universal` (#23394)"
+  af7efe5 Revert "zip: reject conflicting compression methods (#23392)"
+  45abebc Revert "Validate locked dependency versions (#23238)"
+  aad01fe Revert "Use gpt-6-astra for PR code quality reviews (#23395)"
+  cf9bea9 Revert "Sync latest Python releases (#23397)"
+  8e78647 Revert "Bump version to 0.13.10 (#23398)"
+  9ef5f86 Revert "Add the Python 3.15 hardened Docker image (#23407)"
+  9bf01be Add the Python 3.15 hardened Docker image (#23407)
+tree after revert:   cefc1b62ea4dfd55d1e1bec84af446398e50f81d
+tree before night:   cefc1b62ea4dfd55d1e1bec84af446398e50f81d

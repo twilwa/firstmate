@@ -1,0 +1,20 @@
+$ FM_HOME=<lab2> bin/fm-night-ledger.sh --since 1795538400 --until 1795723200 --repo astral-sh/uv --json | jq '{repo, merges:[.merges[].url], whole_night:[.whole_night[]|{repo,status}], not_merged, unreadable}'
+{
+  "repo": "astral-sh/uv",
+  "merges": [
+    "https://github.com/astral-sh/uv/pull/23238",
+    "https://github.com/astral-sh/uv/pull/23394"
+  ],
+  "whole_night": [
+    {
+      "repo": "astral-sh/uv",
+      "status": "not-contiguous"
+    }
+  ],
+  "not_merged": [
+    "https://github.com/astral-sh/uv/pull/23414"
+  ],
+  "unreadable": [
+    "github--astral-sh--uv--99999.json"
+  ]
+}

@@ -1,0 +1,74 @@
+$ FM_HOME=<lab2> bin/fm-night-ledger.sh --since 1795538400 --until 1795723200
+Night ledger 2026-11-24T16:40:00Z .. 2026-11-26T20:00:00Z: 5 merge(s)
+
+https://github.com/cli/cli/pull/15175  Add WordPress Studio support to `gh skill`
+  merged: 2026-11-26T19:38:30Z into trunk as aec38089147ae38264668843fa6126022c56a0e4
+  closed issues: #15174
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not-applicable (tooling-only change)
+  revert: gh pr revert https://github.com/cli/cli/pull/15175
+
+https://github.com/cli/cli/pull/15173  chore(deps): Bump github.com/sigstore/sigstore-go from 1.4.0 to 1.4.1
+  merged: 2026-11-26T16:03:43Z into trunk as d1d33e5e1cc62e9feac69b7b0c476a3bb056a9a4
+  closed issues: none
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not-applicable (tooling-only change)
+  revert: gh pr revert https://github.com/cli/cli/pull/15173
+
+https://github.com/cli/cli/pull/15172  test(gh skill install): skip control character filename test on Windows
+  merged: 2026-11-26T12:46:59Z into trunk as b620bf7e75cbd57c071da9db303b71e6396604a1
+  closed issues: none
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not-applicable (tooling-only change)
+  revert: gh pr revert https://github.com/cli/cli/pull/15172
+  revert together with: https://github.com/cli/cli/pull/15175 (shared: pkg/cmd/skills/install/install_test.go)
+
+https://github.com/astral-sh/uv/pull/23238  Validate locked dependency versions
+  merged: 2026-11-24T17:24:34Z into main as da44f83741f1f1c5b38ceda45c5d0fbc50a1db9a
+  closed issues: #12276 #23073
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not-applicable (tooling-only change)
+  revert: gh pr revert https://github.com/astral-sh/uv/pull/23238
+
+https://github.com/astral-sh/uv/pull/23394  Ignore pins with unsatisfiable markers in `uv pip compile --universal`
+  merged: 2026-11-24T16:45:37Z into main as a46b3db9c9a9c87081793a22a399a2f2ae76d3ce
+  closed issues: none
+  risk: low (lab fixture)
+  reviewers: coderabbitai, sourcery-ai
+  validation: no-mistakes claude-opus-5-5
+  waiver: none
+  post-merge: not-applicable (tooling-only change)
+  revert: gh pr revert https://github.com/astral-sh/uv/pull/23394
+
+Whole-night revert:
+  astral-sh/uv main: not contiguous; no single range revert. Interleaved commits:
+    a1d8663dd4cb7eccf73681d146515fa54aedbaf1 zip: reject conflicting compression methods (#23392)
+  Revert each merge newest first with its own command instead.
+  cli/cli trunk: no whole-night revert - merged commit(s) b620bf7e75cbd57c071da9db303b71e6396604a1 d1d33e5e1cc62e9feac69b7b0c476a3bb056a9a4 have more than one parent; no single range revert
+
+What a code revert does not undo:
+  gh issue reopen 15174 --repo cli/cli   # https://github.com/cli/cli/issues/15174
+  gh issue reopen 12276 --repo astral-sh/uv   # https://github.com/astral-sh/uv/issues/12276
+  gh issue reopen 23073 --repo astral-sh/uv   # https://github.com/astral-sh/uv/issues/23073
+  Issues and comments filed overnight are not reverted by a code revert.
+  Closed issues stay closed until reopened.
+  Test data written to the disposable dev app is not removed by a code revert.
+
+Merge decision recorded but not merged on the forge:
+  https://github.com/astral-sh/uv/pull/23414
+
+Unreadable review ledger files:
+  github--astral-sh--uv--99999.json
+exit=0
