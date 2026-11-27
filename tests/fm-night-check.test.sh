@@ -32,39 +32,45 @@ make_home() {
   printf '1.50 1.20 1.00 1/120 1234\n' > "$home/proc/loadavg"
   printf 'MemTotal:       32768000 kB\nMemAvailable:   24576000 kB\n' > "$home/proc/meminfo"
   printf '8\nreserve-flag %s/state/night.reserve night stop\n' "$home" > "$home/config/lane-capacity"
+  : > "$home/config/status-archive"
   printf '%s\n' "$home"
 }
 
-fake_quota_axi() {  # <dir> <five_rem> <week_rem> [stale_bool] [state_status]
-  local dir=$1 five_rem=$2 week_rem=$3 stale=${4:-false} st=${5:-fresh} payload
+fake_quota_axi() {  # <dir> <five_rem> <week_rem> [stale_bool] [state_status] [refreshed_iso]
+  local dir=$1 five_rem=$2 week_rem=$3 stale=${4:-false} st=${5:-fresh} refreshed=${6:-}
   mkdir -p "$dir"
-  payload=$(jq -cn \
-    --argjson f "$five_rem" \
-    --argjson w "$week_rem" \
-    --argjson stale "$stale" \
-    --arg st "$st" '
-    {
-      generatedAt: "2026-11-27T09:00:00Z",
-      schemaVersion: 5,
-      providers: [{
-        provider: "claude",
-        label: "Claude",
-        source: "oauth",
-        plan: "max",
-        account: {accountId: "acct", email: "a@example.com", organization: "org", identityStatus: "verified"},
-        windows: [
-          {id: "five_hour", label: "5h", kind: "five_hour", percentUsed: (100 - $f), percentRemaining: $f},
-          {id: "seven_day", label: "week", kind: "weekly", percentUsed: (100 - $w), percentRemaining: $w}
-        ],
-        attempts: [],
-        state: {status: $st, stale: $stale, refreshedAt: "2026-11-27T09:00:00Z", sourcesTried: []},
-        quotaSemantics: {status: "known", description: "d", effectiveAvailability: [{scope: "all_models", status: "known", effectivePercentRemaining: $f, boundedBy: ["five_hour", "seven_day"], limitingWindowIds: ["five_hour"], runway: {status: "through_reset"}}]}
-      }]
-    }')
+  cat > "$dir/quota-axi" <<EOF
+#!/usr/bin/env bash
+ref="$refreshed"
+if [ -z "\$ref" ]; then
+  ep=\${FM_NIGHT_NOW_EPOCH:-1795770000}
+  ref=\$(date -u -d "@\$ep" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "\$ep" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '2026-11-27T09:00:00Z')
+fi
+jq -cn \
+  --arg ref "\$ref" \
+  --argjson f $five_rem \
+  --argjson w $week_rem \
+  --argjson stale $stale \
+  --arg st "$st" '
   {
-    printf '#!/usr/bin/env bash\n'
-    printf "cat <<'JSON'\n%s\nJSON\n" "$payload"
-  } > "$dir/quota-axi"
+    generatedAt: \$ref,
+    schemaVersion: 5,
+    providers: [{
+      provider: "claude",
+      label: "Claude",
+      source: "oauth",
+      plan: "max",
+      account: {accountId: "acct", email: "a@example.com", organization: "org", identityStatus: "verified"},
+      windows: [
+        {id: "five_hour", label: "5h", kind: "five_hour", percentUsed: (100 - \$f), percentRemaining: \$f},
+        {id: "seven_day", label: "week", kind: "weekly", percentUsed: (100 - \$w), percentRemaining: \$w}
+      ],
+      attempts: [],
+      state: {status: \$st, stale: \$stale, refreshedAt: \$ref, sourcesTried: []},
+      quotaSemantics: {status: "known", description: "d", effectiveAvailability: [{scope: "all_models", status: "known", effectivePercentRemaining: \$f, boundedBy: ["five_hour", "seven_day"], limitingWindowIds: ["five_hour"], runway: {status: "through_reset"}}]}
+    }]
+  }'
+EOF
   chmod +x "$dir/quota-axi"
 }
 
@@ -551,6 +557,65 @@ test_failure_streak_excludes_scouts_secondmates_and_pre_night_tasks() {
   pass "fm-night-check: failure streak limits to night-spawned kind=ship tasks and ignores scouts, secondmates, and pre-night tasks"
 }
 
+test_failure_streak_status_archive_and_missing_status() {
+  local home out rc=0
+
+  # 1. Archive-off case: start refuses and active-night check reports unknown with required reason
+  home=$(make_home streak_archive_off)
+  seed_healthy_stubs "$home"
+  rm -f "$home/config/status-archive"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_NIGHT_START" start 2>&1) || rc=$?
+  expect_code 1 "$rc" "start must refuse when config/status-archive is absent"
+  assert_contains "$out" "enable config/status-archive for night runs" "start refusal states status-archive requirement"
+
+  : > "$home/config/status-archive"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed with config/status-archive"
+  rm -f "$home/config/status-archive"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "archive-off active check emits fail-closed verdict"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "archive-off during active night stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "archive-off reports failure_streak unknown"
+  assert_equals "enable config/status-archive for night runs" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.reason')" "archive-off reason matches contract"
+
+  # 2. Three failures with the early one retired to data/<id>/status.log (no live meta/status)
+  home=$(make_home streak_retired_archive)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  mkdir -p "$home/data/t1" "$home/data/sc_ret" "$home/data/old_ret"
+  printf 'working [at=%d]: started\nfailed [at=%d]: build broke\n' \
+    $((EPOCH_NIGHT_START + 100)) $((EPOCH_NIGHT_START + 200)) > "$home/data/t1/status.log"
+  # Retired scout (has report.md) and pre-night retired ship must not affect the streak
+  printf '# scout report\n' > "$home/data/sc_ret/report.md"
+  printf 'working [at=%d]: scouting\ndone [at=%d]: report ready\n' \
+    $((EPOCH_NIGHT_START + 210)) $((EPOCH_NIGHT_START + 250)) > "$home/data/sc_ret/status.log"
+  printf 'working [at=%d]: daytime start\ndone [at=%d]: finished late\n' \
+    $((EPOCH_NIGHT_START - 3600)) $((EPOCH_NIGHT_START + 260)) > "$home/data/old_ret/status.log"
+  write_ship_meta "$home" t2 $((EPOCH_NIGHT_START + 270))
+  printf 'failed [at=%d]: test timeout\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/t2.status"
+  write_ship_meta "$home" t3 $((EPOCH_NIGHT_START + 350))
+  printf 'failed [at=%d]: lint error\n' $((EPOCH_NIGHT_START + 400)) > "$home/state/t3.status"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "retired-archive streak check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "retired early failure plus two live failures trip stop_dispatch"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "failure_streak tripped across archive and live rows"
+  assert_equals "3" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.details.streak')" "streak count is 3 including retired archive"
+
+  # 3. Night-window ship missing BOTH live status and archived status -> unknown + stop_dispatch
+  home=$(make_home streak_missing_status)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" ghost $((EPOCH_NIGHT_START + 120))
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing-status ship check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "night ship missing live and archived status stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "missing live and archived status reports unknown"
+  pass "fm-night-check: failure streak requires config/status-archive, reads retired status logs, and fails closed when ship status is missing"
+}
+
 test_corrupt_stop_record_stops_dispatch_without_latching_or_flag() {
   local home out rc=0
   home=$(make_home stop_corrupt)
@@ -571,6 +636,73 @@ test_corrupt_stop_record_stops_dispatch_without_latching_or_flag() {
   expect_code 0 "$rc" "recovered check exits 0"
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "repairing corrupt stop record recovers to continue"
   pass "fm-night-check: corrupt stop record fails closed without latching, overwriting, or setting reserve-flag"
+}
+
+test_stop_record_expected_loss_and_ownership_rollback() {
+  local home out rc=0 real_mv
+  real_mv=$(type -P mv) || fail "mv is required"
+
+  # 1. Loss of an expected stop record after a latched event drains -> unknown + stop_dispatch
+  home=$(make_home stop_expected_lost)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf '%d\t1\tsignal\tt1\tdone: ok\n' $((EPOCH_IN_WINDOW - 1860)) > "$home/state/.wake-queue"
+  run_night_check "$home" "$EPOCH_IN_WINDOW" check --json >/dev/null 2>&1 || fail "initial stall latch check must succeed"
+  assert_equals "true" "$(jq -r '.stop_record_expected' "$home/state/night-active.json")" "latched stop marks stop_record_expected=true"
+  [ -f "$home/state/night.reserve" ] || fail "initial stall latch must set reserve-flag"
+  : > "$home/state/.wake-queue"
+  rm -f "$home/state/night-stop.json"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 300)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "lost expected stop record check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "loss of expected stop record stops dispatch even after wake queue drains"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "loss of expected stop record disallows Claude"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.tripped[] | select(.condition == "night_stop_record") | .status')" "missing expected stop record reports night_stop_record unknown"
+  [ -f "$home/state/night.reserve" ] || fail "missing expected stop record must leave existing reserve-flag untouched"
+
+  # 2. Wrong-night stop record and malformed latch entry both fail closed as unknown
+  home=$(make_home stop_wrong_night)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf '{"schema":"fm-night-stop.v1","night_started_epoch":%d,"latched":[]}\n' $((EPOCH_NIGHT_START - 86400)) > "$home/state/night-stop.json"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "wrong-night stop record check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "wrong-night stop record stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.tripped[] | select(.condition == "night_stop_record") | .status')" "wrong-night stop record reports unknown"
+
+  printf '{"schema":"fm-night-stop.v1","night_started_epoch":%d,"latched":[{"condition":"bogus"}]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-stop.json"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed latch entry check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "malformed latch entry stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.tripped[] | select(.condition == "night_stop_record") | .status')" "malformed latch entry reports unknown"
+
+  # 3. Failed ownership publication rolls back newly created matching-token flag and reports warning in verdict
+  home=$(make_home flag_ownership_fail)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" t1 $((EPOCH_NIGHT_START + 100))
+  write_ship_meta "$home" t2 $((EPOCH_NIGHT_START + 200))
+  write_ship_meta "$home" t3 $((EPOCH_NIGHT_START + 300))
+  printf 'failed [at=%d]: a\n' $((EPOCH_NIGHT_START + 200)) > "$home/state/t1.status"
+  printf 'failed [at=%d]: b\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/t2.status"
+  printf 'failed [at=%d]: c\n' $((EPOCH_NIGHT_START + 400)) > "$home/state/t3.status"
+  cat > "$home/fakebin/mv" <<EOF
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = "$home/state/night-active.json" ]; then
+    exit 1
+  fi
+done
+exec "$real_mv" "\$@"
+EOF
+  chmod +x "$home/fakebin/mv"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>/dev/null) || rc=$?
+  rm -f "$home/fakebin/mv"
+  expect_code 0 "$rc" "ownership-failure check exits 0 with verdict"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "streak still yields stop_dispatch"
+  assert_no_reserve_flag "$home" "failed ownership write must roll back the newly created matching-token reserve-flag"
+  assert_equals "absent" "$(printf '%s\n' "$out" | jq -r '.reserve_flag.state')" "verdict reports rolled-back flag as absent"
+  assert_contains "$(printf '%s\n' "$out" | jq -r '.warnings[]')" "rolled back newly created reserve-flag" "verdict surfaces ownership rollback warning"
+  pass "fm-night-check: lost/wrong-night/malformed stop records fail closed and failed flag ownership rolls back and warns"
 }
 
 test_end_clears_recorded_reserve_flag_even_after_config_change() {
@@ -815,7 +947,88 @@ EOF
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "check after producer post-merge exits 0"
   assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "fm-night-check consumes recorded base_ref without gh pr view"
-  pass "fm-night-check: dev health tracks per-branch latest post-merge records, resolves legacy records, and consumes fm-pr-review base_ref"
+
+  # 7. Partial forge response omitting base.ref is refused by bin/fm-pr-review.sh post-merge
+  cat > "$home/fakebin/gh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "/repos/twilwa/bbchat/pulls/1500" ]; then
+  printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/gh"
+  rc=0
+  PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_REVIEW_NOW="2026-11-27T08:06:00Z" FM_REVIEW_NOW_EPOCH=$((EPOCH_NIGHT_START + 3960)) \
+    "$PR_REVIEW" post-merge "$pr_url" "$head" "$ev" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "fm-pr-review.sh post-merge must refuse partial forge response missing base.ref"
+
+  # 8. Undated failed post-merge record after a valid pass on the same branch -> unknown + stop_dispatch
+  home=$(make_home dev_undated_fail)
+  seed_healthy_stubs "$home"
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 passed $((EPOCH_NIGHT_START - 1800)) dev)"
+  write_review_ledger "$home" 1443 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1443","url":"https://github.com/twilwa/bbchat/pull/1443","current_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","generations":[{"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","verified_epoch":%d},"post_merge_verifications":[{"applicability":"browser","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","outcome":"failed","ready_for_qa":"blocked","base_ref":"dev"}]}]}\n' $((EPOCH_NIGHT_START - 600)) $((EPOCH_NIGHT_START - 300)))"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "undated failed record check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "undated failed post-merge record stops dispatch instead of letting older pass win"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "undated failed post-merge record reports dev_health unknown"
+
+  # 9. Failed legacy base-ref cache publication surfaces warning while keeping live verified result;
+  #    later successful publication caches for a zero-call hit on the third check
+  local real_mv
+  real_mv=$(type -P mv) || fail "mv is required"
+  home=$(make_home dev_cache_publish_fail)
+  fake_quota_axi "$home/fakebin" 80 70
+  cat > "$home/fakebin/gh" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "api" ] && [ "\${2:-}" = "rate_limit" ]; then
+  printf '{"resources":{"core":{"limit":5000,"used":800,"remaining":4200,"reset":1795800000}}}\n'
+  exit 0
+fi
+if [ "\${1:-}" = "pr" ] && [ "\${2:-}" = "view" ]; then
+  printf '%s\n' "\$*" >> "$home/gh-view.log"
+  printf '{"baseRefName":"dev"}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/gh"
+  cat > "$home/fakebin/mv" <<EOF
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = "$home/state/night-pr-base-refs.json" ]; then
+    exit 1
+  fi
+done
+exec "$real_mv" "\$@"
+EOF
+  chmod +x "$home/fakebin/mv"
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 passed $((EPOCH_NIGHT_START - 1800)))"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "cache publish failure check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "live forge result stays verified ok when cache publish fails"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.cache_publish_ok')" "cache_publish_ok is false on write failure"
+  assert_contains "$(printf '%s\n' "$out" | jq -r '.warnings[]')" "could not publish legacy PR base-ref cache" "cache publish failure surfaces in verdict warnings"
+  [ ! -e "$home/state/night-pr-base-refs.json" ] || fail "failed cache publish must not leave cache file behind"
+
+  # Allow publication on next check -> cache succeeds with no warning
+  rm -f "$home/fakebin/mv" "$home/gh-view.log"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 300)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "successful cache publish check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "dev_health ok on publish"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.cache_publish_ok')" "cache_publish_ok is true once published"
+  [ -f "$home/state/night-pr-base-refs.json" ] || fail "successful publish must write cache file"
+
+  # Third check with gh pr view disabled -> zero-call cache hit
+  rm -f "$home/gh-view.log"
+  fake_gh_rate_limit "$home/fakebin" 4200
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 600)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "post-publish cache hit exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "post-publish cache hit reads ok with no gh pr view call"
+  [ ! -e "$home/gh-view.log" ] || fail "post-publish cache hit must not invoke gh pr view"
+  pass "fm-night-check: dev health validates records, requires producer base_ref, caches legacy refs, and surfaces cache publish failures"
 }
 
 write_fake_crew_state() {  # <home> <map_file>
@@ -847,10 +1060,12 @@ run_night_check_with_crew_state() {  # <home> <now> <args...>
     "$CHECK" "$@" </dev/null
 }
 
-check_ledger_with_checks() {  # <num> <head> <checks_json>
-  local num=$1 head=$2 checks=$3
-  printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-%s","url":"https://github.com/twilwa/bbchat/pull/%s","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[{"at":"2026-11-27T07:05:00Z","at_epoch":%d,"head":"%s","pending_reviews":[],"checks":%s,"comment_ids":[]}],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[]}]}\n' \
-    "$num" "$num" "$head" "$head" $((EPOCH_NIGHT_START + 100)) $((EPOCH_NIGHT_START + 120)) "$head" "$checks"
+check_ledger_with_checks() {  # <num> <head> <checks_json> [at_epoch] [cp_head]
+  local num=$1 head=$2 checks=$3 at_ep cp_head
+  at_ep=${4:-$((EPOCH_IN_WINDOW - 60))}
+  cp_head=${5:-$head}
+  printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-%s","url":"https://github.com/twilwa/bbchat/pull/%s","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[{"at":"2026-11-27T08:59:00Z","at_epoch":%d,"head":"%s","pending_reviews":[],"checks":%s,"comment_ids":[]}],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[]}]}\n' \
+    "$num" "$num" "$head" "$head" $((EPOCH_NIGHT_START + 100)) "$at_ep" "$cp_head" "$checks"
 }
 
 test_check_machine_uses_crew_state_dedups_heads_and_checks_status() {
@@ -867,8 +1082,10 @@ test_check_machine_uses_crew_state_dedups_heads_and_checks_status() {
   h3=3333333333333333333333333333333333333333
 
   # 1. Working task with pr= and non-CI paused task -> NOT counted
-  printf 'kind=ship\npr=https://github.com/twilwa/bbchat/pull/201\npr_head=%s\n' "$h1" > "$home/state/p1.meta"
-  printf 'kind=ship\npr=https://github.com/twilwa/bbchat/pull/202\npr_head=%s\n' "$h2" > "$home/state/p2.meta"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/201\npr_head=%s\n' $((EPOCH_NIGHT_START + 100)) "$h1" > "$home/state/p1.meta"
+  printf 'working [at=%d]: running tests\n' $((EPOCH_NIGHT_START + 150)) > "$home/state/p1.status"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/202\npr_head=%s\n' $((EPOCH_NIGHT_START + 110)) "$h2" > "$home/state/p2.meta"
+  printf 'paused [at=%d]: waiting on reviewer reply\n' $((EPOCH_NIGHT_START + 160)) > "$home/state/p2.status"
   printf 'p1\tstate: working · source: pane · running tests\n' > "$map"
   printf 'p2\tstate: paused · source: status-log · waiting on reviewer reply\n' >> "$map"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
@@ -876,35 +1093,75 @@ test_check_machine_uses_crew_state_dedups_heads_and_checks_status() {
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "working and non-CI paused tasks do not count"
   assert_equals "0" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "waiting_count is 0"
 
-  # 2. Task in CI admission wait whose current head has RUNNING checks -> EXCLUDED
-  #    Task in CI admission wait whose current head has COMPLETED pass/skipping checks -> EXCLUDED
+  # 2. Task in CI admission wait whose current head has fresh RUNNING checks -> EXCLUDED
+  #    Task in CI admission wait whose current head has fresh COMPLETED pass/skipping checks -> EXCLUDED
   write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]')"
   write_review_ledger "$home" 202 "$(check_ledger_with_checks 202 "$h2" '[{"name":"lint","status":"COMPLETED","conclusion":"pass"},{"name":"optional","status":"COMPLETED","conclusion":"skipping"}]')"
   printf 'p1\tstate: paused · source: status-log · waiting for CI admission\n' > "$map"
   printf 'p2\tstate: paused · source: status-log · waiting for check-machine slot\n' >> "$map"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "running/completed checks exclusion exits 0"
-  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "PRs with running or COMPLETED pass/skipping checks are excluded"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "PRs with fresh running or COMPLETED pass/skipping checks are excluded"
   assert_equals "0" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "waiting_count stays 0"
 
-  # 3. Two tasks pointing at the SAME PR head waiting for CI admission -> deduplicated to 1 -> continue
+  # 3. QUEUED checks are NOT running and must NOT shrink the wait count
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"QUEUED","conclusion":"pending"}]')"
+  write_review_ledger "$home" 202 "$(check_ledger_with_checks 202 "$h2" '[{"name":"ci","status":"PENDING","conclusion":"pending"}]')"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "queued checks exit 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "QUEUED/PENDING checks stay counted as waiting"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "2 queued PRs trip check_machine"
+  assert_equals "2" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "2 queued PRs keep waiting_count at 2"
+
+  # 4. Malformed check status -> unknown + stop_dispatch
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"BOGUS","conclusion":""}]')"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed check status exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "malformed check status stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "malformed check status reports unknown"
+
+  # 5. Stale checkpoint (older than freshness window) -> unknown + stop_dispatch
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]' $((EPOCH_IN_WINDOW - 3600)))"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "stale checkpoint exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "stale checkpoint stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "stale checkpoint reports unknown"
+
+  # 6. Older-head checkpoint -> unknown + stop_dispatch
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]' $((EPOCH_IN_WINDOW - 60)) "$h3")"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "older-head checkpoint exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "older-head checkpoint stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "older-head checkpoint reports unknown"
+
+  # 7. Successful exit-0 `state: unknown` from fm-crew-state -> unknown + stop_dispatch
   rm -f "$home/data/pr-review-ledger/"*.json
-  printf 'kind=ship\npr=https://github.com/twilwa/bbchat/pull/203\npr_head=%s\n' "$h3" > "$home/state/p1.meta"
-  printf 'kind=ship\npr=https://github.com/twilwa/bbchat/pull/203\npr_head=%s\n' "$h3" > "$home/state/p2.meta"
+  printf 'p1\tstate: unknown · source: none · backend target gone\n' > "$map"
+  printf 'p2\tstate: working · source: pane · ok\n' >> "$map"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "unknown crew state exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "state: unknown crew-state reply stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "state: unknown crew-state reply reports unknown"
+
+  # 8. Two tasks pointing at the SAME PR head waiting for CI admission -> deduplicated to 1 -> continue
+  printf 'p1\tstate: paused · source: status-log · waiting for CI admission\n' > "$map"
+  printf 'p2\tstate: paused · source: status-log · waiting for check-machine slot\n' >> "$map"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/203\npr_head=%s\n' $((EPOCH_NIGHT_START + 100)) "$h3" > "$home/state/p1.meta"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/203\npr_head=%s\n' $((EPOCH_NIGHT_START + 110)) "$h3" > "$home/state/p2.meta"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "duplicate PR head check exits 0"
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "duplicate PR head deduplicates to 1"
   assert_equals "1" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "deduplicated waiting_count is 1"
 
-  # 4. Two distinct PR heads in declared CI/check admission wait -> tripped + stop_dispatch (no flag)
-  printf 'kind=ship\npr=https://github.com/twilwa/bbchat/pull/204\npr_head=%s\n' "$h2" > "$home/state/p2.meta"
+  # 9. Two distinct PR heads in declared CI/check admission wait -> tripped + stop_dispatch (no flag)
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/204\npr_head=%s\n' $((EPOCH_NIGHT_START + 110)) "$h2" > "$home/state/p2.meta"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "2 distinct waiting PR heads check exits 0"
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "2 distinct PR heads waiting for CI admission trip stop_dispatch"
   assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "check_machine tripped"
   assert_equals "2" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "waiting_count is 2"
   assert_no_reserve_flag "$home" "the check-machine rule is a level condition and must not set reserve-flag"
-  pass "fm-night-check: check-machine rule counts deduplicated CI-admission waits via fm-crew-state and excludes running/passed checks"
+  pass "fm-night-check: check-machine rule enforces current head-matched evidence and fails closed on unknown/stale/malformed state"
 }
 
 high_stakes_ledger() {  # <num> <head-char> <created_epoch> [attestations-json]
@@ -950,6 +1207,32 @@ EOF
   assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "other Claude work stays allowed at the validation cap"
   assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.dispatch')" "dispatch stays allowed at the validation cap"
   pass "fm-night-check: validation cap counts night-created high-stakes generations at PR-ready time and stops at 2"
+}
+
+test_validation_cap_incomplete_generation_fails_closed() {
+  local home out rc=0
+
+  # Two high-stakes PRs created tonight, one missing created_epoch -> unknown + stop_dispatch
+  home=$(make_home val_cap_missing_epoch)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 301 "$(high_stakes_ledger 301 2 $((EPOCH_NIGHT_START + 600)))"
+  write_review_ledger "$home" 302 '{"schema":"firstmate-pr-review-ledger.v1","task":"t-302","url":"https://github.com/twilwa/bbchat/pull/302","current_head":"3333333333333333333333333333333333333333","generations":[{"head":"3333333333333333333333333333333333333333","risk":{"level":"high","reason":"auth"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[]}]}'
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing created_epoch check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "missing created_epoch stops dispatch instead of undercounting"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.validation_cap.status')" "missing created_epoch reports validation_cap unknown"
+
+  # Generation missing risk.level -> unknown + stop_dispatch
+  home=$(make_home val_cap_missing_risk)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 303 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-303","url":"https://github.com/twilwa/bbchat/pull/303","current_head":"4444444444444444444444444444444444444444","generations":[{"head":"4444444444444444444444444444444444444444","created_epoch":%d,"risk":{},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[]}]}\n' $((EPOCH_NIGHT_START + 600)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing risk.level check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "missing risk.level stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.validation_cap.status')" "missing risk.level reports validation_cap unknown"
+  pass "fm-night-check: incomplete review-ledger generation fails closed as unknown for validation cap"
 }
 
 test_host_load_sustained_high_and_unreadable() {
@@ -1124,6 +1407,25 @@ test_supervision_stall_old_wake_latch_and_corrupt_files() {
   assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "a disabled supervision host has no engine latch"
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a disabled supervision host does not stop dispatch"
 
+  # Claude primary with valid health row for a non-default model (opus) and a present
+  # unreadable config/supervision-host must fail closed as unknown (never fall back to sonnet)
+  home=$(make_home stall_unreadable_config)
+  seed_healthy_stubs "$home"
+  printf 'claude opus\n' > "$home/config/supervision-host"
+  printf '%s\n' "$$" > "$home/state/.lock"
+  printf 'lab-session\n' > "$home/state/.lock-session"
+  # shellcheck disable=SC2016 # expands in the child shell
+  key=$(FM_HOME="$home" FM_PROC_ROOT_OVERRIDE="$home/proc" bash -c '. "$1/fm-wake-lib.sh" && . "$1/fm-supervision-engine-lib.sh" \
+    && fm_supervision_host_config "$2" claude && fm_supervision_host_health_key "$3"' _ \
+    "$ROOT/bin" "$home/config" "$home/state") || fail "could not compute opus latch key"
+  printf 'key=%s\nerrors=2\ncooldown=300\nretry_after=%d\n' "$key" $((EPOCH_IN_WINDOW + 300)) > "$home/state/.supervision-host-health"
+  chmod 000 "$home/config/supervision-host"
+  out=$(FM_TEST_SEAM=1 FM_TEST_HARNESS=claude run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  chmod 644 "$home/config/supervision-host"
+  expect_code 0 "$rc" "unreadable supervision-host config exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unreadable supervision-host config stops dispatch instead of defaulting to sonnet"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "unreadable supervision-host config reports unknown"
+
   # Corrupt wake queue fails closed as unknown
   home=$(make_home stall_corrupt)
   seed_healthy_stubs "$home"
@@ -1183,9 +1485,12 @@ test_hc_core_restart_auto_detect_ambient_strip_and_unreadable() {
   [ -f "$home/state/night.reserve" ] || fail "hc core restart sets reserve-flag"
 
   # Auto-detected hc via app-terminal (no config/backend, no FM_BACKEND), stubbed unix socket only
+  # Use a short /tmp directory so AF_UNIX never hits the 108-byte sun_path limit under deep worktrees.
   home=$(make_home hc_auto_detect)
   seed_healthy_stubs "$home"
-  sock="$home/app.sock"
+  local sock_dir
+  sock_dir=$(mktemp -d /tmp/fmnc.XXXXXX) || fail "mktemp for hc stub socket failed"
+  sock="$sock_dir/a.sock"
   hc_log="$home/hc-auto.log"
   fake_herdr_core "$home/fakebin" 5100 "inst-auto" 86400000 "$hc_log" "term-auto-1"
   python3 -c '
@@ -1206,6 +1511,7 @@ while True:
   if [ ! -S "$sock" ]; then
     kill "$sock_pid" 2>/dev/null || true
     wait "$sock_pid" 2>/dev/null || true
+    rm -rf -- "$sock_dir"
     fail "stub unix socket did not appear"
   fi
   rc=0
@@ -1214,10 +1520,10 @@ while True:
     HC_TERMINAL_ID="term-auto-1" HC_TERMINAL_SOCKET="$sock" FM_HC_SOCKET="$sock" HC_SESSION="auto-sess" \
     PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_NIGHT_NOW_EPOCH="$EPOCH_NIGHT_START" FM_PROC_ROOT_OVERRIDE="$home/proc" \
     "$CHECK" start >/dev/null 2>&1 || rc=$?
-  # Stop the stub socket listener before assertions so no listener can ever leak on failure
+  # Stop the stub socket listener and remove the short temp dir before assertions so nothing leaks on failure
   kill "$sock_pid" 2>/dev/null || true
   wait "$sock_pid" 2>/dev/null || true
-  rm -f "$sock"
+  rm -rf -- "$sock_dir"
   expect_code 0 "$rc" "auto-detected app-terminal hc start must succeed"
   assert_equals "auto-sess" "$(jq -r '.hc_target.session' "$home/state/night-active.json")" "auto-detected hc saves session at start"
   assert_equals "$sock" "$(jq -r '.hc_target.socket' "$home/state/night-active.json")" "auto-detected hc saves socket at start"
@@ -1242,7 +1548,8 @@ while True:
   # Live app-terminal socket with unusable herdr-core toolchain -> unknown + stop_dispatch
   home=$(make_home hc_app_unusable)
   seed_healthy_stubs "$home"
-  sock="$home/unusable.sock"
+  sock_dir=$(mktemp -d /tmp/fmnc.XXXXXX) || fail "mktemp for unusable hc stub socket failed"
+  sock="$sock_dir/u.sock"
   cat > "$home/fakebin/herdr-core" <<'EOF'
 #!/usr/bin/env bash
 exit 1
@@ -1272,7 +1579,7 @@ while True:
     "$CHECK" check --json 2>&1) || rc=$?
   kill "$sock_pid" 2>/dev/null || true
   wait "$sock_pid" 2>/dev/null || true
-  rm -f "$sock"
+  rm -rf -- "$sock_dir"
   expect_code 0 "$rc" "unusable app-terminal check exits 0"
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unusable app-terminal stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "unusable app-terminal reports unknown"
@@ -1291,6 +1598,66 @@ EOF
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "unreadable hc core stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "hc_core reports unknown"
   pass "fm-night-check: hc core restart, auto-detected app-terminal target, ambient HC_SOCKET strip, and unreadable/unresolvable fail-closed"
+}
+
+test_hc_core_partial_target_and_baseline_fail_closed() {
+  local home out rc=0 hc_log
+  home=$(make_home hc_partial_state)
+  seed_healthy_stubs "$home"
+  printf 'hc\n' > "$home/config/backend"
+  hc_log="$home/hc-calls.log"
+  fake_herdr_core "$home/fakebin" 3995 "inst-original" 86400000 "$hc_log"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "hc start must succeed"
+  : > "$hc_log"
+
+  # 1. Partial hc_target missing socket key -> unknown without querying herdr-core
+  jq 'del(.hc_target.socket)' "$home/state/night-active.json" > "$home/state/night-active.tmp"
+  mv "$home/state/night-active.tmp" "$home/state/night-active.json"
+  out=$(env \
+    -u FM_BACKEND -u FM_HC_BIN -u HC_TERMINAL_ID -u HC_TERMINAL_SOCKET -u HC_SCOPE \
+    HC_SESSION="fallback-sess" FM_HC_SOCKET="$home/fallback.sock" \
+    PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_NIGHT_NOW_EPOCH="$EPOCH_IN_WINDOW" FM_PROC_ROOT_OVERRIDE="$home/proc" \
+    "$CHECK" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "partial hc_target check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "partial hc_target stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "partial hc_target reports unknown"
+  [ ! -s "$hc_log" ] || fail "partial hc_target must not fall back to another route: $(cat "$hc_log")"
+
+  # 2. Only hc_baseline survives (hc_target is null) -> unknown without ambient fallback
+  printf '{"schema":"fm-night-active.v1","started_epoch":%d,"started_at":"2026-11-27T07:00:00Z","backend":"hc","window":{"start":"23:00","last_dispatch":"06:30","end":"07:30","timezone":"America/Los_Angeles"},"hc_target":null,"hc_baseline":{"pid":3995,"core_id":"core-1","holder_instance":"inst-original","uptime_ms":86400000,"started_epoch":1795676400},"stop_record_expected":false,"created_reserve_flags":[]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-active.json"
+  out=$(env \
+    -u FM_BACKEND -u FM_HC_BIN -u HC_TERMINAL_ID -u HC_TERMINAL_SOCKET -u HC_SCOPE \
+    HC_SESSION="fallback-sess" FM_HC_SOCKET="$home/fallback.sock" \
+    PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_NIGHT_NOW_EPOCH="$EPOCH_IN_WINDOW" FM_PROC_ROOT_OVERRIDE="$home/proc" \
+    "$CHECK" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "baseline-only hc check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "baseline without hc_target stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "baseline without hc_target reports unknown"
+  [ ! -s "$hc_log" ] || fail "baseline-only state must not fall back to ambient route"
+
+  # 3. Malformed hc_baseline missing pid -> unknown without querying herdr-core
+  printf '{"schema":"fm-night-active.v1","started_epoch":%d,"started_at":"2026-11-27T07:00:00Z","backend":"hc","window":{"start":"23:00","last_dispatch":"06:30","end":"07:30","timezone":"America/Los_Angeles"},"hc_target":{"session":"default","socket":null},"hc_baseline":{"core_id":"core-1"},"stop_record_expected":false,"created_reserve_flags":[]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-active.json"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed hc_baseline check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "malformed hc_baseline stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "malformed hc_baseline reports unknown"
+  [ ! -s "$hc_log" ] || fail "malformed hc_baseline must not query herdr-core"
+
+  # 4. Missing backend field with null hc fields cannot masquerade as non-hc -> unknown
+  printf '{"schema":"fm-night-active.v1","started_epoch":%d,"started_at":"2026-11-27T07:00:00Z","window":{"start":"23:00","last_dispatch":"06:30","end":"07:30","timezone":"America/Los_Angeles"},"hc_target":null,"hc_baseline":null,"stop_record_expected":false,"created_reserve_flags":[]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-active.json"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing backend check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "missing backend stops dispatch"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "missing backend reports hc_core unknown"
+
+  # 5. Known hc target with explicitly null baseline preserves agreed uptime fallback
+  printf '{"schema":"fm-night-active.v1","started_epoch":%d,"started_at":"2026-11-27T07:00:00Z","backend":"hc","window":{"start":"23:00","last_dispatch":"06:30","end":"07:30","timezone":"America/Los_Angeles"},"hc_target":{"session":"default","socket":null},"hc_baseline":null,"stop_record_expected":false,"created_reserve_flags":[]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-active.json"
+  fake_herdr_core "$home/fakebin" 8812 "inst-new" 12000 "$hc_log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "explicit null baseline uptime fallback check exits 0"
+  assert_equals "end_night" "$(printf '%s\n' "$out" | jq -r '.verdict')" "explicit null baseline still detects post-start uptime restart"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.hc_core.status')" "uptime fallback trips hc_core"
+  pass "fm-night-check: partial hc target, malformed baseline, and missing backend fail closed without ambient fallback"
 }
 
 test_hc_guard_blocks_install_only() {
@@ -1379,6 +1746,104 @@ test_stop_condition_never_kills_or_tears_down_workers() {
   pass "fm-night-check: stop conditions never kill, interrupt, or tear down workers"
 }
 
+assert_all_stopped() {  # <verdict_json> <condition> <label>
+  local out=$1 cond=$2 label=$3
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "$label: verdict is stop_dispatch"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.dispatch')" "$label: allow.dispatch is false"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "$label: allow.claude is false"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "$label: allow.merge is false"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.validation')" "$label: allow.validation is false"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.two_hour_default')" "$label: allow.two_hour_default is false"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r --arg c "$cond" '.tripped[] | select(.condition == $c) | .status')" "$label: $cond is unknown"
+}
+
+test_verdict_input_fail_closed_matrix() {
+  local home out rc=0
+
+  # 1. claude_quota: stale refreshedAt (> 900s allowed age) even when state.status == fresh -> stop
+  home=$(make_home mx_quota_stale_age)
+  fake_quota_axi "$home/fakebin" 80 70 false fresh "2026-11-27T08:40:00Z" # 20m before EPOCH_IN_WINDOW (09:00Z)
+  fake_gh_rate_limit "$home/fakebin" 4200
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "stale quota age check exits 0"
+  assert_all_stopped "$out" "claude_quota" "claude_quota stale age (>900s)"
+
+  # 2. github_api: missing remaining field -> stop
+  home=$(make_home mx_gh_missing)
+  fake_quota_axi "$home/fakebin" 80 70
+  cat > "$home/fakebin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '{"resources":{"core":{"limit":5000}}}\n'
+EOF
+  chmod +x "$home/fakebin/gh"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing gh remaining exits 0"
+  assert_all_stopped "$out" "github_api" "github_api missing remaining"
+
+  # 3. dev_health: stale passing record (> 86400s / 24h allowed age) -> stop
+  home=$(make_home mx_dev_stale)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1490 "$(dev_ledger 1490 passed $((EPOCH_IN_WINDOW - 90000)) dev)"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "stale dev_health check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health stale passing record (>86400s)"
+
+  # 4. hc_core: stale saved hc target (started_epoch > 43200s / 12h old) -> stop
+  home=$(make_home mx_hc_stale)
+  seed_healthy_stubs "$home"
+  printf 'hc\n' > "$home/config/backend"
+  fake_herdr_core "$home/fakebin" 3995 "inst-orig" 86400000
+  run_night_check "$home" $((EPOCH_IN_WINDOW - 50000)) start >/dev/null 2>&1 || fail "stale hc start must succeed"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "stale hc target check exits 0"
+  assert_all_stopped "$out" "hc_core" "hc_core stale saved target (>43200s)"
+
+  # 5. host_load: unreadable/non-numeric /proc/loadavg -> stop
+  home=$(make_home mx_load_bad)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'not-a-number 0 0 1/1 1\n' > "$home/proc/loadavg"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "unreadable loadavg check exits 0"
+  assert_all_stopped "$out" "host_load" "host_load malformed loadavg"
+
+  # 6. check_machine: missing pr_head on CI-waiting task without ledger -> stop
+  home=$(make_home mx_cm_missing_head)
+  seed_healthy_stubs "$home"
+  local map="$home/crew-state.tsv"
+  printf 'p1\tstate: paused · source: status-log · waiting for CI admission\n' > "$map"
+  write_fake_crew_state "$home" "$map"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/299\n' $((EPOCH_NIGHT_START + 100)) > "$home/state/p1.meta"
+  printf 'paused [at=%d]: waiting for CI admission\n' $((EPOCH_NIGHT_START + 120)) > "$home/state/p1.status"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing pr_head check exits 0"
+  assert_all_stopped "$out" "check_machine" "check_machine missing confirmed PR head"
+
+  # 7. failure_streak: unreadable archived status.log -> stop
+  home=$(make_home mx_streak_unreadable_archive)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  mkdir -p "$home/data/t_bad"
+  ln -s "$home/data/missing.log" "$home/data/t_bad/status.log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "unreadable archive check exits 0"
+  assert_all_stopped "$out" "failure_streak" "failure_streak unreadable archived status.log"
+
+  # 8. validation_cap: mismatched current_head vs generation head -> stop
+  home=$(make_home mx_val_head_mismatch)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 399 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-399","url":"https://github.com/twilwa/bbchat/pull/399","current_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","generations":[{"head":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","created_epoch":%d,"risk":{"level":"high","reason":"auth"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[]}]}\n' $((EPOCH_NIGHT_START + 600)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "mismatched generation head check exits 0"
+  assert_all_stopped "$out" "validation_cap" "validation_cap mismatched generation head"
+  pass "fm-night-check: evaluate_night_verdict stops all work when any required input is missing, unreadable, stale, or mismatched"
+}
+
 fm_test_run \
   test_help_and_usage \
   test_healthy_night_verdict_and_machine_readable_output \
@@ -1392,15 +1857,20 @@ fm_test_run \
   test_github_api_below_floor_recovers_and_unreadable \
   test_failure_streak_latches_until_end \
   test_failure_streak_excludes_scouts_secondmates_and_pre_night_tasks \
+  test_failure_streak_status_archive_and_missing_status \
   test_corrupt_stop_record_stops_dispatch_without_latching_or_flag \
+  test_stop_record_expected_loss_and_ownership_rollback \
   test_end_clears_recorded_reserve_flag_even_after_config_change \
   test_foreign_reserve_flag_left_untouched \
   test_missing_reserve_flag_config_warns \
   test_dev_health_per_branch_recovery_legacy_fallback_and_producer \
   test_check_machine_uses_crew_state_dedups_heads_and_checks_status \
   test_validation_cap_counts_night_created_high_stakes_generations \
+  test_validation_cap_incomplete_generation_fails_closed \
   test_host_load_sustained_high_and_unreadable \
   test_supervision_stall_old_wake_latch_and_corrupt_files \
   test_hc_core_restart_auto_detect_ambient_strip_and_unreadable \
+  test_hc_core_partial_target_and_baseline_fail_closed \
   test_hc_guard_blocks_install_only \
-  test_stop_condition_never_kills_or_tears_down_workers
+  test_stop_condition_never_kills_or_tears_down_workers \
+  test_verdict_input_fail_closed_matrix

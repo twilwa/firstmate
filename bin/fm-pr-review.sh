@@ -316,7 +316,8 @@ read_forge_merge_sha() {
     | .merge_commit_sha
     | select(type == "string" and test("^[0-9a-fA-F]{40}$"))
   ') || die 'post-merge verification requires a forge-confirmed merge commit'
-  FORGE_BASE_REF=$(printf '%s\n' "$result" | jq -r '.base.ref | select(type == "string" and length > 0)' 2>/dev/null) || FORGE_BASE_REF=
+  FORGE_BASE_REF=$(printf '%s\n' "$result" | jq -er '.base.ref | select(type == "string" and length > 0)') \
+    || die 'post-merge verification requires a forge-confirmed base branch'
 }
 
 validate_post_merge_evidence() {
@@ -653,10 +654,9 @@ case "$cmd" in
     jq --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
       --arg forge_merge_sha "$FORGE_MERGE_SHA" --arg forge_base_ref "${FORGE_BASE_REF:-}" \
       --slurpfile evidence "$EVIDENCE" '
-      ($evidence[0] + {forge_merge_sha:$forge_merge_sha,recorded_at:$at,recorded_epoch:$epoch,
+      ($evidence[0] + {forge_merge_sha:$forge_merge_sha,base_ref:$forge_base_ref,recorded_at:$at,recorded_epoch:$epoch,
         ready_for_qa:(if $evidence[0].applicability == "not-applicable" or $evidence[0].outcome == "passed"
-          then "allowed" else "blocked" end)}
-        + (if $forge_base_ref != "" then {base_ref:$forge_base_ref} else {} end)) as $record
+          then "allowed" else "blocked" end)}) as $record
       | .generations[-1].post_merge_verifications = ((.generations[-1].post_merge_verifications // []) + [$record])
     ' "$LEDGER" > "$WORK"
     publish "$WORK"; rm -f -- "$WORK"

@@ -23,8 +23,8 @@ case "${1:-} ${2:-}" in
   "api /repos/o/r/pulls/7")
     head=${FM_TEST_PR_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
     base_json=""
-    if [ -n "${FM_TEST_PR_BASE:-}" ]; then
-      base_json=$(printf ',"base":{"ref":"%s"}' "$FM_TEST_PR_BASE")
+    if [ "${FM_TEST_PR_BASE:-main}" != "__omit__" ]; then
+      base_json=$(printf ',"base":{"ref":"%s"}' "${FM_TEST_PR_BASE:-main}")
     fi
     if [ "${FM_TEST_PR_MERGED:-true}" = true ]; then
       printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}%s}\n' "$head" "$base_json"
@@ -956,6 +956,10 @@ test_post_merge_browser_pass_requires_full_local_evidence() {
     || fail 'a concrete Linear issue evidence URL was refused'
   [ "$(jq -r '.generations[-1].post_merge_verifications[-1].base_ref // ""' "$path")" = dev ] \
     || fail 'post-merge record did not retain the forge base branch'
+  local missing_base_rc=0
+  FM_TEST_PR_BASE=__omit__ post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null 2>&1 || missing_base_rc=$?
+  [ "$missing_base_rc" -ne 0 ] \
+    || fail 'post-merge published a verification record when the forge response omitted base.ref'
   pass 'browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence'
 }
 
