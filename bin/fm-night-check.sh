@@ -317,6 +317,9 @@
 #   FM_CREW_STATE_BIN        override fm-crew-state.sh path (tests)
 #   FM_HC_BIN                override herdr-core binary path (matching hc.sh)
 #   FM_HC_SOCKET             pin hc core socket (matching hc.sh)
+#   FM_NIGHT_QUOTA_TIMEOUT, FM_NIGHT_GH_TIMEOUT, FM_NIGHT_HC_TIMEOUT
+#                            per-call timeout seconds for quota-axi, gh, and
+#                            hc queries (default 10 each)
 #
 # Exit status:
 #   check / start / end: 0 on completion, 1 on refusal or state error, 2 on
