@@ -183,6 +183,33 @@ test_existing_hold_never_gains_a_default() {
   pass "a hold that already exists never gains a default later"
 }
 
+test_expired_dated_hold_never_gains_a_default() {
+  local home rc=0
+  home=$(make_home hold-expired)
+  printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
+  FM_CAPTAIN_HOLD_NOW=$ASK_ISO run_captain "$home" hold x1 --title "Notice copy choice x1" \
+    --reason "pick option A or B for the notice copy" --repo sample --until 2026-01-02 > /dev/null \
+    || fail "dated hold failed"
+  run_captain "$home" open x1 || fail "an expired dated hold is not an open captain call"
+  hold_with_default "$home" x1 > /dev/null 2> "$home/err" || rc=$?
+  { [ "$rc" -ne 0 ] && grep -F "already held" "$home/err" >/dev/null; } \
+    || fail "a hold past its --until date gained a default: $(cat "$home/err")"
+  [ ! -e "$home/data/x1/hold-default.json" ] || fail "the expired-hold attempt left a default record"
+  pass "a captain hold past its --until date is still an existing hold and never gains a default"
+}
+
+test_repeated_hold_drops_its_default_with_a_notice() {
+  local home
+  home=$(make_home hold-drop)
+  printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
+  hold_with_default "$home" p1 > /dev/null || fail "default-bearing hold refused"
+  FM_CAPTAIN_HOLD_NOW=$ASK_ISO run_captain "$home" hold p1 --reason "pick option A or B for the notice copy" \
+    > /dev/null 2> "$home/err" || fail "repeated hold failed: $(cat "$home/err")"
+  grep -F "dropped its recorded default" "$home/err" > /dev/null || fail "the dropped default was silent: $(cat "$home/err")"
+  [ ! -e "$home/data/p1/hold-default.json" ] || fail "a repeated hold kept the earlier default"
+  pass "a repeated hold drops an earlier default and says so"
+}
+
 test_default_bearing_hold_records_its_default() {
   local home
   home=$(make_home hold-records)
@@ -219,6 +246,49 @@ test_healthy_default_applies_with_defaulted_provenance() {
   [ "$(body_of "$home" t1 | grep -o 'Resolution mode: defaulted' | wc -l | tr -d ' ')" = 1 ] \
     || fail "replaying an applied default recorded it twice"
   pass "a healthy default applies exactly the recommendation with defaulted provenance, never as the captain's words"
+}
+
+test_interrupted_default_finishes_on_retry() {
+  local home show
+  home=$(healthy_home interrupted)
+  cat > "$home/fakebin/tasks-axi" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = update ] && [ "${2:-}" = t1 ] && [ ! -e "$FM_HOME/normalize-failed-once" ]; then
+  state=$("$REAL_TASKS_AXI" show "$2" --full | sed -n 's/^  state: //p' | head -1)
+  if [ "$state" = done ]; then
+    : > "$FM_HOME/normalize-failed-once"
+    exit 94
+  fi
+fi
+exec "$REAL_TASKS_AXI" "$@"
+EOF
+  chmod +x "$home/fakebin/tasks-axi"
+  if run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err"; then
+    fail "the forced post-close normalization failure reported success"
+  fi
+  [ "$(public_show "$home" t1 | sed -n 's/^  state: //p')" = "done" ] || fail "the forced failure did not leave the close done"
+  run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "retrying the interrupted default failed: $(cat "$home/err")"
+  show=$(public_show "$home" t1)
+  case "$show" in *'body: "Resolution recorded by fm-captain-hold.'*) ;; *) fail "the retry did not restore resolution-first ordering: $show" ;; esac
+  [ "$(body_of "$home" t1 | grep -o 'Resolution mode: defaulted' | wc -l | tr -d ' ')" = 1 ] \
+    || fail "the retry recorded the default twice"
+  run_bearings "$home" | jq -e '.decided_by_default[0].id == "t1"' > /dev/null \
+    || fail "the retried default is missing from bearings"
+  pass "an interrupted default finishes its close on retry without recording twice"
+}
+
+test_real_night_check_refuses_an_unhealthy_night() {
+  local home
+  home=$(healthy_home real-night)
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/quota-axi"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/gh"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/herdr-core"
+  chmod +x "$home/fakebin/quota-axi" "$home/fakebin/gh" "$home/fakebin/herdr-core"
+  printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$ROOT/bin/fm-night-check.sh" > "$home/night-check"
+  chmod +x "$home/night-check"
+  assert_refused "$home" "real night check on an unhealthy night" "allow.two_hour_default"
+  pass "the real night check's verdict is read and an unhealthy night refuses the default"
 }
 
 test_release_default_frees_held_work_attended_only() {
@@ -417,8 +487,12 @@ fm_test_run \
   test_hold_refuses_an_incomplete_or_disallowed_default \
   test_hold_refuses_a_default_from_the_supervision_engine \
   test_existing_hold_never_gains_a_default \
+  test_expired_dated_hold_never_gains_a_default \
+  test_repeated_hold_drops_its_default_with_a_notice \
   test_default_bearing_hold_records_its_default \
   test_healthy_default_applies_with_defaulted_provenance \
+  test_interrupted_default_finishes_on_retry \
+  test_real_night_check_refuses_an_unhealthy_night \
   test_release_default_frees_held_work_attended_only \
   test_hold_input_refusals \
   test_answer_input_refusals \

@@ -1312,9 +1312,10 @@ command_hold() {
       || fail "task $id is already closed; a new captain call needs its own task"
     existing_hold_kind=$(show_field_value "$show" hold_kind)
     existing_held=$(show_field_value "$show" held)
+    # Any captain hold - live or past its --until date - is an existing call.
+    [ "$default_given" = 0 ] || [ "$existing_hold_kind" != captain ] \
+      || fail "task $id is already held for the captain; a hold that already exists never gains a default"
     if [ "$existing_hold_kind" = captain ] && [ "$existing_held" = yes ]; then
-      [ "$default_given" = 0 ] \
-        || fail "task $id is already held for the captain; a hold that already exists never gains a default"
       preserve_hold_set=1
     else
       previous_hold_set=$(body_answered_hold_set_timestamp "$(show_field_value "$show" body)")
@@ -1351,6 +1352,9 @@ command_hold() {
     fi
   fi
   # A repeated hold may ask a different question even if it keeps its timestamp.
+  if [ -e "$DATA/$id/hold-default.json" ] || [ -L "$DATA/$id/hold-default.json" ]; then
+    printf 'fm-captain-hold: notice: task %s dropped its recorded default; this hold carries none, so the call waits for the captain\n' "$id" >&2
+  fi
   rm -f -- "$DATA/$id/hold-pr-policy.json" "$DATA/$id/hold-default.json"
   # Publish the timestamp before the captain-hold annotation. A concurrent
   # snapshot may see the harmless stamp by itself, but can never see a newly
@@ -2004,6 +2008,14 @@ default_may_apply() {  # <task-id>
     return 1
   }
   default_night_check "$now" || return 1
+  # The night check can take tens of seconds; a captain message in that window
+  # still stops the default.
+  [ -n "${FM_CAPTAIN_HOLD_NOW:-}" ] || now=$(date -u +%s)
+  default_mirror_read "$now" || return 1
+  [ $((now - MIRROR_NEWEST_CAPTAIN)) -gt "$DEFAULT_QUIET_SECONDS" ] || {
+    DEFAULT_REFUSAL="dialog mirror: a captain message arrived while the night check ran"
+    return 1
+  }
 }
 
 command_default() {
@@ -2036,6 +2048,8 @@ command_default() {
   if body_has_resolution_record "$body" && [ "$(recorded_resolution_mode "$body" || true)" = defaulted ]; then
     decoded=$(decode_shown_value "$body")
     if [ "$state" = "done" ] || [ "$hold_kind" != captain ]; then
+      remove_interrupted_answer_stamp "$id"
+      publish_parent_resolution_then_retire "$id" "$(resolution_record_count "$body")" "$outcome"
       rm -f -- "$DATA/$id/hold-default.json"
       printf 'defaulted: %s\n' "$id"
       return 0
