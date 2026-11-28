@@ -296,12 +296,13 @@
 # checked_epoch is at or after the run start and at or before the clock sample
 # taken after it returned, night_active true, a numeric night_started_epoch
 # equal to state/night-active.json's started_epoch, that start at or before
-# checked_epoch, and allow.two_hour_default true. The mirror proof (with its
-# entry since the ask) is then repeated at a final clock sample and the
-# night-active record re-read, which must pass the same validation as the
-# first read (the owner's field rules; any malformed, partial, wrong-typed,
-# multi-value, or unreadable record refuses) and still hold the same start; that
-# final sample is the recorded apply time. Any missing, unreadable, malformed,
+# checked_epoch, and allow.two_hour_default true. The default validates nothing
+# else in state/night-active.json - the owner's check does - and binds to it by
+# bytes and file instead: its sha256, device, and inode are taken before the
+# owner's check runs and again as the last read before applying, after the
+# mirror proof (with its entry since the ask) is repeated at a final clock
+# sample; any difference, including an identical copy written as a new file,
+# refuses. That final sample is the recorded apply time. Any missing, unreadable, malformed,
 # or stale input refuses with its reason; a refusal writes no default and no
 # task or hold change; the live night check may update its own health records.
 # On success it records a `defaulted` resolution under a `Default decision:`
@@ -1762,16 +1763,6 @@ DEFAULT_RECORD_VALID='type == "object" and .schema == "fm-hold-default.v1" and .
   and (.fingerprint | type == "string" and test("^[a-f0-9]{64}$"))
   and (.occurrence | type == "number" and . > 0 and . == floor)'
 
-# The active-night record's validation, copied from bin/fm-night-check.sh
-# cmd_check's read of state/night-active.json (its jq predicate on the schema,
-# started_epoch, created_reserve_flags, and stop_record_expected), except that
-# the two fields that check allows absent are required here: that script's
-# `start` always writes them, and a partial record refuses the default.
-DEFAULT_NIGHT_ACTIVE_VALID='.schema == "fm-night-active.v1"
-  and (.started_epoch | type == "number" and . >= 0 and floor == .)
-  and (.created_reserve_flags | type == "array")
-  and (.stop_record_expected | type == "boolean")'
-
 DEFAULT_CLASS=''
 DEFAULT_CATEGORY=''
 DEFAULT_ASKED_AT=''
@@ -1784,7 +1775,6 @@ DEFAULT_REFUSAL=''
 DEFAULT_RECOMMENDATION_TEXT=''
 DEFAULT_DISPOSITION=''
 DEFAULT_FINGERPRINT=''
-NIGHT_ACTIVE_STARTED=''
 
 iso_to_epoch() {  # <YYYY-MM-DDTHH:MM:SSZ>
   date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s 2>/dev/null
@@ -2024,33 +2014,35 @@ default_mirror_proof() {  # <now-epoch> <ask-epoch>
   default_mirror_quiet "$1" && default_mirror_fresh "$2"
 }
 
-# Reads state/night-active.json as exactly one object that passes
-# DEFAULT_NIGHT_ACTIVE_VALID into NIGHT_ACTIVE_STARTED; both reads use it.
-default_night_active_read() {
-  local active="$STATE/night-active.json"
-  NIGHT_ACTIVE_STARTED=''
-  [ -f "$active" ] && [ ! -L "$active" ] && [ -r "$active" ] || {
-    DEFAULT_REFUSAL="night check: no readable night-active record at $active"
-    return 1
-  }
-  NIGHT_ACTIVE_STARTED=$(jq -esr "if length == 1 and (.[0] | type) == \"object\"
-      and (.[0] | $DEFAULT_NIGHT_ACTIVE_VALID)
-    then .[0].started_epoch else error(\"malformed\") end" "$active" 2>/dev/null) || {
-    NIGHT_ACTIVE_STARTED=''
-    DEFAULT_REFUSAL="night check: the night-active record $active is malformed"
-    return 1
-  }
+# Binds the active-night record by bytes and file: prints "<device> <inode>
+# <sha256>" for state/night-active.json, or fails when it is absent, not a
+# regular readable file, or replaced while it was read. The default reads
+# nothing else of it: the owner's check validates the record.
+default_night_record_binding() {
+  local active="$STATE/night-active.json" before after sum
+  [ -f "$active" ] && [ ! -L "$active" ] && [ -r "$active" ] || return 1
+  before=$(stat -c '%d %i' "$active" 2>/dev/null || stat -f '%d %i' "$active" 2>/dev/null) || return 1
+  sum=$( { sha256sum "$active" 2>/dev/null || shasum -a 256 "$active"; } | awk '{print $1}') || return 1
+  after=$(stat -c '%d %i' "$active" 2>/dev/null || stat -f '%d %i' "$active" 2>/dev/null) || return 1
+  [ -n "$sum" ] && [ "$before" = "$after" ] || return 1
+  printf '%s %s\n' "$before" "$sum"
 }
 
 DEFAULT_NIGHT_CHECKED=''
-# Runs the live night check and proves its verdict is for this run and the
-# current night: 0 <= started_epoch <= checked_epoch <= the sample taken after
-# it returned, checked_epoch >= the run start, and the verdict's numeric
-# night_started_epoch equals the active record's.
+DEFAULT_NIGHT_BINDING=''
+# Binds the active-night record, runs the owner's live check on it, and proves
+# the verdict is fresh for this run and for that record's night: run start <=
+# checked_epoch <= the sample taken after it returned, the verdict's
+# night_started_epoch equals the bound record's started_epoch, and that start
+# is not after checked_epoch.
 default_night_check() {  # <run-start-epoch>
-  local run_start=$1 out rc=0 after facts
+  local run_start=$1 out rc=0 after facts started active="$STATE/night-active.json"
   DEFAULT_NIGHT_CHECKED=''
-  default_night_active_read || return 1
+  DEFAULT_NIGHT_BINDING=$(default_night_record_binding) || {
+    DEFAULT_REFUSAL="night check: no readable night-active record at $active"
+    return 1
+  }
+  started=$(jq -ec '.started_epoch' "$active" 2>/dev/null) || started=null
   [ -x "$NIGHT_CHECK_BIN" ] && [ -f "$NIGHT_CHECK_BIN" ] || {
     DEFAULT_REFUSAL="night check: $NIGHT_CHECK_BIN is missing or not executable"
     return 1
@@ -2062,7 +2054,7 @@ default_night_check() {  # <run-start-epoch>
   fi
   after=$(default_now_epoch) || { DEFAULT_REFUSAL="clock: the clock could not be read"; return 1; }
   [ "$rc" -eq 0 ] || { DEFAULT_REFUSAL="night check: check --json exited $rc"; return 1; }
-  facts=$(printf '%s' "$out" | jq -esr --argjson started "$NIGHT_ACTIVE_STARTED" \
+  facts=$(printf '%s' "$out" | jq -esr --argjson started "$started" \
       --argjson run_start "$run_start" --argjson after "$after" '
       if length != 1 then "malformed"
       else .[0]
@@ -2082,8 +2074,8 @@ default_night_check() {  # <run-start-epoch>
     future) DEFAULT_REFUSAL="night check: the verdict is from the future"; return 1 ;;
     "stale "*) DEFAULT_REFUSAL="night check: the verdict is stale (checked at ${facts#stale }, before this run began at $run_start)"; return 1 ;;
     inactive) DEFAULT_REFUSAL="night check: the verdict reports no active night"; return 1 ;;
-    "other "*) DEFAULT_REFUSAL="night check: the verdict's night_started_epoch ${facts#other } does not match the active night's started_epoch $NIGHT_ACTIVE_STARTED"; return 1 ;;
-    unstarted) DEFAULT_REFUSAL="night check: the active night's started_epoch $NIGHT_ACTIVE_STARTED is after the verdict's check"; return 1 ;;
+    "other "*) DEFAULT_REFUSAL="night check: the verdict's night_started_epoch ${facts#other } does not match the night-active record's started_epoch $started"; return 1 ;;
+    unstarted) DEFAULT_REFUSAL="night check: the night-active record's started_epoch $started is after the verdict's check"; return 1 ;;
     disallowed) DEFAULT_REFUSAL="night check: allow.two_hour_default is not true"; return 1 ;;
     *) DEFAULT_REFUSAL="night check: check --json printed a malformed verdict"; return 1 ;;
   esac
@@ -2094,7 +2086,7 @@ default_night_check() {  # <run-start-epoch>
 # DEFAULT_NOW is the final validated clock sample, the recorded apply time.
 # The caller holds the task control lock.
 default_may_apply() {  # <task-id>
-  local id=$1 status=0 run_start final started
+  local id=$1 status=0 run_start final binding
   DEFAULT_REFUSAL=''
   run_start=$(default_now_epoch) || { DEFAULT_REFUSAL="clock: FM_CAPTAIN_HOLD_NOW is not a UTC timestamp"; return 1; }
   task_show "$id" || status=$?
@@ -2109,21 +2101,18 @@ default_may_apply() {  # <task-id>
   }
   default_mirror_proof "$run_start" "$DEFAULT_ASK_EPOCH" || return 1
   default_night_check "$run_start" || return 1
-  started=$NIGHT_ACTIVE_STARTED
-  # The night check can take tens of seconds: the mirror and the active night
-  # are proven again at a final clock sample, which is the recorded apply time.
+  # The night check can take tens of seconds: the mirror is proven again at a
+  # final clock sample, which is the recorded apply time, and the night-active
+  # record is bound again as the last read.
   final=$(default_now_epoch) || { DEFAULT_REFUSAL="clock: the clock could not be read"; return 1; }
   [ "$DEFAULT_NIGHT_CHECKED" -le "$final" ] || { DEFAULT_REFUSAL="night check: the verdict is from the future"; return 1; }
   default_mirror_proof "$final" "$DEFAULT_ASK_EPOCH" || {
     DEFAULT_REFUSAL="after the night check ran, $DEFAULT_REFUSAL"
     return 1
   }
-  default_night_active_read || {
-    DEFAULT_REFUSAL="after the night check ran, $DEFAULT_REFUSAL"
-    return 1
-  }
-  [ "$NIGHT_ACTIVE_STARTED" = "$started" ] || {
-    DEFAULT_REFUSAL="night check: the active night changed while the night check ran (started_epoch $started, now $NIGHT_ACTIVE_STARTED)"
+  binding=$(default_night_record_binding) || binding=''
+  [ -n "$binding" ] && [ "$binding" = "$DEFAULT_NIGHT_BINDING" ] || {
+    DEFAULT_REFUSAL="night check: the night-active record changed after the owner's check validated it (bytes, device, or inode differ, or it is gone)"
     return 1
   }
   DEFAULT_NOW=$final

@@ -583,7 +583,7 @@ test_night_ending_during_the_check_refuses() {
   local home
   home=$(healthy_home night-ends)
   night_hook "$home" "rm -f '$home/state/night-active.json'"
-  assert_refused "$home" "night ends while the check runs" "after the night check ran, night check: no readable night-active record"
+  assert_refused "$home" "night ends while the check runs" "the night-active record changed after the owner's check validated it"
   pass "a night that ends while the live check runs refuses the default"
 }
 
@@ -591,7 +591,7 @@ test_night_replaced_during_the_check_refuses() {
   local home
   home=$(healthy_home night-replaced)
   night_hook "$home" "printf '%s\n' '{\"schema\":\"fm-night-active.v1\",\"started_epoch\":$((NIGHT_START + 60)),\"created_reserve_flags\":[],\"stop_record_expected\":false}' > '$home/state/night-active.json'"
-  assert_refused "$home" "night replaced while the check runs" "the active night changed while the night check ran"
+  assert_refused "$home" "night replaced while the check runs" "the night-active record changed after the owner's check validated it"
   pass "a night replaced while the live check runs refuses the default"
 }
 
@@ -654,7 +654,7 @@ test_verdict_with_a_string_night_start_refuses() {
   local home
   home=$(healthy_home verdict-string-start)
   write_verdict "$home" ".night_started_epoch = \"$NIGHT_START\""
-  assert_refused "$home" "verdict with a string started epoch" "does not match the active night"
+  assert_refused "$home" "verdict with a string started epoch" "does not match the night-active record"
   pass "a verdict whose night start is a string never matches the numeric active start"
 }
 
@@ -837,39 +837,6 @@ test_real_refusing_check_changes_no_task_or_hold_data() {
   pass "a refusal from the real night check writes no task or hold change, while the check records its own verdict"
 }
 
-# Replaces the active-night record while the live check runs, keeping its
-# start: a jq filter on the healthy record, or "sh:<command>" with @HOME@ for
-# the fixture home.
-final_night_record_case() {  # <label> <filter-or-sh>
-  local label=$1 action=$2 home
-  home=$(healthy_home "final-night-$label")
-  case "$action" in
-    sh:*) action=${action#sh:}; night_hook "$home" "${action//@HOME@/$home}" ;;
-    *) night_hook "$home" "jq -c '$action' '$home/state/night-active.json' > '$home/na.tmp' && mv '$home/na.tmp' '$home/state/night-active.json'" ;;
-  esac
-  assert_refused "$home" "final night record: $label" "after the night check ran, night check:"
-}
-
-test_final_night_record_same_start_malformed_reserve_flags_refuses() {
-  final_night_record_case same-start-reserve-flags-true '.created_reserve_flags = true'
-  pass "a final night record with the same start but created_reserve_flags true refuses the default"
-}
-
-test_final_night_record_validates_every_field() {
-  final_night_record_case schema-wrong-type '.schema = 1'
-  final_night_record_case schema-removed 'del(.schema)'
-  final_night_record_case started_epoch-wrong-type ".started_epoch = \"$NIGHT_START\""
-  final_night_record_case started_epoch-removed 'del(.started_epoch)'
-  final_night_record_case created_reserve_flags-wrong-type '.created_reserve_flags = "none"'
-  final_night_record_case created_reserve_flags-removed 'del(.created_reserve_flags)'
-  final_night_record_case stop_record_expected-wrong-type '.stop_record_expected = "no"'
-  final_night_record_case stop_record_expected-removed 'del(.stop_record_expected)'
-  final_night_record_case truncated "sh:head -c 20 '@HOME@/state/night-active.json' > '@HOME@/na.tmp' && mv '@HOME@/na.tmp' '@HOME@/state/night-active.json'"
-  final_night_record_case unreadable "sh:chmod 000 '@HOME@/state/night-active.json'"
-  final_night_record_case extra-stream "sh:jq -c . '@HOME@/state/night-active.json' > '@HOME@/na.one' && cat '@HOME@/na.one' '@HOME@/na.one' > '@HOME@/state/night-active.json'"
-  pass "the final read of the night record refuses each field with a wrong type or removed, and a truncated, unreadable, or multi-value record"
-}
-
 test_verdict_label_of_any_type_is_never_printed() {
   local home label
   for label in object null; do
@@ -897,6 +864,107 @@ test_due_skips_a_deferred_call_with_a_retired_category() {
   out=$(run_default_cmd "$home" "$DUE_ISO" due) || fail "due failed after a deferral"
   case "$out" in *t1*) fail "due listed a deferred call whose category was retired: $out" ;; esac
   pass "due skips a deferred call even when its default's category is no longer on the list"
+}
+
+# --- the owner's real night check, bound to the record by bytes --------------
+
+# The night-check suite's healthy fixtures (stubbed quota-axi and gh, a quiet
+# host), reused rather than copied.
+eval "$(sed -n '/^fake_quota_axi() {/,/^}/p;/^fake_gh_rate_limit() {/,/^}/p' "$ROOT/tests/fm-night-check.test.sh")"
+
+# A home whose active-night record is the one the owner's start writes, whose
+# night check is the owner's real check (an optional after-check.sh runs once
+# the owner's check returns), and whose other default inputs are healthy.
+real_night_home() {  # <name>
+  local home
+  home=$(make_home "$1")
+  mkdir -p "$home/proc"
+  printf '1.50 1.20 1.00 1/120 1234\n' > "$home/proc/loadavg"
+  printf 'MemTotal:       32768000 kB\nMemAvailable:   24576000 kB\n' > "$home/proc/meminfo"
+  printf '8\nreserve-flag %s/state/night.reserve night stop\n' "$home" > "$home/config/lane-capacity"
+  : > "$home/config/status-archive"
+  fake_quota_axi "$home/fakebin" 80 70
+  fake_gh_rate_limit "$home/fakebin" 4200
+  cat > "$home/night-check" <<SH
+#!/usr/bin/env bash
+rc=0
+out=\$(env -u FM_BACKEND -u FM_HC_BIN -u FM_HC_SOCKET -u HC_TERMINAL_ID -u HC_TERMINAL_SOCKET \
+  -u HC_SOCKET -u HC_SESSION -u HC_SCOPE -u FM_CREW_STATE_BIN FM_TEST_SEAM=1 FM_TEST_HARNESS=unknown \
+  FM_PROC_ROOT_OVERRIDE='$home/proc' '$ROOT/bin/fm-night-check.sh' "\$@" </dev/null) || rc=\$?
+[ ! -f '$home/after-check.sh' ] || bash '$home/after-check.sh'
+printf '%s\n' "\$out"
+exit "\$rc"
+SH
+  chmod +x "$home/night-check"
+  FM_NIGHT_NOW_EPOCH=$ASK_EPOCH PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_CONFIG_OVERRIDE="$home/config" FM_DATA_OVERRIDE="$home/data" "$home/night-check" start > /dev/null 2>&1 \
+    || fail "$1: the owner's night start failed"
+  printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
+  hold_with_default "$home" t1 > /dev/null || fail "$1: the default-bearing hold was refused"
+  write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 120))"
+  printf '%s\n' "$home"
+}
+
+run_real_default() {  # <home>
+  FM_CAPTAIN_HOLD_NOW=$DUE_ISO FM_NIGHT_CHECK_BIN="$1/night-check" run_captain "$1" default t1
+}
+
+assert_real_refused() {  # <home> <label> <expected-reason-substring>
+  local rc=0
+  run_real_default "$1" > "$1/out" 2> "$1/err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "$2: the default applied (stdout: $(cat "$1/out"))"
+  grep -F -- "$3" "$1/err" > /dev/null || fail "$2: refusal did not name '$3': $(cat "$1/err")"
+  assert_still_held "$1" t1 "$2"
+}
+
+test_real_owner_check_unchanged_record_applies() {
+  local home
+  home=$(real_night_home real-unchanged)
+  run_real_default "$home" > "$home/out" 2> "$home/err" \
+    || fail "an unchanged owner-written record under the real night check refused: $(cat "$home/err")"
+  grep -F "defaulted: t1" "$home/out" > /dev/null || fail "the default did not report the outcome: $(cat "$home/out")"
+  pass "an unchanged record the owner wrote and validated lets the default apply under the real night check"
+}
+
+test_real_owner_refuses_a_numeric_backend_before_the_first_read() {
+  local home
+  home=$(real_night_home real-backend-before)
+  jq '.backend = 123' "$home/state/night-active.json" > "$home/na.tmp" && mv "$home/na.tmp" "$home/state/night-active.json"
+  assert_real_refused "$home" "numeric backend before the owner's check" "allow.two_hour_default is not true"
+  pass "a numeric backend written before the owner's check is refused by the owner"
+}
+
+test_numeric_backend_after_the_owner_check_refuses() {
+  local home
+  home=$(real_night_home real-backend-after)
+  printf '%s\n' "jq '.backend = 123' '$home/state/night-active.json' > '$home/na.tmp' && mv '$home/na.tmp' '$home/state/night-active.json'" \
+    > "$home/after-check.sh"
+  assert_real_refused "$home" "numeric backend after the owner's check" "changed after the owner's check validated it"
+  pass "a numeric backend written after the owner's check and before the apply refuses the default"
+}
+
+test_single_byte_flip_in_each_field_after_the_owner_check_refuses() {
+  local probe field home
+  probe=$(real_night_home real-fields-probe)
+  for field in $(jq -r 'keys_unsorted[]' "$probe/state/night-active.json"); do
+    home=$(real_night_home "real-flip-$field")
+    # Flips the low bit of the first byte of the field's value, in place.
+    printf '%s\n' "perl -e 'open my \$f, \"+<\", \$ARGV[0] or die; local \$/; my \$d = <\$f>;
+      \$d =~ /\"\\Q\$ARGV[1]\\E\"\\s*:\\s*/g or die \"no field\"; my \$p = pos(\$d);
+      seek \$f, \$p, 0; print \$f chr(ord(substr(\$d, \$p, 1)) ^ 1); close \$f' '$home/state/night-active.json' '$field'" \
+      > "$home/after-check.sh"
+    assert_real_refused "$home" "byte flipped in $field after the owner's check" "changed after the owner's check validated it"
+  done
+  pass "a single byte flipped in any field of the owner's record after its check refuses the default"
+}
+
+test_identical_content_replacement_after_the_owner_check_refuses() {
+  local home
+  home=$(real_night_home real-replaced)
+  printf '%s\n' "cp '$home/state/night-active.json' '$home/na.copy' && mv '$home/na.copy' '$home/state/night-active.json'" \
+    > "$home/after-check.sh"
+  assert_real_refused "$home" "identical content, new file, after the owner's check" "changed after the owner's check validated it"
+  pass "the record replaced by an identical copy (a new file) after the owner's check refuses the default"
 }
 
 fm_test_run \
@@ -940,7 +1008,10 @@ fm_test_run \
   test_due_skips_a_deferred_call \
   test_recommendation_round_trips_byte_for_byte \
   test_real_refusing_check_changes_no_task_or_hold_data \
-  test_final_night_record_same_start_malformed_reserve_flags_refuses \
-  test_final_night_record_validates_every_field \
   test_verdict_label_of_any_type_is_never_printed \
-  test_due_skips_a_deferred_call_with_a_retired_category
+  test_due_skips_a_deferred_call_with_a_retired_category \
+  test_real_owner_check_unchanged_record_applies \
+  test_real_owner_refuses_a_numeric_backend_before_the_first_read \
+  test_numeric_backend_after_the_owner_check_refuses \
+  test_single_byte_flip_in_each_field_after_the_owner_check_refuses \
+  test_identical_content_replacement_after_the_owner_check_refuses
