@@ -1,0 +1,263 @@
+=== S1/S2: default-bearing hold by main, and hold-time refusals ===
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T07:50:31Z bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold d1 --title 'Notice copy d1' --reason 'pick option A or B' --repo sample --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+d1
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:45:31Z bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold d2 --title 'Notice copy d2' --reason 'pick option A or B' --repo sample --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+d2
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T09:35:31Z bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold d3 --title 'Notice copy d3' --reason 'pick option A or B' --repo sample --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+d3
+[exit 0]
+
+--- recorded default record for d1 (data/d1/hold-default.json):
+{
+  "schema": "fm-hold-default.v1",
+  "task": "d1",
+  "class": "dev-revertible",
+  "category": "issue-design-choice",
+  "recommendation": "Use option B (shorter notice copy) and file the longer copy as a follow-up.\n\n",
+  "ask_epoch": 1795852231,
+  "asked_at": "2026-11-28T07:50:31Z",
+  "fingerprint": "06d80839e28dd9f3a844a9e2a9e7f3ec60ea469ad0aef6d560d2e79eaa727961",
+  "occurrence": 1
+}
+recommendation bytes in file: 77; in record: 77
+
+$ cap hold p1 --title Prod release --reason ship? --repo sample --default-file /tmp/fm-p2-home.2N4anP/prod.txt --default-class dev-revertible --default-category production
+fm-captain-hold: default category production always waits for the captain
+[exit 1]
+
+$ cap hold u1 --title Unknown cat --reason x --repo sample --default-file /tmp/fm-p2-home.2N4anP/rec.txt --default-class dev-revertible --default-category make-it-up
+fm-captain-hold: unknown default category make-it-up (not on the may-proceed list in {run-worktree}/bin/fm-hold-default-lists.json)
+[exit 1]
+
+$ cap hold c1 --title Wrong class --reason x --repo sample --default-file /tmp/fm-p2-home.2N4anP/rec.txt --default-class prod-irreversible --default-category issue-design-choice
+fm-captain-hold: default class must be dev-revertible, the only class: prod-irreversible
+[exit 1]
+
+$ env FM_SUPERVISION_ACTOR=branch bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold e1 --title 'Engine' --reason 'x' --repo sample --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: only main writes a default; the supervision host's engine (FM_SUPERVISION_ACTOR=branch) cannot
+[exit 1]
+
+$ cap hold r1 --title Plain held call --reason x --repo sample
+r1
+[exit 0]
+
+$ cap hold r1 --reason x --default-file /tmp/fm-p2-home.2N4anP/rec.txt --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: task r1 is already held for the captain; a hold that already exists never gains a default
+[exit 1]
+p1 open-captain-hold? no; default record? no
+u1 open-captain-hold? no; default record? no
+c1 open-captain-hold? no; default record? no
+e1 open-captain-hold? no; default record? no
+r1 default record? no
+
+=== S3: due listing (real clock, read-only) ===
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap due
+d1 due now
+d2 proceeds at 10:45 UTC
+d3 waits: asked at 09:35 UTC; proceeds no earlier than 11:35 UTC
+[exit 0]
+backlog unchanged by due: yes; night-check calls during due: 0
+
+=== S4a: captain spoke 10 minutes ago -> due says waits, default refuses ===
+
+$ cap due
+d1 waits for the captain: captain message at 09:45 UTC
+d2 waits for the captain: captain message at 09:45 UTC
+d3 waits: asked at 09:35 UTC; proceeds no earlier than 11:35 UTC
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d1
+fm-captain-hold: default refused for d1: dialog mirror: the newest captain message is 630s old, not more than 3600s
+[exit 1]
+d1 still open captain hold: yes
+
+=== S4b: default before ask+2h refuses (d2 at 1h10m) ===
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d2
+fm-captain-hold: default refused for d2: time: ask + 7200s is not reached (asked 2026-11-28T08:45:31Z, 4233s ago)
+[exit 1]
+d2 still open captain hold: yes
+
+=== S4c: real bin/fm-night-check.sh in this disposable home (no healthy inputs) refuses ===
+
+$ cap default d1
+fm-captain-hold: default refused for d1: night check: allow.two_hour_default is not true
+[exit 1]
+d1 still open captain hold: yes; body has defaulted? 0
+
+=== S4d: always-waits category planted in the record refuses at apply time ===
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d1
+fm-captain-hold: default refused for d1: hold: default category production always waits for the captain
+[exit 1]
+
+=== S5: healthy default at ask+2h applies the exact recommendation ===
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d1
+defaulted: d1
+[exit 0]
+night-check calls: night-check called: check --json
+d1 open captain hold after default: no
+state: done
+Resolution recorded by fm-captain-hold.
+Decision digest: 06a6d7f44977a4576c464f98b4150acac32a43c640a7a4b073ea88f1c14179b0
+Resolution mode: defaulted
+Default reason: no answer from the owner
+Default class: dev-revertible
+Default category: issue-design-choice
+Default asked at: 2026-11-28T07:50:31Z
+Default applied at: 2026-11-28T09:56:16Z
+Default disposition: close
+Captain hold answered: 2026-11-28T07:50:31Z
+
+Default decision:
+"Use option B (shorter notice copy) and file the longer copy as a follow-up.\n\n"
+contains 'Captain decision:'? 0
+
+=== S6: replay is idempotent; a conflicting --release refuses ===
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d1
+defaulted: d1
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default d1 --release
+fm-captain-hold: task d1 was defaulted to close; retry with exactly that disposition (nothing was changed)
+[exit 1]
+defaulted records in d1 body: 1
+
+=== S7: --release default while away is refused; attended release lifts hold without closing ===
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T07:50:31Z bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold w1 --title 'Held work w1' --reason 'which fix?' --repo sample --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+w1
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default w1 --release
+fm-captain-hold: task w1 stays held: the away-posture record exists, and a captain hold is released only by the captain in an attended session; retry --release after the return archives the record
+[exit 1]
+w1 still open captain hold: yes
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default w1 --release
+defaulted: w1
+[exit 0]
+w1 open captain hold: no; state: queued
+
+=== S8: a new default-bearing hold after a released default applies (no stuck retry) ===
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T07:53:51Z bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap hold w1 --reason 'second question: which layout?' --default-file '/tmp/fm-p2-home.2N4anP/rec.txt' --default-class dev-revertible --default-category issue-design-choice
+w1
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap due
+d2 proceeds at 10:45 UTC
+d3 waits: asked at 09:35 UTC; proceeds no earlier than 11:35 UTC
+w1 due now
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-p2-home.2N4anP/night-check bash -c cap () 
+{ 
+    PATH="$H/fakebin:$PATH" FM_HOME="$H" FM_STATE_OVERRIDE="$H/state" FM_DATA_OVERRIDE="$H/data" FM_CONFIG_OVERRIDE="$H/config" "$ROOT/bin/fm-captain-hold.sh" "$@"
+}; H='/tmp/fm-p2-home.2N4anP' ROOT='{run-worktree}' cap default w1
+defaulted: w1
+[exit 0]
+w1 state: done; defaulted records: 2
+
+=== S9: bearings model lists decided_by_default ===
+[bearings exit 0]
+{
+  "decided_by_default": [
+    {
+      "id": "w1",
+      "title": "Held work w1",
+      "recommendation": "Use option B (shorter notice copy) and file the longer copy as a follow-up.\n\n",
+      "asked_at": "2026-11-28T07:53:51Z",
+      "applied_at": "2026-11-28T09:56:42Z"
+    },
+    {
+      "id": "d1",
+      "title": "Notice copy d1",
+      "recommendation": "Use option B (shorter notice copy) and file the longer copy as a follow-up.\n\n",
+      "asked_at": "2026-11-28T07:50:31Z",
+      "applied_at": "2026-11-28T09:56:16Z"
+    }
+  ],
+  "omitted": [
+    {
+      "surface": "backlog item bodies",
+      "reveal": "--fields bodies"
+    },
+    {
+      "surface": "task paths",
+      "reveal": "--fields paths"
+    },
+    {
+      "surface": "watch/steer actions",
+      "reveal": "--fields actions"
+    },
+    {
+      "surface": "healthy endpoint detail",
+      "reveal": "--fields endpoints"
+    },
+    {
+      "surface": "full scout-report inventory",
+      "reveal": "--all-reports"
+    },
+    {
+      "surface": "live PR discovery + checks",
+      "reveal": "--include-prs"
+    }
+  ]
+}
