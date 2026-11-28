@@ -1,0 +1,27 @@
+1..24
+ok - a default-bearing hold refuses always-waits, unknown, unrecommended, or unclassed defaults before writing
+ok - only main writes a default: the supervision engine's branch actor and unknown actors are refused
+ok - a hold that already exists never gains a default later
+ok - a captain hold past its --until date is still an existing hold and never gains a default
+ok - a repeated hold drops an earlier default and says so
+ok - a default-bearing hold records the verbatim recommendation, class, category, and ask time
+ok - a healthy default applies exactly the recommendation with defaulted provenance, never as the captain's words
+ok - an interrupted default finishes its close on retry without recording twice
+ok - the real night check's verdict is read and an unhealthy night refuses the default
+ok - a releasing default lifts the hold like a recorded release, and only in an attended session
+ok - the hold input refuses a missing, malformed, unreadable, stale, or disallowed default record
+ok - the answer input refuses once the captain has answered or deferred
+ok - the time input refuses before ask + 7200s and for an ask in the future
+ok - the mirror input refuses a missing, malformed, unreadable, stale, or future mirror
+ok - a trimmed mirror with no captain entry kept, whose oldest entry is at or before now-3600, applies
+ok - a mirror whose oldest entry is newer than now-3600 and holds no captain entry stops: it does not reach back an hour
+ok - a captain entry inside the last hour stops the default
+ok - an owner entry at exactly now-3600 counts inside the hour and stops
+ok - a mirror whose entries are out of epoch order, including a first kept entry newer than its neighbour, stops as invalid rather than as coverage
+ok - the night-check input refuses a missing, failed, malformed, stale, disallowing, inactive, or other-night verdict
+ok - due lists each default-bearing hold as waiting, proceeds at HH:MM, due now, or unknown, and changes nothing
+ok - due reports a default no longer bound to its call as unknown and skips a call that is no longer held
+ok - bearings lists decisions settled by default separately from captain answers
+ok - bearings bounds decided_by_default newest applied first, discloses the rest in omitted[], and --all-landed reveals them
+FM_TEST_COMPLETE
+exit=0

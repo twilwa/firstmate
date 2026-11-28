@@ -1,0 +1,152 @@
+=== S1: main records a dev-revertible default at ask time ===
+
+$ hold t1 --default-category issue-design-choice (at 2026-11-27T01:00:00Z)
+t1
+[exit 0]
+
+$ cat data/t1/hold-default.json
+{
+  "schema": "fm-hold-default.v1",
+  "task": "t1",
+  "class": "dev-revertible",
+  "category": "issue-design-choice",
+  "recommendation": "Use the shorter notice copy (option B); file the longer copy as a follow-up issue.",
+  "ask_epoch": 1795741200,
+  "asked_at": "2026-11-27T01:00:00Z",
+  "fingerprint": "c9e40bf642a68793085303e09d8c4d0100b60a7bf21d201de8f383522e9b9410",
+  "occurrence": 1
+}
+
+=== S2: hold-time refusals (nothing written) ===
+
+$ hold t2 --default-class dev-revertible --default-category production
+fm-captain-hold: default category production always waits for the captain
+[exit 1]
+task t2 in backlog: 0; default record: absent
+
+$ hold t3 --default-class dev-revertible --default-category security-sensitive
+fm-captain-hold: default category security-sensitive always waits for the captain
+[exit 1]
+task t3 in backlog: 0; default record: absent
+
+$ hold t4 --default-class dev-revertible --default-category made-up-key
+fm-captain-hold: unknown default category made-up-key (not on the may-proceed list in {run-worktree}/bin/fm-hold-default-lists.json)
+[exit 1]
+task t4 in backlog: 0; default record: absent
+
+$ hold t5 --default-class prod-ok --default-category issue-design-choice
+fm-captain-hold: default class must be dev-revertible, the only class: prod-ok
+[exit 1]
+task t5 in backlog: 0; default record: absent
+
+$ FM_SUPERVISION_ACTOR=branch hold t6 ... (the cheaper engine)
+fm-captain-hold: only main writes a default; the supervision host's engine (FM_SUPERVISION_ACTOR=branch) cannot
+[exit 1]
+
+$ hold t7 --until 2026-12-01 with a default
+fm-captain-hold: a dated (--until) hold cannot carry a default
+[exit 1]
+
+$ plain hold t8 (no default), then re-hold t8 trying to add a default retroactively
+t8
+[exit 0]
+fm-captain-hold: task t8 is already held for the captain; a hold that already exists never gains a default
+[exit 1]
+default record for t8: absent
+
+=== S3: due timeline (read-only) ===
+
+$ due at ask+30m
+t1 waits: asked at 01:00 UTC; proceeds no earlier than 03:00 UTC
+[exit 0]
+
+$ due at ask+1h05m, no captain message in the last hour
+t1 proceeds at 03:00 UTC
+[exit 0]
+
+$ due at ask+1h05m, captain spoke at ask+1h01m40s
+t1 waits for the captain: captain message at 02:01 UTC
+[exit 0]
+
+$ due at ask+2h, quiet
+t1 due now
+[exit 0]
+(due wrote nothing: t1 still held)
+[exit 0]
+
+=== S4: default refusals (adversarial, state unchanged) ===
+
+$ default t1 at ask+1h59m (too early)
+fm-captain-hold: default refused for t1: time: ask + 7200s is not reached (asked 2026-11-27T01:00:00Z, 7140s ago)
+[exit 1]
+
+$ default t1 at ask+2h, captain message 53m ago
+fm-captain-hold: default refused for t1: dialog mirror: the newest captain message is 3200s old, not more than 3600s
+[exit 1]
+
+$ default t1 at ask+2h, mirror trimmed: oldest kept entry 53m old (silence unproven)
+fm-captain-hold: default refused for t1: dialog mirror: its oldest kept entry is 3200s old, so it does not reach back 3600s and the captain's silence is unproven
+[exit 1]
+
+$ default t1 at ask+2h, mirror has no entry since the ask (writer not proven recording)
+fm-captain-hold: default refused for t1: dialog mirror: no entry is recorded since the ask, so its writer is not proven to be recording
+[exit 1]
+
+$ default t1 at ask+2h, quiet mirror, but the REAL bin/fm-night-check.sh (lab has no quota/gh/window inputs)
+fm-captain-hold: default refused for t1: night check: allow.two_hour_default is not true (verdict end_night)
+[exit 1]
+
+$ default t1 at ask+2h, stubbed verdict says two_hour_default false
+fm-captain-hold: default refused for t1: night check: allow.two_hour_default is not true (verdict stop_dispatch)
+[exit 1]
+
+$ t1 still an open captain hold after every refusal
+[exit 0]
+defaulted records in backlog: 0
+
+=== S5: captain answer wins over a pending default ===
+t9
+[exit 0]
+
+$ answer t9 with the captain's words at ask+1h30m
+answered: t9
+[exit 0]
+
+$ default t9 at ask+2h
+fm-captain-hold: default refused for t9: hold: task t9 is not an open captain hold
+[exit 1]
+
+$ due at ask+2h (t9 answered: not listed)
+t1 due now
+[exit 0]
+
+=== S6: default applies at ask+2h, quiet hour, allowing night verdict ===
+
+$ default t1 at 2026-11-27T03:00:00Z
+defaulted: t1
+[exit 0]
+
+$ open t1
+[exit 1]
+
+$ t1 row in data/backlog.md
+- [x] t1 - Notice copy choice (repo: bbchat) (kind: captain) (done 2026-11-27) (hold: fm-hold-v1:UGljayBvcHRpb24gQSBvciBCIGZvciB0aGUgbm90aWNlIGNvcHk=) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: f0fc1b3d28fa5d29f538b28fc4898cf92acf70666fb95de37f9d4a690a4739ca
+  Resolution mode: defaulted
+  Default reason: no answer from the owner
+  Default class: dev-revertible
+  Default category: issue-design-choice
+  Default asked at: 2026-11-27T01:00:00Z
+  Default applied at: 2026-11-27T03:00:00Z
+  Captain hold answered: 2026-11-27T01:00:00Z
+
+  Default decision:
+  Use the shorter notice copy (option B); file the longer copy as a follow-up issue.
+  Default decision ends.
+
+
+$ retry default t1 (idempotent)
+defaulted: t1
+[exit 0]
+defaulted records in backlog: 1

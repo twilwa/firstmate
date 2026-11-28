@@ -1,0 +1,121 @@
+=== S7: a second default applies later; bearings lists both as decided by default, bounded ===
+t10
+[exit 0]
+
+$ default t10 at ask2+2h
+defaulted: t10
+[exit 0]
+
+$ fm-bearings-snapshot.sh --json | {decided_by_default, captain answers in landed, omitted}
+[exit 0]
+{
+  "decided_by_default": [
+    {
+      "id": "t10",
+      "title": "Split notice change",
+      "recommendation": "Split the change: land the header fix now, file the footer rework as an issue.",
+      "asked_at": "2026-11-27T01:10:00Z",
+      "applied_at": "2026-11-27T03:10:00Z"
+    },
+    {
+      "id": "t1",
+      "title": "Notice copy choice",
+      "recommendation": "Use the shorter notice copy (option B); file the longer copy as a follow-up issue.",
+      "asked_at": "2026-11-27T01:00:00Z",
+      "applied_at": "2026-11-27T03:00:00Z"
+    }
+  ],
+  "landed": [],
+  "omitted": []
+}
+
+$ FM_BEARINGS_DEFAULTED=1 fm-bearings-snapshot.sh --json
+[exit 0]
+{
+  "decided_by_default": [
+    {
+      "id": "t10",
+      "applied_at": "2026-11-27T03:10:00Z"
+    }
+  ],
+  "omitted": [
+    {
+      "surface": "decided_by_default showing 1 of 2",
+      "reveal": "--all-landed"
+    }
+  ]
+}
+
+$ FM_BEARINGS_DEFAULTED=1 fm-bearings-snapshot.sh --json --all-landed
+[exit 0]
+{
+  "decided_by_default": [
+    {
+      "id": "t10",
+      "applied_at": "2026-11-27T03:10:00Z"
+    },
+    {
+      "id": "t1",
+      "applied_at": "2026-11-27T03:00:00Z"
+    }
+  ],
+  "omitted": []
+}
+
+=== S8: due reports unknown instead of dropping a pending default ===
+t11
+[exit 0]
+
+$ due at ask3+1h05m (healthy)
+t11 proceeds at 04:00 UTC
+[exit 0]
+
+$ tasks-axi update t11 retitle (the held question changes after the default was recorded)
+usage: tasks-axi update <id> [flags]
+aliases: edit
+flags:
+  --title <text>, --body <text> or --body-file <path>
+  --archive-body   with --body/--body-file, archive the previous body
+  --repo <name>, --kind <name>, --priority <0-4>, --pr <url>, --report <path>
+  --json   print the resulting task as a JSON object
+examples:
+ok: updated t11 (title)
+task:
+  id: t11
+  title: Queue order (reworded)
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "fm-hold-v1:V2hpY2ggdGlja2V0IGZpcnN0IHRvbmlnaHQ/"
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: bbchat
+  priority: "-"
+  created: 2026-11-27
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-11-27T02:00:00Z"
+help[1]:
+  - Run `tasks-axi show t11 --full` to see the result
+[exit 0]
+
+$ due after the question changed
+t11 unknown: hold: the held question changed after its default was recorded
+[exit 0]
+
+$ default t11 at ask3+2h after the question changed
+fm-captain-hold: default refused for t11: hold: the held question changed after its default was recorded
+[exit 1]
+
+$ malformed bin/fm-hold-default-lists.json (in a disposable copy of bin/)
+fm-captain-hold: FM_CAPTAIN_HOLD_NOW must be a UTC YYYY-MM-DDTHH:MM:SSZ timestamp
+[exit 1]
+with broken lists, hold t12 via copy: fm-captain-hold: the default category lists /tmp/fm-lab.ZAFs2y/bincopy/fm-hold-default-lists.json are missing, unreadable, or malformed
+[exit 1]
+
+$ due via the copy with broken lists
+t11 unknown: hold: the default category lists /tmp/fm-lab.ZAFs2y/bincopy/fm-hold-default-lists.json are missing, unreadable, or malformed
+[exit 0]
