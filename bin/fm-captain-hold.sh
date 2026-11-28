@@ -281,9 +281,14 @@
 # category, and bound to this question; no captain answer or deferral has
 # been recorded since; now >= ask + 7200s; the dialog mirror
 # (state/.host-mirror.jsonl, bin/fm-host-mirror.sh) passes its own validation,
-# carries integral non-future epochs, recorded an entry at or after the ask
-# (proof its writer was recording), and its newest captain message is more
-# than 3600s old; and a fresh `bin/fm-night-check.sh check --json` (the live
+# carries integral non-future epochs in non-decreasing order (an out-of-order
+# mirror is invalid, never coverage), recorded an entry at or after the ask
+# (proof its writer was recording), and proves the captain silent for the last
+# hour: its oldest kept entry is at or before now - 3600s (trimming drops only
+# the oldest entries, so the kept entries cover that hour) and no kept captain
+# entry has an epoch at or after now - 3600s. That proof does not cover captain
+# messages going unrecorded while end-of-turn main entries are still written;
+# and a fresh `bin/fm-night-check.sh check --json` (the live
 # authorization contract in that script's header; FM_NIGHT_CHECK_BIN overrides
 # the path for tests) exits 0 with a verdict checked during this run,
 # night_active true, night_started_epoch equal to state/night-active.json's
@@ -300,7 +305,9 @@
 # open default-bearing hold - "<id> waits: ..." before ask + 1h,
 # "<id> waits for the captain: ..." when the mirror holds a captain message
 # from the last hour, "<id> proceeds at HH:MM UTC" from ask + 1h, "<id> due
-# now" from ask + 2h, or "<id> unknown: <reason>" when an input cannot be read.
+# now" from ask + 2h, or "<id> unknown: <reason>" when an input cannot be read,
+# the mirror does not prove the last hour silent, or the hold is no longer
+# bound to its default; a hold the captain answered or closed is not listed.
 #
 # Resolution records: the block written into the body names this script, the
 # decision digest, and a `Resolution mode:` of answered, released, deferred,
@@ -1858,12 +1865,13 @@ EOF
   }
 }
 
-# Binds a read default record to the shown task's current captain call.
+# Binds a read default record to the shown task's current captain call; 2 when
+# the task is no longer an open captain hold, 1 for any other refusal.
 default_bound_to_call() {  # <task-id> <shown-task>
   local id=$1 show=$2 body count
   [ "$(show_field "$show" state)" != "done" ] && [ "$(show_field_value "$show" hold_kind)" = captain ] || {
     DEFAULT_REFUSAL="hold: task $id is not an open captain hold"
-    return 1
+    return 2
   }
   case "$(default_category_verdict "$DEFAULT_CATEGORY")" in
     allowed) ;;
@@ -1887,11 +1895,14 @@ default_bound_to_call() {  # <task-id> <shown-task>
   }
 }
 
+MIRROR_OLDEST=''
 MIRROR_NEWEST_ANY=''
 MIRROR_NEWEST_CAPTAIN=''
-# Reads the dialog mirror's newest entry and newest captain message epochs.
+# Reads the dialog mirror's oldest and newest entry epochs and its newest
+# captain message epoch (empty when no captain entry is kept).
 default_mirror_read() {  # <now-epoch>
   local now=$1 mirror="$STATE/.host-mirror.jsonl" summary
+  MIRROR_OLDEST=''
   MIRROR_NEWEST_ANY=''
   MIRROR_NEWEST_CAPTAIN=''
   if [ ! -e "$mirror" ] && [ ! -L "$mirror" ]; then
@@ -1910,19 +1921,34 @@ default_mirror_read() {  # <now-epoch>
       .[:-1] | split("\n") | map(fromjson) as $e
       | if any($e[]; (.epoch | type) != "number" or .epoch < 0 or .epoch != (.epoch | floor)) then "malformed"
         elif any($e[]; .epoch > $now) then "future"
-        else "ok \([$e[].epoch] | max) \([$e[] | select(.tag == "captain") | .epoch] | max // "none")" end' \
+        elif ($e | length) == 0 then "empty"
+        elif any(range(1; $e | length); $e[.].epoch < $e[. - 1].epoch) then "unordered"
+        else "ok \($e[0].epoch) \($e[-1].epoch) \([$e[] | select(.tag == "captain") | .epoch] | max // "none")" end' \
       "$mirror" 2>/dev/null) || summary=malformed
   case "$summary" in
     "ok "*) ;;
     future) DEFAULT_REFUSAL="dialog mirror: an entry carries an epoch in the future"; return 1 ;;
+    empty) DEFAULT_REFUSAL="dialog mirror: no entry is recorded"; return 1 ;;
+    unordered) DEFAULT_REFUSAL="dialog mirror: its entries are out of epoch order, so it is invalid and proves no coverage"; return 1 ;;
     *) DEFAULT_REFUSAL="dialog mirror: an entry lacks an integral epoch"; return 1 ;;
   esac
-  summary=${summary#ok }
-  MIRROR_NEWEST_ANY=${summary%% *}
-  MIRROR_NEWEST_CAPTAIN=${summary#* }
-  [ "$MIRROR_NEWEST_CAPTAIN" != none ] || {
-    MIRROR_NEWEST_CAPTAIN=''
-    DEFAULT_REFUSAL="dialog mirror: no captain message is recorded, so the captain's silence is unproven"
+  read -r MIRROR_OLDEST MIRROR_NEWEST_ANY MIRROR_NEWEST_CAPTAIN <<EOF
+${summary#ok }
+EOF
+  [ "$MIRROR_NEWEST_CAPTAIN" != none ] || MIRROR_NEWEST_CAPTAIN=''
+}
+
+# Proves the captain silent for the last hour: no kept captain entry at or
+# after now - 3600s, and the kept entries reach back to that point.
+default_mirror_quiet() {  # <now-epoch>
+  local now=$1 since=$(($1 - DEFAULT_QUIET_SECONDS))
+  default_mirror_read "$now" || return 1
+  [ -z "$MIRROR_NEWEST_CAPTAIN" ] || [ "$MIRROR_NEWEST_CAPTAIN" -lt "$since" ] || {
+    DEFAULT_REFUSAL="dialog mirror: the newest captain message is $((now - MIRROR_NEWEST_CAPTAIN))s old, not more than ${DEFAULT_QUIET_SECONDS}s"
+    return 1
+  }
+  [ "$MIRROR_OLDEST" -le "$since" ] || {
+    DEFAULT_REFUSAL="dialog mirror: its oldest kept entry is $((now - MIRROR_OLDEST))s old, so it does not reach back ${DEFAULT_QUIET_SECONDS}s and the captain's silence is unproven"
     return 1
   }
 }
@@ -1998,22 +2024,17 @@ default_may_apply() {  # <task-id>
     DEFAULT_REFUSAL="time: ask + ${DEFAULT_WAIT_SECONDS}s is not reached (asked $DEFAULT_ASKED_AT, $((now - DEFAULT_ASK_EPOCH))s ago)"
     return 1
   }
-  default_mirror_read "$now" || return 1
+  default_mirror_quiet "$now" || return 1
   [ "$MIRROR_NEWEST_ANY" -ge "$DEFAULT_ASK_EPOCH" ] || {
     DEFAULT_REFUSAL="dialog mirror: no entry is recorded since the ask, so its writer is not proven to be recording"
-    return 1
-  }
-  [ $((now - MIRROR_NEWEST_CAPTAIN)) -gt "$DEFAULT_QUIET_SECONDS" ] || {
-    DEFAULT_REFUSAL="dialog mirror: the newest captain message is $((now - MIRROR_NEWEST_CAPTAIN))s old, not more than ${DEFAULT_QUIET_SECONDS}s"
     return 1
   }
   default_night_check "$now" || return 1
   # The night check can take tens of seconds; a captain message in that window
   # still stops the default.
   [ -n "${FM_CAPTAIN_HOLD_NOW:-}" ] || now=$(date -u +%s)
-  default_mirror_read "$now" || return 1
-  [ $((now - MIRROR_NEWEST_CAPTAIN)) -gt "$DEFAULT_QUIET_SECONDS" ] || {
-    DEFAULT_REFUSAL="dialog mirror: a captain message arrived while the night check ran"
+  default_mirror_quiet "$now" || {
+    DEFAULT_REFUSAL="after the night check ran, $DEFAULT_REFUSAL"
     return 1
   }
 }
@@ -2082,12 +2103,12 @@ command_default() {
 }
 
 command_due() {
-  local now record id dir mirror_ok=1 mirror_problem='' status
+  local now record id dir mirror_quiet=1 mirror_problem='' status
   [ "$#" -eq 0 ] || { usage >&2; exit 2; }
   now=$(default_now_epoch) || fail "FM_CAPTAIN_HOLD_NOW must be a UTC YYYY-MM-DDTHH:MM:SSZ timestamp"
   require_tasks_axi
-  if ! default_mirror_read "$now"; then
-    mirror_ok=0
+  if ! default_mirror_quiet "$now"; then
+    mirror_quiet=0
     mirror_problem=$DEFAULT_REFUSAL
   fi
   for record in "$DATA"/*/hold-default.json; do
@@ -2103,15 +2124,24 @@ command_due() {
     status=0
     task_show "$id" || status=$?
     [ "$status" -ne 124 ] || exit 124
-    [ "$status" -eq 0 ] || continue
-    default_bound_to_call "$id" "$TASK_SHOW_OUTPUT" || continue
+    [ "$status" -eq 0 ] || {
+      printf '%s unknown: hold: task %s is absent from this home'"'"'s backlog\n' "$id" "$id"
+      continue
+    }
+    status=0
+    default_bound_to_call "$id" "$TASK_SHOW_OUTPUT" || status=$?
+    [ "$status" -ne 2 ] || continue
+    [ "$status" -eq 0 ] || {
+      printf '%s unknown: %s\n' "$id" "$DEFAULT_REFUSAL"
+      continue
+    }
     if [ "$now" -lt $((DEFAULT_ASK_EPOCH + DEFAULT_PROCEED_SECONDS)) ]; then
       printf '%s waits: asked at %s UTC; proceeds no earlier than %s UTC\n' "$id" \
         "$(epoch_to_hhmm "$DEFAULT_ASK_EPOCH")" "$(epoch_to_hhmm $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)))"
-    elif [ "$mirror_ok" = 0 ]; then
-      printf '%s unknown: %s\n' "$id" "$mirror_problem"
-    elif [ $((now - MIRROR_NEWEST_CAPTAIN)) -le "$DEFAULT_QUIET_SECONDS" ]; then
+    elif [ -n "$MIRROR_NEWEST_CAPTAIN" ] && [ $((now - MIRROR_NEWEST_CAPTAIN)) -le "$DEFAULT_QUIET_SECONDS" ]; then
       printf '%s waits for the captain: captain message at %s UTC\n' "$id" "$(epoch_to_hhmm "$MIRROR_NEWEST_CAPTAIN")"
+    elif [ "$mirror_quiet" = 0 ]; then
+      printf '%s unknown: %s\n' "$id" "$mirror_problem"
     elif [ "$now" -lt $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)) ]; then
       printf '%s proceeds at %s UTC\n' "$id" "$(epoch_to_hhmm $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)))"
     else

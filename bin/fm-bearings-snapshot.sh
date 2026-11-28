@@ -25,7 +25,9 @@
 # This wrapper consumes canonical status decisions plus canonically normalized
 # backlog roles, unresolved blockers, and captain actionability.
 # decided_by_default lists main backlog rows whose canonical `defaulted` record
-# shows a call settled by its two-hour default, kept apart from captain answers.
+# shows a call settled by its two-hour default, kept apart from captain answers,
+# newest applied first, bounded by FM_BEARINGS_DEFAULTED with omitted[]
+# disclosure; --all-landed reveals every one.
 # Contributions project cached coverage and required actors from fm-contributions.sh;
 # only captain rows are exposed, with counts for the other actors and unmeasured homes. It never infers
 # decisions from report or visual-review prose or reimplements snapshot semantics.
@@ -94,7 +96,8 @@
 #   --all-in-flight  include every in-flight task
 #   --all-decisions  include every open decision and captain hold in the bounded snapshot
 #   --all-secondmates include every aggregated secondmate record
-#   --all-landed     include every landed record from every home (default: bounded)
+#   --all-landed     include every landed record from every home and every
+#                    decided_by_default row (default: bounded)
 #   --all-reports    include the full scout-report inventory (default: relevant only)
 #   --all-queued     include every queued gate present in the bounded snapshot
 #   --all-recorded-prs include every locally recorded PR
@@ -121,6 +124,7 @@ FLEET="$SCRIPT_DIR/fm-fleet-snapshot.sh"
 # Bounds (overridable for tests / large fleets).
 FM_BEARINGS_LANDED=${FM_BEARINGS_LANDED:-6}
 FM_BEARINGS_LANDED_PER_HOME=${FM_BEARINGS_LANDED_PER_HOME:-$FM_BEARINGS_LANDED}
+FM_BEARINGS_DEFAULTED=${FM_BEARINGS_DEFAULTED:-6}
 FM_BEARINGS_IN_FLIGHT=${FM_BEARINGS_IN_FLIGHT:-20}
 FM_BEARINGS_DECISIONS=${FM_BEARINGS_DECISIONS:-20}
 FM_BEARINGS_SECONDMATES=${FM_BEARINGS_SECONDMATES:-20}
@@ -137,6 +141,7 @@ validate_bound() {  # <name> <value>
 }
 validate_bound FM_BEARINGS_LANDED "$FM_BEARINGS_LANDED"
 validate_bound FM_BEARINGS_LANDED_PER_HOME "$FM_BEARINGS_LANDED_PER_HOME"
+validate_bound FM_BEARINGS_DEFAULTED "$FM_BEARINGS_DEFAULTED"
 validate_bound FM_BEARINGS_IN_FLIGHT "$FM_BEARINGS_IN_FLIGHT"
 validate_bound FM_BEARINGS_DECISIONS "$FM_BEARINGS_DECISIONS"
 validate_bound FM_BEARINGS_SECONDMATES "$FM_BEARINGS_SECONDMATES"
@@ -164,7 +169,8 @@ remote homes under one shared snapshot budget and may refresh the parent-side ca
 Default fields: schema, home, generated, prs, in_flight{id,kind,state,repo,name,doing},
   secondmates{id,state,doing,provenance,freshness,age_seconds,contradiction,reason},
   secondmate_reconcile{id,spawn_gen,host,kind,ids},
-  decisions_open{id,key,verb,summary,question,owner}, landed{id,what,artifact,owner},
+  decisions_open{id,key,verb,summary,question,owner},
+  decided_by_default{id,title,recommendation,asked_at,applied_at}, landed{id,what,artifact,owner},
   gates{id,title,blocked_by,reason,owner,filed}, reports{id,path}, recorded_prs{id,url},
   unhealthy_endpoints{...} (only when non-empty), omitted{surface,reveal}.
 Default gates are selected newest filed first before their bound; undated gates
@@ -176,6 +182,9 @@ landed merges this home's Done with registered secondmate homes' Done, bounded b
   with omitted[] disclosure. Default selection is balanced across deterministic home
   order while preserving each home's internal newest-first order; sparse homes do
   not waste capacity. --all-landed reveals the full global newest-first set.
+decided_by_default lists main calls settled by their two-hour default, newest
+  applied first, bounded by FM_BEARINGS_DEFAULTED with omitted[] disclosure;
+  --all-landed reveals every one.
 For every registered secondmate, readable structured facts from its own home are
   authoritative, including independently trustworthy surfaces from a partial summary.
   Parent events and bounded terminal reads are labeled fallback or contradiction
@@ -393,6 +402,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   --arg fields "$FIELDS" \
   --argjson landed_n "$FM_BEARINGS_LANDED" \
   --argjson landed_per_home_n "$FM_BEARINGS_LANDED_PER_HOME" \
+  --argjson defaulted_n "$FM_BEARINGS_DEFAULTED" \
   --argjson in_flight_n "$FM_BEARINGS_IN_FLIGHT" \
   --argjson decisions_n "$FM_BEARINGS_DECISIONS" \
   --argjson secondmates_n "$FM_BEARINGS_SECONDMATES" \
@@ -633,6 +643,10 @@ MODEL=$(printf '%s' "$SNAP" | jq \
        | select(($all_reports == 1) or (($rel_ids | index($r.id)) != null))
        | {id, path} ]) as $reports_all
   | ([ .tasks[] | select(.kind != "secondmate" and .pr.url != null and .pr.source == "meta") | {id, url:.pr.url} ]) as $recorded_prs_all
+  | ([ .backlog.records[] | select(.structured and .defaulted != null)
+       | {id, title:(.title | trunc(70)), recommendation:.defaulted.recommendation,
+          asked_at:.defaulted.asked_at, applied_at:.defaulted.applied_at} ]
+     | sort_by(.applied_at // "") | reverse) as $defaulted_all
   | def filed_epoch:
       (.filed // null) as $filed
       | if ($filed | type) != "string" then null
@@ -683,9 +697,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         | select(.reconcile_inventory != null)
         | {id, spawn_gen:(.spawn_gen // null), host:(.host // null), kind:(.reconcile_inventory.kind // null), ids:((.reconcile_inventory.ids // []) | map(select(type == "string")) | sort)} ],
       decisions_open: (if $all_decisions == 1 then $decisions_all else $decisions_all[:$decisions_n] end),
-      decided_by_default: [ $snap.backlog.records[] | select(.structured and .defaulted != null)
-        | {id, title:(.title | trunc(70)), recommendation:.defaulted.recommendation,
-           asked_at:.defaulted.asked_at, applied_at:.defaulted.applied_at} ],
+      decided_by_default: (if $all_landed == 1 then $defaulted_all else $defaulted_all[:$defaulted_n] end),
       landed: ($done | map({id, what:(.title | trunc(70)),
                             artifact:(landed_artifact // "-"),owner:.home_id})),
       gates: ($return_catchup_gate
@@ -709,6 +721,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         (if $f_endpoints then empty else {surface:"healthy endpoint detail", reveal:"--fields endpoints"} end),
         (if $all_reports == 1 then empty else {surface:"full scout-report inventory", reveal:"--all-reports"} end),
         (if $all_landed == 0 and ($per_home_capped | length) > ($done | length) then {surface:("landed showing \($done | length) of \($per_home_capped | length)" + (($done | map(.home_id) | unique | map(select(. != "(main)")) | length) as $k | if $k > 0 then " (incl. \($k) secondmate home(s))" else "" end)), reveal:"--all-landed"} else empty end),
+        (if $all_landed == 0 and ($defaulted_all | length) > $defaulted_n then {surface:("decided_by_default showing \($defaulted_n) of \($defaulted_all | length)"), reveal:"--all-landed"} else empty end),
         (if $all_landed == 0 and $home_cap_dropped > 0 then {surface:("landed per-home capped at \($landed_per_home_n) for \($home_cap_dropped) home(s)"), reveal:"--all-landed"} else empty end),
         (if (($snap.secondmate_landed.unreadable // []) | length) > 0 then {surface:("secondmate home(s) with unreadable structured state: \(($snap.secondmate_landed.unreadable // []) | length)"), reveal:"inspect the listed secondmate home ledgers"} else empty end),
         (if $all_landed == 0 and (($snap.secondmate_landed.truncated // []) | length) > 0 then {surface:("secondmate home Done capped at the snapshot layer for \(($snap.secondmate_landed.truncated // []) | length) home(s)"), reveal:"--all-landed"} else empty end),

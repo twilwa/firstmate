@@ -389,18 +389,58 @@ test_mirror_input_refusals() {
   write_mirror "$home" "captain:$((ASK_EPOCH - 7200))" "main:$((ASK_EPOCH - 60))"
   assert_refused "$home" "mirror with no entry since the ask" "since the ask"
 
-  home=$(healthy_home mirror-no-captain)
-  write_mirror "$home" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 60))"
-  assert_refused "$home" "mirror with no captain message" "no captain message"
-
-  home=$(healthy_home mirror-recent-captain)
-  write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "captain:$((DUE_EPOCH - 3599))"
-  assert_refused "$home" "captain message within the last hour" "3600"
-
   home=$(healthy_home mirror-future)
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((DUE_EPOCH + 600))"
   assert_refused "$home" "mirror entry in the future" "future"
-  pass "the mirror input refuses a missing, malformed, unreadable, stale, captainless, recent, or future mirror"
+  pass "the mirror input refuses a missing, malformed, unreadable, stale, or future mirror"
+}
+
+# The last hour before DUE_ISO starts at DUE_EPOCH - 3600 (= ASK_EPOCH + 3600).
+
+test_trimmed_mirror_reaching_back_an_hour_applies() {
+  local home
+  home=$(healthy_home mirror-trimmed)
+  write_mirror "$home" "main:$((DUE_EPOCH - 3600))" "main:$((DUE_EPOCH - 1800))" "main:$((DUE_EPOCH - 60))"
+  run_default_cmd "$home" "$DUE_ISO" default t1 > "$home/out" 2> "$home/err" \
+    || fail "a trimmed mirror whose oldest kept entry is at now-3600 refused: $(cat "$home/err")"
+  grep -F "defaulted: t1" "$home/out" > /dev/null || fail "the trimmed-mirror default did not apply: $(cat "$home/out")"
+  pass "a trimmed mirror with no captain entry kept, whose oldest entry is at or before now-3600, applies"
+}
+
+test_mirror_not_reaching_back_an_hour_stops() {
+  local home
+  home=$(healthy_home mirror-short)
+  write_mirror "$home" "main:$((DUE_EPOCH - 3599))" "main:$((DUE_EPOCH - 60))"
+  assert_refused "$home" "mirror newer than now-3600 with no captain entry" "does not reach back"
+  pass "a mirror whose oldest entry is newer than now-3600 and holds no captain entry stops: it does not reach back an hour"
+}
+
+test_captain_entry_inside_the_last_hour_stops() {
+  local home
+  home=$(healthy_home mirror-recent-captain)
+  write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "captain:$((DUE_EPOCH - 3599))"
+  assert_refused "$home" "captain message within the last hour" "newest captain message"
+  pass "a captain entry inside the last hour stops the default"
+}
+
+test_owner_entry_at_exactly_now_minus_3600_counts_inside_the_hour() {
+  local home
+  home=$(healthy_home mirror-boundary-captain)
+  write_mirror "$home" "main:$((ASK_EPOCH + 60))" "captain:$((DUE_EPOCH - 3600))" "main:$((DUE_EPOCH - 60))"
+  assert_refused "$home" "captain message at exactly now-3600" "newest captain message is 3600s old"
+  pass "an owner entry at exactly now-3600 counts inside the hour and stops"
+}
+
+test_out_of_order_mirror_stops_as_invalid() {
+  local home
+  home=$(healthy_home mirror-unordered)
+  write_mirror "$home" "main:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((ASK_EPOCH - 300))" "main:$((DUE_EPOCH - 60))"
+  assert_refused "$home" "entry epochs out of order" "out of epoch order"
+
+  home=$(healthy_home mirror-oldest-newer)
+  write_mirror "$home" "main:$((DUE_EPOCH - 1800))" "main:$((ASK_EPOCH - 600))" "main:$((DUE_EPOCH - 60))"
+  assert_refused "$home" "first kept entry newer than its neighbour" "out of epoch order"
+  pass "a mirror whose entries are out of epoch order, including a first kept entry newer than its neighbour, stops as invalid rather than as coverage"
 }
 
 test_night_check_input_refusals() {
@@ -455,10 +495,29 @@ test_due_lists_without_changing_anything() {
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "captain:$((DUE_EPOCH - 300))"
   out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed after a captain message"
   case "$out" in *"t1 waits for the captain"*) ;; *) fail "due after a recent captain message did not report waiting for the captain: $out" ;; esac
+  write_mirror "$home" "main:$((DUE_EPOCH - 1800))" "main:$((DUE_EPOCH - 60))"
+  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed on a short mirror"
+  case "$out" in *"t1 unknown: dialog mirror:"*"does not reach back"*) ;; *) fail "due on a mirror not reaching back an hour did not report unknown: $out" ;; esac
   [ "$(body_of "$home" t1)" = "$before" ] || fail "due changed the held task"
   run_captain "$home" open t1 || fail "due released the hold"
   [ ! -s "$home/night.log" ] || fail "due ran the night check"
-  pass "due lists each default-bearing hold as waiting, proceeds at HH:MM, or due now, and changes nothing"
+  pass "due lists each default-bearing hold as waiting, proceeds at HH:MM, due now, or unknown, and changes nothing"
+}
+
+test_due_reports_an_unbound_default_and_skips_a_closed_hold() {
+  local home out
+  home=$(healthy_home due-unbound)
+  tasks_in "$home" hold t1 --kind captain --reason "a different question" > /dev/null \
+    || fail "could not change the held question"
+  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed on an unbound default"
+  case "$out" in *"t1 unknown: hold: the held question changed"*) ;; *) fail "due hid a default no longer bound to its question: $out" ;; esac
+
+  home=$(healthy_home due-closed)
+  printf 'option A\n' > "$home/a.txt"
+  run_captain "$home" answer t1 --decision-file "$home/a.txt" > /dev/null || fail "answer failed"
+  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed after the captain answered"
+  case "$out" in *t1*) fail "due listed a call the captain already answered: $out" ;; esac
+  pass "due reports a default no longer bound to its call as unknown and skips a call that is no longer held"
 }
 
 # --- bearings ------------------------------------------------------------------
@@ -483,6 +542,28 @@ test_bearings_shows_decided_by_default_separately() {
   pass "bearings lists decisions settled by default separately from captain answers"
 }
 
+test_bearings_bounds_decided_by_default_with_omitted_disclosure() {
+  local home json later_iso=2026-11-27T09:01:00Z
+  home=$(healthy_home bearings-cap)
+  run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "first default refused: $(cat "$home/err")"
+  hold_with_default "$home" t2 > /dev/null || fail "second default-bearing hold refused"
+  write_verdict "$home" ".checked_epoch = $((DUE_EPOCH + 60))"
+  run_default_cmd "$home" "$later_iso" default t2 > /dev/null 2> "$home/err" \
+    || fail "second default refused: $(cat "$home/err")"
+  json=$(FM_BEARINGS_DEFAULTED=1 run_bearings "$home") || fail "bearings failed"
+  printf '%s' "$json" | jq -e '
+      (.decided_by_default | length) == 1
+      and .decided_by_default[0].id == "t2"
+      and any(.omitted[]; .surface == "decided_by_default showing 1 of 2" and .reveal == "--all-landed")' > /dev/null \
+    || fail "bearings did not cap decided_by_default newest first with an omitted disclosure: $(printf '%s' "$json" | jq -c '{d:.decided_by_default,o:.omitted}')"
+  json=$(FM_BEARINGS_DEFAULTED=1 run_bearings "$home" --all-landed) || fail "bearings --all-landed failed"
+  printf '%s' "$json" | jq -e '(.decided_by_default | map(.id)) == ["t2","t1"]
+      and all(.omitted[]; (.surface | startswith("decided_by_default")) | not)' > /dev/null \
+    || fail "--all-landed did not reveal every decided-by-default row: $(printf '%s' "$json" | jq -c '.decided_by_default')"
+  pass "bearings bounds decided_by_default newest applied first, discloses the rest in omitted[], and --all-landed reveals them"
+}
+
 fm_test_run \
   test_hold_refuses_an_incomplete_or_disallowed_default \
   test_hold_refuses_a_default_from_the_supervision_engine \
@@ -498,6 +579,13 @@ fm_test_run \
   test_answer_input_refusals \
   test_time_input_refusals \
   test_mirror_input_refusals \
+  test_trimmed_mirror_reaching_back_an_hour_applies \
+  test_mirror_not_reaching_back_an_hour_stops \
+  test_captain_entry_inside_the_last_hour_stops \
+  test_owner_entry_at_exactly_now_minus_3600_counts_inside_the_hour \
+  test_out_of_order_mirror_stops_as_invalid \
   test_night_check_input_refusals \
   test_due_lists_without_changing_anything \
-  test_bearings_shows_decided_by_default_separately
+  test_due_reports_an_unbound_default_and_skips_a_closed_hold \
+  test_bearings_shows_decided_by_default_separately \
+  test_bearings_bounds_decided_by_default_with_omitted_disclosure

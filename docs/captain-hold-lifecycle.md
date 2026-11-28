@@ -126,7 +126,7 @@ Main may record, at the moment it asks, a default the call takes if the captain 
 Only a new hold can carry one, so no existing hold gains a default later.
 A default is firstmate's recommendation, never the captain's words, so `default` never goes through `answer`.
 It records a `defaulted` resolution under its own `Default decision:` label with the reason "no answer from the owner" and the ask and apply times, then closes or releases the call the way a recorded answer does.
-One decision function refuses unless every input is proven: the call is still held with its default, unanswered, two hours old, the captain has been silent in the dialog mirror for over an hour, and a fresh night check allows two-hour defaults.
+One decision function refuses unless every input is proven: the call is still held with its default, unanswered, two hours old, the dialog mirror reaches back over the last hour and holds no captain message in it, and a fresh night check allows two-hour defaults.
 `due` is the read-only schedule of those calls.
 [`bin/fm-captain-hold.sh`](../bin/fm-captain-hold.sh)'s header owns the inputs, records, and output shapes.
 
@@ -457,7 +457,7 @@ It preserves every captain hold in the bounded queued inventory of the owning ho
 An available hold is therefore never in both Captain's Call and Charted Next.
 An actively worked held task may also appear in Underway, which reports running work independently of those decision buckets.
 
-A call settled by its two-hour default is listed in `decided_by_default` with its recommendation and ask and apply times, separately from captain answers.
+A call settled by its two-hour default is listed in `decided_by_default` with its recommendation and ask and apply times, separately from captain answers, newest first and bounded with an `omitted[]` count that `--all-landed` reveals.
 
 Decision presentation uses the full-text field documented in [`bin/fm-bearings-snapshot.sh`](../bin/fm-bearings-snapshot.sh), preserving the recorded question and options while compact summaries remain overview-only.
 Older secondmate summaries without that field fall back to the title and reason text they retained.

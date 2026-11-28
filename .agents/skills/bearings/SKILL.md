@@ -157,7 +157,7 @@ Every `/bearings` chat response renders EXACTLY these four sections, in THIS ord
    Empty-state: "Nothing needs your action right now" is allowed only when `contributions.proven_clear` is true and the existing decision set is empty.
    When the section is empty but coverage is incomplete, say that no decision is recorded and give the checked/known count; a missing coverage field is also unverified.
 2. **Recently Landed** - the bounded current recent-completions baseline: merged PRs, completed scouts, and finished local-only merges across the main fleet and every registered secondmate home.
-   Each `decided_by_default` row renders here as "decided by default" with its recommendation and ask and apply times, never as a captain answer.
+   Each `decided_by_default` row renders here as "decided by default" with its recommendation and ask and apply times, never as a captain answer; the list is bounded, so when `omitted[]` carries a `decided_by_default showing N of M` entry, say how many more were decided by default and that `--all-landed` reveals them.
    Empty-state: "No recent completions are in the current baseline."
 3. **Underway** - live work progressing on its own, one line of current state per direct report.
    Empty-state: "Nothing is underway."
