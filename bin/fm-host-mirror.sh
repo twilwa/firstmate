@@ -77,14 +77,21 @@
 #   fm-host-mirror.sh feed <session> new|resume
 #   fm-host-mirror.sh commit
 #   fm-host-mirror.sh check
+#   fm-host-mirror.sh summary
 #   fm-host-mirror.sh verified <harness>
 # hook and commit always exit 0 and print nothing; feed exits 1 when
 # the mirror is missing, could not be read, or holds an invalid entry, or the
 # main session cannot be identified, and prints nothing when there is nothing
 # to feed; check (bin/fm-afk-launch.sh quiet-check's mirror test) exits 1 when
 # the mirror is missing, could not be read, or holds an invalid entry, and
-# otherwise 0, printing nothing and staging no cursor; verified exits 0 or 1
-# and prints nothing.
+# otherwise 0, printing nothing and staging no cursor; summary validates
+# exactly as check does and, under the same lock, prints one JSON object
+# describing that same validated copy - count, epochs ("ordered" when every
+# entry carries an integral non-negative epoch and they never decrease,
+# "unordered" when they decrease, "invalid" otherwise), the oldest and newest
+# entry epochs, and newest_captain (the newest captain entry's epoch, or null) -
+# exiting 1 where check would (bin/fm-captain-hold.sh's two-hour default reads
+# it); verified exits 0 or 1 and prints nothing.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,13 +124,13 @@ case "${1:-}" in
     # home that does not run the host stays inert.
     fm_supervision_host_enabled "$CONFIG" "${2:-}" || exit 0
     ;;
-  feed|commit|check) ;;
+  feed|commit|check|summary) ;;
   -h|--help) sed -n '2,/^set -u/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) usage ;;
 esac
 
 if ! command -v jq >/dev/null 2>&1 || [ ! -d "$STATE" ]; then
-  case "$1" in feed|check) exit 1 ;; esac
+  case "$1" in feed|check|summary) exit 1 ;; esac
   exit 0
 fi
 
@@ -282,6 +289,19 @@ case "$1" in
     [ -f "$MIRROR" ] && fm_lock_acquire_wait "$LOCK" || exit 1
     rc=0
     jq -Rs "$ENTRIES" "$MIRROR" >/dev/null 2>&1 || rc=1
+    fm_lock_release "$LOCK"
+    exit "$rc"
+    ;;
+  summary)
+    [ "$#" -eq 1 ] || usage
+    [ -f "$MIRROR" ] && fm_lock_acquire_wait "$LOCK" || exit 1
+    rc=0
+    jq -cRs "$ENTRIES"' | {count: length,
+        epochs: (if all(.[]; (.epoch | type) == "number" and .epoch >= 0 and .epoch == (.epoch | floor))
+          then (if (map(.epoch) | [.[:-1], .[1:]] | transpose | all(.[0] <= .[1])) then "ordered" else "unordered" end)
+          else "invalid" end),
+        oldest: (.[0].epoch // null), newest: (.[-1].epoch // null),
+        newest_captain: ([.[] | select(.tag == "captain") | .epoch] | max)}' "$MIRROR" 2>/dev/null || rc=1
     fm_lock_release "$LOCK"
     exit "$rc"
     ;;

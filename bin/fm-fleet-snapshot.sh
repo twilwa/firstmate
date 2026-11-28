@@ -482,9 +482,9 @@ backlog_json() (  # [<backlog-path>] - defaults to this home's $BACKLOG
             | first // ($rest | length)) as $end
         | $rest[:$end] as $block
         | ([$block | to_entries[] | select(.value == "Default decision:") | .key] | first) as $s
-        | ([$block | to_entries[] | select(.value == "Default decision ends.") | .key] | first) as $e
-        | if any($block[]; . == "Resolution mode: defaulted") and $s != null and $e != null and $e > $s then
-            {recommendation: ($block[($s + 1):$e] | join("\n")),
+        | (if $s == null then null else (try ($block[$s + 1] | fromjson) catch null) end) as $rec
+        | if any($block[]; . == "Resolution mode: defaulted") and ($rec | type) == "string" then
+            {recommendation: $rec,
              category: ([$block[] | capture("^Default category: (?<v>.+)$").v] | first),
              asked_at: ([$block[] | capture("^Default asked at: (?<v>.+)$").v] | first),
              applied_at: ([$block[] | capture("^Default applied at: (?<v>.+)$").v] | first)}

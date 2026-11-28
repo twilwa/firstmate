@@ -59,6 +59,8 @@ install_night_check_stub() {  # <home>
   cat > "$home/night-check" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_NIGHT_LOG"
+# A test's mid-check hook: what changes while the live check runs.
+[ ! -f "${FM_TEST_NIGHT_HOOK:-}" ] || bash "$FM_TEST_NIGHT_HOOK"
 cat "$FM_TEST_NIGHT_VERDICT"
 exit "$(cat "$FM_TEST_NIGHT_RC" 2>/dev/null || echo 0)"
 SH
@@ -71,7 +73,7 @@ run_default_cmd() {  # <home> <now-iso> <command args...>
   shift 2
   FM_CAPTAIN_HOLD_NOW=$now FM_NIGHT_CHECK_BIN="$home/night-check" \
     FM_TEST_NIGHT_VERDICT="$home/verdict.json" FM_TEST_NIGHT_RC="$home/verdict.rc" \
-    FM_TEST_NIGHT_LOG="$home/night.log" run_captain "$home" "$@"
+    FM_TEST_NIGHT_LOG="$home/night.log" FM_TEST_NIGHT_HOOK="$home/hook.sh" run_captain "$home" "$@"
 }
 
 hold_with_default() {  # <home> <id> [extra hold args...]
@@ -149,6 +151,12 @@ test_hold_refuses_an_incomplete_or_disallowed_default() {
     --default-file "$home/rec.txt" --default-class prod-anything --default-category issue-design-choice
   refused_hold "$home" "missing category" "--default-category" a7 \
     --default-file "$home/rec.txt" --default-class dev-revertible
+  printf 'option\000B\n' > "$home/nul.txt"
+  refused_hold "$home" "recommendation with a NUL byte" "NUL" a8 \
+    --default-file "$home/nul.txt" --default-class dev-revertible --default-category issue-design-choice
+  printf 'option \377B\n' > "$home/bad-utf8.txt"
+  refused_hold "$home" "recommendation that is not UTF-8" "UTF-8" a9 \
+    --default-file "$home/bad-utf8.txt" --default-class dev-revertible --default-category issue-design-choice
   pass "a default-bearing hold refuses always-waits, unknown, unrecommended, or unclassed defaults before writing"
 }
 
@@ -216,7 +224,7 @@ test_default_bearing_hold_records_its_default() {
   printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
   hold_with_default "$home" d1 > /dev/null || fail "default-bearing hold refused"
   run_captain "$home" open d1 || fail "default-bearing hold is not an open captain hold"
-  jq -e --arg rec "$RECOMMENDATION" --argjson ask "$ASK_EPOCH" '
+  jq -e --arg rec "$RECOMMENDATION"$'\n' --argjson ask "$ASK_EPOCH" '
       .task == "d1" and .class == "dev-revertible" and .category == "issue-design-choice"
       and .recommendation == $rec and .ask_epoch == $ask and .asked_at == "2026-11-27T07:00:00Z"' \
     "$home/data/d1/hold-default.json" > /dev/null \
@@ -532,7 +540,7 @@ test_bearings_shows_decided_by_default_separately() {
     --reason "pick one" --repo sample > /dev/null || fail "plain hold failed"
   run_captain "$home" answer t2 --decision-file "$home/a.txt" > /dev/null || fail "answer failed"
   json=$(run_bearings "$home") || fail "bearings failed"
-  printf '%s' "$json" | jq -e --arg rec "$RECOMMENDATION" --arg ask "$ASK_ISO" --arg applied "$DUE_ISO" '
+  printf '%s' "$json" | jq -e --arg rec "$RECOMMENDATION"$'\n' --arg ask "$ASK_ISO" --arg applied "$DUE_ISO" '
       (.decided_by_default | length) == 1
       and .decided_by_default[0].id == "t1"
       and .decided_by_default[0].recommendation == $rec
@@ -564,6 +572,243 @@ test_bearings_bounds_decided_by_default_with_omitted_disclosure() {
   pass "bearings bounds decided_by_default newest applied first, discloses the rest in omitted[], and --all-landed reveals them"
 }
 
+# --- review round: current night, one parse, retry, due, verbatim, wording --
+
+# Writes a mid-check hook script for the stubbed night check.
+night_hook() {  # <home> <shell text run while the check runs>
+  printf '%s\n' "$2" > "$1/hook.sh"
+}
+
+test_night_ending_during_the_check_refuses() {
+  local home
+  home=$(healthy_home night-ends)
+  night_hook "$home" "rm -f '$home/state/night-active.json'"
+  assert_refused "$home" "night ends while the check runs" "after the night check ran, night check: no readable night-active record"
+  pass "a night that ends while the live check runs refuses the default"
+}
+
+test_night_replaced_during_the_check_refuses() {
+  local home
+  home=$(healthy_home night-replaced)
+  night_hook "$home" "printf '%s\n' '{\"schema\":\"fm-night-active.v1\",\"started_epoch\":$((NIGHT_START + 60)),\"created_reserve_flags\":[]}' > '$home/state/night-active.json'"
+  assert_refused "$home" "night replaced while the check runs" "the active night changed while the night check ran"
+  pass "a night replaced while the live check runs refuses the default"
+}
+
+test_matching_future_night_start_refuses() {
+  local home
+  home=$(healthy_home night-future)
+  jq -n --argjson start "$((DUE_EPOCH + 60))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+    > "$home/state/night-active.json"
+  write_verdict "$home" ".night_started_epoch = $((DUE_EPOCH + 60))"
+  assert_refused "$home" "matching future night start" "is after the verdict's check"
+  pass "a night whose matching start is after the verdict's check refuses the default"
+}
+
+test_apply_time_is_the_final_clock_sample() {
+  local home ask_epoch ask_iso real_now t0 checked applied applied_epoch
+  home=$(make_home advancing-clock)
+  real_now=$(date -u +%s)
+  ask_epoch=$((real_now - 10800))
+  ask_iso=$(date -u -d "@$ask_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$ask_epoch" +%Y-%m-%dT%H:%M:%SZ)
+  printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
+  FM_CAPTAIN_HOLD_NOW=$ask_iso run_captain "$home" hold t1 --title "Notice copy choice t1" \
+    --reason "pick option A or B for the notice copy" --repo sample --default-file "$home/rec.txt" \
+    --default-class dev-revertible --default-category issue-design-choice > /dev/null \
+    || fail "advancing clock: the default-bearing hold was refused"
+  write_mirror "$home" "captain:$((ask_epoch - 600))" "main:$((real_now - 60))"
+  jq -n --argjson start "$((ask_epoch - 3600))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+    > "$home/state/night-active.json"
+  # A real-clock night check that takes two seconds and reports when it checked.
+  cat > "$home/night-check" <<SH
+#!/usr/bin/env bash
+sleep 2
+checked=\$(date -u +%s)
+printf '%s\n' "\$checked" > '$home/checked'
+jq -n --argjson now "\$checked" --argjson start "$((ask_epoch - 3600))" '{schema:"fm-night-verdict.v1",checked_epoch:\$now,
+  night_active:true,night_started_epoch:\$start,verdict:"continue",allow:{two_hour_default:true}}'
+SH
+  chmod +x "$home/night-check"
+  t0=$(date -u +%s)
+  FM_NIGHT_CHECK_BIN="$home/night-check" run_captain "$home" default t1 > /dev/null 2> "$home/err" \
+    || fail "advancing clock: the default refused: $(cat "$home/err")"
+  checked=$(cat "$home/checked")
+  applied=$(body_of "$home" t1 | jq -r . | sed -n 's/^Default applied at: //p')
+  applied_epoch=$(date -u -d "$applied" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$applied" +%s)
+  [ "$checked" -ge $((t0 + 2)) ] || fail "advancing clock: the check did not take its two seconds"
+  [ "$applied_epoch" -ge "$checked" ] \
+    || fail "advancing clock: apply time $applied is before the night check's $checked, so it is not the final sample"
+  pass "with an advancing clock the recorded apply time is the final clock sample, after the night check"
+}
+
+test_sidecar_with_an_extra_json_record_refuses() {
+  local home
+  home=$(healthy_home sidecar-stream)
+  jq -c . "$home/data/t1/hold-default.json" > "$home/one.json"
+  cat "$home/one.json" "$home/one.json" > "$home/data/t1/hold-default.json"
+  assert_refused "$home" "default record with an extra JSON record" "is malformed"
+  pass "a default record holding more than one JSON value refuses the default"
+}
+
+test_verdict_with_a_string_night_start_refuses() {
+  local home
+  home=$(healthy_home verdict-string-start)
+  write_verdict "$home" ".night_started_epoch = \"$NIGHT_START\""
+  assert_refused "$home" "verdict with a string started epoch" "does not match the active night"
+  pass "a verdict whose night start is a string never matches the numeric active start"
+}
+
+test_mirror_replaced_during_the_check_with_an_older_quiet_snapshot_refuses() {
+  local home
+  home=$(healthy_home mirror-swapped)
+  night_hook "$home" "rm -f '$home/state/.host-mirror.jsonl'
+printf '%s\n' '{\"seq\":1,\"epoch\":$((ASK_EPOCH - 5000)),\"key\":\"main-key\",\"id\":\"e1\",\"tag\":\"main\",\"text\":\"w\",\"text_sha256\":\"x\"}' \
+  '{\"seq\":2,\"epoch\":$((ASK_EPOCH - 4000)),\"key\":\"main-key\",\"id\":\"e2\",\"tag\":\"main\",\"text\":\"w\",\"text_sha256\":\"x\"}' \
+  > '$home/state/.host-mirror.jsonl'"
+  assert_refused "$home" "mirror swapped for an older quiet snapshot" "after the night check ran, dialog mirror: no entry is recorded since the ask"
+  pass "a mirror replaced during the night check with an older quiet snapshot refuses the default"
+}
+
+# A tasks-axi that fails <verb> on t1 once, then behaves.
+fail_tasks_axi_once() {  # <home> <verb>
+  cat > "$1/fakebin/tasks-axi" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "$2" ] && [ "\${2:-}" = t1 ] && [ ! -e "\$FM_HOME/$2-failed-once" ]; then
+  : > "\$FM_HOME/$2-failed-once"
+  exit 94
+fi
+exec "\$REAL_TASKS_AXI" "\$@"
+EOF
+  chmod +x "$1/fakebin/tasks-axi"
+}
+
+assert_unchanged_since() {  # <home> <before-body> <label>
+  [ "$(body_of "$1" t1)" = "$2" ] || fail "$3: the task body changed"
+  run_captain "$1" open t1 || fail "$3: the task is no longer an open captain hold"
+}
+
+test_retry_after_a_failed_close_keeps_the_persisted_disposition() {
+  local home before rc=0
+  home=$(healthy_home retry-close)
+  fail_tasks_axi_once "$home" "done"
+  ! run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "a failed close reported success"
+  before=$(body_of "$home" t1)
+  case "$before" in *"Default disposition: close"*) ;; *) fail "the defaulted record did not persist its close disposition: $before" ;; esac
+  run_default_cmd "$home" "$DUE_ISO" default t1 --release > /dev/null 2> "$home/err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "a releasing retry of a close was accepted"
+  grep -F "defaulted to close" "$home/err" > /dev/null || fail "the mismatched retry did not name the disposition: $(cat "$home/err")"
+  assert_unchanged_since "$home" "$before" "mismatched retry of a close"
+  run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "the exact retry of a failed close refused: $(cat "$home/err")"
+  [ "$(public_show "$home" t1 | sed -n 's/^  state: //p')" = "done" ] || fail "the exact retry did not close the task"
+  [ "$(body_of "$home" t1 | grep -o 'Resolution mode: defaulted' | wc -l | tr -d ' ')" = 1 ] || fail "the retry recorded the default twice"
+  pass "after a failed close the exact retry closes, and a releasing retry refuses without changing anything"
+}
+
+test_retry_after_a_failed_release_keeps_the_persisted_disposition() {
+  local home before rc=0
+  home=$(healthy_home retry-release)
+  fail_tasks_axi_once "$home" unhold
+  ! run_default_cmd "$home" "$DUE_ISO" default t1 --release > /dev/null 2> "$home/err" \
+    || fail "a failed release reported success"
+  before=$(body_of "$home" t1)
+  case "$before" in *"Default disposition: release"*) ;; *) fail "the defaulted record did not persist its release disposition: $before" ;; esac
+  run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "a closing retry of a release was accepted"
+  grep -F "defaulted to release" "$home/err" > /dev/null || fail "the mismatched retry did not name the disposition: $(cat "$home/err")"
+  assert_unchanged_since "$home" "$before" "mismatched retry of a release"
+  run_default_cmd "$home" "$DUE_ISO" default t1 --release > /dev/null 2> "$home/err" \
+    || fail "the exact retry of a failed release refused: $(cat "$home/err")"
+  [ "$(public_show "$home" t1 | sed -n 's/^  state: //p')" != "done" ] || fail "the release retry closed the work item"
+  ! run_captain "$home" open t1 || fail "the exact release retry left the captain hold"
+  pass "after a failed release the exact retry releases, and a closing retry refuses without changing anything"
+}
+
+test_retry_after_a_rehold_with_a_changed_question_refuses() {
+  local home rc=0
+  home=$(healthy_home retry-reheld)
+  fail_tasks_axi_once "$home" "done"
+  ! run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "a failed close reported success"
+  FM_CAPTAIN_HOLD_NOW=2026-11-27T09:10:00Z run_captain "$home" hold t1 --reason "a different question for the captain" \
+    > /dev/null 2> "$home/err" || fail "re-holding with a changed question failed: $(cat "$home/err")"
+  run_default_cmd "$home" "2026-11-27T09:20:00Z" default t1 > /dev/null 2> "$home/err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "the retry closed the newly held question"
+  grep -F "retry refused for t1" "$home/err" > /dev/null || fail "the retry refusal did not name the retry: $(cat "$home/err")"
+  run_captain "$home" open t1 || fail "the new question is no longer held"
+  [ "$(public_show "$home" t1 | sed -n 's/^  state: //p')" != "done" ] || fail "the new question was closed"
+  pass "a re-hold with a changed question between a failed close and its retry makes the retry refuse"
+}
+
+test_due_reports_a_mirror_wholly_before_the_ask_as_unknown() {
+  local home out
+  home=$(healthy_home due-stale-mirror)
+  write_mirror "$home" "main:$((ASK_EPOCH - 5000))" "main:$((ASK_EPOCH - 4000))"
+  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed on a stale mirror"
+  case "$out" in *"t1 unknown: dialog mirror: no entry is recorded since the ask"*) ;; *) fail "due on a mirror wholly before the ask did not report unknown: $out" ;; esac
+  pass "due reports a mirror holding nothing since the ask as unknown, never due now"
+}
+
+test_due_reports_a_future_ask_as_unknown() {
+  local home out
+  home=$(healthy_home due-future-ask)
+  out=$(FM_CAPTAIN_HOLD_NOW=2026-11-27T06:00:00Z run_captain "$home" due) || fail "due failed before the ask"
+  case "$out" in *"t1 unknown: time: the ask time $ASK_ISO is in the future"*) ;; *) fail "due before the ask did not report unknown: $out" ;; esac
+  pass "due reports an ask in the future as unknown"
+}
+
+test_due_skips_a_deferred_call() {
+  local home out
+  home=$(healthy_home due-deferred)
+  printf 'later\n' > "$home/later.txt"
+  FM_CAPTAIN_HOLD_NOW=2026-11-27T08:00:00Z run_captain "$home" answer t1 --decision-file "$home/later.txt" \
+    --defer-until 2026-12-01 > /dev/null || fail "defer answer failed"
+  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed after a deferral"
+  case "$out" in *t1*) fail "due listed a deferred call: $out" ;; esac
+  pass "due skips a call the captain deferred"
+}
+
+test_recommendation_round_trips_byte_for_byte() {
+  local home json
+  home=$(make_home verbatim)
+  printf '  indented first line\n\nDefault decision ends.\n\tlast line "quoted" \\ end\n\n' > "$home/rec.txt"
+  hold_with_default "$home" t1 > /dev/null || fail "verbatim: the default-bearing hold was refused"
+  jq -j .recommendation "$home/data/t1/hold-default.json" | cmp -s - "$home/rec.txt" \
+    || fail "verbatim: the default record did not keep the recommendation byte for byte"
+  write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 120))"
+  jq -n --argjson start "$NIGHT_START" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+    > "$home/state/night-active.json"
+  write_verdict "$home"
+  install_night_check_stub "$home"
+  run_default_cmd "$home" "$DUE_ISO" default t1 > /dev/null 2> "$home/err" \
+    || fail "verbatim: the default refused: $(cat "$home/err")"
+  body_of "$home" t1 | jq -r . | sed -n '/^Default decision:$/{n;p;q;}' | jq -j . | cmp -s - "$home/rec.txt" \
+    || fail "verbatim: the resolution record did not keep the recommendation byte for byte: $(body_of "$home" t1)"
+  json=$(run_bearings "$home") || fail "verbatim: bearings failed"
+  printf '%s' "$json" | jq -j '.decided_by_default[0].recommendation' | cmp -s - "$home/rec.txt" \
+    || fail "verbatim: the bearings row did not keep the recommendation byte for byte: $(printf '%s' "$json" | jq -c '.decided_by_default')"
+  pass "a recommendation with indentation, a blank line, the old end marker, and trailing newlines round-trips byte for byte"
+}
+
+test_real_refusing_check_changes_no_task_or_hold_data() {
+  local home before after
+  home=$(healthy_home real-refusal-data)
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/quota-axi"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/gh"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/herdr-core"
+  chmod +x "$home/fakebin/quota-axi" "$home/fakebin/gh" "$home/fakebin/herdr-core"
+  printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$ROOT/bin/fm-night-check.sh" > "$home/night-check"
+  chmod +x "$home/night-check"
+  [ ! -e "$home/state/night-verdict.json" ] || fail "the fixture already held a night verdict"
+  before=$(cat "$home/data/backlog.md" "$home/data/t1/hold-default.json")
+  assert_refused "$home" "real refusing night check" "allow.two_hour_default"
+  after=$(cat "$home/data/backlog.md" "$home/data/t1/hold-default.json")
+  [ "$before" = "$after" ] || fail "a refused default changed the task or hold data"
+  [ -f "$home/state/night-verdict.json" ] || fail "the live night check did not record its own verdict"
+  pass "a refusal from the real night check writes no task or hold change, while the check records its own verdict"
+}
+
 fm_test_run \
   test_hold_refuses_an_incomplete_or_disallowed_default \
   test_hold_refuses_a_default_from_the_supervision_engine \
@@ -588,4 +833,19 @@ fm_test_run \
   test_due_lists_without_changing_anything \
   test_due_reports_an_unbound_default_and_skips_a_closed_hold \
   test_bearings_shows_decided_by_default_separately \
-  test_bearings_bounds_decided_by_default_with_omitted_disclosure
+  test_bearings_bounds_decided_by_default_with_omitted_disclosure \
+  test_night_ending_during_the_check_refuses \
+  test_night_replaced_during_the_check_refuses \
+  test_matching_future_night_start_refuses \
+  test_apply_time_is_the_final_clock_sample \
+  test_sidecar_with_an_extra_json_record_refuses \
+  test_verdict_with_a_string_night_start_refuses \
+  test_mirror_replaced_during_the_check_with_an_older_quiet_snapshot_refuses \
+  test_retry_after_a_failed_close_keeps_the_persisted_disposition \
+  test_retry_after_a_failed_release_keeps_the_persisted_disposition \
+  test_retry_after_a_rehold_with_a_changed_question_refuses \
+  test_due_reports_a_mirror_wholly_before_the_ask_as_unknown \
+  test_due_reports_a_future_ask_as_unknown \
+  test_due_skips_a_deferred_call \
+  test_recommendation_round_trips_byte_for_byte \
+  test_real_refusing_check_changes_no_task_or_hold_data
