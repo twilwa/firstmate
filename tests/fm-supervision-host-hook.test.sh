@@ -480,7 +480,7 @@ test_claude_stop_hook_delivers_a_close_that_turns_main_only_at_its_turn() {
   [ "$(cat "$home/offer-count" 2>/dev/null)" -ge 2 ] || fail "fixture: the close was not accepted before it turned main-only"
   [ "$(engine_calls "$home")" -eq 0 ] || fail "hook turns-main-only: the engine ran on a stale offer"
   assert_rewoke_main "$home" "hook turns-main-only"
-  watcher_live "$home" || fail "hook turns-main-only: the pass-through left no successor watcher"
+  wait_until 150 successor_kept "$home" || fail "hook turns-main-only: the pass-through left no successor watcher: $(cat "$home/state/.watch-cycle-exits.log" 2>/dev/null)"
   pass "host+hook: a close that turns main-only at its turn rewakes main and keeps its successor watcher"
 }
 

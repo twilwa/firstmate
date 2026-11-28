@@ -392,6 +392,21 @@ watcher_live() {  # <home>
   pid=$(cat "$1/state/.watch.lock/pid" 2>/dev/null) || return 1
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
+# The successor a close that turns main-only at its turn leaves for main: still
+# watching, or ended by its own close. That fixture's at-turn status line lands
+# after the successor starts, so the successor may close on it within one poll
+# of the hand-back; a successor the host stopped ends on its stop signal, not a
+# wake. Reads the arm layer's cycle-exit ledger (state/.watch-cycle-exits.log,
+# bin/fm-watch-arm.sh): the newest successor=started:<watcher-pid> names it,
+# and its own row carries how it ended. The arm writes that row after the
+# watcher releases the lock, so callers wait for this.
+successor_kept() {  # <home>
+  local log=$1/state/.watch-cycle-exits.log pid
+  pid=$(sed -n 's/.*	successor=started:\([0-9][0-9]*\)$/\1/p' "$log" 2>/dev/null | tail -n 1)
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null && return 0
+  grep -q "^arm_pid=[0-9]*	watcher_pid=$pid	.*	signal=none	reason=actionable-signal	" "$log"
+}
 host_exited() { [ -s "$1/host.rc" ]; }
 # The recovery marker's episode kind (downtime or handling), read through its
 # owner's parser; the Claude re-arm owner delivers a close only on downtime.
