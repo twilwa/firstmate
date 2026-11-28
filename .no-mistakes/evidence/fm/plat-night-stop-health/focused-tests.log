@@ -1,5 +1,5 @@
-FM_TEST_BEGIN 2026-11-27T21:17:42Z tests/fm-night-check.test.sh family=pure-contract-unit expected_gate_skip=none
-1..24
+FM_TEST_BEGIN 2026-11-28T03:01:58Z tests/fm-night-check.test.sh family=pure-contract-unit expected_gate_skip=none
+1..37
 ok - fm-night-check: help and usage
 ok - fm-night-check: healthy night verdict and stored machine-readable consumption
 ok - fm-night-check: allow.two_hour_default requires active night and transitions cleanly across end and new start
@@ -12,22 +12,35 @@ ok - fm-night-check: partial, stale, and unreadable Claude quota readings fail c
 ok - fm-night-check: GitHub API floor pauses dispatch only while low, and an unreadable source fails closed
 ok - fm-night-check: failure streak latches the reserve-flag until end, which clears it and keeps the stop record
 ok - fm-night-check: failure streak limits to night-spawned kind=ship tasks and ignores scouts, secondmates, and pre-night tasks
+ok - fm-night-check: failure streak requires config/status-archive, reads retired status logs, and fails closed when ship status is missing
 ok - fm-night-check: corrupt stop record fails closed without latching, overwriting, or setting reserve-flag
+ok - fm-night-check: lost/wrong-night/malformed stop records fail closed and failed flag ownership rolls back and warns
 ok - fm-night-check: end clears recorded reserve-flags by exact path+token even after config edits
 ok - fm-night-check: a reserve-flag someone else created is never overwritten or cleared
 ok - fm-night-check: a missing reserve-flag config carries an explicit enforcement warning
-ok - fm-night-check: dev health tracks per-branch latest post-merge records, resolves legacy records, and consumes fm-pr-review base_ref
-ok - fm-night-check: check-machine rule counts deduplicated CI-admission waits via fm-crew-state and excludes running/passed checks
+ok - fm-night-check: dev health validates records, requires producer base_ref, caches legacy refs, and surfaces cache publish failures
+ok - fm-night-check: check-machine rule enforces current head-matched evidence and fails closed on unknown/stale/malformed state
 ok - fm-night-check: validation cap counts night-created high-stakes generations at PR-ready time and stops at 2
+ok - fm-night-check: incomplete review-ledger generation fails closed as unknown for validation cap
 ok - fm-night-check: sustained host load above 24 for 10m, stale timers, and unreadable loadavg
 ok - fm-night-check: supervision stall latches on >30m wake or engine latch, and corrupt/unresolvable files fail closed
 ok - fm-night-check: hc core restart, auto-detected app-terminal target, ambient HC_SOCKET strip, and unreadable/unresolvable fail-closed
+ok - fm-night-check: partial hc target, malformed baseline, and missing backend fail closed without ambient fallback
 ok - fm-night-check: hc guard blocks fm-install-hc.sh while night is active and leaves lab paths alone
 ok - fm-night-check: stop conditions never kill, interrupt, or tear down workers
+ok - fm-night-check: evaluate_night_verdict stops all work when any required input is missing, unreadable, stale, or mismatched
+ok - fm-night-check: F8 unified surviving-instructions classifier counts live tasks without kind or brief and keeps same-id archives
+ok - fm-night-check: F2 proof validation applies to tripped results so a 1200s-old 20% quota reading denies dispatch, Claude, and merges
+ok - fm-night-check: F5 check_machine rejects wrong PR URL with same SHA and counts one stale waiter below limit as waiting
+ok - fm-night-check: F4 dev_health rejects malformed not-applicable rows and older-generation or wrong-branch own verifications
+ok - fm-night-check: F3 failure_streak rejects readable garbage logs, non-terminal archives, and untraversable data roots
+ok - fm-night-check: F6 supervision_stall validates enabled host config and key without health file while preserving explicit opt-out
+ok - fm-night-check: F7 hc_core validates saved backend, refuses non-HC to HC switch, and rejects missing or malformed current identity fields
+ok - fm-night-check: A dev_health enforces 86400s max age on tonight's judged targets while ignoring untouched targets' pass age
 FM_TEST_COMPLETE
-FM_TEST_END 2026-11-27T21:18:42Z tests/fm-night-check.test.sh exit=0 duration_ms=59900 gate_skip=false
-FM_TEST_BEGIN 2026-11-27T21:18:42Z tests/fm-pr-review.test.sh family=pr-forge expected_gate_skip=none
-ok - poll preserves ordered checkpoint output for 600 ledgers (0s)
+FM_TEST_END 2026-11-28T03:03:43Z tests/fm-night-check.test.sh exit=0 duration_ms=104881 gate_skip=false
+FM_TEST_BEGIN 2026-11-28T03:03:43Z tests/fm-pr-review.test.sh family=pr-forge expected_gate_skip=none
+ok - poll preserves ordered checkpoint output for 600 ledgers (1s)
 ok - pending reviews retry, and top-level comments, submissions, and inline threads all require dispositions
 ok - a new head invalidates prior checks and review coverage
 ok - high-stakes readiness requires the configured model and no independent review when the policy count is zero
@@ -49,17 +62,18 @@ ok - the review wrapper applies each named red-check waiver and forwards guarded
 ok - the merge wrapper binds its task id to the task recorded in the review ledger
 ok - review checkpoints reuse the authenticated watcher check without another monitor
 ok - non-browser changes record a head-keyed N/A reason that a new head invalidates
+ok - post-merge refuses not-applicable evidence that carries an outcome
 ok - post-merge verification requires a forge merge of the reviewed source head
 ok - post-merge validation and recording use one exact JSON document
 ok - post-merge validates and records the same immutable staged evidence object
 ok - browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence
 ok - post-merge QA rejects superficial evidence, unsafe production actions, remote profiles, personal cookies, and paid cloud claims
 ok - a failed post-merge smoke requires an owning bug and blocks Ready for QA
-FM_TEST_END 2026-11-27T21:19:32Z tests/fm-pr-review.test.sh exit=0 duration_ms=49371 gate_skip=false
-FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=110314
-FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=49371 failed=0
-FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=59900 failed=0
-FM_TEST_SLOWEST rank=1 script=tests/fm-night-check.test.sh duration_ms=59900
-FM_TEST_SLOWEST rank=2 script=tests/fm-pr-review.test.sh duration_ms=49371
+FM_TEST_END 2026-11-28T03:04:32Z tests/fm-pr-review.test.sh exit=0 duration_ms=48694 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=154521
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=48694 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=104881 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-night-check.test.sh duration_ms=104881
+FM_TEST_SLOWEST rank=2 script=tests/fm-pr-review.test.sh duration_ms=48694
 FM_TEST_LISTENERS found=0
 EXIT=0

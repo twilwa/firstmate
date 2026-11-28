@@ -1,0 +1,25 @@
+lab=/tmp/fm-lab.qjkP2S london-now=03:05
+
+=== S7 enabled supervision host (Claude primary, no main-session .lock) fails closed ===
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"supervision_stall","status":"unknown","reason":"supervision-host is enabled but current engine key could not be resolved"}]}
+
+=== S7 explicit config/supervision-host-off opt-out reads ok ===
+{"verdict":"continue","supervision":"ok"}
+
+=== S8 GitHub core API 900 remaining (< 1000 floor) ===
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"github_api","status":"tripped","reason":"GitHub core API remaining (900) is below floor (1000)"}]}
+
+=== S8 GitHub API recovers to 4200 ===
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+
+=== S9 past last-dispatch cut-off (window 23:00, last-dispatch 03:00, end 04:30; now 03:05 London) ===
+night-check: started at 2026-11-28T03:05:21Z (window 23:00-04:30, last-dispatch 03:00 Europe/London)
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"night_window","status":"tripped","reason":"past last-dispatch cut-off (03:05 >= 03:00 Europe/London; draining until 04:30)"}]}
+reserve flag present? no
+
+=== S9 after window end (end 03:05 London; now 03:05 London) ===
+{"verdict":"end_night","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"night_window","status":"tripped","reason":"outside night window (03:05 Europe/London is not within 23:00-03:05)"}]}
+reserve flag present? no
+
+=== S9 adversarial: bogus timezone fails closed ===
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"night_window","status":"unknown","reason":"config/night-check line 1: unknown or invalid IANA timezone 'Mars/Olympus'"}]}

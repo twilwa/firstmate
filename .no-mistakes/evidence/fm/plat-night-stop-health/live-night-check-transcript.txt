@@ -1,0 +1,76 @@
+lab home: /tmp/fm-lab.owQtHE  (real clock now=1795835080, 03:04 GMT Europe/London)
+
+=== S1 before start: hc-guard allows hc installs ===
+hc-guard rc=0
+
+=== S1 start a night ===
+night-check: started at 2026-11-28T03:04:40Z (window 23:00-07:30, last-dispatch 06:30 Europe/London)
+start rc=0
+{"schema":"fm-night-active.v1","started_epoch":1795835080}
+
+=== S1 healthy check --json ===
+rc=0
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+{"night_window":"ok","claude_quota":"ok","github_api":"ok","failure_streak":"ok","dev_health":"ok","check_machine":"ok","validation_cap":"ok","supervision_stall":"ok","hc_core":"not_applicable","host_load":"ok"}
+
+=== S1 stored verdict for P2/P3 consumers ===
+{"verdict":"continue","two_hour":true}
+
+=== S1 hc-guard during the active night ===
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-28T03:04:40Z; run bin/fm-night-check.sh end first)
+hc-guard rc=1
+
+=== S2 pre-night (7d old) force-torn-down archive with no terminal line ===
+{"status":"ok","verdict_effect":"continue","reason":""}
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+
+=== S2 adversarial: same non-terminal archive dated inside tonight ===
+{"status":"unknown","verdict_effect":"stop_dispatch","reason":"archived status log /tmp/fm-lab.owQtHE/data/old1/status.log has no valid terminal status"}
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"unknown","reason":"archived status log /tmp/fm-lab.owQtHE/data/old1/status.log has no valid terminal status"}]}
+after removing night archive:
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+
+=== S3 Claude quota 20%/70% (below 25 floor) ===
+{"verdict":"stop_claude","allow":{"dispatch":true,"claude":false,"merge":true,"validation":false,"two_hour_default":true},"tripped":[{"condition":"claude_quota","status":"tripped","reason":"Claude five_hour quota remaining (20%) is below 25% Claude-work floor"}]}
+
+=== S3 Claude quota 10%/70% (below 12 floor) ===
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"tripped","reason":"Claude five_hour quota remaining (10%) is below 12% all-work floor"}]}
+
+=== S3 adversarial: 20% reading aged 1200s still labelled fresh ===
+{"status":"unknown","verdict_effect":"stop_dispatch","reason":"claude_quota: evidence is stale (age 1203s exceeds allowed 900s)"}
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"claude_quota","status":"unknown","reason":"claude_quota: evidence is stale (age 1203s exceeds allowed 900s)"}]}
+
+=== S3 recovery 80/70 ===
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+
+=== S4 dev_health: red judged target whose newest not-applicable is 3 days old ===
+{"status":"tripped","verdict_effect":"stop_dispatch","reason":"latest post-merge check failed in review ledger for https://github.com/twilwa/bbchat/pull/1531 (dev)"}
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"dev_health","status":"tripped","reason":"latest post-merge check failed in review ledger for https://github.com/twilwa/bbchat/pull/1531 (dev)"}]}
+stop record history:
+[{"condition":"dev_health","status":null,"reason":"latest post-merge check failed in review ledger for https://github.com/twilwa/bbchat/pull/1531 (dev)"}]
+
+=== S5 dev_health adversarial: not-applicable row carrying outcome:passed after a red record ===
+{"status":"unknown","verdict_effect":"stop_dispatch","reason":"review ledger github--twilwa--bbchat--1514.json contains incomplete, malformed, or branch-conflicting post-merge verification record or merge decision"}
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false},"tripped":[{"condition":"dev_health","status":"unknown","reason":"review ledger github--twilwa--bbchat--1514.json contains incomplete, malformed, or branch-conflicting post-merge verification record or merge decision"}]}
+
+=== S5 cleared ledgers -> recovery ===
+{"verdict":"continue","allow":{"dispatch":true,"claude":true,"merge":true,"validation":true,"two_hour_default":true},"tripped":[]}
+
+=== S6 three failed night ships -> failure streak latches + reserve-flag ===
+{"status":"tripped","verdict_effect":"stop_dispatch","reason":"failure streak of 3 consecutive failed night ship tickets (ship1, ship2, ship3)"}
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"tripped","reason":"failure streak of 3 consecutive failed night ship tickets (ship1, ship2, ship3)"}]}
+reserve flag:
+-rw------- /tmp/fm-lab.owQtHE/state/night.reserve
+
+=== S6 latch survives removal of the failing ships ===
+{"verdict":"stop_dispatch","allow":{"dispatch":false,"claude":false,"merge":true,"validation":false,"two_hour_default":false},"tripped":[{"condition":"failure_streak","status":"latched","reason":"latched at 2026-11-28T03:04:46Z: failure streak of 3 consecutive failed night ship tickets (ship1, ship2, ship3)"}]}
+
+=== S6 end the night ===
+night-check: cleared reserve-flag /tmp/fm-lab.owQtHE/state/night.reserve
+night-check: ended active night run
+end rc=0
+ls: cannot access '/tmp/fm-lab.owQtHE/state/night.reserve': No such file or directory
+ls: cannot access '/tmp/fm-lab.owQtHE/state/night-active.json': No such file or directory
+
+=== S6 hc-guard after end ===
+hc-guard rc=0
