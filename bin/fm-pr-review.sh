@@ -48,7 +48,7 @@
 # branch.
 # It accepts `firstmate-post-merge-verification.v1` JSON.
 # A non-browser record uses `applicability:"not-applicable"`, the reviewed
-# `head`, and a non-empty `reason`.
+# `head`, a non-empty `reason`, and no `outcome`.
 # A browser record uses `applicability:"browser"`, the reviewed `head`, an
 # `outcome` of `passed` or `failed`, the forge's actual `merged_sha`, the
 # observed `running_sha`, and the `running_url`.
@@ -348,7 +348,7 @@ validate_post_merge_evidence() {
         test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
     .schema == "firstmate-post-merge-verification.v1" and .head == $head and
     if .applicability == "not-applicable" then
-      (.reason | text)
+      (.reason | text) and .outcome == null
     elif .applicability == "browser" then
       ((.outcome == "passed") or (.outcome == "failed")) and
       (.merged_sha | sha) and .merged_sha == $forge_merge_sha and (.running_sha | sha) and

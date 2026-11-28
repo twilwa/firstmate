@@ -102,8 +102,9 @@
 #                     line yet counts as no outcome for SHIP_STATUS_GRACE
 #                     seconds after its spawn; beyond that grace, missing both
 #                     live and archived status or a nonempty status log with no
-#                     valid status event reports `unknown`. Any archived status
-#                     log without a valid terminal status, or an unreadable or
+#                     valid status event reports `unknown`. A night-spawned
+#                     archived status log (not dated before the night start)
+#                     without a valid terminal status, or an unreadable or
 #                     untraversable `state/` or `data/` root/task directory,
 #                     reports `unknown`.
 #   dev_health        Latest valid passed or failed post-merge verification
@@ -126,11 +127,13 @@
 #                     decision; otherwise `unknown`, so no next merge happens
 #                     before the previous one is verified. For targets judged
 #                     tonight (each `(repo, base_ref)` with a forge-confirmed
-#                     night merge), the oldest latest passing record among
-#                     those targets must be younger than DEV_HEALTH_MAX_AGE
-#                     (86400s / 24h) or `dev_health` reports `unknown`;
-#                     untouched targets are not age-judged, while any red
-#                     target stops at any age.
+#                     night merge), each target's newest passing or
+#                     well-formed not-applicable record must be younger than
+#                     DEV_HEALTH_MAX_AGE (86400s / 24h) or `dev_health`
+#                     reports `unknown`; untouched targets are not age-judged,
+#                     and a red latest outcome on any target stays `tripped`
+#                     at any age, never relabelled stale. A not-applicable
+#                     record that carries an `outcome` is malformed.
 #                     New records require and carry
 #                     a forge-confirmed `base_ref` written by
 #                     `bin/fm-pr-review.sh post-merge`; valid older records
@@ -352,9 +355,9 @@
 #   FM_CREW_STATE_BIN        override fm-crew-state.sh path (tests)
 #   FM_HC_BIN                override herdr-core binary path (matching hc.sh)
 #   FM_HC_SOCKET             pin hc core socket (matching hc.sh)
-#   FM_NIGHT_QUOTA_TIMEOUT, FM_NIGHT_GH_TIMEOUT, FM_NIGHT_HC_TIMEOUT
-#                            per-call timeout seconds for quota-axi, gh, and
-#                            hc queries (default 10 each)
+#
+# Fixed per-call timeouts (seconds, no environment overrides): QUOTA_TIMEOUT=10
+# for quota-axi, GH_TIMEOUT=10 for gh, HC_TIMEOUT=10 for hc server status.
 #
 # Exit status:
 #   check / start / end: 0 on completion, 1 on refusal or state error, 2 on
@@ -408,9 +411,9 @@ VALIDATION_CAP=2
 STALL_MINUTES=30
 HIGH_LOAD_THRESHOLD=24
 HIGH_LOAD_MINUTES=10
-QUOTA_TIMEOUT="${FM_NIGHT_QUOTA_TIMEOUT:-10}"
-GH_TIMEOUT="${FM_NIGHT_GH_TIMEOUT:-10}"
-HC_TIMEOUT="${FM_NIGHT_HC_TIMEOUT:-10}"
+QUOTA_TIMEOUT=10
+GH_TIMEOUT=10
+HC_TIMEOUT=10
 
 CONFIG_ERROR=
 
@@ -1412,14 +1415,14 @@ EOF
         IFS='|' read -r has_term valid_events has_nonempty first_at term_at verb file_gen <<EOF
 $res
 EOF
+        if is_uint "$first_at" && [ "$first_at" -lt "$since" ]; then
+          continue
+        fi
         if [ "$has_term" != "1" ]; then
           cond_json unknown stop_dispatch "archived status log $af has no valid terminal status" '{}'
           return 0
         fi
         [ "$term_at" -ge "$since" ] || continue
-        if is_uint "$first_at" && [ "$first_at" -lt "$since" ]; then
-          continue
-        fi
         gen_key="${file_gen:-archive:$(basename "$af"):${first_at:-$term_at}}"
         rows="${rows}${term_at}	${id}	${gen_key}	${verb}	archive
 "
@@ -1566,8 +1569,10 @@ eval_dev_health() {  # <now> <since_epoch>
           | if (type != "object") then error("verification not object") else . end
           | if bad_branch then error("invalid branch field type")
             elif bad_head then error("invalid head field type")
-            elif (.applicability == "not-applicable") and (.outcome == null or .outcome == "") then
-              if (.recorded_epoch | uint | not) then
+            elif .applicability == "not-applicable" then
+              if .outcome != null then
+                error("not-applicable record carries an outcome")
+              elif (.recorded_epoch | uint | not) then
                 error("missing or invalid recorded_epoch on not-applicable record")
               else
                 {repo: $repo, url: $u, gen_idx: $gi, head: (.head // null),
@@ -1727,14 +1732,12 @@ EOF
         | {url, repo, merge_epoch} ] as $unverified
     | ([ $merges[] | select(.target_branch != "") | {repo, base_ref: .target_branch} ] | unique) as $judged
     | [ $judged[] as $t
-        | ([ $latest[] | select(.repo == $t.repo and .base_ref == $t.base_ref and .outcome == "passed") | .recorded_epoch ] | max) as $pass_ep
-        | if $pass_ep != null then $pass_ep
-          else
-            ([ $all_rows[] | select(.repo == $t.repo and .base_ref == $t.base_ref and .outcome == "not-applicable")
-               | .recorded_epoch ] | max)
-          end
+        | ([ $all_rows[]
+             | select(.repo == $t.repo and .base_ref == $t.base_ref
+                      and (.outcome == "passed" or .outcome == "not-applicable"))
+             | .recorded_epoch ] | max)
         | select(. != null) ] as $judged_epochs
-    | (if ($judged_epochs | length) > 0 then ($judged_epochs | min) else $now end) as $obs_epoch
+    | (if ($failed | length) > 0 or ($judged_epochs | length) == 0 then $now else ($judged_epochs | min) end) as $obs_epoch
     | {
         failed_targets: $failed,
         unverified_merges: $unverified,

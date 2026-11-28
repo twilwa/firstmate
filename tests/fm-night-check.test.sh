@@ -864,6 +864,12 @@ unverified_merge_ledger() {  # <num> <merge_epoch>
     "$num" "$num" $((merged - 300)) "$merged"
 }
 
+na_merge_ledger() {  # <num> <merge_epoch> <recorded_epoch> -- night merge verified by its own not-applicable record on dev
+  local num=$1 merged=$2 rec=$3 h=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-%s","url":"https://github.com/twilwa/bbchat/pull/%s","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d},"post_merge_verifications":[{"applicability":"not-applicable","head":"%s","recorded_epoch":%d,"base_ref":"dev","reason":"docs only"}]}]}\n' \
+    "$num" "$num" "$h" "$h" $((merged - 300)) "$h" "$merged" "$h" "$rec"
+}
+
 fake_gh_pr_state() {  # <dir> <state> -- gh stub: rate limit plus `pr view --json state,baseRefName`
   local dir=$1 state=$2
   mkdir -p "$dir"
@@ -2134,6 +2140,16 @@ test_dev_health_malformed_not_applicable_and_misscoped_own_verification() {
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "wrong-branch own verification check exits 0"
   assert_all_stopped "$out" "dev_health" "dev_health wrong-branch verification in merge ledger"
+
+  # 4. A not-applicable row that carries an outcome is malformed: it never counts as a pass that clears a red target
+  home=$(make_home f4_na_with_outcome)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1513 "$(dev_ledger 1513 failed $((EPOCH_NIGHT_START - 1800)) dev)"
+  write_review_ledger "$home" 1514 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1514","url":"https://github.com/twilwa/bbchat/pull/1514","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[{"applicability":"not-applicable","outcome":"passed","head":"%s","recorded_epoch":%d,"base_ref":"dev","reason":"docs only"}]}]}\n' "$h0" "$h0" $((EPOCH_NIGHT_START - 600)) "$h0" $((EPOCH_NIGHT_START - 300)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "not-applicable row with outcome check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health not-applicable row carrying outcome passed"
   pass "fm-night-check: F4 dev_health rejects malformed not-applicable rows and older-generation or wrong-branch own verifications"
 }
 
@@ -2160,6 +2176,23 @@ test_failure_streak_garbage_logs_and_untraversable_roots() {
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "garbage archive log check exits 0"
   assert_all_stopped "$out" "failure_streak" "failure_streak archived log with no valid terminal status"
+
+  # 2b. A dated pre-night archive with no terminal status (force-torn-down ship) is out of night scope -> continue
+  home=$(make_home f3_pre_night_nonterminal_archive)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_brief "$home" a2
+  printf 'working [at=%d]: building\nblocked [at=%d]: waiting on owner\n' $((EPOCH_NIGHT_START - 604800)) $((EPOCH_NIGHT_START - 600000)) > "$home/data/a2/status.log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "pre-night non-terminal archive check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "a pre-night archive without a terminal status is not judged"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a pre-night non-terminal archive does not stop the night"
+
+  # 2c. The same non-terminal archive dated inside the night -> unknown
+  printf 'working [at=%d]: building\nblocked [at=%d]: waiting on owner\n' $((EPOCH_NIGHT_START + 100)) $((EPOCH_NIGHT_START + 200)) > "$home/data/a2/status.log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "night-dated non-terminal archive check exits 0"
+  assert_all_stopped "$out" "failure_streak" "failure_streak night-spawned archive with no terminal status"
 
   # 3. Unreadable / untraversable data root -> unknown
   home=$(make_home f3_untraversable_data)
@@ -2261,16 +2294,42 @@ test_dev_health_judged_target_24h_age_and_untouched_target_ignored() {
   local home out rc=0 h0
   h0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-  # 1. Judged target (twilwa/bbchat, dev) has a forge-confirmed night merge (not-applicable)
-  #    and its latest passing record is 25h old (> 86400s) -> unknown (replaces S15's ok expectation)
+  # 1. Judged target (twilwa/bbchat, dev): a forge-confirmed night merge with no newer verification
+  #    and a 25h-old latest pass -> unknown
   home=$(make_home a_judged_target_25h_old)
-  seed_healthy_stubs "$home"
+  fake_quota_axi "$home/fakebin" 80 70
+  fake_gh_pr_state "$home/fakebin" MERGED
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
   write_review_ledger "$home" 1520 "$(dev_ledger 1520 passed $((EPOCH_IN_WINDOW - 90000)) dev)"
-  write_review_ledger "$home" 1521 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1521","url":"https://github.com/twilwa/bbchat/pull/1521","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d},"post_merge_verifications":[{"applicability":"not-applicable","head":"%s","recorded_epoch":%d,"base_ref":"dev","reason":"docs only"}]}]}\n' "$h0" "$h0" $((EPOCH_NIGHT_START + 300)) "$h0" $((EPOCH_NIGHT_START + 600)) "$h0" $((EPOCH_NIGHT_START + 900)))"
+  write_review_ledger "$home" 1521 "$(unverified_merge_ledger 1521 $((EPOCH_NIGHT_START + 600)))"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
-  expect_code 0 "$rc" "25h-old judged target check exits 0"
-  assert_all_stopped "$out" "dev_health" "dev_health judged target with 25h-old latest pass (>86400s)"
+  expect_code 0 "$rc" "25h-old judged target without newer verification check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health judged target with 25h-old pass and no newer verification"
+
+  #    The same 25h-old pass plus tonight's own not-applicable verification of the night merge -> ok
+  write_review_ledger "$home" 1521 "$(na_merge_ledger 1521 $((EPOCH_NIGHT_START + 600)) $((EPOCH_NIGHT_START + 900)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "25h-old pass plus own not-applicable check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "tonight's own not-applicable verification refreshes the judged target's age"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "25h-old pass plus own not-applicable continues"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "25h-old pass plus own not-applicable allows merges"
+
+  # 1b. Judged target with no pass at all, only tonight's fresh not-applicable record -> ok
+  home=$(make_home a_judged_target_fresh_na_only)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1525 "$(na_merge_ledger 1525 $((EPOCH_NIGHT_START + 600)) $((EPOCH_NIGHT_START + 900)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "fresh not-applicable-only judged target check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a fresh not-applicable record keeps a judged target with no pass ok"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "fresh not-applicable-only judged target continues"
+
+  #    The same judged target whose only record is a 25h-old not-applicable record -> unknown (stale)
+  out=$(run_night_check "$home" $((EPOCH_NIGHT_START + 900 + 90000)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "25h-old not-applicable-only judged target check exits 0"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a 25h-old not-applicable record is stale for a judged target"
+  assert_contains "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.reason')" "stale" "the 25h-old judged target reads stale"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "a stale judged target denies merges"
 
   # 2. Untouched target with a 25h-old (and 48h-old) pass is NOT age-judged -> ok / continue
   home=$(make_home a_untouched_target_old_pass)
@@ -2284,6 +2343,20 @@ test_dev_health_judged_target_24h_age_and_untouched_target_ignored() {
   assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "untouched targets with old passes are not age-judged"
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "fresh judged target with old untouched passes continues"
   assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "untouched old pass does not block merges"
+
+  # 3. A judged target whose latest outcome is red stays tripped with stop history even when its newest
+  #    not-applicable record is days old; the red is never relabelled stale
+  home=$(make_home a_judged_target_red_old_na)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1530 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1530","url":"https://github.com/twilwa/bbchat/pull/1530","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[{"applicability":"not-applicable","head":"%s","recorded_epoch":%d,"base_ref":"dev","reason":"docs only"}]}]}\n' "$h0" "$h0" $((EPOCH_NIGHT_START - 259800)) "$h0" $((EPOCH_NIGHT_START - 259200)))"
+  write_review_ledger "$home" 1531 "$(dev_ledger 1531 failed $((EPOCH_NIGHT_START + 1800)) dev)"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "red judged target with old not-applicable check exits 0"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a red judged target stays tripped"
+  assert_contains "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.reason')" "latest post-merge check failed" "the red judged target keeps its failure reason"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "a red judged target denies merges"
+  assert_equals "dev_health" "$(jq -r '.history[0].condition' "$home/state/night-stop.json")" "the red judged target is kept in the stop history"
   pass "fm-night-check: A dev_health enforces 86400s max age on tonight's judged targets while ignoring untouched targets' pass age"
 }
 

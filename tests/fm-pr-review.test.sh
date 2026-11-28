@@ -878,6 +878,25 @@ test_post_merge_requires_confirmed_forge_merge() {
   pass 'post-merge verification requires a forge merge of the reviewed source head'
 }
 
+test_post_merge_not_applicable_refuses_outcome() {
+  local evidence path outcome status
+  prepare_post_merge_ledger
+  path=$(ledger)
+  for outcome in passed not-applicable; do
+    evidence="$TMP_ROOT/post-merge-na-$outcome.json"
+    jq -n --arg head "$HEAD_A" --arg outcome "$outcome" '{
+      schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+      head:$head,outcome:$outcome,reason:"docs only"
+    }' > "$evidence"
+    status=0
+    post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+    [ "$status" -ne 0 ] || fail "not-applicable evidence carrying outcome $outcome was accepted"
+    [ "$(jq '.generations[-1].post_merge_verifications | length' "$path")" -eq 0 ] \
+      || fail "not-applicable evidence carrying outcome $outcome was written to the ledger"
+  done
+  pass 'post-merge refuses not-applicable evidence that carries an outcome'
+}
+
 test_post_merge_rejects_multiple_json_documents() {
   local evidence path status=0
   prepare_post_merge_ledger
@@ -1093,6 +1112,7 @@ test_merge_forwards_guarded_options_to_the_merge_parser
 test_merge_rejects_a_task_that_does_not_own_the_ledger
 test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
+test_post_merge_not_applicable_refuses_outcome
 test_post_merge_requires_confirmed_forge_merge
 test_post_merge_rejects_multiple_json_documents
 test_post_merge_validates_the_immutable_staged_evidence
