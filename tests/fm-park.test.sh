@@ -710,6 +710,26 @@ wait_land_settled() {  # <world> <label>
   compgen -G "$1/state/.review-park-report-*" >/dev/null || fail "$2: the pending request was cleared without a reported outcome"
 }
 
+# Tick until the pending cleanup's first teardown attempt has been retried
+# (teardown.count leaves 1). Every tick before the retry must stay silent. The
+# retry runs detached, so a tick can start after it has already finished and
+# drain its outcome; that one report is kept in RETRY_REPORT (empty if none).
+RETRY_REPORT=
+tick_until_retried() {  # <world> <label>
+  local out
+  RETRY_REPORT=
+  for _ in $(seq 1 200); do
+    [ "$(cat "$1/teardown.count")" = 1 ] || return 0
+    out=$(run_park "$1" tick 2>&1)
+    if [ -n "$out" ]; then
+      [ "$(cat "$1/teardown.count")" = 2 ] || fail "$2: a tick printed before the retry ran: $out"
+      RETRY_REPORT=$out
+      return 0
+    fi
+    sleep 0.1
+  done
+}
+
 # One tick that starts a lane action, then the next tick, which reports its
 # outcome; prints that report.
 tick_and_report() {  # <world> <label>
@@ -1076,15 +1096,13 @@ SH
   # A tick skips the lane while the first attempt still holds it, and drains
   # any report it published, so tick until the retry runs: every tick must stay
   # silent and the pending request must survive the refusal.
-  for _ in $(seq 1 200); do
-    [ "$(cat "$w/teardown.count")" = 1 ] || break
-    out=$(run_park "$w" tick 2>&1)
-    [ -z "$out" ] || fail "land-lock-retry: the lock refusal was reported as an outcome: $out"
-    sleep 0.1
-  done
+  tick_until_retried "$w" land-lock-retry
   [ "$(cat "$w/teardown.count")" = 2 ] || fail "land-lock-retry: the pending request was never retried"
-  wait_land_settled "$w" land-lock-retry
-  out=$(run_park "$w" tick 2>&1)
+  out=$RETRY_REPORT
+  if [ -z "$out" ]; then
+    wait_land_settled "$w" land-lock-retry
+    out=$(run_park "$w" tick 2>&1)
+  fi
   [ "$out" = "cleaned up lane: PR $GH_URL merged; lane torn down and its working copy returned" ] || fail "land-lock-retry: outcome: $out"
   [ "$(cat "$w/teardown.count")" = 2 ] || fail "land-lock-retry: teardown calls: $(cat "$w/teardown.count")"
   pass "a temporary control-lock refusal stays pending and retries to one reported cleanup outcome"
@@ -1123,15 +1141,13 @@ SH
   sleep 0.5
   [ -e "$w/state/lane.review-park-land" ] || fail "land-killed: the killed cleanup lost its request"
   ! compgen -G "$w/state/.review-park-report-*" >/dev/null || fail "land-killed: the killed cleanup published an outcome"
-  for _ in $(seq 1 200); do
-    [ "$(cat "$w/teardown.count")" = 1 ] || break
-    out=$(run_park "$w" tick 2>&1)
-    [ -z "$out" ] || fail "land-killed: a retry tick printed: $out"
-    sleep 0.1
-  done
+  tick_until_retried "$w" land-killed
   [ "$(cat "$w/teardown.count")" = 2 ] || fail "land-killed: the killed cleanup was never retried"
-  wait_land_settled "$w" land-killed
-  out=$(run_park "$w" tick 2>&1)
+  out=$RETRY_REPORT
+  if [ -z "$out" ]; then
+    wait_land_settled "$w" land-killed
+    out=$(run_park "$w" tick 2>&1)
+  fi
   [ "$out" = "cleaned up lane: PR $GH_URL merged; lane torn down and its working copy returned" ] || fail "land-killed: outcome: $out"
   out=$(run_park "$w" tick 2>&1)
   [ -z "$out" ] || fail "land-killed: reported twice: $out"
