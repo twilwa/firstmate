@@ -302,9 +302,10 @@
 # owner's check runs and again as the last read before applying, after the
 # mirror proof (with its entry since the ask) is repeated at a final clock
 # sample; any difference, including an identical copy written as a new file,
-# refuses. That final sample is the recorded apply time. Any missing, unreadable, malformed,
-# or stale input refuses with its reason; a refusal writes no default and no
-# task or hold change; the live night check may update its own health records.
+# refuses. That final sample is the recorded apply time. Any missing,
+# unreadable, malformed, or stale input refuses with its reason; a refusal
+# writes no default and no task or hold change; the live night check may
+# update its own health records.
 # On success it records a `defaulted` resolution under a `Default decision:`
 # label - never `Captain decision:`, and never through `answer` - carrying
 # "no answer from the owner", the class, the category, the ask and apply
