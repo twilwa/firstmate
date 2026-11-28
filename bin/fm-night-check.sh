@@ -55,7 +55,7 @@
 #   claude_quota      max age: 900s (15m)    scope: Claude five_hour + seven_day
 #   github_api        max age: 60s (live)    scope: GitHub core hourly limit
 #   failure_streak    max age: 60s (live)    scope: night kind=ship (live + archive)
-#   dev_health        max age: 60s (live)    scope: per-(repo, target_branch) merged tonight
+#   dev_health        max age: 60s (live)    scope: per-(repo, target_branch), any age
 #   check_machine     max age: 1800s (30m)   scope: per confirmed 40-hex PR head
 #   validation_cap    max age: 60s (live)    scope: per-(url, head) high-risk gen
 #   supervision_stall max age: 60s (live)    scope: home supervision engine key
@@ -79,35 +79,42 @@
 #                     window across live `state/` records and retired status
 #                     archives under `data/<id>/status*.log` (requires
 #                     `config/status-archive` enabled for night runs;
-#                     deduplicated by task and `spawn_gen`, excluding scouts,
-#                     secondmates, and pre-night tasks). Every `check` of an
-#                     active night records each in-window ship incarnation it
-#                     sees live in `state/night-ships.json`, and the archive
-#                     pass reads only recorded ids, so a ship spawned and
-#                     retired between two checks is not counted. A night ship
-#                     with no status line yet counts as no outcome for
-#                     SHIP_STATUS_GRACE seconds after its spawn; after that,
-#                     missing both live and archived status reports `unknown`.
-#                     Outside an active night no registry exists, so retired
-#                     archives are not read.
-#   dev_health        Judges only targets the night acts on: each review
-#                     ledger whose current merge decision (`verified_epoch`)
-#                     falls inside the night window must carry its own dated
-#                     post-merge record (passed, failed, or not-applicable)
-#                     recorded at or after that decision, otherwise
-#                     `unknown`, so no next merge happens before the previous
-#                     one is verified. A decision whose merge never lands stays
-#                     `unknown` until a later ledger operation clears it. Each
-#                     such `(repo, target_branch)`, and each one with a
-#                     post-merge record dated inside the window, then reads its
-#                     latest valid passed or failed record across review
-#                     ledgers, whenever recorded; other targets are not judged.
+#                     deduplicated by task and `spawn_gen`, excluding live
+#                     scouts, secondmates, and pre-night tasks). A retired
+#                     task's kind comes from its own `data/<id>/brief.md`: the
+#                     generated `Delivery contract: mode=` line marks a ship,
+#                     and only a positively identified scout, landing-crew, or
+#                     secondmate brief is excluded; a task whose kind cannot be
+#                     determined (brief gone, unreadable, or unmarked) counts
+#                     as a ship. A night ship with no status line yet counts as
+#                     no outcome for SHIP_STATUS_GRACE seconds after its spawn;
+#                     after that, missing both live and archived status reports
+#                     `unknown`.
+#   dev_health        Latest valid passed or failed post-merge verification
+#                     record per `(repo, target_branch)` across review ledgers,
+#                     at any age and with no night-start filter, so a failure
+#                     recorded before the night stays red and a later passing
+#                     record on the same target branch clears it. A merge
+#                     decision whose `verified_epoch` falls inside the night
+#                     window is a night merge only once the forge confirms it
+#                     (its own post-merge record, which `bin/fm-pr-review.sh`
+#                     writes only after a forge-confirmed merge, or
+#                     `gh pr view --json state` reporting `MERGED`; a decision
+#                     whose PR never merged is not a night merge, and a failed
+#                     forge read reports `unknown`). Each night merge needs its
+#                     own dated post-merge record (passed, failed, or
+#                     not-applicable), or a passed/failed record on its forge
+#                     target branch, recorded at or after its decision;
+#                     otherwise `unknown`, so no next merge happens before the
+#                     previous one is verified.
 #                     New records require and carry
 #                     a forge-confirmed `base_ref` written by
 #                     `bin/fm-pr-review.sh post-merge`; valid older records
 #                     without it resolve `baseRefName` via a bounded
-#                     `gh pr view --json baseRefName` (failure yields `unknown`
-#                     and is retried on the next check); each successful lookup
+#                     `gh pr view --json baseRefName`, only for red records or
+#                     for repos with a confirmed night merge (failure yields
+#                     `unknown` and is retried on the next check); each
+#                     successful lookup
 #                     is published to `state/night-pr-base-refs.json`, so the
 #                     one-call-ever promise holds after a successful cache
 #                     publish (cache publish failures are surfaced as verdict
@@ -123,10 +130,11 @@
 #                     "COMPLETED"` with `conclusion == "pass"` or `"skipping"`,
 #                     matching `bin/fm-pr-review.sh`), or a head-verified merge
 #                     decision. A stale or older-head checkpoint never excludes
-#                     a wait. A successful `state: unknown` crew-state reply,
-#                     unconfirmed head, or malformed check status reports
-#                     `unknown` (`stop_dispatch`) and never shrinks the wait
-#                     count.
+#                     a wait: the task counts as waiting, the conservative
+#                     choice that only stops new builders. A successful
+#                     `state: unknown` crew-state reply, unconfirmed head, or
+#                     malformed check status reports `unknown`
+#                     (`stop_dispatch`) and never shrinks the wait count.
 #   validation_cap    Counts high-stakes PRs whose validated current
 #                     review-ledger generation was created during the night
 #                     (`risk.level == "high"` and integer `created_epoch >=
@@ -296,12 +304,6 @@
 #     records without `base_ref`. A merged PR's base branch never changes, so
 #     entries are kept across nights; an unreadable or invalid cache is
 #     ignored and rebuilt from fresh lookups.
-#   state/night-ships.json    (schema: fm-night-ships.v1)
-#     `{night_started_epoch, ships: [{id, spawn_gen, kind: "ship"}]}`: the
-#     in-window ship incarnations seen live during this night, reset by
-#     `start` and extended by every active-night `check`. A failed write, or
-#     an unreadable or corrupt registry, reports `failure_streak` as
-#     `unknown`.
 #
 # Home configuration: config/night-check (local, gitignored, home-local; schema
 # owned by docs/configuration.md "Night stop-and-health check").
@@ -340,7 +342,6 @@ BASE_REF_CACHE="$STATE/night-pr-base-refs.json"
 POLICY_FILE="${FM_REVIEW_POLICY_OVERRIDE:-$FM_ROOT/.github/firstmate-review-policy.json}"
 PROC_ROOT="${FM_PROC_ROOT_OVERRIDE:-/proc}"
 CREW_STATE_BIN="${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}"
-SHIPS_FILE="$STATE/night-ships.json"
 # Explicit freshness limits (seconds) enforced centrally by evaluate_night_verdict.
 LIVE_INPUT_MAX_AGE=60
 QUOTA_MAX_AGE=900
@@ -905,7 +906,6 @@ cmd_start() {
       stop_record_expected: false,
       created_reserve_flags: []
     }') || die "could not build night-active record"
-  write_night_ships "$now" '[]' || die "could not write $SHIPS_FILE"
   atomic_write_json "$ACTIVE_FILE" "$doc" || die "could not write $ACTIVE_FILE"
   rm -f -- "$STOP_FILE" "$VERDICT_FILE" 2>/dev/null || true
   printf 'night-check: started at %s (window %s-%s, last-dispatch %s %s)\n' \
@@ -1230,39 +1230,30 @@ task_has_archived_status() {  # <task-id> -> 0 if at least one data/<id>/status*
   return 1
 }
 
-load_night_ships() {  # <night_started> -> prints recorded ships JSON array, or returns 1 when unreadable/corrupt
-  local ns=$1 out
-  if [ ! -e "$SHIPS_FILE" ] && [ ! -L "$SHIPS_FILE" ]; then
-    printf '[]\n'
-    return 0
+archived_task_kind() {  # <task-id> -> prints ship | scout | secondmate from data/<id>/brief.md
+  local brief="$DATA/$1/brief.md"
+  if [ -f "$brief" ] && [ ! -L "$brief" ] && [ -r "$brief" ]; then
+    if grep -q '^Delivery contract: mode=' "$brief" 2>/dev/null; then
+      printf 'ship\n'
+      return 0
+    fi
+    if grep -q '^This is a SCOUT task:\|^This is a LANDING CREW task:' "$brief" 2>/dev/null; then
+      printf 'scout\n'
+      return 0
+    fi
+    if grep -q '^You are a persistent second mate managed by the main firstmate\.' "$brief" 2>/dev/null; then
+      printf 'secondmate\n'
+      return 0
+    fi
   fi
-  [ -f "$SHIPS_FILE" ] && [ ! -L "$SHIPS_FILE" ] && [ -r "$SHIPS_FILE" ] || return 1
-  out=$(jq -c --argjson ns "$ns" '
-    if .schema != "fm-night-ships.v1"
-       or (.night_started_epoch | type != "number")
-       or (.ships | type != "array")
-       or (all(.ships[]; type == "object" and (.id | type == "string" and length > 0)
-             and (.spawn_gen | type == "string" and length > 0) and .kind == "ship") | not) then
-      error("invalid")
-    elif .night_started_epoch != $ns then []
-    else .ships end
-  ' "$SHIPS_FILE" 2>/dev/null) || return 1
-  [ -n "$out" ] || return 1
-  printf '%s\n' "$out"
+  printf 'ship\n'
 }
 
-write_night_ships() {  # <night_started> <ships_json>
-  local doc
-  doc=$(jq -cn --argjson ns "$1" --argjson ships "$2" \
-    '{schema: "fm-night-ships.v1", night_started_epoch: $ns, ships: $ships}') || return 1
-  atomic_write_json "$SHIPS_FILE" "$doc"
-}
-
-eval_failure_streak() {  # <since_epoch> <night_active> <now> <night_started>
-  local since=$1 night_active=${2:-false} now=$3 night_started=${4:-null}
-  local rows="" meta id kind spawn_ep sg gen_key sf res fail_reason=""
+eval_failure_streak() {  # <since_epoch> <night_active> <now>
+  local since=$1 night_active=${2:-false} now=$3
+  local rows="" meta id kind spawn_ep sg gen_key sf res
   local first_at term_at verb has_term file_gen
-  local live_ships="" recorded="[]" merged tdir af
+  local non_ship_ids=" " pre_night_live_ids=" " tdir af
 
   if [ "$night_active" = true ] && ! status_archive_enabled; then
     cond_json unknown stop_dispatch "enable config/status-archive for night runs" '{}'
@@ -1273,33 +1264,37 @@ eval_failure_streak() {  # <since_epoch> <night_active> <now> <night_started>
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || [ -L "$meta" ] || continue
     if [ -L "$meta" ] || [ ! -f "$meta" ] || [ ! -r "$meta" ]; then
-      fail_reason=${fail_reason:-"task metadata $meta is unreadable or unsafe"}
-      continue
+      cond_json unknown stop_dispatch "task metadata $meta is unreadable or unsafe" '{}'
+      return 0
     fi
     id=$(basename "$meta" .meta)
     kind=$(sed -n 's/^kind=//p' "$meta" 2>/dev/null | head -1)
     # Limit failure streak strictly to kind=ship tasks (leave out scouts,
     # secondmates, and untyped records).
-    [ "$kind" = "ship" ] || continue
-    spawn_ep=$(meta_spawn_epoch "$meta") || {
-      fail_reason=${fail_reason:-"could not determine spawn epoch from $meta"}
+    if [ "$kind" != "ship" ]; then
+      non_ship_ids="${non_ship_ids}${id} "
       continue
+    fi
+    spawn_ep=$(meta_spawn_epoch "$meta") || {
+      cond_json unknown stop_dispatch "could not determine spawn epoch from $meta" '{}'
+      return 0
     }
     # Only count ship tasks spawned inside the night window.
-    [ "$spawn_ep" -ge "$since" ] || continue
+    if [ "$spawn_ep" -lt "$since" ]; then
+      pre_night_live_ids="${pre_night_live_ids}${id} "
+      continue
+    fi
     sg=$(sed -n 's/^spawn_gen=//p' "$meta" 2>/dev/null | head -1)
     gen_key="${sg:-live:$spawn_ep}"
-    live_ships="${live_ships}${id}	${gen_key}
-"
     sf="$STATE/$id.status"
     if [ -e "$sf" ] || [ -L "$sf" ]; then
       if [ -L "$sf" ] || [ ! -f "$sf" ] || [ ! -r "$sf" ]; then
-        fail_reason=${fail_reason:-"status log $sf is unreadable or unsafe"}
-        continue
+        cond_json unknown stop_dispatch "status log $sf is unreadable or unsafe" '{}'
+        return 0
       fi
       res=$(extract_status_timeline "$sf") || {
-        fail_reason=${fail_reason:-"could not read terminal status from $sf"}
-        continue
+        cond_json unknown stop_dispatch "could not read terminal status from $sf" '{}'
+        return 0
       }
       IFS=$'\t' read -r first_at term_at verb has_term file_gen <<EOF
 $res
@@ -1312,47 +1307,25 @@ EOF
       if [ "$now" -ge "$spawn_ep" ] && [ $((now - spawn_ep)) -lt "$SHIP_STATUS_GRACE" ]; then
         continue
       fi
-      fail_reason=${fail_reason:-"night-window ship $id has neither live status nor archived status"}
+      cond_json unknown stop_dispatch "night-window ship $id has neither live status nor archived status" '{}'
+      return 0
     fi
   done
 
-  if [ "$night_active" = true ] && is_uint "$night_started"; then
-    if ! recorded=$(load_night_ships "$night_started"); then
-      cond_json unknown stop_dispatch "night ship registry $SHIPS_FILE is unreadable or corrupt" '{}'
-      return 0
-    fi
-    merged=$(printf '%s' "$live_ships" | jq -Rsc --argjson rec "$recorded" '
-      reduce (split("\n")[] | select(. != "") | split("\t") | {id: .[0], spawn_gen: .[1], kind: "ship"}) as $s
-        ($rec; if any(.[]; .id == $s.id and .spawn_gen == $s.spawn_gen) then . else . + [$s] end)
-    ' 2>/dev/null) || merged=""
-    if [ -z "$merged" ]; then
-      cond_json unknown stop_dispatch "could not update night ship registry $SHIPS_FILE" '{}'
-      return 0
-    fi
-    if [ "$merged" != "$recorded" ] || [ ! -e "$SHIPS_FILE" ]; then
-      if ! write_night_ships "$night_started" "$merged"; then
-        cond_json unknown stop_dispatch "could not write night ship registry $SHIPS_FILE" '{}'
-        return 0
-      fi
-    fi
-    recorded=$merged
-  fi
-  if [ -n "$fail_reason" ]; then
-    cond_json unknown stop_dispatch "$fail_reason" '{}'
-    return 0
-  fi
-
-  # Pass 2: retired status logs under $DATA/<id>/status.log and status.<N>.log,
-  # limited to ship ids recorded in this night's registry.
+  # Pass 2: retired status logs under $DATA/<id>/status.log and status.<N>.log
   if [ -e "$DATA" ] || [ -L "$DATA" ]; then
     if [ ! -d "$DATA" ] || [ ! -r "$DATA" ]; then
       cond_json unknown stop_dispatch "task data directory $DATA is unreadable" '{}'
       return 0
     fi
-    while IFS= read -r id; do
-      [ -n "$id" ] || continue
-      tdir="$DATA/$id"
+    for tdir in "$DATA"/*; do
+      [ -e "$tdir" ] || [ -L "$tdir" ] || continue
       [ -d "$tdir" ] && [ ! -L "$tdir" ] || continue
+      id=$(basename "$tdir")
+      [ "$id" != "pr-review-ledger" ] || continue
+      case "$non_ship_ids" in *" $id "*) continue ;; esac
+      case "$pre_night_live_ids" in *" $id "*) continue ;; esac
+      [ "$(archived_task_kind "$id")" = ship ] || continue
       for af in "$tdir"/status.log "$tdir"/status.[0-9]*.log; do
         [ -e "$af" ] || [ -L "$af" ] || continue
         if [ -L "$af" ] || [ ! -f "$af" ] || [ ! -r "$af" ]; then
@@ -1375,9 +1348,7 @@ EOF
         rows="${rows}${term_at}	${id}	${gen_key}	${verb}	archive
 "
       done
-    done <<EOF
-$(printf '%s\n' "$recorded" | jq -r '[.[].id] | unique | .[]')
-EOF
+    done
   fi
 
   # shellcheck disable=SC2016
@@ -1435,17 +1406,29 @@ load_base_ref_cache() {  # -> prints {"<pr-url>": "<base ref>"} (empty when abse
   fi
 }
 
+resolve_pr_merge_state() {  # <pr-url> -> prints "<state>\t<baseRefName>" or returns 1
+  local url=$1 gbin json rc=0
+  gbin=$(resolve_gh_bin) || return 1
+  json=$(fm_run_timed "$GH_TIMEOUT" "$gbin" pr view "$url" --json state,baseRefName 2>/dev/null </dev/null) || rc=$?
+  [ "$rc" -eq 0 ] && [ -n "$json" ] || return 1
+  printf '%s\n' "$json" | jq -er '
+    select((.state | type == "string" and length > 0) and ((.baseRefName // "") | type == "string"))
+    | [.state, (.baseRefName // "")] | @tsv' 2>/dev/null
+}
+
 eval_dev_health() {  # <now> <since_epoch>
-  local now=$1 since=$2 f records_json="[]" merges_json="[]" count=0 parsed rows merge_json url fallback_ref
+  local now=$1 since=$2 f records_json="[]" candidates_json="[]" merges_json="[]" count=0 parsed
+  local cand url forge state forge_ref night_repos lookup_urls fallback_ref
   local base_refs cache_publish_ok=true cache_warning=""
+  local scope="per-(repo,target_branch); night merges forge-confirmed"
   base_refs=$(load_base_ref_cache)
   if ! resolve_ledger_dir; then
     cond_json unknown stop_dispatch "$LEDGER_DIR_ERROR" '{}'
     return 0
   fi
   if [ ! -e "$LEDGER_DIR" ] && [ ! -L "$LEDGER_DIR" ]; then
-    cond_json ok continue "" '{"judged_targets":[],"failed_targets":[],"unverified_merges":[],"night_merges":0,"checked_ledgers":0,"cache_publish_ok":true,"cache_warning":null}' \
-      "$(proof_json true true "$now" "$LIVE_INPUT_MAX_AGE" "per-(repo,target_branch) merged tonight")"
+    cond_json ok continue "" '{"failed_targets":[],"unverified_merges":[],"night_merges":0,"checked_ledgers":0,"cache_publish_ok":true,"cache_warning":null}' \
+      "$(proof_json true true "$now" "$LIVE_INPUT_MAX_AGE" "$scope")"
     return 0
   fi
   if [ -L "$LEDGER_DIR" ] || [ ! -d "$LEDGER_DIR" ] || [ ! -r "$LEDGER_DIR" ]; then
@@ -1477,10 +1460,10 @@ eval_dev_health() {  # <now> <since_epoch>
       .url as $u
       | ($u | sub("/(-/)?(pull|merge_requests)/.*$"; "")) as $repo
       | if ($repo | length) == 0 then error("invalid url repo") else . end
-      | (.generations[-1].merge_decision) as $md
-      | (if ($md | type) == "object" and $md.decision == "merge" then
-           (if ($md.verified_epoch | uint) then $md.verified_epoch else error("invalid merge decision verified_epoch") end)
-         else null end) as $merge_epoch
+      | ([ .generations[] | .merge_decision
+           | select(type == "object" and .decision == "merge")
+           | if (.verified_epoch | uint) then .verified_epoch else error("invalid merge decision verified_epoch") end
+           | select(. >= $since) ] | max) as $merge_epoch
       | [ .generations[]
           | if (.post_merge_verifications == null) then empty
             elif (.post_merge_verifications | type) != "array" then error("post_merge_verifications not array")
@@ -1509,75 +1492,91 @@ eval_dev_health() {  # <now> <since_epoch>
                 recorded_epoch: .recorded_epoch
               }
             end ] as $rows
-      | ($merge_epoch != null and $merge_epoch >= $since) as $night_merge
       | {
           rows: $rows,
-          merge: (if $night_merge then {url: $u, repo: $repo, merge_epoch: $merge_epoch} else null end),
-          needs_ref: any($rows[]; .base_ref == ""
-            and (.outcome != "not-applicable" or ($night_merge and .recorded_epoch >= $merge_epoch)))
+          candidate: (if $merge_epoch == null then null
+                      else {url: $u, repo: $repo, merge_epoch: $merge_epoch,
+                            own_verified: any($rows[]; .recorded_epoch >= $merge_epoch)} end)
         }
     ' "$f" 2>/dev/null) || {
       cond_json unknown stop_dispatch "review ledger $(basename "$f") contains incomplete or malformed post-merge verification record or merge decision" '{}'
       return 0
     }
-    rows=$(printf '%s\n' "$parsed" | jq -c '.rows')
-    if [ "$(printf '%s\n' "$parsed" | jq -r '.needs_ref')" = true ]; then
-      url=$(jq -r '.url' "$f")
-      fallback_ref=$(printf '%s\n' "$base_refs" | jq -r --arg u "$url" '.[$u] // empty')
-      if [ -z "$fallback_ref" ]; then
-        if ! fallback_ref=$(resolve_pr_base_ref "$url"); then
-          cond_json unknown stop_dispatch "could not resolve target branch for post-merge verification on $url" '{}'
-          return 0
-        fi
-        base_refs=$(printf '%s\n' "$base_refs" | jq -c --arg u "$url" --arg r "$fallback_ref" '.[$u] = $r')
-        if ! atomic_write_json "$BASE_REF_CACHE" "$(jq -cn --argjson refs "$base_refs" '{schema: "fm-night-pr-base-refs.v1", refs: $refs}')"; then
-          cache_publish_ok=false
-          cache_warning="could not publish legacy PR base-ref cache at $BASE_REF_CACHE; successful forge lookup will repeat until cache publication succeeds"
-        fi
-      fi
-      rows=$(printf '%s\n' "$rows" | jq -c --arg ref "$fallback_ref" '
-        map(if .base_ref == "" then .base_ref = $ref else . end)
-      ')
-    fi
-    records_json=$(jq -cn --argjson a "$records_json" --argjson b "$rows" '$a + $b')
-    merge_json=$(printf '%s\n' "$parsed" | jq -c '.merge')
-    if [ "$merge_json" != null ]; then
-      merges_json=$(jq -cn --argjson a "$merges_json" --argjson m "$merge_json" '$a + [$m]')
-    fi
+    records_json=$(jq -cn --argjson a "$records_json" --argjson p "$parsed" '$a + $p.rows')
+    candidates_json=$(jq -cn --argjson a "$candidates_json" --argjson p "$parsed" '$a + (if $p.candidate == null then [] else [$p.candidate] end)')
   done
+
+  while IFS= read -r cand; do
+    [ -n "$cand" ] || continue
+    if [ "$(printf '%s\n' "$cand" | jq -r '.own_verified')" = true ]; then
+      merges_json=$(jq -cn --argjson a "$merges_json" --argjson m "$cand" '$a + [$m + {forge_base_ref: null}]')
+      continue
+    fi
+    url=$(printf '%s\n' "$cand" | jq -r '.url')
+    if ! forge=$(resolve_pr_merge_state "$url"); then
+      cond_json unknown stop_dispatch "could not confirm the forge merge state of night merge decision $url" '{}'
+      return 0
+    fi
+    state=${forge%%	*}
+    forge_ref=${forge#*	}
+    [ "$state" = MERGED ] || continue
+    merges_json=$(jq -cn --argjson a "$merges_json" --argjson m "$cand" --arg r "$forge_ref" '$a + [$m + {forge_base_ref: $r}]')
+  done <<EOF
+$(printf '%s\n' "$candidates_json" | jq -c '.[]')
+EOF
+
+  night_repos=$(printf '%s\n' "$merges_json" | jq -c '[.[].repo] | unique')
+  lookup_urls=$(printf '%s\n' "$records_json" | jq -r --argjson repos "$night_repos" '
+    [ .[] | select(.base_ref == "" and (.outcome == "failed"
+        or (.outcome == "passed" and (.repo as $r | any($repos[]; . == $r))))) | .url ] | unique | .[]')
+  while IFS= read -r url; do
+    [ -n "$url" ] || continue
+    fallback_ref=$(printf '%s\n' "$base_refs" | jq -r --arg u "$url" '.[$u] // empty')
+    if [ -z "$fallback_ref" ]; then
+      if ! fallback_ref=$(resolve_pr_base_ref "$url"); then
+        cond_json unknown stop_dispatch "could not resolve target branch for post-merge verification on $url" '{}'
+        return 0
+      fi
+      base_refs=$(printf '%s\n' "$base_refs" | jq -c --arg u "$url" --arg r "$fallback_ref" '.[$u] = $r')
+      if ! atomic_write_json "$BASE_REF_CACHE" "$(jq -cn --argjson refs "$base_refs" '{schema: "fm-night-pr-base-refs.v1", refs: $refs}')"; then
+        cache_publish_ok=false
+        cache_warning="could not publish legacy PR base-ref cache at $BASE_REF_CACHE; successful forge lookup will repeat until cache publication succeeds"
+      fi
+    fi
+    records_json=$(printf '%s\n' "$records_json" | jq -c --arg u "$url" --arg ref "$fallback_ref" '
+      map(if .url == $u and .base_ref == "" then .base_ref = $ref else . end)
+    ')
+  done <<EOF
+$lookup_urls
+EOF
+
   # shellcheck disable=SC2016
   printf '%s\n' "$records_json" | jq -c \
     --argjson merges "$merges_json" \
-    --argjson since "$since" \
     --argjson checked "$count" \
     --argjson now "$now" \
     --argjson max_age "$LIVE_INPUT_MAX_AGE" \
     --argjson cache_ok "$cache_publish_ok" \
-    --arg cache_warn "$cache_warning" '
-    . as $all
-    | [ $merges[] | . as $m
-        | ([ $all[] | select(.url == $m.url and .recorded_epoch >= $m.merge_epoch) ] | max_by(.recorded_epoch)) as $v
-        | $m + {verified: ($v != null), base_ref: ($v.base_ref // null), verification_epoch: ($v.recorded_epoch // null)} ] as $night
-    | [ $night[] | select(.verified | not) | {url, repo, merge_epoch} ] as $unverified
-    | ([ $night[] | select(.verified) | {repo, base_ref} ]
-       + [ $all[] | select(.recorded_epoch >= $since and .base_ref != "") | {repo, base_ref} ]
-       | unique) as $targets
-    | [ $targets[] | . as $t
-        | [ $all[] | select((.outcome == "passed" or .outcome == "failed") and .repo == $t.repo and .base_ref == $t.base_ref) ]
-        | if length > 0 then max_by(.recorded_epoch) else empty end ] as $latest
+    --arg cache_warn "$cache_warning" \
+    --arg scope "$scope" '
+    [ .[] | select((.outcome == "passed" or .outcome == "failed") and .base_ref != "") ] as $outcomes
+    | [ $outcomes | group_by([.repo, .base_ref])[] | max_by(.recorded_epoch) ] as $latest
     | [ $latest[] | select(.outcome == "failed") ] as $failed
+    | [ $merges[] | . as $m
+        | select(($m.own_verified or any($outcomes[]; .repo == $m.repo and .base_ref == $m.forge_base_ref
+            and .recorded_epoch >= $m.merge_epoch)) | not)
+        | {url, repo, merge_epoch} ] as $unverified
     | {
-        judged_targets: $targets,
         failed_targets: $failed,
         unverified_merges: $unverified,
-        night_merges: ($night | length),
+        night_merges: ($merges | length),
         checked_ledgers: $checked,
         cache_publish_ok: $cache_ok,
         cache_warning: (if $cache_warn == "" then null else $cache_warn end)
       } as $det
-    | {present: true, readable: true, observed_epoch: $now, max_age_seconds: $max_age, target_scope: "per-(repo,target_branch) merged tonight"} as $prf
+    | {present: true, readable: true, observed_epoch: $now, max_age_seconds: $max_age, target_scope: $scope} as $prf
     | if ($unverified | length) > 0 then
-        {status: "unknown", verdict_effect: "stop_dispatch", reason: "no post-merge verification recorded after the night merge decision for \([$unverified[].url] | join(", "))", details: $det, proof: $prf}
+        {status: "unknown", verdict_effect: "stop_dispatch", reason: "no post-merge verification recorded after the forge-confirmed night merge of \([$unverified[].url] | join(", "))", details: $det, proof: $prf}
       elif ($failed | length) > 0 then
         {status: "tripped", verdict_effect: "stop_dispatch", reason: "latest post-merge check failed in review ledger for \([$failed[] | "\(.url) (\(.base_ref))"] | join(", "))", details: $det, proof: $prf}
       else
@@ -2544,7 +2543,7 @@ cmd_check() {
   c_window=$(eval_night_window "$now" "$active_bad")
   c_quota=$(eval_claude_quota)
   c_gh=$(eval_github_api "$now")
-  c_streak=$(eval_failure_streak "$since_epoch" "$night_active" "$now" "$night_started")
+  c_streak=$(eval_failure_streak "$since_epoch" "$night_active" "$now")
   c_dev=$(eval_dev_health "$now" "$since_epoch")
   c_cm=$(eval_check_machine "$now")
   c_val=$(eval_validation_cap "$since_epoch" "$now")
