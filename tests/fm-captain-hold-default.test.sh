@@ -741,6 +741,34 @@ test_retry_after_a_rehold_with_a_changed_question_refuses() {
   pass "a re-hold with a changed question between a failed close and its retry makes the retry refuse"
 }
 
+test_new_default_applies_after_a_released_default() {
+  local home out body second='Ship option A for the banner and file option B as a follow-up.'
+  home=$(healthy_home rehold-after-release)
+  run_default_cmd "$home" "$DUE_ISO" default t1 --release > /dev/null 2> "$home/err" \
+    || fail "the first releasing default refused: $(cat "$home/err")"
+  ! run_captain "$home" open t1 || fail "the releasing default left the captain hold"
+  printf '%s\n' "$second" > "$home/rec2.txt"
+  FM_CAPTAIN_HOLD_NOW=2026-11-27T10:00:00Z run_captain "$home" hold t1 \
+    --title "Notice copy choice t1" --reason "pick option A or B for the banner" --repo sample \
+    --default-file "$home/rec2.txt" --default-class dev-revertible --default-category issue-design-choice \
+    > /dev/null 2> "$home/err" || fail "the new default-bearing hold was refused: $(cat "$home/err")"
+  write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 120))" \
+    "main:$((DUE_EPOCH + 3660))" "main:$((DUE_EPOCH + 10680))"
+  write_verdict "$home" ".checked_epoch = $((DUE_EPOCH + 10800)) | .checked_at = \"2026-11-27T12:00:00Z\""
+  out=$(FM_CAPTAIN_HOLD_NOW=2026-11-27T12:00:00Z run_captain "$home" due) || fail "due failed on the new hold"
+  [ "$out" = "t1 due now" ] || fail "due did not list the new default as due now: $out"
+  run_default_cmd "$home" 2026-11-27T12:00:00Z default t1 > "$home/out" 2> "$home/err" \
+    || fail "the new default refused while due listed it as due now: $(cat "$home/err")"
+  grep -Fx "defaulted: t1" "$home/out" > /dev/null || fail "default did not report the outcome: $(cat "$home/out")"
+  [ "$(public_show "$home" t1 | sed -n 's/^  state: //p')" = "done" ] || fail "the new default did not close the task"
+  body=$(body_of "$home" t1)
+  [ "$(printf '%s' "$body" | grep -o 'Resolution mode: defaulted' | wc -l | tr -d ' ')" = 2 ] \
+    || fail "the new default was not recorded as a second defaulted resolution: $body"
+  case "$body" in *"Default asked at: 2026-11-27T10:00:00Z"*) ;; *) fail "the record lacks the new ask time: $body" ;; esac
+  case "$body" in *"$second"*) ;; *) fail "the record lacks the new recommendation: $body" ;; esac
+  pass "after a released default, a new default-bearing hold on the same item applies at ask + 2h, as due reports"
+}
+
 test_due_reports_a_mirror_wholly_before_the_ask_as_unknown() {
   local home out
   home=$(healthy_home due-stale-mirror)
@@ -844,6 +872,7 @@ fm_test_run \
   test_retry_after_a_failed_close_keeps_the_persisted_disposition \
   test_retry_after_a_failed_release_keeps_the_persisted_disposition \
   test_retry_after_a_rehold_with_a_changed_question_refuses \
+  test_new_default_applies_after_a_released_default \
   test_due_reports_a_mirror_wholly_before_the_ask_as_unknown \
   test_due_reports_a_future_ask_as_unknown \
   test_due_skips_a_deferred_call \

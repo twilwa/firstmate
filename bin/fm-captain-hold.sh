@@ -2160,8 +2160,10 @@ command_default() {
   body=$(show_field "$show" body)
   # A retry of an applied default finishes the disposition its record
   # persisted, bound to the same hold occurrence, rather than recording twice.
-  if body_has_resolution_record "$body" && [ "$(recorded_resolution_mode "$body" || true)" = defaulted ]; then
-    decoded=$(decode_shown_value "$body") || fail "could not decode the body of $id"
+  decoded=$(decode_shown_value "$body") || fail "could not decode the body of $id"
+  if body_has_resolution_record "$body" && [ "$(recorded_resolution_mode "$body" || true)" = defaulted ] \
+    && { [ "$state" = "done" ] || [ "$hold_kind" != captain ] \
+      || [ "$(body_hold_set_timestamp "$decoded")" = "$(body_answered_hold_set_timestamp "$decoded")" ]; }; then
     persisted=$(recorded_default_disposition "$decoded")
     [ -n "$persisted" ] || fail "the defaulted record on $id names no disposition; nothing was changed"
     [ "$persisted" = "$requested" ] \
