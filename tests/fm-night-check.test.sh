@@ -11,6 +11,11 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# Pin a neutral primary harness by default so tests never depend on ambient
+# CLAUDECODE; cases testing the Claude-primary supervision host set
+# FM_TEST_HARNESS=claude explicitly.
+export FM_TEST_HARNESS="${FM_TEST_HARNESS:-unknown}"
+
 CHECK="$ROOT/bin/fm-night-check.sh"
 CAPACITY="$ROOT/bin/fm-capacity.sh"
 PR_REVIEW="$ROOT/bin/fm-pr-review.sh"
@@ -111,6 +116,8 @@ run_night_check() {
     -u FM_BACKEND -u FM_HC_BIN -u FM_HC_SOCKET \
     -u HC_TERMINAL_ID -u HC_TERMINAL_SOCKET -u HC_SOCKET -u HC_SESSION -u HC_SCOPE \
     -u FM_CREW_STATE_BIN \
+    FM_TEST_SEAM=1 \
+    FM_TEST_HARNESS="${FM_TEST_HARNESS:-unknown}" \
     PATH="$home/fakebin:$PATH" \
     FM_HOME="$home" \
     FM_NIGHT_NOW_EPOCH="$now" \
@@ -128,11 +135,18 @@ write_ship_meta() {  # <home> <id> <spawn_epoch> [extra_lines]
 }
 
 write_ship_brief() {  # <home> <id> -- the generated ship brief's delivery contract line (bin/fm-dod-lib.sh)
+  mkdir -p "$1/data/$2"
   printf 'You are a crewmate: an autonomous worker agent managed by firstmate.\n\nDelivery contract: mode=no-mistakes\n' > "$1/data/$2/brief.md"
 }
 
 write_scout_brief() {  # <home> <id> -- the generated scout brief's setup line (bin/fm-brief.sh --scout)
+  mkdir -p "$1/data/$2"
   printf 'You are a crewmate: an autonomous worker agent managed by firstmate.\n\n# Setup\nThis is a SCOUT task: the deliverable is a written report, not a PR.\n' > "$1/data/$2/brief.md"
+}
+
+write_secondmate_brief() {  # <home> <id> -- the generated secondmate brief marker
+  mkdir -p "$1/data/$2"
+  printf 'You are a persistent second mate managed by the main firstmate.\n' > "$1/data/$2/brief.md"
 }
 
 assert_no_reserve_flag() {  # <home> <message>
@@ -527,13 +541,15 @@ test_failure_streak_latches_until_end() {
 test_failure_streak_excludes_scouts_secondmates_and_pre_night_tasks() {
   local home out rc=0
 
-  # Scouts, secondmates, and pre-night ships failing do not create a streak
+  # Scouts, secondmates (identified by real brief markers), and pre-night ships failing do not create a streak
   home=$(make_home streak_unrelated_fail)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
   printf 'kind=scout\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 100)) > "$home/state/sc1.meta"
+  write_scout_brief "$home" sc1
   printf 'failed [at=%d]: scout failed\n' $((EPOCH_NIGHT_START + 200)) > "$home/state/sc1.status"
   printf 'kind=secondmate\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 150)) > "$home/state/sm1.meta"
+  write_secondmate_brief "$home" sm1
   printf 'failed [at=%d]: secondmate failed\n' $((EPOCH_NIGHT_START + 250)) > "$home/state/sm1.status"
   write_ship_meta "$home" old1 $((EPOCH_NIGHT_START - 3600))
   printf 'failed [at=%d]: daytime ship failed late\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/old1.status"
@@ -549,6 +565,7 @@ test_failure_streak_excludes_scouts_secondmates_and_pre_night_tasks() {
   write_ship_meta "$home" n1 $((EPOCH_NIGHT_START + 100))
   printf 'failed [at=%d]: fail 1\n' $((EPOCH_NIGHT_START + 200)) > "$home/state/n1.status"
   printf 'kind=scout\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 210)) > "$home/state/sc_ok.meta"
+  write_scout_brief "$home" sc_ok
   printf 'done [at=%d]: scout report ready\n' $((EPOCH_NIGHT_START + 250)) > "$home/state/sc_ok.status"
   write_ship_meta "$home" n2 $((EPOCH_NIGHT_START + 260))
   printf 'failed [at=%d]: fail 2\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/n2.status"
@@ -557,6 +574,7 @@ test_failure_streak_excludes_scouts_secondmates_and_pre_night_tasks() {
   write_ship_meta "$home" n3 $((EPOCH_NIGHT_START + 360))
   printf 'failed [at=%d]: fail 3\n' $((EPOCH_NIGHT_START + 400)) > "$home/state/n3.status"
   printf 'kind=secondmate\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 410)) > "$home/state/sm_ok.meta"
+  write_secondmate_brief "$home" sm_ok
   printf 'done [at=%d]: secondmate done\n' $((EPOCH_NIGHT_START + 450)) > "$home/state/sm_ok.status"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "interleaved streak check exits 0"
@@ -1185,6 +1203,8 @@ run_night_check_with_crew_state() {  # <home> <now> <args...>
   env \
     -u FM_BACKEND -u FM_HC_BIN -u FM_HC_SOCKET \
     -u HC_TERMINAL_ID -u HC_TERMINAL_SOCKET -u HC_SOCKET -u HC_SESSION -u HC_SCOPE \
+    FM_TEST_SEAM=1 \
+    FM_TEST_HARNESS="${FM_TEST_HARNESS:-unknown}" \
     FM_CREW_STATE_BIN="$home/fakebin/fake-crew-state.sh" \
     PATH="$home/fakebin:$PATH" \
     FM_HOME="$home" \
@@ -1987,6 +2007,286 @@ EOF
   pass "fm-night-check: evaluate_night_verdict stops all work when any required input is missing, unreadable, stale, or mismatched"
 }
 
+test_failure_streak_live_unknown_kind_without_brief_counts() {
+  local home out rc=0
+
+  # 1. A live failed task with no kind= in .meta and no data/<id>/brief.md counts as a ship
+  home=$(make_home f8_live_unknown_kind)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" s1 $((EPOCH_NIGHT_START + 100))
+  printf 'failed [at=%d]: build broke\n' $((EPOCH_NIGHT_START + 200)) > "$home/state/s1.status"
+  write_ship_meta "$home" s2 $((EPOCH_NIGHT_START + 250))
+  printf 'failed [at=%d]: tests broke\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/s2.status"
+  printf 'spawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 350)) > "$home/state/u3.meta"
+  printf 'failed [at=%d]: untyped live failure\n' $((EPOCH_NIGHT_START + 400)) > "$home/state/u3.status"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "live unknown-kind check exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "live failed task with no kind and no brief completes 3-failure streak"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "failure_streak trips with untyped live task"
+  assert_equals "3" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.details.streak')" "streak count includes live untyped failed task"
+
+  # 2. A live task with missing kind= does not suppress scanning its same-id archived failure
+  home=$(make_home f8_live_missing_kind_archive)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" s1 $((EPOCH_NIGHT_START + 100))
+  printf 'failed [at=%d]: build broke\n' $((EPOCH_NIGHT_START + 200)) > "$home/state/s1.status"
+  write_ship_meta "$home" s2 $((EPOCH_NIGHT_START + 250))
+  printf 'failed [at=%d]: tests broke\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/s2.status"
+  printf 'spawn_gen=s%d.2\n' $((EPOCH_NIGHT_START + 450)) > "$home/state/reused.meta"
+  printf 'working [at=%d]: second attempt\n' $((EPOCH_NIGHT_START + 460)) > "$home/state/reused.status"
+  mkdir -p "$home/data/reused"
+  printf 'working [at=%d] [spawn_gen=s%d.1]: first attempt\nfailed [at=%d] [spawn_gen=s%d.1]: first attempt failed\n' \
+    $((EPOCH_NIGHT_START + 350)) $((EPOCH_NIGHT_START + 350)) \
+    $((EPOCH_NIGHT_START + 400)) $((EPOCH_NIGHT_START + 350)) > "$home/data/reused/status.log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "same-id archive with missing live kind exits 0"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "missing live kind does not suppress same-id archive failure"
+  assert_equals "3" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.details.streak')" "same-id archive failure counts toward streak"
+  pass "fm-night-check: F8 unified surviving-instructions classifier counts live tasks without kind or brief and keeps same-id archives"
+}
+
+test_claude_quota_aged_tripped_reading_denies_all_three() {
+  local home out rc=0
+  home=$(make_home f2_quota_aged_tripped)
+  # 20% remaining (between 12% and 25% floors) labelled fresh, but 1200s (20m) old (> 900s max age)
+  fake_quota_axi "$home/fakebin" 20 80 false fresh "2026-11-27T08:40:00Z"
+  fake_gh_rate_limit "$home/fakebin" 4200
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "aged 20% quota check exits 0"
+  assert_all_stopped "$out" "claude_quota" "1200s-old 20% quota labelled fresh"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.dispatch')" "aged 20% quota denies dispatch"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "aged 20% quota denies Claude work"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "aged 20% quota denies merges"
+  pass "fm-night-check: F2 proof validation applies to tripped results so a 1200s-old 20% quota reading denies dispatch, Claude, and merges"
+}
+
+test_check_machine_wrong_url_same_sha_and_single_stale_waiter() {
+  local home out rc=0 map h1
+  h1=1111111111111111111111111111111111111111
+
+  # 1. Ledger file has wrong PR URL with the exact same SHA -> unknown, denies all three
+  home=$(make_home f5_wrong_url_same_sha)
+  seed_healthy_stubs "$home"
+  map="$home/crew-state.tsv"
+  printf 'p1\tstate: paused · source: status-log · waiting for CI admission\n' > "$map"
+  write_fake_crew_state "$home" "$map"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/201\npr_head=%s\n' $((EPOCH_NIGHT_START + 100)) "$h1" > "$home/state/p1.meta"
+  printf 'paused [at=%d]: waiting for CI admission\n' $((EPOCH_NIGHT_START + 120)) > "$home/state/p1.status"
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 999 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]')"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "wrong-url same-sha ledger check exits 0"
+  assert_all_stopped "$out" "check_machine" "check_machine wrong URL with same SHA"
+
+  # 2. One stale waiter below CHECK_QUEUE_LIMIT (2): settled waiting policy counts it as waiting and continues
+  home=$(make_home f5_single_stale_waiter)
+  seed_healthy_stubs "$home"
+  map="$home/crew-state.tsv"
+  printf 'p1\tstate: paused · source: status-log · waiting for CI admission\n' > "$map"
+  write_fake_crew_state "$home" "$map"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'kind=ship\nspawn_gen=s%d.1\npr=https://github.com/twilwa/bbchat/pull/201\npr_head=%s\n' $((EPOCH_NIGHT_START + 100)) "$h1" > "$home/state/p1.meta"
+  printf 'paused [at=%d]: waiting for CI admission\n' $((EPOCH_NIGHT_START + 120)) > "$home/state/p1.status"
+  write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]' $((EPOCH_IN_WINDOW - 3600)))"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "single stale waiter check exits 0"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "single stale waiter below limit continues under settled waiting policy"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "single stale waiter below limit reads ok"
+  assert_equals "1" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "single stale waiter is counted as waiting (1)"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.dispatch')" "single stale waiter below limit allows dispatch"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.claude')" "single stale waiter below limit allows Claude"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "single stale waiter below limit allows merges"
+  pass "fm-night-check: F5 check_machine rejects wrong PR URL with same SHA and counts one stale waiter below limit as waiting"
+}
+
+test_dev_health_malformed_not_applicable_and_misscoped_own_verification() {
+  local home out rc=0 h0 h1
+  h0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  h1=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+  # 1. Malformed not-applicable row (missing recorded_epoch) is rejected as unknown, never silently dropped
+  home=$(make_home f4_malformed_na)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1510 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1510","url":"https://github.com/twilwa/bbchat/pull/1510","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d},"post_merge_verifications":[{"applicability":"not-applicable","head":"%s","base_ref":"dev","reason":"docs only"}]}]}\n' "$h0" "$h0" $((EPOCH_NIGHT_START - 3600)) "$h0" $((EPOCH_NIGHT_START - 3000)) "$h0")"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed not-applicable check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health malformed not-applicable row"
+
+  # 2. Older-generation verification in the merge's own ledger cannot satisfy own_verified for generation 1
+  home=$(make_home f4_older_gen_own_verified)
+  fake_quota_axi "$home/fakebin" 80 70
+  fake_gh_pr_state "$home/fakebin" MERGED
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1511 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1511","url":"https://github.com/twilwa/bbchat/pull/1511","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":null,"post_merge_verifications":[{"applicability":"browser","head":"%s","outcome":"passed","ready_for_qa":"allowed","recorded_epoch":%d,"base_ref":"dev"}]},{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d},"post_merge_verifications":[]}]}\n' "$h1" "$h0" $((EPOCH_NIGHT_START + 100)) "$h0" $((EPOCH_NIGHT_START + 1500)) "$h1" $((EPOCH_NIGHT_START + 900)) "$h1" $((EPOCH_NIGHT_START + 1200)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "older-generation own verification check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health older-generation verification in merge ledger"
+
+  # 3. Wrong-branch verification in the merge's own ledger (merge on dev, row claims main) -> unknown
+  home=$(make_home f4_wrong_branch_own_verified)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1512 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1512","url":"https://github.com/twilwa/bbchat/pull/1512","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d,"base_ref":"dev"},"post_merge_verifications":[{"applicability":"browser","head":"%s","outcome":"passed","ready_for_qa":"allowed","recorded_epoch":%d,"base_ref":"main"}]}]}\n' "$h1" "$h1" $((EPOCH_NIGHT_START + 900)) "$h1" $((EPOCH_NIGHT_START + 1200)) "$h1" $((EPOCH_NIGHT_START + 1500)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "wrong-branch own verification check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health wrong-branch verification in merge ledger"
+  pass "fm-night-check: F4 dev_health rejects malformed not-applicable rows and older-generation or wrong-branch own verifications"
+}
+
+test_failure_streak_garbage_logs_and_untraversable_roots() {
+  local home out rc=0
+
+  # 1. Readable nonempty garbage live status log beyond 900s grace -> unknown
+  home=$(make_home f3_garbage_live_log)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" g1 $((EPOCH_NIGHT_START + 100))
+  printf 'totally unparseable garbage log line without a valid status verb\n' > "$home/state/g1.status"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "garbage live log check exits 0"
+  assert_all_stopped "$out" "failure_streak" "failure_streak readable garbage live status log after grace"
+
+  # 2. Readable archived status log with no valid terminal status -> unknown
+  home=$(make_home f3_garbage_archive_log)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  mkdir -p "$home/data/a1"
+  write_ship_brief "$home" a1
+  printf 'corrupt archived log without done or failed\n' > "$home/data/a1/status.log"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "garbage archive log check exits 0"
+  assert_all_stopped "$out" "failure_streak" "failure_streak archived log with no valid terminal status"
+
+  # 3. Unreadable / untraversable data root -> unknown
+  home=$(make_home f3_untraversable_data)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  chmod 000 "$home/data"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  chmod 755 "$home/data"
+  expect_code 0 "$rc" "untraversable data root check exits 0"
+  assert_all_stopped "$out" "failure_streak" "failure_streak unreadable/untraversable data root"
+  pass "fm-night-check: F3 failure_streak rejects readable garbage logs, non-terminal archives, and untraversable data roots"
+}
+
+test_supervision_stall_malformed_config_without_health_file() {
+  local home out rc=0
+
+  # 1. Malformed config/supervision-host with NO .supervision-host-health file -> unknown
+  home=$(make_home f6_malformed_cfg_no_health)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'bogus-engine sonnet\n' > "$home/config/supervision-host"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed supervision-host config without health file exits 0"
+  assert_all_stopped "$out" "supervision_stall" "supervision_stall malformed config with no health file"
+
+  # 2. Valid enabled config/supervision-host with NO health file and unresolvable key (no state/.lock) -> unknown
+  printf 'claude sonnet\n' > "$home/config/supervision-host"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "enabled supervision-host unresolvable key without health file exits 0"
+  assert_all_stopped "$out" "supervision_stall" "supervision_stall enabled config with no health file and no lock"
+
+  # 3. Explicit supervision-host-off keeps disabled-host behavior (ok / continue)
+  : > "$home/config/supervision-host-off"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "explicit supervision-host-off exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.supervision_stall.status')" "explicit supervision-host-off reads ok"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "explicit supervision-host-off continues"
+  pass "fm-night-check: F6 supervision_stall validates enabled host config and key without health file while preserving explicit opt-out"
+}
+
+test_hc_core_saved_backend_validation_switch_and_identity_types() {
+  local home out rc=0
+
+  # 1. Unknown saved backend in state/night-active.json with null hc fields -> unknown
+  home=$(make_home f7_unknown_saved_backend)
+  seed_healthy_stubs "$home"
+  printf '{"schema":"fm-night-active.v1","started_epoch":%d,"started_at":"2026-11-27T07:00:00Z","backend":"bogus-backend","window":{"start":"23:00","last_dispatch":"06:30","end":"07:30","timezone":"America/Los_Angeles"},"hc_target":null,"hc_baseline":null,"stop_record_expected":false,"created_reserve_flags":[]}\n' "$EPOCH_NIGHT_START" > "$home/state/night-active.json"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "unknown saved backend check exits 0"
+  assert_all_stopped "$out" "hc_core" "hc_core unknown saved backend"
+
+  # 2. Saved non-HC night (tmux) whose live backend resolves to HC -> unknown
+  home=$(make_home f7_non_hc_to_hc_switch)
+  seed_healthy_stubs "$home"
+  printf 'tmux\n' > "$home/config/backend"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "tmux start must succeed"
+  printf 'hc\n' > "$home/config/backend"
+  fake_herdr_core "$home/fakebin" 3995 "inst-ambient" 86400000
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "non-hc to hc switch check exits 0"
+  assert_all_stopped "$out" "hc_core" "hc_core saved non-HC night switched to live HC"
+
+  # 3. Missing current identity (omitted holder.instance) against nonempty saved baseline -> unknown
+  home=$(make_home f7_missing_and_malformed_ids)
+  seed_healthy_stubs "$home"
+  printf 'hc\n' > "$home/config/backend"
+  fake_herdr_core "$home/fakebin" 3995 "inst-original" 86400000
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "hc start must succeed"
+  cat > "$home/fakebin/herdr-core" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "server" ] && [ "${2:-}" = "status" ]; then
+  printf '{"pid":3995,"uptime_ms":93600000,"core":{"id":"core-1"}}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/herdr-core"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "missing current holder.instance check exits 0"
+  assert_all_stopped "$out" "hc_core" "hc_core missing current holder.instance against nonempty baseline"
+
+  # 4. Malformed current identity type (non-string core.id) -> unknown
+  cat > "$home/fakebin/herdr-core" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "server" ] && [ "${2:-}" = "status" ]; then
+  printf '{"pid":3995,"uptime_ms":93600000,"core":{"id":12345},"holder":{"instance":"inst-original"}}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/herdr-core"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "malformed current core.id check exits 0"
+  assert_all_stopped "$out" "hc_core" "hc_core malformed non-string core.id"
+  pass "fm-night-check: F7 hc_core validates saved backend, refuses non-HC to HC switch, and rejects missing or malformed current identity fields"
+}
+
+test_dev_health_judged_target_24h_age_and_untouched_target_ignored() {
+  local home out rc=0 h0
+  h0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+  # 1. Judged target (twilwa/bbchat, dev) has a forge-confirmed night merge (not-applicable)
+  #    and its latest passing record is 25h old (> 86400s) -> unknown (replaces S15's ok expectation)
+  home=$(make_home a_judged_target_25h_old)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1520 "$(dev_ledger 1520 passed $((EPOCH_IN_WINDOW - 90000)) dev)"
+  write_review_ledger "$home" 1521 "$(printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-1521","url":"https://github.com/twilwa/bbchat/pull/1521","current_head":"%s","generations":[{"head":"%s","created_epoch":%d,"risk":{"level":"low","reason":"docs"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"%s","verified_epoch":%d},"post_merge_verifications":[{"applicability":"not-applicable","head":"%s","recorded_epoch":%d,"base_ref":"dev","reason":"docs only"}]}]}\n' "$h0" "$h0" $((EPOCH_NIGHT_START + 300)) "$h0" $((EPOCH_NIGHT_START + 600)) "$h0" $((EPOCH_NIGHT_START + 900)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "25h-old judged target check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health judged target with 25h-old latest pass (>86400s)"
+
+  # 2. Untouched target with a 25h-old (and 48h-old) pass is NOT age-judged -> ok / continue
+  home=$(make_home a_untouched_target_old_pass)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1522 "$(dev_ledger 1522 passed $((EPOCH_IN_WINDOW - 90000)) main)"
+  write_review_ledger "$home" 1523 "$(dev_ledger 1523 passed $((EPOCH_IN_WINDOW - 172800)) dev | sed 's#twilwa/bbchat#twilwa/other#g')"
+  write_review_ledger "$home" 1524 "$(dev_ledger 1524 passed $((EPOCH_NIGHT_START + 1800)) dev)"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "untouched old pass check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "untouched targets with old passes are not age-judged"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "fresh judged target with old untouched passes continues"
+  assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "untouched old pass does not block merges"
+  pass "fm-night-check: A dev_health enforces 86400s max age on tonight's judged targets while ignoring untouched targets' pass age"
+}
+
 fm_test_run \
   test_help_and_usage \
   test_healthy_night_verdict_and_machine_readable_output \
@@ -2016,4 +2316,12 @@ fm_test_run \
   test_hc_core_partial_target_and_baseline_fail_closed \
   test_hc_guard_blocks_install_only \
   test_stop_condition_never_kills_or_tears_down_workers \
-  test_verdict_input_fail_closed_matrix
+  test_verdict_input_fail_closed_matrix \
+  test_failure_streak_live_unknown_kind_without_brief_counts \
+  test_claude_quota_aged_tripped_reading_denies_all_three \
+  test_check_machine_wrong_url_same_sha_and_single_stale_waiter \
+  test_dev_health_malformed_not_applicable_and_misscoped_own_verification \
+  test_failure_streak_garbage_logs_and_untraversable_roots \
+  test_supervision_stall_malformed_config_without_health_file \
+  test_hc_core_saved_backend_validation_switch_and_identity_types \
+  test_dev_health_judged_target_24h_age_and_untouched_target_ignored
