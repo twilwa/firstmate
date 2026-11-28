@@ -498,13 +498,13 @@ test_due_lists_without_changing_anything() {
   case "$out" in *"t1 waits"*) ;; *) fail "due before ask + 1h did not report waiting: $out" ;; esac
   out=$(run_default_cmd "$home" 2026-11-27T08:05:00Z due) || fail "due failed at ask + 1h"
   case "$out" in *"t1 proceeds at 09:00 UTC"*) ;; *) fail "due at ask + 1h did not report proceeds at 09:00 UTC: $out" ;; esac
-  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed at ask + 2h"
+  out=$(run_default_cmd "$home" "$DUE_ISO" due) || fail "due failed at ask + 2h"
   case "$out" in *"t1 due now"*) ;; *) fail "due at ask + 2h did not report due now: $out" ;; esac
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "captain:$((DUE_EPOCH - 300))"
-  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed after a captain message"
+  out=$(run_default_cmd "$home" "$DUE_ISO" due) || fail "due failed after a captain message"
   case "$out" in *"t1 waits for the captain"*) ;; *) fail "due after a recent captain message did not report waiting for the captain: $out" ;; esac
   write_mirror "$home" "main:$((DUE_EPOCH - 1800))" "main:$((DUE_EPOCH - 60))"
-  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed on a short mirror"
+  out=$(run_default_cmd "$home" "$DUE_ISO" due) || fail "due failed on a short mirror"
   case "$out" in *"t1 unknown: dialog mirror:"*"does not reach back"*) ;; *) fail "due on a mirror not reaching back an hour did not report unknown: $out" ;; esac
   [ "$(body_of "$home" t1)" = "$before" ] || fail "due changed the held task"
   run_captain "$home" open t1 || fail "due released the hold"
