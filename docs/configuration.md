@@ -2909,6 +2909,25 @@ When `config/lane-capacity` names no `reserve-flag`, the verdict carries a warni
 The stop record stays after `end` for the morning board and is cleared by the next `start`.
 While an overnight run is active (`bin/fm-night-check.sh start` through `bin/fm-night-check.sh end`), the guard covers `bin/fm-install-hc.sh` and refuses with the reason; a direct upstream `hc` stop is outside what this repository can intercept.
 
+## Two-hour default (bin/fm-hold-default-lists.json)
+
+The tracked [`bin/fm-hold-default-lists.json`](../bin/fm-hold-default-lists.json) is the single owner of which captain calls may take a recorded default when the captain does not answer, and which always wait for the captain.
+It is shared tracked material, not a home setting, so every home reads the same two lists.
+[`bin/fm-captain-hold.sh`](../bin/fm-captain-hold.sh) owns the default-bearing hold, the `default` and `due` subcommands, and the one decision function that gates them; its header owns those mechanics.
+
+The file has schema `fm-hold-default-lists.v1`, the one class `dev-revertible`, and two non-empty arrays of `{key, summary}` entries: `always_waits` and `may_proceed`.
+Keys are lowercase slugs, unique within each list.
+A default-bearing hold names one `may_proceed` key as its category.
+The always-waits list takes precedence: a key on it is refused even if it also appears on the may-proceed list.
+An unknown key is refused, and a missing, unreadable, or malformed file refuses every default.
+
+| List | Keys |
+| --- | --- |
+| `may_proceed` (effect lands only on dev and a git revert undoes it) | `issue-design-choice`, `split-and-file`, `accept-known-gap`, `ask-user-finding-dev`, `merge-green-dev-pr`, `night-queue-order` |
+| `always_waits` | `production`, `spend`, `real-money`, `irreversible`, `destructive`, `security-sensitive`, `owner-interface`, `outward-facing`, `red-check-waiver`, `fleet-level`, `already-held` |
+
+Each entry's `summary` in the file states what the key covers.
+
 ## Mail plane (.env)
 
 The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.

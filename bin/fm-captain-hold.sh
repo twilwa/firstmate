@@ -21,7 +21,10 @@
 #
 # Usage:
 #   fm-captain-hold.sh hold <task-id> --reason <reason> \
-#     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD]
+#     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD] \
+#     [--default-file <path> --default-class dev-revertible --default-category <key>]
+#   fm-captain-hold.sh default <task-id> [--release]
+#   fm-captain-hold.sh due
 #   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release | --defer-until YYYY-MM-DD]
 #   fm-captain-hold.sh pr-policy <task-id> <PR-url> <merged|closed|terminal> <close|release>
 #   fm-captain-hold.sh settle-pr <task-id> <PR-url>
@@ -250,9 +253,58 @@
 # Successful settlement removes the policy after parent-channel publication.
 # Removing the presence flag disables policy registration and settlement.
 #
+# THE TWO-HOUR DEFAULT (dev-revertible calls only).
+# `hold` with --default-file, --default-class, and --default-category records,
+# at the moment main asks, a default the call may take when the captain does
+# not answer: the recommendation verbatim from the file (non-empty, at most
+# 8192 bytes), the class `dev-revertible` (the only class), a category key, and
+# the ask time (the new hold-set stamp). The three flags come together or not
+# at all, and they are refused - before anything is written - for an
+# always-waits or unknown category, any other class, a missing or empty
+# recommendation, a dated (--until) hold, a task already held for the captain
+# (no hold gains a default retroactively), and any caller other than main:
+# FM_SUPERVISION_ACTOR (bin/fm-lease-lib.sh fm_lease_actor) must be unset or
+# `main`, so the supervision host's engine (`branch`) and an unknown actor
+# cannot write one. bin/fm-hold-default-lists.json is the one owner of the
+# always-waits and may-proceed category lists (always-waits wins);
+# docs/configuration.md "Two-hour default" documents it. The default lives in
+# data/<task>/hold-default.json (schema fm-hold-default.v1: task, class,
+# category, recommendation, ask_epoch, asked_at, fingerprint, occurrence),
+# bound to this hold lifecycle by the same question fingerprint pr-policy uses
+# (shown reason, title, hold-set stamp, resolution count). Every hold removes
+# an earlier default record first, so a repeated or re-set hold never inherits
+# one.
+# `default` applies exactly the recorded recommendation when, and only when,
+# default_may_apply allows it now. That one function stops by default: it
+# allows only when every input is proven - the task is still an open captain
+# hold whose default record is present, readable, well formed, in an allowed
+# category, and bound to this question; no captain answer or deferral has
+# been recorded since; now >= ask + 7200s; the dialog mirror
+# (state/.host-mirror.jsonl, bin/fm-host-mirror.sh) passes its own validation,
+# carries integral non-future epochs, recorded an entry at or after the ask
+# (proof its writer was recording), and its newest captain message is more
+# than 3600s old; and a fresh `bin/fm-night-check.sh check --json` (the live
+# authorization contract in that script's header; FM_NIGHT_CHECK_BIN overrides
+# the path for tests) exits 0 with a verdict checked during this run,
+# night_active true, night_started_epoch equal to state/night-active.json's
+# started_epoch, and allow.two_hour_default true. Any missing, unreadable,
+# malformed, or stale input refuses with its reason and writes nothing.
+# On success it records a `defaulted` resolution under a `Default decision:`
+# label - never `Captain decision:`, and never through `answer` - carrying
+# "no answer from the owner", the class, the category, and the ask and apply
+# times, then closes the task, or with --release lifts the hold, exactly as a
+# recorded answer does (--release stays attended-only). It performs no project
+# action: firstmate acts on the recorded decision. A retry after an
+# interrupted close finishes it without recording twice.
+# `due` is read-only and never runs the night check: it prints one line per
+# open default-bearing hold - "<id> waits: ..." before ask + 1h,
+# "<id> waits for the captain: ..." when the mirror holds a captain message
+# from the last hour, "<id> proceeds at HH:MM UTC" from ask + 1h, "<id> due
+# now" from ask + 2h, or "<id> unknown: <reason>" when an input cannot be read.
+#
 # Resolution records: the block written into the body names this script, the
 # decision digest, and a `Resolution mode:` of answered, released, deferred,
-# repaired, reconciled, forge-closed, or forge-released.
+# repaired, reconciled, forge-closed, forge-released, or defaulted.
 # A deferred record also carries its YYYY-MM-DD date.
 # Records written by the retired fm-decision-hold.sh (routed,
 # declined, answered, repaired) are recognized everywhere a record is read, so
@@ -545,6 +597,7 @@ body_has_resolution_record() {  # <task-body>
     *"Resolution recorded by fm-captain-hold."*"Captain decision:"*) return 0 ;;
     *"Resolution recorded by fm-decision-hold."*"Captain decision:"*) return 0 ;;
     *"Resolution recorded by fm-captain-hold."*"Reconciliation evidence:"*) return 0 ;;
+    *"Resolution recorded by fm-captain-hold."*"Default decision:"*) return 0 ;;
   esac
   return 1
 }
@@ -595,12 +648,21 @@ closed_answer_replay_mode_compatible() {  # <mode> <task-body>
 # answer modes carry what the captain said.
 resolution_block() {  # <mode> [defer-until] [hold-set-stamp]
   local mode=$1 defer_until=${2:-} hold_set=${3:-} label='Captain decision:'
-  case "$mode" in reconciled|forge-closed|forge-released) label='Reconciliation evidence:' ;; esac
+  case "$mode" in
+    reconciled|forge-closed|forge-released) label='Reconciliation evidence:' ;;
+    defaulted) label='Default decision:' ;;
+  esac
   printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\n' \
     "$DECISION_DIGEST" "$mode"
   [ "$mode" != deferred ] || printf 'Deferred until: %s\n' "$defer_until"
+  if [ "$mode" = defaulted ]; then
+    printf 'Default reason: no answer from the owner\nDefault class: %s\nDefault category: %s\n' \
+      "$DEFAULT_CLASS" "$DEFAULT_CATEGORY"
+    printf 'Default asked at: %s\nDefault applied at: %s\n' "$DEFAULT_ASKED_AT" "$DEFAULT_APPLIED_AT"
+  fi
   [ -z "$hold_set" ] || printf 'Captain hold answered: %s\n' "$hold_set"
   printf '\n%s\n%s\n' "$label" "$DECISION_TEXT"
+  [ "$mode" != defaulted ] || printf 'Default decision ends.\n'
 }
 
 # Durable state of one captain call: an active captain hold (annotations
@@ -1208,6 +1270,7 @@ verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how> <origi
 command_hold() {
   local id=${1:-} title='' reason='' repo='' origin='' until='' show state existing_title body='' hold_kind hold_set occurrence
   local existing_hold_kind='' existing_held='' preserve_hold_set=0 previous_hold_set stored_reason original_body='' hold_status=0
+  local default_file='' default_class='' default_category='' default_given=0
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1217,11 +1280,15 @@ command_hold() {
       --repo) shift; repo=${1:-} ;;
       --origin) shift; origin=${1:-} ;;
       --until) shift; until=${1:-} ;;
+      --default-file) shift; default_file=${1:-}; default_given=1 ;;
+      --default-class) shift; default_class=${1:-}; default_given=1 ;;
+      --default-category) shift; default_category=${1:-}; default_given=1 ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
   done
   validate_slug task-id "$id"
+  [ "$default_given" = 0 ] || validate_hold_default "$default_file" "$default_class" "$default_category" "$until"
   [ -n "$reason" ] || fail "reason must not be empty"
   # bin/fm-hold-reason-lib.sh owns the storage constraint and reversible encoding.
   stored_reason=$(fm_hold_reason_encode "$reason") || fail "could not encode the hold reason"
@@ -1246,6 +1313,8 @@ command_hold() {
     existing_hold_kind=$(show_field_value "$show" hold_kind)
     existing_held=$(show_field_value "$show" held)
     if [ "$existing_hold_kind" = captain ] && [ "$existing_held" = yes ]; then
+      [ "$default_given" = 0 ] \
+        || fail "task $id is already held for the captain; a hold that already exists never gains a default"
       preserve_hold_set=1
     else
       previous_hold_set=$(body_answered_hold_set_timestamp "$(show_field_value "$show" body)")
@@ -1282,7 +1351,7 @@ command_hold() {
     fi
   fi
   # A repeated hold may ask a different question even if it keeps its timestamp.
-  rm -f -- "$DATA/$id/hold-pr-policy.json"
+  rm -f -- "$DATA/$id/hold-pr-policy.json" "$DATA/$id/hold-default.json"
   # Publish the timestamp before the captain-hold annotation. A concurrent
   # snapshot may see the harmless stamp by itself, but can never see a newly
   # held task without the timestamp that defines this hold lifecycle's age.
@@ -1320,6 +1389,10 @@ command_hold() {
   publish_parent_hold "$id" "$occurrence" needs-decision "$reason" "$until"
   if [ -n "$origin" ]; then
     write_hold_origin "$id" "$(show_field "$show" body)" "$origin" || exit $?
+  fi
+  if [ "$default_given" = 1 ]; then
+    write_hold_default "$id" "$show" "$hold_set" "$occurrence" "$default_category" \
+      || fail "task $id is held for the captain, but its default could not be recorded; the call waits for the captain"
   fi
   printf '%s\n' "$id"
 }
@@ -1620,6 +1693,417 @@ command_answer() {
     return 0
   fi
   fail "task $id is not held for the captain; hold it first or name the right task"
+}
+
+# --- the two-hour default -----------------------------------------------------
+#
+# The header's "THE TWO-HOUR DEFAULT" section owns the contract; these are its
+# mechanics. default_may_apply is the single decision function.
+
+DEFAULT_LISTS="$SCRIPT_DIR/fm-hold-default-lists.json"
+DEFAULT_CLASS_ONLY=dev-revertible
+DEFAULT_WAIT_SECONDS=7200
+DEFAULT_QUIET_SECONDS=3600
+DEFAULT_PROCEED_SECONDS=3600
+NIGHT_CHECK_BIN="${FM_NIGHT_CHECK_BIN:-$SCRIPT_DIR/fm-night-check.sh}"
+DEFAULT_LISTS_VALID='.schema == "fm-hold-default-lists.v1" and .class == "dev-revertible"
+  and (.always_waits | type == "array" and length > 0)
+  and (.may_proceed | type == "array" and length > 0)
+  and all((.always_waits + .may_proceed)[];
+    type == "object" and (.key | type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
+    and (.summary | type == "string" and length > 0))
+  and ((.always_waits | map(.key) | unique | length) == (.always_waits | length))
+  and ((.may_proceed | map(.key) | unique | length) == (.may_proceed | length))'
+# shellcheck disable=SC2016 # $task is a jq variable, bound with --arg.
+DEFAULT_RECORD_VALID='type == "object" and .schema == "fm-hold-default.v1" and .task == $task
+  and .class == "dev-revertible"
+  and (.category | type == "string" and length > 0)
+  and (.recommendation | type == "string" and length > 0)
+  and (.ask_epoch | type == "number" and . >= 0 and . == floor)
+  and (.asked_at | type == "string")
+  and (.fingerprint | type == "string" and test("^[a-f0-9]{64}$"))
+  and (.occurrence | type == "number" and . > 0 and . == floor)'
+
+DEFAULT_CLASS=''
+DEFAULT_CATEGORY=''
+DEFAULT_ASKED_AT=''
+DEFAULT_APPLIED_AT=''
+DEFAULT_ASK_EPOCH=''
+DEFAULT_RECOMMENDATION=''
+DEFAULT_OCCURRENCE=''
+DEFAULT_NOW=''
+DEFAULT_REFUSAL=''
+DEFAULT_RECOMMENDATION_TEXT=''
+
+iso_to_epoch() {  # <YYYY-MM-DDTHH:MM:SSZ>
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s 2>/dev/null
+}
+
+epoch_to_iso() {  # <epoch>
+  date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null
+}
+
+epoch_to_hhmm() {  # <epoch>
+  date -u -d "@$1" +%H:%M 2>/dev/null || date -u -r "$1" +%H:%M 2>/dev/null
+}
+
+# The clock every default input is judged against: FM_CAPTAIN_HOLD_NOW, the
+# same seam that stamps a hold, or the system clock.
+default_now_epoch() {
+  if [ -n "${FM_CAPTAIN_HOLD_NOW:-}" ]; then
+    case "$FM_CAPTAIN_HOLD_NOW" in
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+      *) return 1 ;;
+    esac
+    iso_to_epoch "$FM_CAPTAIN_HOLD_NOW"
+  else
+    date -u +%s
+  fi
+}
+
+# Prints always, allowed, unknown, or invalid for one category key.
+default_category_verdict() {  # <category>
+  local verdict
+  [ -f "$DEFAULT_LISTS" ] && [ -r "$DEFAULT_LISTS" ] || { printf 'invalid\n'; return 0; }
+  verdict=$(jq -r --arg key "$1" "if ($DEFAULT_LISTS_VALID) then
+      (if any(.always_waits[]; .key == \$key) then \"always\"
+       elif any(.may_proceed[]; .key == \$key) then \"allowed\"
+       else \"unknown\" end)
+    else \"invalid\" end" "$DEFAULT_LISTS" 2>/dev/null) || verdict=invalid
+  printf '%s\n' "${verdict:-invalid}"
+}
+
+# Hold-time refusals, all before anything is written.
+validate_hold_default() {  # <file> <class> <category> <until>
+  local path=$1 class=$2 category=$3 until=$4 actor=${FM_SUPERVISION_ACTOR:-main} text
+  case "$actor" in
+    main) ;;
+    branch) fail "only main writes a default; the supervision host's engine (FM_SUPERVISION_ACTOR=branch) cannot" ;;
+    *) fail "only main writes a default; unknown FM_SUPERVISION_ACTOR '$actor'" ;;
+  esac
+  [ -n "$path" ] || fail "a default needs --default-file with the recommendation"
+  [ -n "$class" ] || fail "a default needs --default-class dev-revertible"
+  [ -n "$category" ] || fail "a default needs --default-category with a may-proceed category key"
+  [ "$class" = "$DEFAULT_CLASS_ONLY" ] \
+    || fail "default class must be $DEFAULT_CLASS_ONLY, the only class: $class"
+  [ -z "$until" ] || fail "a dated (--until) hold cannot carry a default"
+  case "$(default_category_verdict "$category")" in
+    allowed) ;;
+    always) fail "default category $category always waits for the captain" ;;
+    unknown) fail "unknown default category $category (not on the may-proceed list in $DEFAULT_LISTS)" ;;
+    *) fail "the default category lists $DEFAULT_LISTS are missing, unreadable, or malformed" ;;
+  esac
+  [ -f "$path" ] && [ -r "$path" ] || fail "recommendation file does not exist or is unreadable: $path"
+  text=$(cat "$path") || fail "cannot read the recommendation file: $path"
+  [ -n "$text" ] || fail "the recommendation file must not be empty"
+  [ "$(printf '%s' "$text" | LC_ALL=C wc -c | tr -d ' ')" -le 8192 ] \
+    || fail "the recommendation file exceeds 8192 bytes"
+  DEFAULT_RECOMMENDATION_TEXT=$text
+  DEFAULT_CLASS=$class
+}
+
+write_hold_default() {  # <task-id> <shown-held-task> <hold-set-stamp> <occurrence> <category>
+  local id=$1 show=$2 hold_set=$3 occurrence=$4 category=$5 dir tmp ask fingerprint
+  ask=$(iso_to_epoch "$hold_set") || return 1
+  fingerprint=$(pr_hold_fingerprint "$show") || return 1
+  dir="$DATA/$id"
+  [ ! -L "$dir" ] || return 1
+  mkdir -p "$dir" || return 1
+  [ ! -L "$dir/hold-default.json" ] || return 1
+  tmp=$(umask 077; mktemp "$dir/.hold-default.XXXXXX") || return 1
+  if ! jq -n --arg task "$id" --arg class "$DEFAULT_CLASS" --arg category "$category" \
+      --arg recommendation "$DEFAULT_RECOMMENDATION_TEXT" --argjson ask "$ask" --arg asked_at "$hold_set" \
+      --arg fingerprint "$fingerprint" --argjson occurrence "$occurrence" \
+      '{schema:"fm-hold-default.v1",task:$task,class:$class,category:$category,
+        recommendation:$recommendation,ask_epoch:$ask,asked_at:$asked_at,
+        fingerprint:$fingerprint,occurrence:$occurrence}' > "$tmp"; then
+    rm -f -- "$tmp"
+    return 1
+  fi
+  mv -f -- "$tmp" "$dir/hold-default.json"
+}
+
+# Reads a default record into the DEFAULT_* fields; sets DEFAULT_REFUSAL on failure.
+read_hold_default() {  # <task-id>
+  local id=$1 record="$DATA/$1/hold-default.json" fields
+  if [ ! -e "$record" ] && [ ! -L "$record" ]; then
+    DEFAULT_REFUSAL="hold: no default was recorded when task $id was held"
+    return 1
+  fi
+  if [ -L "$DATA/$id" ] || [ -L "$record" ] || [ ! -f "$record" ] || [ ! -r "$record" ]; then
+    DEFAULT_REFUSAL="hold: the default record $record is not a readable regular file"
+    return 1
+  fi
+  fields=$(jq -er --arg task "$id" "select($DEFAULT_RECORD_VALID)
+      | [.category, (.ask_epoch | tostring), .asked_at, .fingerprint, (.occurrence | tostring)] | @tsv" \
+      "$record" 2>/dev/null) || {
+    DEFAULT_REFUSAL="hold: the default record $record is malformed"
+    return 1
+  }
+  IFS=$'\t' read -r DEFAULT_CATEGORY DEFAULT_ASK_EPOCH DEFAULT_ASKED_AT DEFAULT_FINGERPRINT DEFAULT_OCCURRENCE <<EOF
+$fields
+EOF
+  DEFAULT_RECOMMENDATION=$(jq -r .recommendation "$record") || {
+    DEFAULT_REFUSAL="hold: the default record $record is unreadable"
+    return 1
+  }
+  DEFAULT_CLASS=$DEFAULT_CLASS_ONLY
+  [ "$(iso_to_epoch "$DEFAULT_ASKED_AT" || true)" = "$DEFAULT_ASK_EPOCH" ] || {
+    DEFAULT_REFUSAL="hold: the default record $record carries inconsistent ask times"
+    return 1
+  }
+}
+
+# Binds a read default record to the shown task's current captain call.
+default_bound_to_call() {  # <task-id> <shown-task>
+  local id=$1 show=$2 body count
+  [ "$(show_field "$show" state)" != "done" ] && [ "$(show_field_value "$show" hold_kind)" = captain ] || {
+    DEFAULT_REFUSAL="hold: task $id is not an open captain hold"
+    return 1
+  }
+  case "$(default_category_verdict "$DEFAULT_CATEGORY")" in
+    allowed) ;;
+    always) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY always waits for the captain"; return 1 ;;
+    unknown) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY is not on the may-proceed list"; return 1 ;;
+    *) DEFAULT_REFUSAL="hold: the default category lists $DEFAULT_LISTS are missing, unreadable, or malformed"; return 1 ;;
+  esac
+  body=$(show_field "$show" body)
+  count=$(resolution_record_count "$body")
+  [ "$((count + 1))" = "$DEFAULT_OCCURRENCE" ] || {
+    DEFAULT_REFUSAL="answer: the captain answered or deferred this call after its default was recorded"
+    return 1
+  }
+  [ "$(body_hold_set_timestamp "$(decode_shown_value "$body")")" = "$DEFAULT_ASKED_AT" ] || {
+    DEFAULT_REFUSAL="hold: task $id was held again after its default was recorded"
+    return 1
+  }
+  [ "$(pr_hold_fingerprint "$show")" = "$DEFAULT_FINGERPRINT" ] || {
+    DEFAULT_REFUSAL="hold: the held question changed after its default was recorded"
+    return 1
+  }
+}
+
+MIRROR_NEWEST_ANY=''
+MIRROR_NEWEST_CAPTAIN=''
+# Reads the dialog mirror's newest entry and newest captain message epochs.
+default_mirror_read() {  # <now-epoch>
+  local now=$1 mirror="$STATE/.host-mirror.jsonl" summary
+  MIRROR_NEWEST_ANY=''
+  MIRROR_NEWEST_CAPTAIN=''
+  if [ ! -e "$mirror" ] && [ ! -L "$mirror" ]; then
+    DEFAULT_REFUSAL="dialog mirror: $mirror is missing"
+    return 1
+  fi
+  [ -f "$mirror" ] && [ ! -L "$mirror" ] && [ -r "$mirror" ] || {
+    DEFAULT_REFUSAL="dialog mirror: $mirror is not a readable regular file"
+    return 1
+  }
+  FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-host-mirror.sh" check >/dev/null 2>&1 || {
+    DEFAULT_REFUSAL="dialog mirror: $mirror failed its validation (bin/fm-host-mirror.sh check)"
+    return 1
+  }
+  summary=$(jq -Rsr --argjson now "$now" '
+      .[:-1] | split("\n") | map(fromjson) as $e
+      | if any($e[]; (.epoch | type) != "number" or .epoch < 0 or .epoch != (.epoch | floor)) then "malformed"
+        elif any($e[]; .epoch > $now) then "future"
+        else "ok \([$e[].epoch] | max) \([$e[] | select(.tag == "captain") | .epoch] | max // "none")" end' \
+      "$mirror" 2>/dev/null) || summary=malformed
+  case "$summary" in
+    "ok "*) ;;
+    future) DEFAULT_REFUSAL="dialog mirror: an entry carries an epoch in the future"; return 1 ;;
+    *) DEFAULT_REFUSAL="dialog mirror: an entry lacks an integral epoch"; return 1 ;;
+  esac
+  summary=${summary#ok }
+  MIRROR_NEWEST_ANY=${summary%% *}
+  MIRROR_NEWEST_CAPTAIN=${summary#* }
+  [ "$MIRROR_NEWEST_CAPTAIN" != none ] || {
+    MIRROR_NEWEST_CAPTAIN=''
+    DEFAULT_REFUSAL="dialog mirror: no captain message is recorded, so the captain's silence is unproven"
+    return 1
+  }
+}
+
+default_night_check() {  # <now-epoch>
+  local now=$1 active="$STATE/night-active.json" started out rc=0 after facts
+  [ -f "$active" ] && [ ! -L "$active" ] && [ -r "$active" ] || {
+    DEFAULT_REFUSAL="night check: no readable night-active record at $active"
+    return 1
+  }
+  started=$(jq -er 'select(.schema == "fm-night-active.v1") | .started_epoch
+      | select(type == "number" and . >= 0 and . == floor)' "$active" 2>/dev/null) || {
+    DEFAULT_REFUSAL="night check: the night-active record $active is malformed"
+    return 1
+  }
+  [ -x "$NIGHT_CHECK_BIN" ] && [ -f "$NIGHT_CHECK_BIN" ] || {
+    DEFAULT_REFUSAL="night check: $NIGHT_CHECK_BIN is missing or not executable"
+    return 1
+  }
+  if [ -n "${FM_CAPTAIN_HOLD_NOW:-}" ]; then
+    out=$(FM_NIGHT_NOW_EPOCH=$now "$NIGHT_CHECK_BIN" check --json 2>/dev/null) || rc=$?
+    after=$now
+  else
+    out=$("$NIGHT_CHECK_BIN" check --json 2>/dev/null) || rc=$?
+    after=$(date -u +%s)
+  fi
+  [ "$rc" -eq 0 ] || { DEFAULT_REFUSAL="night check: check --json exited $rc"; return 1; }
+  facts=$(printf '%s' "$out" | jq -er '
+      select(type == "object" and .schema == "fm-night-verdict.v1"
+        and (.checked_epoch | type == "number" and . == floor)
+        and (.night_active | type == "boolean") and (.allow | type == "object"))
+      | [(.checked_epoch | tostring), (.night_active | tostring),
+         (.night_started_epoch | tostring), (.allow.two_hour_default == true | tostring),
+         (.verdict | tostring)] | @tsv' 2>/dev/null) || {
+    DEFAULT_REFUSAL="night check: check --json printed a malformed verdict"
+    return 1
+  }
+  local checked night_active night_started allowed verdict
+  IFS=$'\t' read -r checked night_active night_started allowed verdict <<EOF
+$facts
+EOF
+  [ "$checked" -le "$after" ] || { DEFAULT_REFUSAL="night check: the verdict is from the future"; return 1; }
+  [ "$checked" -ge "$now" ] || {
+    DEFAULT_REFUSAL="night check: the verdict is stale (checked at $checked, before this run began at $now)"
+    return 1
+  }
+  [ "$night_active" = true ] || { DEFAULT_REFUSAL="night check: the verdict reports no active night"; return 1; }
+  [ "$night_started" = "$started" ] || {
+    DEFAULT_REFUSAL="night check: the verdict's night_started_epoch $night_started does not match the active night's started_epoch $started"
+    return 1
+  }
+  [ "$allowed" = true ] || {
+    DEFAULT_REFUSAL="night check: allow.two_hour_default is not true (verdict $verdict)"
+    return 1
+  }
+}
+
+# THE decision function: 0 only when every input proves the default may apply
+# now; otherwise 1 with DEFAULT_REFUSAL naming the first input that did not.
+# The caller holds the task control lock.
+default_may_apply() {  # <task-id>
+  local id=$1 status=0 now
+  DEFAULT_REFUSAL=''
+  now=$(default_now_epoch) || { DEFAULT_REFUSAL="clock: FM_CAPTAIN_HOLD_NOW is not a UTC timestamp"; return 1; }
+  DEFAULT_NOW=$now
+  task_show "$id" || status=$?
+  [ "$status" -ne 124 ] || exit 124
+  [ "$status" -eq 0 ] || { DEFAULT_REFUSAL="hold: task $id is absent from this home's backlog"; return 1; }
+  read_hold_default "$id" || return 1
+  default_bound_to_call "$id" "$TASK_SHOW_OUTPUT" || return 1
+  [ "$DEFAULT_ASK_EPOCH" -le "$now" ] || { DEFAULT_REFUSAL="time: the ask time $DEFAULT_ASKED_AT is in the future"; return 1; }
+  [ $((now - DEFAULT_ASK_EPOCH)) -ge "$DEFAULT_WAIT_SECONDS" ] || {
+    DEFAULT_REFUSAL="time: ask + ${DEFAULT_WAIT_SECONDS}s is not reached (asked $DEFAULT_ASKED_AT, $((now - DEFAULT_ASK_EPOCH))s ago)"
+    return 1
+  }
+  default_mirror_read "$now" || return 1
+  [ "$MIRROR_NEWEST_ANY" -ge "$DEFAULT_ASK_EPOCH" ] || {
+    DEFAULT_REFUSAL="dialog mirror: no entry is recorded since the ask, so its writer is not proven to be recording"
+    return 1
+  }
+  [ $((now - MIRROR_NEWEST_CAPTAIN)) -gt "$DEFAULT_QUIET_SECONDS" ] || {
+    DEFAULT_REFUSAL="dialog mirror: the newest captain message is $((now - MIRROR_NEWEST_CAPTAIN))s old, not more than ${DEFAULT_QUIET_SECONDS}s"
+    return 1
+  }
+  default_night_check "$now" || return 1
+}
+
+command_default() {
+  local id=${1:-} release=0 show state hold_kind body decoded occurrence outcome
+  [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --release) release=1 ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    shift
+  done
+  validate_slug task-id "$id"
+  if [ "$release" = 1 ] && ! release_attended; then
+    fail "task $id stays held: $RELEASE_AWAY_REASON"
+  fi
+  acquire_task_control_lock "$id"
+  if [ "$release" = 1 ]; then
+    fm_afk_contract_lock_hold "$STATE" || fail "task $id stays held: the away-posture record is locked"
+    release_attended || fail "task $id stays held: $RELEASE_AWAY_REASON"
+  fi
+  require_tasks_axi
+  task_show_or_fail "$id" "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
+  state=$(show_field "$show" state)
+  hold_kind=$(show_field_value "$show" hold_kind)
+  body=$(show_field "$show" body)
+  if [ "$release" = 1 ]; then outcome="decided by default (released)"; else outcome="decided by default"; fi
+  # A retry of an applied default finishes it rather than recording it twice.
+  if body_has_resolution_record "$body" && [ "$(recorded_resolution_mode "$body" || true)" = defaulted ]; then
+    decoded=$(decode_shown_value "$body")
+    if [ "$state" = "done" ] || [ "$hold_kind" != captain ]; then
+      rm -f -- "$DATA/$id/hold-default.json"
+      printf 'defaulted: %s\n' "$id"
+      return 0
+    fi
+    if [ "$(body_hold_set_timestamp "$decoded")" = "$(body_answered_hold_set_timestamp "$decoded")" ]; then
+      close_answered "$id" "$release" || fail "could not close defaulted captain-held task $id"
+      remove_interrupted_answer_stamp "$id"
+      publish_parent_resolution_then_retire "$id" "$(resolution_record_count "$body")" "$outcome"
+      rm -f -- "$DATA/$id/hold-default.json"
+      printf 'defaulted: %s\n' "$id"
+      return 0
+    fi
+  fi
+  default_may_apply "$id" || fail "default refused for $id: $DEFAULT_REFUSAL"
+  show=$TASK_SHOW_OUTPUT
+  body=$(show_field "$show" body)
+  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  DECISION_TEXT=$DEFAULT_RECOMMENDATION
+  DECISION_DIGEST=$(sha256_text "$DECISION_TEXT")
+  DEFAULT_APPLIED_AT=$(epoch_to_iso "$DEFAULT_NOW") || fail "cannot format the apply time"
+  write_resolution_record "$id" defaulted "$body"
+  close_answered "$id" "$release" || fail "could not close defaulted captain-held task $id"
+  remove_interrupted_answer_stamp "$id"
+  task_show_or_fail "$id" "task $id disappeared after its default was applied"
+  body_has_resolution_record "$(show_field "$show" body)" \
+    || fail "task $id did not retain its defaulted resolution record"
+  publish_parent_resolution_then_retire "$id" "$occurrence" "$outcome"
+  rm -f -- "$DATA/$id/hold-default.json"
+  printf 'defaulted: %s\n' "$id"
+}
+
+command_due() {
+  local now record id dir mirror_ok=1 mirror_problem='' status
+  [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+  now=$(default_now_epoch) || fail "FM_CAPTAIN_HOLD_NOW must be a UTC YYYY-MM-DDTHH:MM:SSZ timestamp"
+  require_tasks_axi
+  if ! default_mirror_read "$now"; then
+    mirror_ok=0
+    mirror_problem=$DEFAULT_REFUSAL
+  fi
+  for record in "$DATA"/*/hold-default.json; do
+    [ -e "$record" ] || [ -L "$record" ] || continue
+    dir=${record%/hold-default.json}
+    id=${dir##*/}
+    case "$id" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    DEFAULT_REFUSAL=''
+    if ! read_hold_default "$id"; then
+      printf '%s unknown: %s\n' "$id" "$DEFAULT_REFUSAL"
+      continue
+    fi
+    status=0
+    task_show "$id" || status=$?
+    [ "$status" -ne 124 ] || exit 124
+    [ "$status" -eq 0 ] || continue
+    default_bound_to_call "$id" "$TASK_SHOW_OUTPUT" || continue
+    if [ "$now" -lt $((DEFAULT_ASK_EPOCH + DEFAULT_PROCEED_SECONDS)) ]; then
+      printf '%s waits: asked at %s UTC; proceeds no earlier than %s UTC\n' "$id" \
+        "$(epoch_to_hhmm "$DEFAULT_ASK_EPOCH")" "$(epoch_to_hhmm $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)))"
+    elif [ "$mirror_ok" = 0 ]; then
+      printf '%s unknown: %s\n' "$id" "$mirror_problem"
+    elif [ $((now - MIRROR_NEWEST_CAPTAIN)) -le "$DEFAULT_QUIET_SECONDS" ]; then
+      printf '%s waits for the captain: captain message at %s UTC\n' "$id" "$(epoch_to_hhmm "$MIRROR_NEWEST_CAPTAIN")"
+    elif [ "$now" -lt $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)) ]; then
+      printf '%s proceeds at %s UTC\n' "$id" "$(epoch_to_hhmm $((DEFAULT_ASK_EPOCH + DEFAULT_WAIT_SECONDS)))"
+    else
+      printf '%s due now\n' "$id"
+    fi
+  done
 }
 
 # --- the one keyed-answer intake, and the source bindings that feed it --------
@@ -2644,6 +3128,8 @@ case "${1:-}" in
   hold) shift; command_hold "$@" ;;
   answer) shift; command_answer "$@" ;;
   answers) shift; command_answers "$@" ;;
+  default) shift; command_default "$@" ;;
+  due) shift; command_due "$@" ;;
   reconcile-requests) shift; command_reconcile_requests "$@" ;;
   bind) shift; command_bind "$@" ;;
   unbind) shift; command_unbind "$@" ;;

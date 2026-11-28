@@ -24,6 +24,8 @@
 #
 # This wrapper consumes canonical status decisions plus canonically normalized
 # backlog roles, unresolved blockers, and captain actionability.
+# decided_by_default lists main backlog rows whose canonical `defaulted` record
+# shows a call settled by its two-hour default, kept apart from captain answers.
 # Contributions project cached coverage and required actors from fm-contributions.sh;
 # only captain rows are exposed, with counts for the other actors and unmeasured homes. It never infers
 # decisions from report or visual-review prose or reimplements snapshot semantics.
@@ -681,6 +683,9 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         | select(.reconcile_inventory != null)
         | {id, spawn_gen:(.spawn_gen // null), host:(.host // null), kind:(.reconcile_inventory.kind // null), ids:((.reconcile_inventory.ids // []) | map(select(type == "string")) | sort)} ],
       decisions_open: (if $all_decisions == 1 then $decisions_all else $decisions_all[:$decisions_n] end),
+      decided_by_default: [ $snap.backlog.records[] | select(.structured and .defaulted != null)
+        | {id, title:(.title | trunc(70)), recommendation:.defaulted.recommendation,
+           asked_at:.defaulted.asked_at, applied_at:.defaulted.applied_at} ],
       landed: ($done | map({id, what:(.title | trunc(70)),
                             artifact:(landed_artifact // "-"),owner:.home_id})),
       gates: ($return_catchup_gate

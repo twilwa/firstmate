@@ -36,6 +36,7 @@ It never reads report bodies, review artifacts, terminal output, or chat.
 | --- | --- | --- |
 | `hold` | Creates or reuses a task and holds it for the captain. | [Creating a hold](#creating-a-hold-hold) |
 | `answer` | Records the captain's exact words and resolves the call. | [Answering a call](#answering-a-call-answer) |
+| `default`, `due` | Apply a dev-revertible call's recorded default when the captain has not answered, or list when each would apply. | [The two-hour default](#the-two-hour-default-default-due) |
 | `complete` | Records the reviewed captain-held task ids in the originating task's metadata. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
 | `verify` | Read-only check that scout teardown runs before removing source state. | [Checking before scout teardown](#checking-before-scout-teardown-verify) |
 | `open` | Read-only check of whether a row is still an open captain call. | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
@@ -118,6 +119,16 @@ A deferral continues the call it answers rather than opening another:
 A recorded deferral invalidates a [PR settlement](#pr-settlement) policy declared on that hold before it.
 The next settlement then removes the declaration, reports that the question changed, exits nonzero, and leaves the hold open.
 To keep forge settlement, declare `pr-policy` again after deferring.
+
+### The two-hour default (`default`, `due`)
+
+Main may record, at the moment it asks, a default the call takes if the captain does not answer: a `dev-revertible` recommendation in a category the tracked lists allow ([configuration](configuration.md#two-hour-default-binfm-hold-default-listsjson)).
+Only a new hold can carry one, so no existing hold gains a default later.
+A default is firstmate's recommendation, never the captain's words, so `default` never goes through `answer`.
+It records a `defaulted` resolution under its own `Default decision:` label with the reason "no answer from the owner" and the ask and apply times, then closes or releases the call the way a recorded answer does.
+One decision function refuses unless every input is proven: the call is still held with its default, unanswered, two hours old, the captain has been silent in the dialog mirror for over an hour, and a fresh night check allows two-hour defaults.
+`due` is the read-only schedule of those calls.
+[`bin/fm-captain-hold.sh`](../bin/fm-captain-hold.sh)'s header owns the inputs, records, and output shapes.
 
 ### Answer retries and tasks closed elsewhere
 
@@ -445,6 +456,8 @@ It preserves every captain hold in the bounded queued inventory of the owning ho
 `--all-decisions` reveals every captain hold available within the remote-summary bound and drops its gate.
 An available hold is therefore never in both Captain's Call and Charted Next.
 An actively worked held task may also appear in Underway, which reports running work independently of those decision buckets.
+
+A call settled by its two-hour default is listed in `decided_by_default` with its recommendation and ask and apply times, separately from captain answers.
 
 Decision presentation uses the full-text field documented in [`bin/fm-bearings-snapshot.sh`](../bin/fm-bearings-snapshot.sh), preserving the recorded question and options while compact summaries remain overview-only.
 Older secondmate summaries without that field fall back to the title and reason text they retained.

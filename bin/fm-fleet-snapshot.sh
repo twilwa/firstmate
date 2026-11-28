@@ -22,7 +22,9 @@
 #     hold_reason, and hold_until when tasks-axi emits it. They also carry
 #     normalized current_role, requires_child_metadata, blocked_by_ids,
 #     unresolved_blocker_ids, captain_actionable, hold_set, hold_age_days,
-#     and hold_bucket fields.
+#     and hold_bucket fields, plus defaulted: the machine-written two-hour
+#     default record (recommendation, category, asked_at, applied_at) when the
+#     row's newest resolution is `defaulted` (bin/fm-captain-hold.sh), else null.
 #     Repeated blocker tokens remain ordered; a blocker resolves only when its
 #     structured record is Done, and missing ids stay open.
 #     There is no separate decision type: any captain-held task is the same
@@ -470,6 +472,24 @@ backlog_json() (  # [<backlog-path>] - defaults to this home's $BACKLOG
     def structured_row($line):
       ($line | test("^[-*][[:space:]]+\\[[ xX]\\][[:space:]]+[^[:space:]]+[[:space:]]+-[[:space:]]+"))
       or ($line | test("^[-*][[:space:]]+\\*\\*[^*]+\\*\\*[[:space:]]+-[[:space:]]+"));
+    # The newest resolution record, when it is a two-hour default
+    # (bin/fm-captain-hold.sh "THE TWO-HOUR DEFAULT"): its recommendation and
+    # ask and apply times, or null.
+    def default_record($lines):
+      if ($lines | length) > 0 and $lines[0] == "Resolution recorded by fm-captain-hold." then
+        ($lines[1:]) as $rest
+        | ([$rest | to_entries[] | select(.value | test("^Resolution recorded by fm-(captain|decision)-hold\\.$")) | .key]
+            | first // ($rest | length)) as $end
+        | $rest[:$end] as $block
+        | ([$block | to_entries[] | select(.value == "Default decision:") | .key] | first) as $s
+        | ([$block | to_entries[] | select(.value == "Default decision ends.") | .key] | first) as $e
+        | if any($block[]; . == "Resolution mode: defaulted") and $s != null and $e != null and $e > $s then
+            {recommendation: ($block[($s + 1):$e] | join("\n")),
+             category: ([$block[] | capture("^Default category: (?<v>.+)$").v] | first),
+             asked_at: ([$block[] | capture("^Default asked at: (?<v>.+)$").v] | first),
+             applied_at: ([$block[] | capture("^Default applied at: (?<v>.+)$").v] | first)}
+          else null end
+      else null end;
     def parse_row($line; $section; $order):
       row_match($line) as $m
       | if $m == null then
@@ -532,6 +552,7 @@ backlog_json() (  # [<backlog-path>] - defaults to this home's $BACKLOG
                   else cap(.body_lines[-1]; "^(?<v>local main)$")
                   end))
           | .body_excerpt = ((.body_lines | join(" "))[:240])
+          | .defaulted = default_record(.body_lines)
         else . end)
     | .records as $records
     | (reduce ($records[] | select(.structured)) as $record ({};

@@ -1,0 +1,76 @@
+{
+  "schema": "fm-hold-default-lists.v1",
+  "class": "dev-revertible",
+  "always_waits": [
+    {
+      "key": "production",
+      "summary": "Any release to main, hotfix, change to the production app, production data beyond standing read-only checks, or DNS."
+    },
+    {
+      "key": "spend",
+      "summary": "Paid model runs, a paid plan or paid heavy checks, new services or accounts, or a support ticket email."
+    },
+    {
+      "key": "real-money",
+      "summary": "Anything in trading."
+    },
+    {
+      "key": "irreversible",
+      "summary": "Schema or data migrations, deleting data, closing or scrapping PRs, or history rewrites."
+    },
+    {
+      "key": "destructive",
+      "summary": "Discards, forced cleanup, or branch deletion."
+    },
+    {
+      "key": "security-sensitive",
+      "summary": "A decision that accepts a security risk: sign-in, invitations, permissions, agent confinement or admission, credentials and tokens, or CI workflow trust."
+    },
+    {
+      "key": "owner-interface",
+      "summary": "Anything on the owner's own machine or terminal window."
+    },
+    {
+      "key": "outward-facing",
+      "summary": "Upstream offers, public posts, emails, or comments on other people's repositories."
+    },
+    {
+      "key": "red-check-waiver",
+      "summary": "Merging past a red required check."
+    },
+    {
+      "key": "fleet-level",
+      "summary": "Firstmate self-update and restarts, or model and dispatch pins."
+    },
+    {
+      "key": "already-held",
+      "summary": "A decision already held for the owner; no existing hold gains a default."
+    }
+  ],
+  "may_proceed": [
+    {
+      "key": "issue-design-choice",
+      "summary": "A product or design choice inside an already-filed issue, such as a copy option, a layout option, or which of two fixes."
+    },
+    {
+      "key": "split-and-file",
+      "summary": "Splitting a change and filing the remainder as an issue."
+    },
+    {
+      "key": "accept-known-gap",
+      "summary": "Accepting a known gap that is not security-related, with the follow-up issue filed."
+    },
+    {
+      "key": "ask-user-finding-dev",
+      "summary": "An ask-user validation finding the ask-user policy escalates, when every outcome lands only on dev."
+    },
+    {
+      "key": "merge-green-dev-pr",
+      "summary": "Merging a green, validated, reviewed dev PR that was waiting only for the owner's read."
+    },
+    {
+      "key": "night-queue-order",
+      "summary": "The order of tickets in the night queue."
+    }
+  ]
+}
