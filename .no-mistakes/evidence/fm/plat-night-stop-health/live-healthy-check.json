@@ -1,0 +1,214 @@
+{
+  "schema": "fm-night-verdict.v1",
+  "checked_epoch": 1795827079,
+  "checked_at": "2026-11-28T00:51:19Z",
+  "night_active": true,
+  "night_started_epoch": 1795827079,
+  "verdict": "continue",
+  "verdict_label": "continue",
+  "allow": {
+    "dispatch": true,
+    "claude": true,
+    "merge": true,
+    "validation": true,
+    "two_hour_default": true
+  },
+  "tripped": [],
+  "reasons": [],
+  "latched": [],
+  "warnings": [],
+  "conditions": {
+    "night_window": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "local_time": "16:51",
+        "timezone": "America/Los_Angeles",
+        "window_start": "16:00",
+        "last_dispatch": "23:30",
+        "window_end": "23:45"
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "America/Los_Angeles"
+      }
+    },
+    "claude_quota": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "five_hour_remaining_pct": 80,
+        "seven_day_remaining_pct": 70,
+        "limiting_window": "seven_day",
+        "min_remaining_pct": 70,
+        "stop_claude_floor_pct": 25,
+        "stop_all_floor_pct": 12,
+        "refreshed_epoch": 1795827079
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 900,
+        "target_scope": "claude:five_hour+seven_day"
+      }
+    },
+    "github_api": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "remaining": 4573,
+        "limit": 5000,
+        "reset_epoch": 1795828679,
+        "floor": 1000
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "github:core"
+      }
+    },
+    "failure_streak": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "streak": 0,
+        "limit": 3,
+        "since_epoch": 1795827079,
+        "failed_tasks": [],
+        "total_completed": 0
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "night:kind=ship"
+      }
+    },
+    "dev_health": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "failed_targets": [],
+        "unverified_merges": [],
+        "night_merges": 0,
+        "checked_ledgers": 0,
+        "cache_publish_ok": true,
+        "cache_warning": null
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "per-(repo,target_branch); night merges forge-confirmed"
+      }
+    },
+    "check_machine": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "waiting_count": 0,
+        "limit": 2,
+        "waiting_prs": []
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 1800,
+        "target_scope": "per-PR-head"
+      }
+    },
+    "validation_cap": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "count": 0,
+        "cap": 2,
+        "since_epoch": 1795827079,
+        "runs": []
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "per-(url,head)"
+      }
+    },
+    "supervision_stall": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "oldest_wake_epoch": null,
+        "oldest_wake_age_seconds": 0,
+        "queued_wakes": 0,
+        "limit_seconds": 1800,
+        "engine_latched": false,
+        "engine_cooldown_seconds": 0,
+        "engine_retry_after_epoch": 0,
+        "stall_since_epoch": null
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "home:supervision-engine"
+      }
+    },
+    "hc_core": {
+      "status": "not_applicable",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {},
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "backend:tmux"
+      }
+    },
+    "host_load": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "load1": 5.73,
+        "threshold": 24,
+        "limit_seconds": 600,
+        "high_load_since_epoch": null,
+        "elapsed_seconds": 0
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795827079,
+        "max_age_seconds": 60,
+        "target_scope": "host:loadavg"
+      }
+    }
+  },
+  "reserve_flag": {
+    "configured": true,
+    "path": "/tmp/fm-lab.QuoRl8/state/night.reserve",
+    "state": "absent"
+  },
+  "stop_record_path": null
+}

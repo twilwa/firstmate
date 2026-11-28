@@ -1,0 +1,55 @@
+### S6 failure streak latches -> reserve-flag -> fm-capacity --admit defers -> end clears own flag, keeps stop record
+night-check: started at 2026-11-28T00:35:31Z (window 16:00-23:45, last-dispatch 23:30 America/Los_Angeles)
+admit before trip:
+admit rc=0
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["failure_streak:tripped:failure streak of 3 consecutive failed night ship tickets (t1, t2, t3)"],"warnings":[]}
+reserve-flag:
+set_by=fm-night-check
+token=fm-night-1795827131-4110648-29363
+at=2026-11-28T00:52:11Z
+verdict=stop_dispatch
+reasons=failure streak of 3 consecutive failed night ship tickets (t1, t2, t3)
+night-stop.json:
+{"schema":"fm-night-stop.v1","latched":["failure_streak"],"verdict":"stop_dispatch"}
+admit after trip:
+deferred: lane capacity of this home (/tmp/fm-lab.Q7zwBu/config/lane-capacity) does not admit another lane: captain reserve: night stop
+admit rc=75
+after a later done ship (latch must hold):
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["failure_streak:latched:latched at 2026-11-28T00:52:11Z: failure streak of 3 consecutive failed night ship tickets (t1, t2, t3)"],"warnings":[]}
+night-check: cleared reserve-flag /tmp/fm-lab.Q7zwBu/state/night.reserve
+night-check: ended active night run
+end rc=0
+ls: cannot access '/tmp/fm-lab.Q7zwBu/state/night.reserve': No such file or directory
+/tmp/fm-lab.Q7zwBu/state/night-stop.json
+admit after end:
+admit rc=0
+
+### S7 foreign reserve-flag never overwritten/removed
+{"verdict":"stop_dispatch","reserve_flag":{"configured":true,"path":"/tmp/fm-lab.EddMxe/state/night.reserve","state":"set_externally"}}
+night-check: ended active night run
+flag after end:
+captain set this
+
+### S8 start refuses without config/status-archive
+fm-night-check: enable config/status-archive for night runs
+start rc=1
+ls: cannot access '/tmp/fm-lab.ErLht2/state/night-active.json': No such file or directory
+
+### S9 corrupt state/night-stop.json during active night: unknown, not overwritten, no flag
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["night_stop_record:unknown:state/night-stop.json is unreadable, corrupt, or belongs to a different night, so earlier latched stops are unknown"],"warnings":[]}
+stop record unchanged
+ls: cannot access '/tmp/fm-lab.AiIhbM/state/night.reserve': No such file or directory
+
+### S10 past last-dispatch cut-off and outside window
+past cut-off -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["night_window:tripped:past last-dispatch cut-off (16:52 >= 00:05 America/Los_Angeles; draining until 23:59)"],"warnings":[]}
+outside window -> {"verdict":"end_night","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["night_window:tripped:outside night window (16:52 America/Los_Angeles is not within 01:00-02:00)"],"warnings":[]}
+bad timezone -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["night_window:unknown:config/night-check line 1: unknown or invalid IANA timezone 'Mars/Olympus'"],"warnings":[]}
+
+### S11 host load: >24 sustained 10m trips; ==24 does not; gap > 2x resets
+t+0s load=30 -> {"verdict":"continue","hl":{"status":"ok","details":{"load1":30,"elapsed":0}}}
+t+300s load=30 -> {"verdict":"continue","hl":{"status":"ok","details":{"load1":30,"elapsed":300}}}
+t+601s load=30 -> {"verdict":"stop_dispatch","hl":{"status":"tripped","details":{"load1":30,"elapsed":601}}}
+exact threshold t+0s load=24 -> {"verdict":"continue","hl":"ok"}
+exact threshold t+700s load=24 -> {"verdict":"continue","hl":"ok"}
+unreadable loadavg -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["host_load:unknown:could not read 1-minute host load average"],"warnings":[]}
+NOTE: S11 header's "gap > 2x resets" case was driven separately in live-scenarios-followup.txt (S11b).

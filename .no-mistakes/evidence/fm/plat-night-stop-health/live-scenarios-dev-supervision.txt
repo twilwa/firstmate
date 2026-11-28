@@ -1,0 +1,19 @@
+### S12 dev_health: red pre-night dev target stops merges (level, no latch/flag); later pass on same branch clears; history kept
+fail on dev + pass on main -> {"verdict":"stop_dispatch","merge":false,"dev":"tripped","failed":[{"repo":"https://github.com/twilwa/bbchat","url":"https://github.com/twilwa/bbchat/pull/1442","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_ref":"dev","outcome":"failed","recorded_epoch":1795821778}],"latched":0,"rf":"absent"}
+{"verdict":"stop_dispatch","history":[{"condition":"dev_health","reason":"latest post-merge check failed in review ledger for https://github.com/twilwa/bbchat/pull/1442 (dev)"}]}
+later pass on dev -> {"verdict":"continue","merge":true,"dev":"ok","rf":"absent"}
+stop record after recovery:
+{"verdict":"continue","merge":true,"history_len":1}
+--- malformed record (recorded_epoch missing) -> unknown
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["dev_health:unknown:review ledger github--twilwa--bbchat--1446.json contains incomplete or malformed post-merge verification record or merge decision"],"warnings":[]}
+--- legacy failed record without base_ref, gh pr view failing -> unknown (no cache entry)
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["dev_health:unknown:could not resolve target branch for post-merge verification on https://github.com/twilwa/bbchat/pull/1447"],"warnings":[]}
+ls: cannot access '/tmp/fm-lab.3KHBna/state/night-pr-base-refs.json': No such file or directory
+
+### S13 supervision stall: wake >30m old latches stop_dispatch + reserve-flag; 10m-old wake is fine
+10m wake -> {"verdict":"continue","ss":"ok"}
+31m wake -> {"verdict":"stop_dispatch","ss":"tripped","latched":["supervision_stall"],"rf":"set_by_night_check"}
+queue drained (latch holds) -> {"verdict":"stop_dispatch","tripped":["supervision_stall:latched"]}
+--- corrupt supervision health file with host enabled -> unknown
+{"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["supervision_stall:unknown:supervision-host health file /tmp/fm-lab.eXW28p/state/.supervision-host-health has malformed fields"],"warnings":[]}
+with supervision-host-off -> {"verdict":"continue","ss":"ok"}

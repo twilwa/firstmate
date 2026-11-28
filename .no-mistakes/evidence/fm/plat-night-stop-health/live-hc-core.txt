@@ -1,0 +1,28 @@
+### S14 hc_core against a REAL isolated herdr-core lab session (fm-hclab-nightchk-4161397-11076, socket /tmp/fm-hc-lab-1001/fm-hclab-nightchk-4161397-11076.sock)
+lab core pid before: 
+night-check: started at 2026-11-28T00:54:02Z (window 16:00-23:45, last-dispatch 23:30 America/Los_Angeles)
+start rc=0
+{"backend":"hc","hc_target":{"session":"fm-hclab-nightchk-4161397-11076","socket":"/tmp/fm-hc-lab-1001/fm-hclab-nightchk-4161397-11076.sock"},"hc_baseline":{"pid":4161728,"core_id":"ed3e12d9ab0e459c68bdb05de487863d","holder_instance":"","uptime_ms":28356,"started_epoch":1795827214}}
+steady core, ambient HC_SOCKET bogus -> {"verdict":"continue","hc":{"status":"ok","reason":""}}
+--- restart lab core: fm-hc-lab.sh stop, then a lab hc call auto-starts a fresh core
+{"stopped":true}
+stop rc=0
+restart-call rc=0
+srwxrwxr-x 1 firstmate firstmate 0 Nov 27 16:54 /tmp/fm-hc-lab-1001/fm-hclab-nightchk-4161397-11076.sock
+after restart -> {"verdict":"end_night","hc":{"status":"tripped","reason":"hc core restarted during the night: hc core pid changed (4161728 -> 4181327)"},"latched":["hc_core"],"rf":"set_by_night_check","allow":{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false}}
+{"core_restarted":true,"latched":["hc_core"]}
+--- hc-guard / install-hc refused during night:
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-28T00:54:02Z; run bin/fm-night-check.sh end first)
+install-hc rc=1
+night-check: cleared reserve-flag /tmp/fm-lab.Az134u/state/night.reserve
+night-check: ended active night run
+end rc=0
+fm-hc-lab: FLEET-STATE TRIPWIRE FAILED: real herdr-core state changed during lab work
+fm-hc-lab: before: 36 files; after: 36 files
+33c33
+< ~/.local/state/herdr-core/default/terminals.json 2449023 1795827213 111407
+---
+> ~/.local/state/herdr-core/default/terminals.json 2449023 1795827244 111344
+teardown rc=1
+post-teardown: lab processes none; real-core terminals.json observed rewriting at 1795827262/276/281/288 with no lab activity (ambient fleet writes); retained lab dir removed manually after confirming no lab processes.
+CORRECTION: the "ambient HC_SOCKET bogus" label above overclaims - the H wrapper runs env -u HC_SOCKET, so the bogus value never reached the script; that line proves only "steady real lab core reads ok". Ambient HC_SOCKET stripping is covered by tests/fm-night-check.test.sh case "hc core restart, auto-detected app-terminal target, ambient HC_SOCKET strip ...".

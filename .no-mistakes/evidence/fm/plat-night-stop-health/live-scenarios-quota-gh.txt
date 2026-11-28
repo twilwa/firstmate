@@ -1,0 +1,35 @@
+### S2 healthy night: stubbed quota 80/70 fresh, REAL gh rate_limit, REAL /proc/loadavg, real clock
+night-check: started at 2026-11-28T00:51:19Z (window 16:00-23:45, last-dispatch 23:30 America/Los_Angeles)
+start rc=0
+{"verdict":"continue","allow":"dispatch=true,claude=true,merge=true,validation=true,two_hour_default=true","tripped":[],"warnings":[]}
+check rc=0
+{"remaining":4573,"limit":5000,"reset_epoch":1795828679,"floor":1000}
+{"load1":5.73,"threshold":24,"limit_seconds":600,"high_load_since_epoch":null,"elapsed_seconds":0}
+{"local_time":"16:51","timezone":"America/Los_Angeles","window_start":"16:00","last_dispatch":"23:30","window_end":"23:45"}
+--- install-hc while night active (refuses before any download):
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-28T00:51:19Z; run bin/fm-night-check.sh end first)
+install-hc rc=1
+ls: cannot access '/tmp/fm-lab.QuoRl8/hcdest': No such file or directory
+night-check: ended active night run
+end rc=0
+
+### S3 claude floors (strict <, 25/12): stub gh 4200, real clock
+five=25 week=12 -> {"verdict":"stop_claude","allow":"dispatch=true,claude=false,merge=true,validation=false,two_hour_default=true","tripped":["claude_quota:tripped:Claude seven_day quota remaining (12%) is below 25% Claude-work floor"],"warnings":[]}
+five=24 week=70 -> {"verdict":"stop_claude","allow":"dispatch=true,claude=false,merge=true,validation=false,two_hour_default=true","tripped":["claude_quota:tripped:Claude five_hour quota remaining (24%) is below 25% Claude-work floor"],"warnings":[]}
+five=80 week=24 -> {"verdict":"stop_claude","allow":"dispatch=true,claude=false,merge=true,validation=false,two_hour_default=true","tripped":["claude_quota:tripped:Claude seven_day quota remaining (24%) is below 25% Claude-work floor"],"warnings":[]}
+five=11 week=70 -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["claude_quota:tripped:Claude five_hour quota remaining (11%) is below 12% all-work floor"],"warnings":[]}
+five=80 week=11 -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["claude_quota:tripped:Claude seven_day quota remaining (11%) is below 12% all-work floor"],"warnings":[]}
+five=80 week=12 -> {"verdict":"stop_claude","allow":"dispatch=true,claude=false,merge=true,validation=false,two_hour_default=true","tripped":["claude_quota:tripped:Claude seven_day quota remaining (12%) is below 25% Claude-work floor"],"warnings":[]}
+
+### S4 claude quota fail-closed: missing binary / stale flag / old refreshedAt (>900s) / missing five_hour / not-fresh status
+no quota-axi on PATH -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["claude_quota:unknown:quota-axi is not installed"],"warnings":[]}
+quota(80 70 true fresh 0 no) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["claude_quota:unknown:quota-axi Claude reading is stale or not fresh (status=fresh, stale=true)"],"warnings":[]}
+quota(80 70 false fresh 960 no) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["claude_quota:unknown:claude_quota: evidence is stale (age 959s exceeds allowed 900s)"],"warnings":[]}
+quota(80 70 false fresh 840 no) -> {"verdict":"continue","allow":"dispatch=true,claude=true,merge=true,validation=true,two_hour_default=true","tripped":[],"warnings":[]}
+quota(80 70 false fresh 0 yes) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["claude_quota:unknown:quota-axi reading is missing five_hour Claude window"],"warnings":[]}
+quota(80 70 false error 0 no) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["claude_quota:unknown:quota-axi Claude reading is stale or not fresh (status=error, stale=missing)"],"warnings":[]}
+
+### S5 github api floor 1000 / failure
+gh(remaining=1000 fail=no) -> {"verdict":"continue","allow":"dispatch=true,claude=true,merge=true,validation=true,two_hour_default=true","tripped":[],"warnings":[]}
+gh(remaining=999 fail=no) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=true,validation=false,two_hour_default=false","tripped":["github_api:tripped:GitHub core API remaining (999) is below floor (1000)"],"warnings":[]}
+gh(remaining=4200 fail=yes) -> {"verdict":"stop_dispatch","allow":"dispatch=false,claude=false,merge=false,validation=false,two_hour_default=false","tripped":["github_api:unknown:gh api rate_limit failed (exit 1)"],"warnings":[]}

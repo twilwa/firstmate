@@ -1,0 +1,89 @@
+## Fri Nov 27 16:50:34 PST 2026 lab=/tmp/fm-lab.tb7b4T (real clock, real quota-axi, real gh api rate_limit, real /proc/loadavg)
+$ fm-night-check.sh start
+night-check: started at 2026-11-28T00:50:34Z (window 16:00-23:45, last-dispatch 23:30 America/Los_Angeles)
+rc=0
+$ fm-night-check.sh check --json
+rc=0
+{
+  "verdict": "stop_dispatch",
+  "verdict_label": "stop new dispatch",
+  "night_active": true,
+  "allow": {
+    "dispatch": false,
+    "claude": false,
+    "merge": false,
+    "validation": false,
+    "two_hour_default": false
+  },
+  "tripped": [
+    {
+      "condition": "claude_quota",
+      "status": "unknown",
+      "verdict_effect": "stop_dispatch",
+      "reason": "quota-axi reading is missing five_hour Claude window"
+    }
+  ],
+  "warnings": [],
+  "conds": {
+    "night_window": {
+      "status": "ok",
+      "reason": ""
+    },
+    "claude_quota": {
+      "status": "unknown",
+      "reason": "quota-axi reading is missing five_hour Claude window"
+    },
+    "github_api": {
+      "status": "ok",
+      "reason": ""
+    },
+    "failure_streak": {
+      "status": "ok",
+      "reason": ""
+    },
+    "dev_health": {
+      "status": "ok",
+      "reason": ""
+    },
+    "check_machine": {
+      "status": "ok",
+      "reason": ""
+    },
+    "validation_cap": {
+      "status": "ok",
+      "reason": ""
+    },
+    "supervision_stall": {
+      "status": "ok",
+      "reason": ""
+    },
+    "hc_core": {
+      "status": "not_applicable",
+      "reason": ""
+    },
+    "host_load": {
+      "status": "ok",
+      "reason": ""
+    }
+  }
+}
+$ fm-night-check.sh verdict --json | jq .verdict,.allow
+["stop_dispatch",{"dispatch":false,"claude":false,"merge":false,"validation":false,"two_hour_default":false}]
+$ fm-night-check.sh hc-guard (night active)
+fm-night-check: hc core operation refused while overnight run is active (started 2026-11-28T00:50:34Z; run bin/fm-night-check.sh end first)
+rc=1
+$ fm-install-hc.sh --help-ish (night active)
+bin/fm-install-hc.sh: line 35: 1: usage: fm-install-hc.sh <destination-directory>
+rc=1
+$ fm-night-check.sh end
+night-check: ended active night run
+rc=0
+$ verdict after end
+{"verdict":"stop_dispatch","night_active":false,"two_hour":false}
+$ hc-guard after end
+rc=0
+total 16
+drwxrwxr-x 2 firstmate firstmate 4096 Nov 27 16:50 .
+drwx------ 6 firstmate firstmate 4096 Nov 27 16:50 ..
+-rw------- 1 firstmate firstmate 5469 Nov 27 16:50 night-verdict.json
+CORRECTION: the fm-install-hc.sh rc=1 above is a usage error (no destination argument), not the night guard. The guard refusal is shown in live-scenarios-quota-gh.txt (S2) and live-hc-core.txt (S14).

@@ -1,0 +1,36 @@
+1..29
+ok - fm-night-check: help and usage
+ok - fm-night-check: healthy night verdict and stored machine-readable consumption
+ok - fm-night-check: allow.two_hour_default requires active night and transitions cleanly across end and new start
+ok - fm-night-check: last-dispatch cutoff stops dispatch as a level condition without the reserve-flag
+ok - fm-night-check: window end produces end_night verdict
+ok - fm-night-check: a check outside an active night latches nothing and sets no reserve-flag
+ok - fm-night-check: malformed config, dangling symlink, and nonexistent timezone fail closed as unknown
+ok - fm-night-check: Claude quota floors, equality boundaries, recovery, and config floor bounds
+ok - fm-night-check: partial, stale, and unreadable Claude quota readings fail closed as unknown
+ok - fm-night-check: GitHub API floor pauses dispatch only while low, and an unreadable source fails closed
+ok - fm-night-check: failure streak latches the reserve-flag until end, which clears it and keeps the stop record
+ok - fm-night-check: failure streak limits to night-spawned kind=ship tasks and ignores scouts, secondmates, and pre-night tasks
+ok - fm-night-check: failure streak requires config/status-archive, reads retired status logs, and fails closed when ship status is missing
+ok - fm-night-check: corrupt stop record fails closed without latching, overwriting, or setting reserve-flag
+ok - fm-night-check: lost/wrong-night/malformed stop records fail closed and failed flag ownership rolls back and warns
+ok - fm-night-check: end clears recorded reserve-flags by exact path+token even after config edits
+ok - fm-night-check: a reserve-flag someone else created is never overwritten or cleared
+ok - fm-night-check: a missing reserve-flag config carries an explicit enforcement warning
+ok - fm-night-check: dev health validates records, requires producer base_ref, caches legacy refs, and surfaces cache publish failures
+ok - fm-night-check: check-machine rule enforces current head-matched evidence and fails closed on unknown/stale/malformed state
+ok - fm-night-check: validation cap counts night-created high-stakes generations at PR-ready time and stops at 2
+ok - fm-night-check: incomplete review-ledger generation fails closed as unknown for validation cap
+ok - fm-night-check: sustained host load above 24 for 10m, stale timers, and unreadable loadavg
+ok - fm-night-check: supervision stall latches on >30m wake or engine latch, and corrupt/unresolvable files fail closed
+ok - fm-night-check: hc core restart, auto-detected app-terminal target, ambient HC_SOCKET strip, and unreadable/unresolvable fail-closed
+ok - fm-night-check: partial hc target, malformed baseline, and missing backend fail closed without ambient fallback
+ok - fm-night-check: hc guard blocks fm-install-hc.sh while night is active and leaves lab paths alone
+ok - fm-night-check: stop conditions never kill, interrupt, or tear down workers
+ok - fm-night-check: evaluate_night_verdict stops all work when any required input is missing, unreadable, stale, or mismatched
+FM_TEST_COMPLETE
+
+real	1m20.031s
+user	0m23.987s
+sys	1m2.135s
+exit=0

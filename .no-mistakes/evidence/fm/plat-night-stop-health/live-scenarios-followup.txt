@@ -1,0 +1,10 @@
+### S15 dev_health max age (intent: 86400s on oldest latest passing per-target record), stubbed quota/gh, hand-written ledgers
+latest dev pass aged 3600s -> {"verdict":"continue","dev":{"status":"ok","reason":"","proof":{"present":true,"readable":true,"observed_epoch":1795827485,"max_age_seconds":60,"target_scope":"per-(repo,target_branch); night merges forge-confirmed"}}}
+latest dev pass aged 90000s -> {"verdict":"continue","dev":{"status":"ok","reason":"","proof":{"present":true,"readable":true,"observed_epoch":1795827485,"max_age_seconds":60,"target_scope":"per-(repo,target_branch); night merges forge-confirmed"}}}
+
+### S3b both quota windows exactly at the 25% floor (stubbed quota-axi)
+five=25 week=25 -> {"verdict":"continue","q":"ok"}
+
+### S11b host load gap > 2x high-load-minutes (stubbed loadavg 30): two high samples 1300s apart do not count as sustained
+t+0s -> {"verdict":"continue","hl":{"status":"ok","elapsed":0}}
+t+1300s -> {"verdict":"continue","hl":{"status":"ok","elapsed":0}}
