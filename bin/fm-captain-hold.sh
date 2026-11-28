@@ -298,7 +298,9 @@
 # equal to state/night-active.json's started_epoch, that start at or before
 # checked_epoch, and allow.two_hour_default true. The mirror proof (with its
 # entry since the ask) is then repeated at a final clock sample and the
-# night-active record re-read, which must still hold the same start; that
+# night-active record re-read, which must pass the same validation as the
+# first read (the owner's field rules; any malformed, partial, wrong-typed,
+# multi-value, or unreadable record refuses) and still hold the same start; that
 # final sample is the recorded apply time. Any missing, unreadable, malformed,
 # or stale input refuses with its reason; a refusal writes no default and no
 # task or hold change; the live night check may update its own health records.
@@ -1760,6 +1762,16 @@ DEFAULT_RECORD_VALID='type == "object" and .schema == "fm-hold-default.v1" and .
   and (.fingerprint | type == "string" and test("^[a-f0-9]{64}$"))
   and (.occurrence | type == "number" and . > 0 and . == floor)'
 
+# The active-night record's validation, copied from bin/fm-night-check.sh
+# cmd_check's read of state/night-active.json (its jq predicate on the schema,
+# started_epoch, created_reserve_flags, and stop_record_expected), except that
+# the two fields that check allows absent are required here: that script's
+# `start` always writes them, and a partial record refuses the default.
+DEFAULT_NIGHT_ACTIVE_VALID='.schema == "fm-night-active.v1"
+  and (.started_epoch | type == "number" and . >= 0 and floor == .)
+  and (.created_reserve_flags | type == "array")
+  and (.stop_record_expected | type == "boolean")'
+
 DEFAULT_CLASS=''
 DEFAULT_CATEGORY=''
 DEFAULT_ASKED_AT=''
@@ -1914,18 +1926,20 @@ default_bound_to_call() {  # <task-id> <shown-task>
     DEFAULT_REFUSAL="hold: task $id is not an open captain hold"
     return 2
   }
-  case "$(default_category_verdict "$DEFAULT_CATEGORY")" in
-    allowed) ;;
-    always) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY always waits for the captain"; return 1 ;;
-    unknown) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY is not on the may-proceed list"; return 1 ;;
-    *) DEFAULT_REFUSAL="hold: the default category lists $DEFAULT_LISTS are missing, unreadable, or malformed"; return 1 ;;
-  esac
+  # A resolution recorded since the default is recognised before eligibility,
+  # so a deferred call reads as resolved even when its category is retired.
   body=$(show_field "$show" body)
   count=$(resolution_record_count "$body")
   [ "$((count + 1))" = "$DEFAULT_OCCURRENCE" ] || {
     DEFAULT_REFUSAL="answer: the captain answered or deferred this call after its default was recorded"
     return 3
   }
+  case "$(default_category_verdict "$DEFAULT_CATEGORY")" in
+    allowed) ;;
+    always) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY always waits for the captain"; return 1 ;;
+    unknown) DEFAULT_REFUSAL="hold: default category $DEFAULT_CATEGORY is not on the may-proceed list"; return 1 ;;
+    *) DEFAULT_REFUSAL="hold: the default category lists $DEFAULT_LISTS are missing, unreadable, or malformed"; return 1 ;;
+  esac
   [ "$(body_hold_set_timestamp "$(decode_shown_value "$body")")" = "$DEFAULT_ASKED_AT" ] || {
     DEFAULT_REFUSAL="hold: task $id was held again after its default was recorded"
     return 1
@@ -2010,8 +2024,8 @@ default_mirror_proof() {  # <now-epoch> <ask-epoch>
   default_mirror_quiet "$1" && default_mirror_fresh "$2"
 }
 
-# Reads state/night-active.json as exactly one typed object into
-# NIGHT_ACTIVE_STARTED.
+# Reads state/night-active.json as exactly one object that passes
+# DEFAULT_NIGHT_ACTIVE_VALID into NIGHT_ACTIVE_STARTED; both reads use it.
 default_night_active_read() {
   local active="$STATE/night-active.json"
   NIGHT_ACTIVE_STARTED=''
@@ -2019,10 +2033,9 @@ default_night_active_read() {
     DEFAULT_REFUSAL="night check: no readable night-active record at $active"
     return 1
   }
-  NIGHT_ACTIVE_STARTED=$(jq -esr 'if length == 1 and (.[0] | type) == "object"
-      and .[0].schema == "fm-night-active.v1"
-      and (.[0].started_epoch | type == "number" and . >= 0 and . == floor)
-    then .[0].started_epoch else error("malformed") end' "$active" 2>/dev/null) || {
+  NIGHT_ACTIVE_STARTED=$(jq -esr "if length == 1 and (.[0] | type) == \"object\"
+      and (.[0] | $DEFAULT_NIGHT_ACTIVE_VALID)
+    then .[0].started_epoch else error(\"malformed\") end" "$active" 2>/dev/null) || {
     NIGHT_ACTIVE_STARTED=''
     DEFAULT_REFUSAL="night check: the night-active record $active is malformed"
     return 1
@@ -2062,7 +2075,7 @@ default_night_check() {  # <run-start-epoch>
           elif (.night_started_epoch | type) != "number" or .night_started_epoch != $started then
             "other \(.night_started_epoch | tojson)"
           elif $started > .checked_epoch then "unstarted"
-          elif .allow.two_hour_default != true then "disallowed \(.verdict | tostring)"
+          elif .allow.two_hour_default != true then "disallowed"
           else "ok \(.checked_epoch)" end end' 2>/dev/null) || facts=malformed
   case "$facts" in
     "ok "*) DEFAULT_NIGHT_CHECKED=${facts#ok } ;;
@@ -2071,7 +2084,7 @@ default_night_check() {  # <run-start-epoch>
     inactive) DEFAULT_REFUSAL="night check: the verdict reports no active night"; return 1 ;;
     "other "*) DEFAULT_REFUSAL="night check: the verdict's night_started_epoch ${facts#other } does not match the active night's started_epoch $NIGHT_ACTIVE_STARTED"; return 1 ;;
     unstarted) DEFAULT_REFUSAL="night check: the active night's started_epoch $NIGHT_ACTIVE_STARTED is after the verdict's check"; return 1 ;;
-    "disallowed "*) DEFAULT_REFUSAL="night check: allow.two_hour_default is not true (verdict ${facts#disallowed })"; return 1 ;;
+    disallowed) DEFAULT_REFUSAL="night check: allow.two_hour_default is not true"; return 1 ;;
     *) DEFAULT_REFUSAL="night check: check --json printed a malformed verdict"; return 1 ;;
   esac
 }
@@ -2222,10 +2235,6 @@ command_due() {
     id=${dir##*/}
     case "$id" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
     DEFAULT_REFUSAL=''
-    if ! read_hold_default "$id"; then
-      printf '%s unknown: %s\n' "$id" "$DEFAULT_REFUSAL"
-      continue
-    fi
     status=0
     task_show "$id" || status=$?
     [ "$status" -ne 124 ] || exit 124
@@ -2233,6 +2242,14 @@ command_due() {
       printf '%s unknown: hold: task %s is absent from this home'"'"'s backlog\n' "$id" "$id"
       continue
     }
+    # A closed or no-longer-captain-held task is skipped before its default
+    # record is decoded.
+    [ "$(show_field "$TASK_SHOW_OUTPUT" state)" != "done" ] \
+      && [ "$(show_field_value "$TASK_SHOW_OUTPUT" hold_kind)" = captain ] || continue
+    if ! read_hold_default "$id"; then
+      printf '%s unknown: %s\n' "$id" "$DEFAULT_REFUSAL"
+      continue
+    fi
     status=0
     default_bound_to_call "$id" "$TASK_SHOW_OUTPUT" || status=$?
     # A closed hold, or a call answered or deferred since, is not listed.

@@ -92,7 +92,7 @@ healthy_home() {  # <name>
   printf '%s\n' "$RECOMMENDATION" > "$home/rec.txt"
   hold_with_default "$home" t1 >/dev/null || fail "$1: the default-bearing hold was refused"
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 120))"
-  jq -n --argjson start "$NIGHT_START" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+  jq -n --argjson start "$NIGHT_START" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[],stop_record_expected:false}' \
     > "$home/state/night-active.json"
   write_verdict "$home"
   install_night_check_stub "$home"
@@ -494,17 +494,17 @@ test_due_lists_without_changing_anything() {
   home=$(healthy_home due)
   before=$(body_of "$home" t1)
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))"
-  out=$(FM_CAPTAIN_HOLD_NOW=2026-11-27T07:30:00Z run_captain "$home" due) || fail "due failed early"
+  out=$(run_default_cmd "$home" 2026-11-27T07:30:00Z due) || fail "due failed early"
   case "$out" in *"t1 waits"*) ;; *) fail "due before ask + 1h did not report waiting: $out" ;; esac
-  out=$(FM_CAPTAIN_HOLD_NOW=2026-11-27T08:05:00Z run_captain "$home" due) || fail "due failed at ask + 1h"
+  out=$(run_default_cmd "$home" 2026-11-27T08:05:00Z due) || fail "due failed at ask + 1h"
   case "$out" in *"t1 proceeds at 09:00 UTC"*) ;; *) fail "due at ask + 1h did not report proceeds at 09:00 UTC: $out" ;; esac
-  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed at ask + 2h"
+  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed at ask + 2h"
   case "$out" in *"t1 due now"*) ;; *) fail "due at ask + 2h did not report due now: $out" ;; esac
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "captain:$((DUE_EPOCH - 300))"
-  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed after a captain message"
+  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed after a captain message"
   case "$out" in *"t1 waits for the captain"*) ;; *) fail "due after a recent captain message did not report waiting for the captain: $out" ;; esac
   write_mirror "$home" "main:$((DUE_EPOCH - 1800))" "main:$((DUE_EPOCH - 60))"
-  out=$(FM_CAPTAIN_HOLD_NOW=$DUE_ISO run_captain "$home" due) || fail "due failed on a short mirror"
+  out=$(run_default_cmd "$home" $DUE_ISO due) || fail "due failed on a short mirror"
   case "$out" in *"t1 unknown: dialog mirror:"*"does not reach back"*) ;; *) fail "due on a mirror not reaching back an hour did not report unknown: $out" ;; esac
   [ "$(body_of "$home" t1)" = "$before" ] || fail "due changed the held task"
   run_captain "$home" open t1 || fail "due released the hold"
@@ -590,7 +590,7 @@ test_night_ending_during_the_check_refuses() {
 test_night_replaced_during_the_check_refuses() {
   local home
   home=$(healthy_home night-replaced)
-  night_hook "$home" "printf '%s\n' '{\"schema\":\"fm-night-active.v1\",\"started_epoch\":$((NIGHT_START + 60)),\"created_reserve_flags\":[]}' > '$home/state/night-active.json'"
+  night_hook "$home" "printf '%s\n' '{\"schema\":\"fm-night-active.v1\",\"started_epoch\":$((NIGHT_START + 60)),\"created_reserve_flags\":[],\"stop_record_expected\":false}' > '$home/state/night-active.json'"
   assert_refused "$home" "night replaced while the check runs" "the active night changed while the night check ran"
   pass "a night replaced while the live check runs refuses the default"
 }
@@ -598,7 +598,7 @@ test_night_replaced_during_the_check_refuses() {
 test_matching_future_night_start_refuses() {
   local home
   home=$(healthy_home night-future)
-  jq -n --argjson start "$((DUE_EPOCH + 60))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+  jq -n --argjson start "$((DUE_EPOCH + 60))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[],stop_record_expected:false}' \
     > "$home/state/night-active.json"
   write_verdict "$home" ".night_started_epoch = $((DUE_EPOCH + 60))"
   assert_refused "$home" "matching future night start" "is after the verdict's check"
@@ -617,7 +617,7 @@ test_apply_time_is_the_final_clock_sample() {
     --default-class dev-revertible --default-category issue-design-choice > /dev/null \
     || fail "advancing clock: the default-bearing hold was refused"
   write_mirror "$home" "captain:$((ask_epoch - 600))" "main:$((real_now - 60))"
-  jq -n --argjson start "$((ask_epoch - 3600))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+  jq -n --argjson start "$((ask_epoch - 3600))" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[],stop_record_expected:false}' \
     > "$home/state/night-active.json"
   # A real-clock night check that takes two seconds and reports when it checked.
   cat > "$home/night-check" <<SH
@@ -805,7 +805,7 @@ test_recommendation_round_trips_byte_for_byte() {
   jq -j .recommendation "$home/data/t1/hold-default.json" | cmp -s - "$home/rec.txt" \
     || fail "verbatim: the default record did not keep the recommendation byte for byte"
   write_mirror "$home" "captain:$((ASK_EPOCH - 600))" "main:$((ASK_EPOCH + 60))" "main:$((DUE_EPOCH - 120))"
-  jq -n --argjson start "$NIGHT_START" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[]}' \
+  jq -n --argjson start "$NIGHT_START" '{schema:"fm-night-active.v1",started_epoch:$start,created_reserve_flags:[],stop_record_expected:false}' \
     > "$home/state/night-active.json"
   write_verdict "$home"
   install_night_check_stub "$home"
@@ -835,6 +835,68 @@ test_real_refusing_check_changes_no_task_or_hold_data() {
   [ "$before" = "$after" ] || fail "a refused default changed the task or hold data"
   [ -f "$home/state/night-verdict.json" ] || fail "the live night check did not record its own verdict"
   pass "a refusal from the real night check writes no task or hold change, while the check records its own verdict"
+}
+
+# Replaces the active-night record while the live check runs, keeping its
+# start: a jq filter on the healthy record, or "sh:<command>" with @HOME@ for
+# the fixture home.
+final_night_record_case() {  # <label> <filter-or-sh>
+  local label=$1 action=$2 home
+  home=$(healthy_home "final-night-$label")
+  case "$action" in
+    sh:*) action=${action#sh:}; night_hook "$home" "${action//@HOME@/$home}" ;;
+    *) night_hook "$home" "jq -c '$action' '$home/state/night-active.json' > '$home/na.tmp' && mv '$home/na.tmp' '$home/state/night-active.json'" ;;
+  esac
+  assert_refused "$home" "final night record: $label" "after the night check ran, night check:"
+}
+
+test_final_night_record_same_start_malformed_reserve_flags_refuses() {
+  final_night_record_case same-start-reserve-flags-true '.created_reserve_flags = true'
+  pass "a final night record with the same start but created_reserve_flags true refuses the default"
+}
+
+test_final_night_record_validates_every_field() {
+  final_night_record_case schema-wrong-type '.schema = 1'
+  final_night_record_case schema-removed 'del(.schema)'
+  final_night_record_case started_epoch-wrong-type ".started_epoch = \"$NIGHT_START\""
+  final_night_record_case started_epoch-removed 'del(.started_epoch)'
+  final_night_record_case created_reserve_flags-wrong-type '.created_reserve_flags = "none"'
+  final_night_record_case created_reserve_flags-removed 'del(.created_reserve_flags)'
+  final_night_record_case stop_record_expected-wrong-type '.stop_record_expected = "no"'
+  final_night_record_case stop_record_expected-removed 'del(.stop_record_expected)'
+  final_night_record_case truncated "sh:head -c 20 '@HOME@/state/night-active.json' > '@HOME@/na.tmp' && mv '@HOME@/na.tmp' '@HOME@/state/night-active.json'"
+  final_night_record_case unreadable "sh:chmod 000 '@HOME@/state/night-active.json'"
+  final_night_record_case extra-stream "sh:jq -c . '@HOME@/state/night-active.json' > '@HOME@/na.one' && cat '@HOME@/na.one' '@HOME@/na.one' > '@HOME@/state/night-active.json'"
+  pass "the final read of the night record refuses each field with a wrong type or removed, and a truncated, unreadable, or multi-value record"
+}
+
+test_verdict_label_of_any_type_is_never_printed() {
+  local home label
+  for label in object null; do
+    home=$(healthy_home "verdict-label-$label")
+    if [ "$label" = object ]; then
+      write_verdict "$home" '.allow.two_hour_default = false | .verdict = {odd:"shape"}'
+    else
+      write_verdict "$home" '.allow.two_hour_default = false | .verdict = null'
+    fi
+    assert_refused "$home" "verdict label $label" "allow.two_hour_default is not true"
+    ! grep -E 'odd|shape|null|\(verdict' "$home/err" > /dev/null \
+      || fail "verdict label $label: the refusal printed the label: $(cat "$home/err")"
+  done
+  pass "a disallowing verdict refuses without printing its label, whatever its type"
+}
+
+test_due_skips_a_deferred_call_with_a_retired_category() {
+  local home out
+  home=$(healthy_home due-deferred-retired)
+  printf 'later\n' > "$home/later.txt"
+  FM_CAPTAIN_HOLD_NOW=2026-11-27T08:00:00Z run_captain "$home" answer t1 --decision-file "$home/later.txt" \
+    --defer-until 2026-12-01 > /dev/null || fail "defer answer failed"
+  jq '.category = "retired-category"' "$home/data/t1/hold-default.json" > "$home/hd.tmp" \
+    && mv "$home/hd.tmp" "$home/data/t1/hold-default.json"
+  out=$(run_default_cmd "$home" "$DUE_ISO" due) || fail "due failed after a deferral"
+  case "$out" in *t1*) fail "due listed a deferred call whose category was retired: $out" ;; esac
+  pass "due skips a deferred call even when its default's category is no longer on the list"
 }
 
 fm_test_run \
@@ -877,4 +939,8 @@ fm_test_run \
   test_due_reports_a_future_ask_as_unknown \
   test_due_skips_a_deferred_call \
   test_recommendation_round_trips_byte_for_byte \
-  test_real_refusing_check_changes_no_task_or_hold_data
+  test_real_refusing_check_changes_no_task_or_hold_data \
+  test_final_night_record_same_start_malformed_reserve_flags_refuses \
+  test_final_night_record_validates_every_field \
+  test_verdict_label_of_any_type_is_never_printed \
+  test_due_skips_a_deferred_call_with_a_retired_category
