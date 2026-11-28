@@ -1,0 +1,8 @@
+1..6
+ok - an interrupted default finishes its close on retry without recording twice
+ok - a recommendation with indentation, a blank line, the old end marker, and trailing newlines round-trips byte for byte
+ok - bearings bounds decided_by_default newest applied first, discloses the rest in omitted[], and --all-landed reveals them
+ok - after a failed close the exact retry closes, and a releasing retry refuses without changing anything
+ok - due skips a call the captain deferred
+ok - a refusal from the real night check writes no task or hold change, while the check records its own verdict
+FM_TEST_COMPLETE

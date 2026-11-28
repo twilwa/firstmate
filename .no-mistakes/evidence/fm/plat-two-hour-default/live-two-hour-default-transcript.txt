@@ -1,0 +1,565 @@
+=== S1: main places a default-bearing dev-revertible hold; record carries recommendation, class, ask time
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:01Z PATH=/tmp/fm-lab.bUW8Mu/s1/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s1 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s1/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s1/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ cat data/t1/hold-default.json
+{
+  "schema": "fm-hold-default.v1",
+  "task": "t1",
+  "class": "dev-revertible",
+  "category": "issue-design-choice",
+  "recommendation": "Use the shorter notice copy (option B) and file the longer copy as a follow-up.\n",
+  "ask_epoch": 1795861321,
+  "asked_at": "2026-11-28T10:22:01Z",
+  "fingerprint": "78433a74967e8c414b8319bc8a2d4fff802e1dc7fc971b9390b1740293a6adde",
+  "occurrence": 1
+}
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+=== S2: always-waits categories and the supervision engine cannot write a default
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-production --title Notice copy choice p-production --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category production
+fm-captain-hold: default category production always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-spend --title Notice copy choice p-spend --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category spend
+fm-captain-hold: default category spend always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-real-money --title Notice copy choice p-real-money --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category real-money
+fm-captain-hold: default category real-money always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-irreversible --title Notice copy choice p-irreversible --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category irreversible
+fm-captain-hold: default category irreversible always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-destructive --title Notice copy choice p-destructive --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category destructive
+fm-captain-hold: default category destructive always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold p-security-sensitive --title Notice copy choice p-security-sensitive --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category security-sensitive
+fm-captain-hold: default category security-sensitive always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold u1 --title Notice copy choice u1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category made-up
+fm-captain-hold: unknown default category made-up (not on the may-proceed list in {run-worktree}/bin/fm-hold-default-lists.json)
+[exit 1]
+
+$ FM_SUPERVISION_ACTOR=branch (cheaper engine) attempts a default
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:06Z PATH=/tmp/fm-lab.bUW8Mu/s2/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s2 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s2/night-check {run-worktree}/bin/fm-captain-hold.sh hold e1 --title Notice copy choice e1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s2/rec.txt --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: only main writes a default; the supervision host's engine (FM_SUPERVISION_ACTOR=branch) cannot
+[exit 1]
+
+$ ls /tmp/fm-lab.bUW8Mu/s2/data
+backlog.md
+[exit 0]
+
+$ fm-captain-hold.sh open p-production
+[exit 1]
+
+$ fm-captain-hold.sh open e1
+[exit 1]
+=== S3: an existing plain hold never gains a default retroactively
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:09Z PATH=/tmp/fm-lab.bUW8Mu/s3/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s3 {run-worktree}/bin/fm-captain-hold.sh hold r1 --title Plain call r1 --reason pick --repo sample
+r1
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:09Z PATH=/tmp/fm-lab.bUW8Mu/s3/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s3 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s3/night-check {run-worktree}/bin/fm-captain-hold.sh hold r1 --title Notice copy choice r1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s3/rec.txt --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: task r1 is already held for the captain; a hold that already exists never gains a default
+[exit 1]
+
+$ test -e /tmp/fm-lab.bUW8Mu/s3/data/r1/hold-default.json
+[exit 1]
+=== S4: ask+1h05m, silent owner: due lists 'proceeds at HH:MM', changes nothing, runs no night check; default refuses (not yet due)
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T11:22:14Z PATH=/tmp/fm-lab.bUW8Mu/s4/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s4 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s4/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s4/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+ask=2026-11-28T11:22:14Z  due=2026-11-28T13:22:14Z  now=2026-11-28T12:27:18Z
+
+$ cap /tmp/fm-lab.bUW8Mu/s4 due
+t1 proceeds at 13:22 UTC
+[exit 0]
+
+$ night-check calls during due:
+(end)
+backlog unchanged by due
+
+$ cap /tmp/fm-lab.bUW8Mu/s4 default t1
+fm-captain-hold: default refused for t1: time: ask + 7200s is not reached (asked 2026-11-28T11:22:14Z, 3907s ago)
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+=== S5: ask+2h05m, silent owner, healthy night (owner's real check): default applies the recommendation as 'defaulted', never as the captain's words
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:23Z PATH=/tmp/fm-lab.bUW8Mu/s5/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s5 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s5/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s5/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s5 due
+t1 due now
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s5 default t1
+defaulted: t1
+[exit 0]
+
+$ night-check calls during default:
+check --json
+
+$ tasks-axi show t1 --full (body)
+state: done
+held: no
+body: "Resolution recorded by fm-captain-hold.\nDecision digest: d858276bb2e772b692d2c458b480d5400eb3bf7c94bf50a9b2b75fa189ba040a\nResolution mode: defaulted\nDefault reason: no answer from the owner\nDefault class: dev-revertible\nDefault category: issue-design-choice\nDefault asked at: 2026-11-28T10:22:23Z\nDefault applied at: 2026-11-28T12:27:31Z\nDefault disposition: close\nCaptain hold answered: 2026-11-28T10:22:23Z\n\nDefault decision:\n\"Use the shorter notice copy (option B) and file the longer copy as a follow-up.\\n\""
+
+$ fm-captain-hold.sh open t1
+[exit 1]
+
+$ replay: fm-captain-hold.sh default t1
+defaulted: t1
+[exit 0]
+
+$ count of 'Resolution mode: defaulted' in body
+1
+
+$ fm-bearings-snapshot.sh --json | .decided_by_default
+{
+  "decided_by_default": [
+    {
+      "id": "t1",
+      "title": "Notice copy choice t1",
+      "recommendation": "Use the shorter notice copy (option B) and file the longer copy as a follow-up.\n",
+      "asked_at": "2026-11-28T10:22:23Z",
+      "applied_at": "2026-11-28T12:27:31Z"
+    }
+  ],
+  "omitted": [
+    {
+      "surface": "backlog item bodies",
+      "reveal": "--fields bodies"
+    },
+    {
+      "surface": "task paths",
+      "reveal": "--fields paths"
+    },
+    {
+      "surface": "watch/steer actions",
+      "reveal": "--fields actions"
+    },
+    {
+      "surface": "healthy endpoint detail",
+      "reveal": "--fields endpoints"
+    },
+    {
+      "surface": "full scout-report inventory",
+      "reveal": "--all-reports"
+    },
+    {
+      "surface": "live PR discovery + checks",
+      "reveal": "--include-prs"
+    }
+  ]
+}
+=== S6: owner spoke 30 min ago (inside the last hour): default at ask+2h05m refuses and leaves the hold
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:22:36Z PATH=/tmp/fm-lab.bUW8Mu/s6/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s6 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s6/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s6/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s6 default t1
+fm-captain-hold: default refused for t1: dialog mirror: the newest captain message is 1801s old, not more than 3600s
+[exit 1]
+backlog unchanged by the refusal
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+--- boundary attempt on the real clock (INVALID: the mirror was written ~1s before the default sampled its clock, so the entry was already outside the hour; see live-mirror-hour-boundary-transcript.txt for the pinned-clock run)
+
+$ cap /tmp/fm-lab.bUW8Mu/s6b default t1
+defaulted: t1
+[exit 0]
+--- trimmed mirror (no captain entry kept) whose oldest entry is >1h old: silence proven, applies
+
+$ cap /tmp/fm-lab.bUW8Mu/s6c default t1
+defaulted: t1
+[exit 0]
+--- trimmed mirror that does not reach back an hour: silence unproven, refuses
+
+$ cap /tmp/fm-lab.bUW8Mu/s6d default t1
+fm-captain-hold: default refused for t1: dialog mirror: its oldest kept entry is 1201s old, so it does not reach back 3600s and the captain's silence is unproven
+[exit 1]
+=== S7: unhealthy night (Claude 5h allowance 10% < 12% floor) under the owner's real check refuses
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:23:06Z PATH=/tmp/fm-lab.bUW8Mu/s7/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s7 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s7/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s7/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ night /tmp/fm-lab.bUW8Mu/s7 check --json
+{
+  "schema": "fm-night-verdict.v1",
+  "checked_epoch": 1795868890,
+  "checked_at": "2026-11-28T12:28:10Z",
+  "night_active": true,
+  "night_started_epoch": 1795858086,
+  "verdict": "stop_dispatch",
+  "verdict_label": "stop new dispatch",
+  "allow": {
+    "dispatch": false,
+    "claude": false,
+    "merge": true,
+    "validation": false,
+    "two_hour_default": false
+  },
+  "tripped": [
+    {
+      "condition": "claude_quota",
+      "status": "tripped",
+      "verdict_effect": "stop_dispatch",
+      "reason": "Claude five_hour quota remaining (10%) is below 12% all-work floor"
+    }
+  ],
+  "reasons": [
+    "Claude five_hour quota remaining (10%) is below 12% all-work floor"
+  ],
+  "latched": [],
+  "warnings": [],
+  "conditions": {
+    "night_window": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "local_time": "04:28",
+        "timezone": "America/Los_Angeles",
+        "window_start": "23:00",
+        "last_dispatch": "06:30",
+        "window_end": "07:30"
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "America/Los_Angeles"
+      }
+    },
+    "claude_quota": {
+      "status": "tripped",
+      "verdict_effect": "stop_dispatch",
+      "reason": "Claude five_hour quota remaining (10%) is below 12% all-work floor",
+      "details": {
+        "five_hour_remaining_pct": 10,
+        "seven_day_remaining_pct": 70,
+        "limiting_window": "five_hour",
+        "min_remaining_pct": 10,
+        "stop_claude_floor_pct": 25,
+        "stop_all_floor_pct": 12,
+        "refreshed_epoch": 1795868890
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 900,
+        "target_scope": "claude:five_hour+seven_day"
+      }
+    },
+    "github_api": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "remaining": 4200,
+        "limit": 5000,
+        "reset_epoch": 1795800000,
+        "floor": 1000
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "github:core"
+      }
+    },
+    "failure_streak": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "streak": 0,
+        "limit": 3,
+        "since_epoch": 1795858086,
+        "failed_tasks": [],
+        "total_completed": 0
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "night:kind=ship"
+      }
+    },
+    "dev_health": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "failed_targets": [],
+        "unverified_merges": [],
+        "night_merges": 0,
+        "checked_ledgers": 0,
+        "cache_publish_ok": true,
+        "cache_warning": null
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 86400,
+        "target_scope": "per-(repo,target_branch); judged targets <=86400s, red stops at any age"
+      }
+    },
+    "check_machine": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "waiting_count": 0,
+        "limit": 2,
+        "waiting_prs": []
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 1800,
+        "target_scope": "per-PR-head"
+      }
+    },
+    "validation_cap": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "count": 0,
+        "cap": 2,
+        "since_epoch": 1795858086,
+        "runs": []
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "per-(url,head)"
+      }
+    },
+    "supervision_stall": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "oldest_wake_epoch": null,
+        "oldest_wake_age_seconds": 0,
+        "queued_wakes": 0,
+        "limit_seconds": 1800,
+        "engine_latched": false,
+        "engine_cooldown_seconds": 0,
+        "engine_retry_after_epoch": 0,
+        "stall_since_epoch": null
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "home:supervision-engine"
+      }
+    },
+    "hc_core": {
+      "status": "not_applicable",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {},
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "backend:tmux"
+      }
+    },
+    "host_load": {
+      "status": "ok",
+      "verdict_effect": "continue",
+      "reason": "",
+      "details": {
+        "load1": 1.50,
+        "threshold": 24,
+        "limit_seconds": 600,
+        "high_load_since_epoch": null,
+        "elapsed_seconds": 0
+      },
+      "proof": {
+        "present": true,
+        "readable": true,
+        "observed_epoch": 1795868890,
+        "max_age_seconds": 60,
+        "target_scope": "host:loadavg"
+      }
+    }
+  },
+  "reserve_flag": {
+    "configured": true,
+    "path": "/tmp/fm-lab.bUW8Mu/s7/state/night.reserve",
+    "state": "absent"
+  },
+  "stop_record_path": null
+}
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s7 default t1
+fm-captain-hold: default refused for t1: night check: allow.two_hour_default is not true
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+--- no active night (night ended) refuses
+
+$ cap /tmp/fm-lab.bUW8Mu/s7b default t1
+fm-captain-hold: default refused for t1: night check: no readable night-active record at /tmp/fm-lab.bUW8Mu/s7b/state/night-active.json
+[exit 1]
+=== S8: night-active record changed after the owner's check validated it: refuses (byte flip, numeric backend, identical-content new file)
+
+$ night-active.json before: {
+  "schema": "fm-night-active.v1",
+  "started_epoch": 1795858100,
+  "started_at": "2026-11-28T09:28:20Z",
+  "backend": "tmux",
+  "window": {
+    "start": "23:00",
+    "last_dispatch": "06:30",
+    "end": "07:30",
+    "timezone": "America/Los_Angeles"
+  },
+  "hc_target": null,
+  "hc_baseline": null,
+  "stop_record_expected": false,
+  "created_reserve_flags": []
+}
+mutation after the owner's check (flip): perl -0pi -e 's/"schema":"fm-night-active.v1"/"schema":"fm-night-active.v0"/' '/tmp/fm-lab.bUW8Mu/s8-flip/state/night-active.json'
+
+$ cap /tmp/fm-lab.bUW8Mu/s8-flip default t1
+fm-captain-hold: default refused for t1: night check: the night-active record changed after the owner's check validated it (bytes, device, or inode differ, or it is gone)
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+
+$ night-active.json before: {
+  "schema": "fm-night-active.v1",
+  "started_epoch": 1795858109,
+  "started_at": "2026-11-28T09:28:29Z",
+  "backend": "tmux",
+  "window": {
+    "start": "23:00",
+    "last_dispatch": "06:30",
+    "end": "07:30",
+    "timezone": "America/Los_Angeles"
+  },
+  "hc_target": null,
+  "hc_baseline": null,
+  "stop_record_expected": false,
+  "created_reserve_flags": []
+}
+mutation after the owner's check (backend): jq -c '.backend = 123' '/tmp/fm-lab.bUW8Mu/s8-backend/state/night-active.json' > '/tmp/fm-lab.bUW8Mu/s8-backend/na' && mv '/tmp/fm-lab.bUW8Mu/s8-backend/na' '/tmp/fm-lab.bUW8Mu/s8-backend/state/night-active.json'
+
+$ cap /tmp/fm-lab.bUW8Mu/s8-backend default t1
+fm-captain-hold: default refused for t1: night check: the night-active record changed after the owner's check validated it (bytes, device, or inode differ, or it is gone)
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+
+$ night-active.json before: {
+  "schema": "fm-night-active.v1",
+  "started_epoch": 1795858116,
+  "started_at": "2026-11-28T09:28:36Z",
+  "backend": "tmux",
+  "window": {
+    "start": "23:00",
+    "last_dispatch": "06:30",
+    "end": "07:30",
+    "timezone": "America/Los_Angeles"
+  },
+  "hc_target": null,
+  "hc_baseline": null,
+  "stop_record_expected": false,
+  "created_reserve_flags": []
+}
+mutation after the owner's check (replace): cp '/tmp/fm-lab.bUW8Mu/s8-replace/state/night-active.json' '/tmp/fm-lab.bUW8Mu/s8-replace/na' && mv '/tmp/fm-lab.bUW8Mu/s8-replace/na' '/tmp/fm-lab.bUW8Mu/s8-replace/state/night-active.json'
+
+$ cap /tmp/fm-lab.bUW8Mu/s8-replace default t1
+fm-captain-hold: default refused for t1: night check: the night-active record changed after the owner's check validated it (bytes, device, or inode differ, or it is gone)
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+--- numeric backend written BEFORE the owner's check: the owner itself refuses
+
+$ cap /tmp/fm-lab.bUW8Mu/s8-pre default t1
+fm-captain-hold: default refused for t1: night check: allow.two_hour_default is not true
+[exit 1]
+=== S9: --release frees held work only when attended; refused while away
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:23:52Z PATH=/tmp/fm-lab.bUW8Mu/s9/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s9 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s9/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s9/rec.txt --default-class dev-revertible --default-category merge-green-dev-pr
+t1
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s9 default t1 --release
+fm-captain-hold: task t1 stays held: the away-posture record exists, and a captain hold is released only by the captain in an attended session; retry --release after the return archives the record
+[exit 1]
+
+$ fm-captain-hold.sh open t1
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s9 default t1 --release
+defaulted: t1
+[exit 0]
+
+$ tasks-axi show t1 --full (body)
+state: queued
+held: no
+body: "Resolution recorded by fm-captain-hold.\nDecision digest: d858276bb2e772b692d2c458b480d5400eb3bf7c94bf50a9b2b75fa189ba040a\nResolution mode: defaulted\nDefault reason: no answer from the owner\nDefault class: dev-revertible\nDefault category: merge-green-dev-pr\nDefault asked at: 2026-11-28T10:23:52Z\nDefault applied at: 2026-11-28T12:29:00Z\nDefault disposition: release\nCaptain hold answered: 2026-11-28T10:23:52Z\n\nDefault decision:\n\"Use the shorter notice copy (option B) and file the longer copy as a follow-up.\\n\""
+
+$ fm-captain-hold.sh open t1
+[exit 1]
+=== S10: a new default-bearing hold after a released default applies (validation-round decision)
+
+$ cap /tmp/fm-lab.bUW8Mu/s10 default t1 --release
+defaulted: t1
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T10:27:27Z PATH=/tmp/fm-lab.bUW8Mu/s10/fakebin:$PATH FM_HOME=/tmp/fm-lab.bUW8Mu/s10 FM_NIGHT_CHECK_BIN=/tmp/fm-lab.bUW8Mu/s10/night-check {run-worktree}/bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the notice copy --repo sample --default-file /tmp/fm-lab.bUW8Mu/s10/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s10 due
+t1 due now
+[exit 0]
+
+$ cap /tmp/fm-lab.bUW8Mu/s10 default t1
+defaulted: t1
+[exit 0]
+
+$ fm-captain-hold.sh open t1
+[exit 1]

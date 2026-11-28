@@ -1,0 +1,10 @@
+--- clock pinned at 2026-11-28T12:29:49Z (FM_CAPTAIN_HOLD_NOW, forwarded to the owner's check as FM_NIGHT_NOW_EPOCH); captain entry at now-3600
+$ fm-captain-hold.sh default t1
+fm-captain-hold: default refused for t1: dialog mirror: the newest captain message is 3600s old, not more than 3600s
+[exit 1]
+t1 still an open captain hold
+--- clock pinned at 2026-11-28T12:29:56Z (FM_CAPTAIN_HOLD_NOW, forwarded to the owner's check as FM_NIGHT_NOW_EPOCH); captain entry at now-3601
+$ fm-captain-hold.sh default t1
+defaulted: t1
+[exit 0]
+t1 no longer held
