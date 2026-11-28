@@ -579,19 +579,28 @@ test_failure_streak_status_archive_and_missing_status() {
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "archive-off reports failure_streak unknown"
   assert_equals "enable config/status-archive for night runs" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.reason')" "archive-off reason matches contract"
 
-  # 2. Three failures with the early one retired to data/<id>/status.log (no live meta/status)
+  # 2. Three failures with the early one retired to data/<id>/status.log after a check saw it live
   home=$(make_home streak_retired_archive)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
-  mkdir -p "$home/data/t1" "$home/data/sc_ret" "$home/data/old_ret"
+  write_ship_meta "$home" t1 $((EPOCH_NIGHT_START + 50))
+  printf 'working [at=%d]: started\n' $((EPOCH_NIGHT_START + 100)) > "$home/state/t1.status"
+  printf 'kind=scout\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 205)) > "$home/state/sc_ret.meta"
+  printf 'working [at=%d]: scouting\n' $((EPOCH_NIGHT_START + 210)) > "$home/state/sc_ret.status"
+  run_night_check "$home" $((EPOCH_NIGHT_START + 215)) check --json >/dev/null 2>&1 || fail "recording check must succeed"
+  assert_equals '[{"id":"t1","kind":"ship"}]' "$(jq -c '[.ships[] | {id, kind}]' "$home/state/night-ships.json")" "the check records the live night ship, not the scout"
+  rm -f "$home/state/t1.meta" "$home/state/t1.status" "$home/state/sc_ret.meta" "$home/state/sc_ret.status"
+  mkdir -p "$home/data/t1" "$home/data/sc_ret" "$home/data/old_ret" "$home/data/unseen"
   printf 'working [at=%d]: started\nfailed [at=%d]: build broke\n' \
     $((EPOCH_NIGHT_START + 100)) $((EPOCH_NIGHT_START + 200)) > "$home/data/t1/status.log"
-  # Retired scout (has report.md) and pre-night retired ship must not affect the streak
-  printf '# scout report\n' > "$home/data/sc_ret/report.md"
-  printf 'working [at=%d]: scouting\ndone [at=%d]: report ready\n' \
+  # A retired scout that wrote no report, a pre-night retired ship, and an
+  # unrecorded retired task must not affect the streak
+  printf 'working [at=%d]: scouting\ndone [at=%d]: nothing found\n' \
     $((EPOCH_NIGHT_START + 210)) $((EPOCH_NIGHT_START + 250)) > "$home/data/sc_ret/status.log"
   printf 'working [at=%d]: daytime start\ndone [at=%d]: finished late\n' \
     $((EPOCH_NIGHT_START - 3600)) $((EPOCH_NIGHT_START + 260)) > "$home/data/old_ret/status.log"
+  printf 'working [at=%d]: started\ndone [at=%d]: finished\n' \
+    $((EPOCH_NIGHT_START + 220)) $((EPOCH_NIGHT_START + 265)) > "$home/data/unseen/status.log"
   write_ship_meta "$home" t2 $((EPOCH_NIGHT_START + 270))
   printf 'failed [at=%d]: test timeout\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/t2.status"
   write_ship_meta "$home" t3 $((EPOCH_NIGHT_START + 350))
@@ -603,6 +612,50 @@ test_failure_streak_status_archive_and_missing_status() {
   assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "failure_streak tripped across archive and live rows"
   assert_equals "3" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.details.streak')" "streak count is 3 including retired archive"
 
+  # 2b. A retired failed scout with no report is not a night ship failure
+  home=$(make_home streak_retired_scout)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  printf 'kind=scout\nspawn_gen=s%d.1\n' $((EPOCH_NIGHT_START + 100)) > "$home/state/sc_fail.meta"
+  printf 'working [at=%d]: scouting\n' $((EPOCH_NIGHT_START + 110)) > "$home/state/sc_fail.status"
+  run_night_check "$home" $((EPOCH_NIGHT_START + 150)) check --json >/dev/null 2>&1 || fail "recording check must succeed"
+  rm -f "$home/state/sc_fail.meta" "$home/state/sc_fail.status"
+  mkdir -p "$home/data/sc_fail"
+  printf 'working [at=%d]: scouting\nfailed [at=%d]: scout crashed\n' \
+    $((EPOCH_NIGHT_START + 110)) $((EPOCH_NIGHT_START + 200)) > "$home/data/sc_fail/status.log"
+  write_ship_meta "$home" t2 $((EPOCH_NIGHT_START + 250))
+  printf 'failed [at=%d]: test timeout\n' $((EPOCH_NIGHT_START + 300)) > "$home/state/t2.status"
+  write_ship_meta "$home" t3 $((EPOCH_NIGHT_START + 350))
+  printf 'failed [at=%d]: lint error\n' $((EPOCH_NIGHT_START + 400)) > "$home/state/t3.status"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "retired scout streak check exits 0"
+  assert_equals "2" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.details.streak')" "a retired failed scout does not extend the ship streak"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "two ship failures plus a retired scout failure continue"
+  assert_no_reserve_flag "$home" "a retired scout failure sets no reserve-flag"
+
+  # 2c. A failed night ship registry write fails closed as unknown
+  local real_mv
+  real_mv=$(type -P mv) || fail "mv is required"
+  write_ship_meta "$home" t4 $((EPOCH_NIGHT_START + 450))
+  printf 'working [at=%d]: started\n' $((EPOCH_NIGHT_START + 460)) > "$home/state/t4.status"
+  cat > "$home/fakebin/mv" <<EOF
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = "$home/state/night-ships.json" ]; then
+    exit 1
+  fi
+done
+exec "$real_mv" "\$@"
+EOF
+  chmod +x "$home/fakebin/mv"
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  rm -f "$home/fakebin/mv"
+  expect_code 0 "$rc" "registry write failure check exits 0"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "a failed ship registry write reports failure_streak unknown"
+  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a failed ship registry write stops dispatch"
+
   # 3. Night-window ship missing BOTH live status and archived status -> unknown + stop_dispatch
   home=$(make_home streak_missing_status)
   seed_healthy_stubs "$home"
@@ -613,6 +666,20 @@ test_failure_streak_status_archive_and_missing_status() {
   expect_code 0 "$rc" "missing-status ship check exits 0"
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "night ship missing live and archived status stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "missing live and archived status reports unknown"
+
+  # 4. A just-spawned night ship with no status line yet has no outcome until the 15-minute grace ends
+  home=$(make_home streak_spawn_grace)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" fresh $((EPOCH_IN_WINDOW - 300))
+  rc=0
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "just-spawned ship check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "a ship spawned 5 minutes ago without status has no outcome yet"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "the spawn gap does not stop the night"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 900)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "post-grace ship check exits 0"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.failure_streak.status')" "a ship still without status 20 minutes after spawn reports unknown"
   pass "fm-night-check: failure streak requires config/status-archive, reads retired status logs, and fails closed when ship status is missing"
 }
 
@@ -788,14 +855,20 @@ dev_ledger() {  # <num> <outcome> <recorded_epoch> [base_ref]
     "$num" "$num" $((rec - 600)) $((rec - 300)) "$outcome" "$ready" "$rec" "$base_field"
 }
 
+unverified_merge_ledger() {  # <num> <merge_epoch>
+  local num=$1 merged=$2
+  printf '{"schema":"firstmate-pr-review-ledger.v1","task":"t-%s","url":"https://github.com/twilwa/bbchat/pull/%s","current_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","generations":[{"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","created_epoch":%d,"risk":{"level":"low","reason":"small"},"checkpoints":[],"review_items":[],"attestations":[],"final_disposition":null,"merge_decision":{"decision":"merge","verified_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","verified_epoch":%d},"post_merge_verifications":[]}]}\n' \
+    "$num" "$num" $((merged - 300)) "$merged"
+}
+
 test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   local home out rc=0
 
-  # 1. Cross-branch isolation: dev failed at 22:30, main passed later at 23:30 on same repo -> dev stays red
+  # 1. Cross-branch isolation: dev merged and failed at 23:10, main passed later at 23:30 on same repo -> dev stays red
   home=$(make_home dev_cross_branch)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
-  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START - 1800)) dev)"
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START + 600)) dev)"
   write_review_ledger "$home" 1443 "$(dev_ledger 1443 passed $((EPOCH_NIGHT_START + 1800)) main)"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "cross-branch dev health check exits 0"
@@ -823,7 +896,16 @@ test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   assert_equals "$((EPOCH_IN_WINDOW + 600))" "$(jq -r '.last_checked_epoch' "$home/state/night-stop.json")" "the stop record is rewritten on the recovered check"
   assert_no_reserve_flag "$home" "a recovered dev target leaves no reserve-flag"
 
-  # The same failure returning after a recovery is a new trip, not one continuous one
+  # A night merge with no post-merge record after its decision is unknown, not ok
+  write_review_ledger "$home" 1445 "$(unverified_merge_ledger 1445 $((EPOCH_IN_WINDOW + 650)))"
+  out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 700)) check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "unverified night merge exits 0"
+  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a night merge without a post-merge record reports dev_health unknown"
+  assert_contains "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.reason')" "pull/1445" "the unknown reason names the unverified merge"
+  assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "an unverified night merge blocks the next merge"
+  rm -f "$home/data/pr-review-ledger/github--twilwa--bbchat--1445.json"
+
+  # The same failure returning after a recovery and an unknown reading is a new trip, not one continuous one
   write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_IN_WINDOW + 900)) dev)"
   out=$(run_night_check "$home" $((EPOCH_IN_WINDOW + 1200)) check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "dev failing again exits 0"
@@ -832,17 +914,37 @@ test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   assert_equals "$EPOCH_IN_WINDOW" "$(jq -r '.history[0].last_tripped_epoch' "$home/state/night-stop.json")" "the first trip ends before the recovery"
   assert_equals "$((EPOCH_IN_WINDOW + 1200))" "$(jq -r '.history[1].first_tripped_epoch' "$home/state/night-stop.json")" "the second trip starts at the repeat failure"
 
-  # 2. Same-branch recovery: older dev failure followed by later dev pass -> dev is green
+  # 2. Same-branch recovery: older night dev failure followed by later dev pass -> dev is green
   home=$(make_home dev_same_branch_recover)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
-  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START - 7200)) dev)"
-  write_review_ledger "$home" 1450 "$(dev_ledger 1450 passed $((EPOCH_NIGHT_START - 3600)) dev)"
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START + 600)) dev)"
+  write_review_ledger "$home" 1450 "$(dev_ledger 1450 passed $((EPOCH_NIGHT_START + 1800)) dev)"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "same-branch recovery check exits 0"
   assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a later pass on dev supersedes an older dev failure"
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "recovered dev continues"
   assert_equals "true" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "recovered dev allows merges"
+
+  # 2b. Old records on targets the night never merged to are not judged, however old or red
+  home=$(make_home dev_untouched_target)
+  seed_healthy_stubs "$home"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1460 "$(dev_ledger 1460 failed $((EPOCH_NIGHT_START - 3 * 86400)) main)"
+  write_review_ledger "$home" 1461 "$(dev_ledger 1461 passed $((EPOCH_NIGHT_START - 2 * 86400)) dev)"
+  write_review_ledger "$home" 1462 "$(dev_ledger 1462 passed $((EPOCH_NIGHT_START + 900)) dev)"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "untouched-target check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a days-old failed main record with no night merge is ignored"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "an untouched old target does not stop the night"
+  assert_equals '[{"base_ref":"dev","repo":"https://github.com/twilwa/bbchat"}]' "$(printf '%s\n' "$out" | jq -cS '.conditions.dev_health.details.judged_targets')" "only the target merged tonight is judged"
+
+  # 2c. A failed post-merge record dated tonight still judges its target after a later ledger operation cleared the merge decision
+  write_review_ledger "$home" 1463 "$(dev_ledger 1463 failed $((EPOCH_NIGHT_START + 1800)) dev | jq -c '.generations[-1].merge_decision = null')"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "cleared-decision night record check exits 0"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a tonight-dated failed record trips dev even without a current merge decision"
+  assert_equals "https://github.com/twilwa/bbchat/pull/1463" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.failed_targets[0].url')" "the failed target names the cleared-decision PR"
 
   # 3. Legacy records without base_ref resolve via bounded gh pr view --json baseRefName
   home=$(make_home dev_legacy_resolve)
@@ -863,7 +965,7 @@ exit 1
 EOF
   chmod +x "$home/fakebin/gh"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
-  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START - 1800)))"
+  write_review_ledger "$home" 1442 "$(dev_ledger 1442 failed $((EPOCH_NIGHT_START + 900)))"
   write_review_ledger "$home" 1450 "$(dev_ledger 1450 passed $((EPOCH_NIGHT_START + 600)))"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "legacy base_ref fallback check exits 0"
@@ -1093,6 +1195,14 @@ test_check_machine_uses_crew_state_dedups_heads_and_checks_status() {
   assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "working and non-CI paused tasks do not count"
   assert_equals "0" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_count')" "waiting_count is 0"
 
+  # 1b. A task parked at a gate (fm-crew-state.sh `state: parked`) is a known state, not a CI wait
+  printf 'p1\tstate: working · source: pane · running tests\n' > "$map"
+  printf 'p2\tstate: parked · source: run-step · awaiting approval at review gate\n' >> "$map"
+  out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "parked crew state check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "a parked crew state is read, not reported as malformed"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a parked task does not stop the night"
+
   # 2. Task in CI admission wait whose current head has fresh RUNNING checks -> EXCLUDED
   #    Task in CI admission wait whose current head has fresh COMPLETED pass/skipping checks -> EXCLUDED
   write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]')"
@@ -1120,19 +1230,19 @@ test_check_machine_uses_crew_state_dedups_heads_and_checks_status() {
   assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "malformed check status stops dispatch"
   assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "malformed check status reports unknown"
 
-  # 5. Stale checkpoint (older than freshness window) -> unknown + stop_dispatch
+  # 5. Stale running-check checkpoint (older than freshness window) never excludes the wait
   write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]' $((EPOCH_IN_WINDOW - 3600)))"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "stale checkpoint exits 0"
-  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "stale checkpoint stops dispatch"
-  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "stale checkpoint reports unknown"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "a stale checkpoint counts its task as waiting"
+  assert_equals "p1,p2" "$(printf '%s\n' "$out" | jq -r '[.conditions.check_machine.details.waiting_prs[].task] | sort | join(",")')" "the stale-checkpoint task stays in the waiting list"
 
-  # 6. Older-head checkpoint -> unknown + stop_dispatch
+  # 6. Older-head running-check checkpoint never excludes the wait
   write_review_ledger "$home" 201 "$(check_ledger_with_checks 201 "$h1" '[{"name":"ci","status":"IN_PROGRESS","conclusion":""}]' $((EPOCH_IN_WINDOW - 60)) "$h3")"
   out=$(run_night_check_with_crew_state "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
   expect_code 0 "$rc" "older-head checkpoint exits 0"
-  assert_equals "stop_dispatch" "$(printf '%s\n' "$out" | jq -r '.verdict')" "older-head checkpoint stops dispatch"
-  assert_equals "unknown" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "older-head checkpoint reports unknown"
+  assert_equals "tripped" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.status')" "an older-head checkpoint counts its task as waiting"
+  assert_equals "$h1" "$(printf '%s\n' "$out" | jq -r '.conditions.check_machine.details.waiting_prs[] | select(.task == "p1") | .head')" "the waiting entry carries the current head, not the checkpoint head"
 
   # 7. Successful exit-0 `state: unknown` from fm-crew-state -> unknown + stop_dispatch
   rm -f "$home/data/pr-review-ledger/"*.json
@@ -1782,14 +1892,15 @@ EOF
   expect_code 0 "$rc" "missing gh remaining exits 0"
   assert_all_stopped "$out" "github_api" "github_api missing remaining"
 
-  # 3. dev_health: stale passing record (> 86400s / 24h allowed age) -> stop
-  home=$(make_home mx_dev_stale)
+  # 3. dev_health: night merge without a post-merge record after its decision -> stop
+  home=$(make_home mx_dev_unverified)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
-  write_review_ledger "$home" 1490 "$(dev_ledger 1490 passed $((EPOCH_IN_WINDOW - 90000)) dev)"
+  write_review_ledger "$home" 1490 "$(dev_ledger 1490 passed $((EPOCH_NIGHT_START + 600)) dev)"
+  write_review_ledger "$home" 1491 "$(unverified_merge_ledger 1491 $((EPOCH_NIGHT_START + 1200)))"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
-  expect_code 0 "$rc" "stale dev_health check exits 0"
-  assert_all_stopped "$out" "dev_health" "dev_health stale passing record (>86400s)"
+  expect_code 0 "$rc" "unverified night merge check exits 0"
+  assert_all_stopped "$out" "dev_health" "dev_health night merge without post-merge record"
 
   # 4. hc_core: stale saved hc target (started_epoch > 43200s / 12h old) -> stop
   home=$(make_home mx_hc_stale)
@@ -1827,6 +1938,10 @@ EOF
   home=$(make_home mx_streak_unreadable_archive)
   seed_healthy_stubs "$home"
   run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_ship_meta "$home" t_bad $((EPOCH_NIGHT_START + 100))
+  printf 'working [at=%d]: started\n' $((EPOCH_NIGHT_START + 110)) > "$home/state/t_bad.status"
+  run_night_check "$home" $((EPOCH_NIGHT_START + 150)) check --json >/dev/null 2>&1 || fail "recording check must succeed"
+  rm -f "$home/state/t_bad.meta" "$home/state/t_bad.status"
   mkdir -p "$home/data/t_bad"
   ln -s "$home/data/missing.log" "$home/data/t_bad/status.log"
   out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?

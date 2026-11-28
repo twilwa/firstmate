@@ -55,13 +55,17 @@
 #   claude_quota      max age: 900s (15m)    scope: Claude five_hour + seven_day
 #   github_api        max age: 60s (live)    scope: GitHub core hourly limit
 #   failure_streak    max age: 60s (live)    scope: night kind=ship (live + archive)
-#   dev_health        max age: 86400s (24h)  scope: per-(repo, target_branch)
+#   dev_health        max age: 60s (live)    scope: per-(repo, target_branch) merged tonight
 #   check_machine     max age: 1800s (30m)   scope: per confirmed 40-hex PR head
 #   validation_cap    max age: 60s (live)    scope: per-(url, head) high-risk gen
 #   supervision_stall max age: 60s (live)    scope: home supervision engine key
 #   hc_core           max age: 43200s (12h)  scope: saved backend + hc target
 #   host_load         max age: 60s (live)    scope: host 1-minute loadavg
 #   night_stop_record max age: same night    scope: active night_started_epoch
+#   These ages are fixed constants with no environment override
+#   (LIVE_INPUT_MAX_AGE=60, QUOTA_MAX_AGE=900, CHECK_EVIDENCE_MAX_AGE=1800,
+#   HC_TARGET_MAX_AGE=43200), as is the night ship status startup grace
+#   (SHIP_STATUS_GRACE=900).
 #
 # Condition sources and boundaries:
 #   night_window      Local time in configured IANA timezone against
@@ -76,11 +80,29 @@
 #                     archives under `data/<id>/status*.log` (requires
 #                     `config/status-archive` enabled for night runs;
 #                     deduplicated by task and `spawn_gen`, excluding scouts,
-#                     secondmates, and pre-night tasks). A night-window ship
+#                     secondmates, and pre-night tasks). Every `check` of an
+#                     active night records each in-window ship incarnation it
+#                     sees live in `state/night-ships.json`, and the archive
+#                     pass reads only recorded ids, so a ship spawned and
+#                     retired between two checks is not counted. A night ship
+#                     with no status line yet counts as no outcome for
+#                     SHIP_STATUS_GRACE seconds after its spawn; after that,
 #                     missing both live and archived status reports `unknown`.
-#   dev_health        Latest valid passed or failed post-merge verification
-#                     record per `(repo, target_branch)` across review ledgers,
-#                     with no night-start filter. New records require and carry
+#                     Outside an active night no registry exists, so retired
+#                     archives are not read.
+#   dev_health        Judges only targets the night acts on: each review
+#                     ledger whose current merge decision (`verified_epoch`)
+#                     falls inside the night window must carry its own dated
+#                     post-merge record (passed, failed, or not-applicable)
+#                     recorded at or after that decision, otherwise
+#                     `unknown`, so no next merge happens before the previous
+#                     one is verified. A decision whose merge never lands stays
+#                     `unknown` until a later ledger operation clears it. Each
+#                     such `(repo, target_branch)`, and each one with a
+#                     post-merge record dated inside the window, then reads its
+#                     latest valid passed or failed record across review
+#                     ledgers, whenever recorded; other targets are not judged.
+#                     New records require and carry
 #                     a forge-confirmed `base_ref` written by
 #                     `bin/fm-pr-review.sh post-merge`; valid older records
 #                     without it resolve `baseRefName` via a bounded
@@ -100,10 +122,11 @@
 #                     `RUNNING`) or completed required checks (`status ==
 #                     "COMPLETED"` with `conclusion == "pass"` or `"skipping"`,
 #                     matching `bin/fm-pr-review.sh`), or a head-verified merge
-#                     decision. A successful `state: unknown` crew-state reply,
-#                     unconfirmed head, malformed check status, or stale /
-#                     older-head checkpoint reports `unknown` (`stop_dispatch`)
-#                     and never shrinks the wait count.
+#                     decision. A stale or older-head checkpoint never excludes
+#                     a wait. A successful `state: unknown` crew-state reply,
+#                     unconfirmed head, or malformed check status reports
+#                     `unknown` (`stop_dispatch`) and never shrinks the wait
+#                     count.
 #   validation_cap    Counts high-stakes PRs whose validated current
 #                     review-ledger generation was created during the night
 #                     (`risk.level == "high"` and integer `created_epoch >=
@@ -273,6 +296,12 @@
 #     records without `base_ref`. A merged PR's base branch never changes, so
 #     entries are kept across nights; an unreadable or invalid cache is
 #     ignored and rebuilt from fresh lookups.
+#   state/night-ships.json    (schema: fm-night-ships.v1)
+#     `{night_started_epoch, ships: [{id, spawn_gen, kind: "ship"}]}`: the
+#     in-window ship incarnations seen live during this night, reset by
+#     `start` and extended by every active-night `check`. A failed write, or
+#     an unreadable or corrupt registry, reports `failure_streak` as
+#     `unknown`.
 #
 # Home configuration: config/night-check (local, gitignored, home-local; schema
 # owned by docs/configuration.md "Night stop-and-health check").
@@ -311,12 +340,14 @@ BASE_REF_CACHE="$STATE/night-pr-base-refs.json"
 POLICY_FILE="${FM_REVIEW_POLICY_OVERRIDE:-$FM_ROOT/.github/firstmate-review-policy.json}"
 PROC_ROOT="${FM_PROC_ROOT_OVERRIDE:-/proc}"
 CREW_STATE_BIN="${FM_CREW_STATE_BIN:-$SCRIPT_DIR/fm-crew-state.sh}"
+SHIPS_FILE="$STATE/night-ships.json"
 # Explicit freshness limits (seconds) enforced centrally by evaluate_night_verdict.
 LIVE_INPUT_MAX_AGE=60
-QUOTA_MAX_AGE="${FM_NIGHT_QUOTA_MAX_AGE:-900}"
-DEV_HEALTH_MAX_AGE="${FM_NIGHT_DEV_HEALTH_MAX_AGE:-86400}"
-CHECK_EVIDENCE_MAX_AGE="${FM_NIGHT_CHECK_EVIDENCE_MAX_AGE:-1800}"
-HC_TARGET_MAX_AGE="${FM_NIGHT_HC_TARGET_MAX_AGE:-43200}"
+QUOTA_MAX_AGE=900
+CHECK_EVIDENCE_MAX_AGE=1800
+HC_TARGET_MAX_AGE=43200
+# Startup grace (seconds) for a night ship that has not written a status line.
+SHIP_STATUS_GRACE=900
 
 # Approved minimum Claude allowance floors (config may only raise these).
 MIN_CLAUDE_STOP_CLAUDE_PCT=25
@@ -874,6 +905,7 @@ cmd_start() {
       stop_record_expected: false,
       created_reserve_flags: []
     }') || die "could not build night-active record"
+  write_night_ships "$now" '[]' || die "could not write $SHIPS_FILE"
   atomic_write_json "$ACTIVE_FILE" "$doc" || die "could not write $ACTIVE_FILE"
   rm -f -- "$STOP_FILE" "$VERDICT_FILE" 2>/dev/null || true
   printf 'night-check: started at %s (window %s-%s, last-dispatch %s %s)\n' \
@@ -1002,12 +1034,7 @@ eval_night_window() {  # <now> <active_bad>
 
 eval_claude_quota() {
   local qbin json rc=0 parsed
-  if [ -n "${FM_NIGHT_QUOTA_BIN:-}" ]; then
-    [ -x "$FM_NIGHT_QUOTA_BIN" ] || { cond_json unknown stop_dispatch "FM_NIGHT_QUOTA_BIN is not executable" '{}'; return 0; }
-    qbin=$FM_NIGHT_QUOTA_BIN
-  else
-    qbin=$(type -P quota-axi 2>/dev/null) || { cond_json unknown stop_dispatch "quota-axi is not installed" '{}'; return 0; }
-  fi
+  qbin=$(type -P quota-axi 2>/dev/null) || { cond_json unknown stop_dispatch "quota-axi is not installed" '{}'; return 0; }
   json=$(fm_run_timed "$QUOTA_TIMEOUT" "$qbin" --provider claude --json --full --no-credential-refresh 2>/dev/null </dev/null) || rc=$?
   if [ "$rc" -eq 124 ]; then
     cond_json unknown stop_dispatch "quota-axi timed out after ${QUOTA_TIMEOUT}s" '{}'
@@ -1091,11 +1118,6 @@ eval_claude_quota() {
 }
 
 resolve_gh_bin() {
-  if [ -n "${FM_NIGHT_GH_BIN:-}" ]; then
-    [ -x "$FM_NIGHT_GH_BIN" ] || return 1
-    printf '%s\n' "$FM_NIGHT_GH_BIN"
-    return 0
-  fi
   type -P gh 2>/dev/null
 }
 
@@ -1208,11 +1230,39 @@ task_has_archived_status() {  # <task-id> -> 0 if at least one data/<id>/status*
   return 1
 }
 
-eval_failure_streak() {  # <since_epoch> <night_active> <now>
-  local since=$1 night_active=${2:-false} now=$3
-  local rows="" meta id kind spawn_ep sg gen_key sf res
+load_night_ships() {  # <night_started> -> prints recorded ships JSON array, or returns 1 when unreadable/corrupt
+  local ns=$1 out
+  if [ ! -e "$SHIPS_FILE" ] && [ ! -L "$SHIPS_FILE" ]; then
+    printf '[]\n'
+    return 0
+  fi
+  [ -f "$SHIPS_FILE" ] && [ ! -L "$SHIPS_FILE" ] && [ -r "$SHIPS_FILE" ] || return 1
+  out=$(jq -c --argjson ns "$ns" '
+    if .schema != "fm-night-ships.v1"
+       or (.night_started_epoch | type != "number")
+       or (.ships | type != "array")
+       or (all(.ships[]; type == "object" and (.id | type == "string" and length > 0)
+             and (.spawn_gen | type == "string" and length > 0) and .kind == "ship") | not) then
+      error("invalid")
+    elif .night_started_epoch != $ns then []
+    else .ships end
+  ' "$SHIPS_FILE" 2>/dev/null) || return 1
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+write_night_ships() {  # <night_started> <ships_json>
+  local doc
+  doc=$(jq -cn --argjson ns "$1" --argjson ships "$2" \
+    '{schema: "fm-night-ships.v1", night_started_epoch: $ns, ships: $ships}') || return 1
+  atomic_write_json "$SHIPS_FILE" "$doc"
+}
+
+eval_failure_streak() {  # <since_epoch> <night_active> <now> <night_started>
+  local since=$1 night_active=${2:-false} now=$3 night_started=${4:-null}
+  local rows="" meta id kind spawn_ep sg gen_key sf res fail_reason=""
   local first_at term_at verb has_term file_gen
-  local non_ship_ids=" " pre_night_live_ids=" " tdir af
+  local live_ships="" recorded="[]" merged tdir af
 
   if [ "$night_active" = true ] && ! status_archive_enabled; then
     cond_json unknown stop_dispatch "enable config/status-archive for night runs" '{}'
@@ -1223,37 +1273,33 @@ eval_failure_streak() {  # <since_epoch> <night_active> <now>
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || [ -L "$meta" ] || continue
     if [ -L "$meta" ] || [ ! -f "$meta" ] || [ ! -r "$meta" ]; then
-      cond_json unknown stop_dispatch "task metadata $meta is unreadable or unsafe" '{}'
-      return 0
+      fail_reason=${fail_reason:-"task metadata $meta is unreadable or unsafe"}
+      continue
     fi
     id=$(basename "$meta" .meta)
     kind=$(sed -n 's/^kind=//p' "$meta" 2>/dev/null | head -1)
     # Limit failure streak strictly to kind=ship tasks (leave out scouts,
     # secondmates, and untyped records).
-    if [ "$kind" != "ship" ]; then
-      non_ship_ids="${non_ship_ids}${id} "
-      continue
-    fi
+    [ "$kind" = "ship" ] || continue
     spawn_ep=$(meta_spawn_epoch "$meta") || {
-      cond_json unknown stop_dispatch "could not determine spawn epoch from $meta" '{}'
-      return 0
+      fail_reason=${fail_reason:-"could not determine spawn epoch from $meta"}
+      continue
     }
     # Only count ship tasks spawned inside the night window.
-    if [ "$spawn_ep" -lt "$since" ]; then
-      pre_night_live_ids="${pre_night_live_ids}${id} "
-      continue
-    fi
+    [ "$spawn_ep" -ge "$since" ] || continue
     sg=$(sed -n 's/^spawn_gen=//p' "$meta" 2>/dev/null | head -1)
     gen_key="${sg:-live:$spawn_ep}"
+    live_ships="${live_ships}${id}	${gen_key}
+"
     sf="$STATE/$id.status"
     if [ -e "$sf" ] || [ -L "$sf" ]; then
       if [ -L "$sf" ] || [ ! -f "$sf" ] || [ ! -r "$sf" ]; then
-        cond_json unknown stop_dispatch "status log $sf is unreadable or unsafe" '{}'
-        return 0
+        fail_reason=${fail_reason:-"status log $sf is unreadable or unsafe"}
+        continue
       fi
       res=$(extract_status_timeline "$sf") || {
-        cond_json unknown stop_dispatch "could not read terminal status from $sf" '{}'
-        return 0
+        fail_reason=${fail_reason:-"could not read terminal status from $sf"}
+        continue
       }
       IFS=$'\t' read -r first_at term_at verb has_term file_gen <<EOF
 $res
@@ -1263,29 +1309,50 @@ EOF
 "
       fi
     elif ! task_has_archived_status "$id"; then
-      cond_json unknown stop_dispatch "night-window ship $id has neither live status nor archived status" '{}'
-      return 0
+      if [ "$now" -ge "$spawn_ep" ] && [ $((now - spawn_ep)) -lt "$SHIP_STATUS_GRACE" ]; then
+        continue
+      fi
+      fail_reason=${fail_reason:-"night-window ship $id has neither live status nor archived status"}
     fi
   done
 
-  # Pass 2: retired status logs under $DATA/<id>/status.log and status.<N>.log
+  if [ "$night_active" = true ] && is_uint "$night_started"; then
+    if ! recorded=$(load_night_ships "$night_started"); then
+      cond_json unknown stop_dispatch "night ship registry $SHIPS_FILE is unreadable or corrupt" '{}'
+      return 0
+    fi
+    merged=$(printf '%s' "$live_ships" | jq -Rsc --argjson rec "$recorded" '
+      reduce (split("\n")[] | select(. != "") | split("\t") | {id: .[0], spawn_gen: .[1], kind: "ship"}) as $s
+        ($rec; if any(.[]; .id == $s.id and .spawn_gen == $s.spawn_gen) then . else . + [$s] end)
+    ' 2>/dev/null) || merged=""
+    if [ -z "$merged" ]; then
+      cond_json unknown stop_dispatch "could not update night ship registry $SHIPS_FILE" '{}'
+      return 0
+    fi
+    if [ "$merged" != "$recorded" ] || [ ! -e "$SHIPS_FILE" ]; then
+      if ! write_night_ships "$night_started" "$merged"; then
+        cond_json unknown stop_dispatch "could not write night ship registry $SHIPS_FILE" '{}'
+        return 0
+      fi
+    fi
+    recorded=$merged
+  fi
+  if [ -n "$fail_reason" ]; then
+    cond_json unknown stop_dispatch "$fail_reason" '{}'
+    return 0
+  fi
+
+  # Pass 2: retired status logs under $DATA/<id>/status.log and status.<N>.log,
+  # limited to ship ids recorded in this night's registry.
   if [ -e "$DATA" ] || [ -L "$DATA" ]; then
     if [ ! -d "$DATA" ] || [ ! -r "$DATA" ]; then
       cond_json unknown stop_dispatch "task data directory $DATA is unreadable" '{}'
       return 0
     fi
-    for tdir in "$DATA"/*; do
-      [ -e "$tdir" ] || [ -L "$tdir" ] || continue
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      tdir="$DATA/$id"
       [ -d "$tdir" ] && [ ! -L "$tdir" ] || continue
-      id=$(basename "$tdir")
-      [ "$id" != "pr-review-ledger" ] || continue
-      case "$non_ship_ids" in *" $id "*) continue ;; esac
-      case "$pre_night_live_ids" in *" $id "*) continue ;; esac
-      # Exclude retired secondmates (charter.md) and scouts (report.md)
-      if [ -e "$tdir/charter.md" ] || [ -L "$tdir/charter.md" ] \
-        || [ -e "$tdir/report.md" ] || [ -L "$tdir/report.md" ]; then
-        continue
-      fi
       for af in "$tdir"/status.log "$tdir"/status.[0-9]*.log; do
         [ -e "$af" ] || [ -L "$af" ] || continue
         if [ -L "$af" ] || [ ! -f "$af" ] || [ ! -r "$af" ]; then
@@ -1308,7 +1375,9 @@ EOF
         rows="${rows}${term_at}	${id}	${gen_key}	${verb}	archive
 "
       done
-    done
+    done <<EOF
+$(printf '%s\n' "$recorded" | jq -r '[.[].id] | unique | .[]')
+EOF
   fi
 
   # shellcheck disable=SC2016
@@ -1366,8 +1435,8 @@ load_base_ref_cache() {  # -> prints {"<pr-url>": "<base ref>"} (empty when abse
   fi
 }
 
-eval_dev_health() {  # <now>
-  local now=$1 f records_json="[]" count=0 rows url fallback_ref
+eval_dev_health() {  # <now> <since_epoch>
+  local now=$1 since=$2 f records_json="[]" merges_json="[]" count=0 parsed rows merge_json url fallback_ref
   local base_refs cache_publish_ok=true cache_warning=""
   base_refs=$(load_base_ref_cache)
   if ! resolve_ledger_dir; then
@@ -1375,8 +1444,8 @@ eval_dev_health() {  # <now>
     return 0
   fi
   if [ ! -e "$LEDGER_DIR" ] && [ ! -L "$LEDGER_DIR" ]; then
-    cond_json ok continue "" '{"failed_targets":[],"checked_ledgers":0,"cache_publish_ok":true,"cache_warning":null}' \
-      "$(proof_json true true "$now" "$DEV_HEALTH_MAX_AGE" "per-(repo,target_branch)")"
+    cond_json ok continue "" '{"judged_targets":[],"failed_targets":[],"unverified_merges":[],"night_merges":0,"checked_ledgers":0,"cache_publish_ok":true,"cache_warning":null}' \
+      "$(proof_json true true "$now" "$LIVE_INPUT_MAX_AGE" "per-(repo,target_branch) merged tonight")"
     return 0
   fi
   if [ -L "$LEDGER_DIR" ] || [ ! -d "$LEDGER_DIR" ] || [ ! -r "$LEDGER_DIR" ]; then
@@ -1394,14 +1463,24 @@ eval_dev_health() {  # <now>
       return 0
     fi
     count=$((count + 1))
-    # Validate every post_merge_verifications record strictly before selection:
-    # malformed outcome, missing/invalid integer recorded_epoch, or malformed
-    # branch field fails closed as unknown rather than sorting as epoch 0 or
-    # dropping the record.
-    rows=$(jq -c '
+    # Validate every passed/failed post_merge_verifications record strictly
+    # before selection: malformed outcome, missing/invalid integer
+    # recorded_epoch, or malformed branch field fails closed as unknown rather
+    # than sorting as epoch 0 or dropping the record. A dated not-applicable
+    # record only shows that its own merge was verified.
+    parsed=$(jq -c --argjson since "$since" '
+      def uint: type == "number" and . >= 0 and floor == .;
+      def bad_branch:
+        (has("base_ref") and .base_ref != null and (.base_ref | type != "string" or length == 0))
+        or (has("baseRefName") and .baseRefName != null and (.baseRefName | type != "string" or length == 0))
+        or (has("target_branch") and .target_branch != null and (.target_branch | type != "string" or length == 0));
       .url as $u
       | ($u | sub("/(-/)?(pull|merge_requests)/.*$"; "")) as $repo
       | if ($repo | length) == 0 then error("invalid url repo") else . end
+      | (.generations[-1].merge_decision) as $md
+      | (if ($md | type) == "object" and $md.decision == "merge" then
+           (if ($md.verified_epoch | uint) then $md.verified_epoch else error("invalid merge decision verified_epoch") end)
+         else null end) as $merge_epoch
       | [ .generations[]
           | if (.post_merge_verifications == null) then empty
             elif (.post_merge_verifications | type) != "array" then error("post_merge_verifications not array")
@@ -1409,14 +1488,16 @@ eval_dev_health() {  # <now>
             end
           | if (type != "object") then error("verification not object") else . end
           | if (.applicability == "not-applicable") and (.outcome == null or .outcome == "") then
-              empty
+              if (.recorded_epoch | uint) and (bad_branch | not) then
+                {repo: $repo, url: $u, head: (.head // null),
+                 base_ref: (.base_ref // .baseRefName // .target_branch // ""),
+                 outcome: "not-applicable", recorded_epoch: .recorded_epoch}
+              else empty end
             elif (.outcome != "passed" and .outcome != "failed") then
               error("invalid post-merge outcome")
-            elif (.recorded_epoch | type != "number" or . < 0 or floor != .) then
+            elif (.recorded_epoch | uint | not) then
               error("missing or invalid recorded_epoch")
-            elif ((has("base_ref") and .base_ref != null and (.base_ref | type != "string" or length == 0))
-                  or (has("baseRefName") and .baseRefName != null and (.baseRefName | type != "string" or length == 0))
-                  or (has("target_branch") and .target_branch != null and (.target_branch | type != "string" or length == 0))) then
+            elif bad_branch then
               error("invalid branch field type")
             else
               {
@@ -1427,12 +1508,20 @@ eval_dev_health() {  # <now>
                 outcome: .outcome,
                 recorded_epoch: .recorded_epoch
               }
-            end ]
+            end ] as $rows
+      | ($merge_epoch != null and $merge_epoch >= $since) as $night_merge
+      | {
+          rows: $rows,
+          merge: (if $night_merge then {url: $u, repo: $repo, merge_epoch: $merge_epoch} else null end),
+          needs_ref: any($rows[]; .base_ref == ""
+            and (.outcome != "not-applicable" or ($night_merge and .recorded_epoch >= $merge_epoch)))
+        }
     ' "$f" 2>/dev/null) || {
-      cond_json unknown stop_dispatch "review ledger $(basename "$f") contains incomplete or malformed post-merge verification record" '{}'
+      cond_json unknown stop_dispatch "review ledger $(basename "$f") contains incomplete or malformed post-merge verification record or merge decision" '{}'
       return 0
     }
-    if printf '%s\n' "$rows" | jq -e 'any(.[]; .base_ref == "")' >/dev/null 2>&1; then
+    rows=$(printf '%s\n' "$parsed" | jq -c '.rows')
+    if [ "$(printf '%s\n' "$parsed" | jq -r '.needs_ref')" = true ]; then
       url=$(jq -r '.url' "$f")
       fallback_ref=$(printf '%s\n' "$base_refs" | jq -r --arg u "$url" '.[$u] // empty')
       if [ -z "$fallback_ref" ]; then
@@ -1451,26 +1540,45 @@ eval_dev_health() {  # <now>
       ')
     fi
     records_json=$(jq -cn --argjson a "$records_json" --argjson b "$rows" '$a + $b')
+    merge_json=$(printf '%s\n' "$parsed" | jq -c '.merge')
+    if [ "$merge_json" != null ]; then
+      merges_json=$(jq -cn --argjson a "$merges_json" --argjson m "$merge_json" '$a + [$m]')
+    fi
   done
   # shellcheck disable=SC2016
   printf '%s\n' "$records_json" | jq -c \
+    --argjson merges "$merges_json" \
+    --argjson since "$since" \
     --argjson checked "$count" \
     --argjson now "$now" \
-    --argjson max_age "$DEV_HEALTH_MAX_AGE" \
+    --argjson max_age "$LIVE_INPUT_MAX_AGE" \
     --argjson cache_ok "$cache_publish_ok" \
     --arg cache_warn "$cache_warning" '
-    [ group_by([.repo, .base_ref])[] | max_by(.recorded_epoch) ] as $latest
+    . as $all
+    | [ $merges[] | . as $m
+        | ([ $all[] | select(.url == $m.url and .recorded_epoch >= $m.merge_epoch) ] | max_by(.recorded_epoch)) as $v
+        | $m + {verified: ($v != null), base_ref: ($v.base_ref // null), verification_epoch: ($v.recorded_epoch // null)} ] as $night
+    | [ $night[] | select(.verified | not) | {url, repo, merge_epoch} ] as $unverified
+    | ([ $night[] | select(.verified) | {repo, base_ref} ]
+       + [ $all[] | select(.recorded_epoch >= $since and .base_ref != "") | {repo, base_ref} ]
+       | unique) as $targets
+    | [ $targets[] | . as $t
+        | [ $all[] | select((.outcome == "passed" or .outcome == "failed") and .repo == $t.repo and .base_ref == $t.base_ref) ]
+        | if length > 0 then max_by(.recorded_epoch) else empty end ] as $latest
     | [ $latest[] | select(.outcome == "failed") ] as $failed
-    | (if ($latest | length) > 0 then ([ $latest[].recorded_epoch ] | min) else $now end) as $obs
     | {
+        judged_targets: $targets,
         failed_targets: $failed,
+        unverified_merges: $unverified,
+        night_merges: ($night | length),
         checked_ledgers: $checked,
-        oldest_target_epoch: (if ($latest | length) > 0 then $obs else null end),
         cache_publish_ok: $cache_ok,
         cache_warning: (if $cache_warn == "" then null else $cache_warn end)
       } as $det
-    | {present: true, readable: true, observed_epoch: $obs, max_age_seconds: $max_age, target_scope: "per-(repo,target_branch)"} as $prf
-    | if ($failed | length) > 0 then
+    | {present: true, readable: true, observed_epoch: $now, max_age_seconds: $max_age, target_scope: "per-(repo,target_branch) merged tonight"} as $prf
+    | if ($unverified | length) > 0 then
+        {status: "unknown", verdict_effect: "stop_dispatch", reason: "no post-merge verification recorded after the night merge decision for \([$unverified[].url] | join(", "))", details: $det, proof: $prf}
+      elif ($failed | length) > 0 then
         {status: "tripped", verdict_effect: "stop_dispatch", reason: "latest post-merge check failed in review ledger for \([$failed[] | "\(.url) (\(.base_ref))"] | join(", "))", details: $det, proof: $prf}
       else
         {status: "ok", verdict_effect: "continue", reason: "", details: $det, proof: $prf}
@@ -1512,7 +1620,7 @@ crew_state_token() {  # <fm-crew-state-line> -> prints state token or returns 1
   tok=${rest%%' · '*}
   tok=${tok%% *}
   case "$tok" in
-    working|paused|done|failed|needs-decision|blocked|idle|unknown)
+    working|paused|parked|done|failed|needs-decision|blocked|idle|unknown)
       printf '%s\n' "$tok"
       return 0 ;;
     *) return 1 ;;
@@ -1637,12 +1745,11 @@ eval_check_machine() {  # <now>
                    or ($cp.at_epoch | type != "number" or . < 0 or floor != .)
                    or ($cp.checks | type != "array") then
                   "invalid\t"
-                elif $cp.head != $cur then
-                  "stale_head\t\($cur)"
-                elif ($now - $cp.at_epoch) > $max_age
+                elif $cp.head != $cur
+                     or ($now - $cp.at_epoch) > $max_age
                      or $cp.at_epoch > ($now + 60)
                      or ($paused_at > 0 and $cp.at_epoch < $paused_at) then
-                  "stale_time\t\($cur)"
+                  "waiting\t\($cur)\t"
                 elif ($cp.checks | length) == 0 then
                   "waiting\t\($cur)"
                 elif any($cp.checks[]; (type != "object") or (.status | valid_status | not) or (.conclusion != null and (.conclusion | type != "string"))) then
@@ -1670,14 +1777,6 @@ EOF
           ;;
         head_mismatch)
           cond_json unknown stop_dispatch "task $id pr_head does not match current review ledger head" '{}'
-          return 0
-          ;;
-        stale_head)
-          cond_json unknown stop_dispatch "latest review checkpoint for $id matches an older head, not current head $ledger_head" '{}'
-          return 0
-          ;;
-        stale_time)
-          cond_json unknown stop_dispatch "latest review checkpoint for $id is stale for current CI admission check" '{}'
           return 0
           ;;
         invalid_check)
@@ -2143,7 +2242,7 @@ write_stop_record() {  # <verdict_json> <now> <iso>
     pa=$(jq -r 'if .schema == "fm-night-stop.v1" and (.first_tripped_at | type == "string") then .first_tripped_at else empty end' "$STOP_FILE" 2>/dev/null) || pa=""
     ps=$(jq -c 'if .schema == "fm-night-stop.v1" and (.stall_since_epoch | type == "number") then .stall_since_epoch else null end' "$STOP_FILE" 2>/dev/null) || ps=null
     ph=$(jq -c 'if .schema == "fm-night-stop.v1" and (.history | type == "array") then .history else [] end' "$STOP_FILE" 2>/dev/null) || ph="[]"
-    pd=$(jq -r '.schema == "fm-night-stop.v1" and any((.tripped // [])[]; .condition == "dev_health")' "$STOP_FILE" 2>/dev/null) || pd=false
+    pd=$(jq -r '.schema == "fm-night-stop.v1" and any((.tripped // [])[]; .condition == "dev_health" and .status == "tripped")' "$STOP_FILE" 2>/dev/null) || pd=false
     [ -z "$pe" ] || first_epoch=$pe
     [ -z "$pa" ] || first_at=$pa
     prev_stall=${ps:-null}
@@ -2280,7 +2379,6 @@ evaluate_night_verdict() {
     --arg rf_path "$rf_path" \
     --argjson live_max_age "$LIVE_INPUT_MAX_AGE" \
     --argjson quota_max_age "$QUOTA_MAX_AGE" \
-    --argjson dev_max_age "$DEV_HEALTH_MAX_AGE" \
     --argjson check_max_age "$CHECK_EVIDENCE_MAX_AGE" \
     --argjson hc_max_age "$HC_TARGET_MAX_AGE" \
     '
@@ -2330,7 +2428,7 @@ evaluate_night_verdict() {
       claude_quota:      enforce_proof("claude_quota";      $c_quota;  $quota_max_age),
       github_api:        enforce_proof("github_api";        $c_gh;     $live_max_age),
       failure_streak:    enforce_proof("failure_streak";    $c_streak; $live_max_age),
-      dev_health:        enforce_proof("dev_health";        $c_dev;    $dev_max_age),
+      dev_health:        enforce_proof("dev_health";        $c_dev;    $live_max_age),
       check_machine:     enforce_proof("check_machine";     $c_cm;     $check_max_age),
       validation_cap:    enforce_proof("validation_cap";    $c_val;    $live_max_age),
       supervision_stall: enforce_proof("supervision_stall"; $c_stall;  $live_max_age),
@@ -2446,8 +2544,8 @@ cmd_check() {
   c_window=$(eval_night_window "$now" "$active_bad")
   c_quota=$(eval_claude_quota)
   c_gh=$(eval_github_api "$now")
-  c_streak=$(eval_failure_streak "$since_epoch" "$night_active" "$now")
-  c_dev=$(eval_dev_health "$now")
+  c_streak=$(eval_failure_streak "$since_epoch" "$night_active" "$now" "$night_started")
+  c_dev=$(eval_dev_health "$now" "$since_epoch")
   c_cm=$(eval_check_machine "$now")
   c_val=$(eval_validation_cap "$since_epoch" "$now")
   c_stall=$(eval_supervision_stall "$now")
