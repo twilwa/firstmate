@@ -313,7 +313,9 @@
 # disposition without recording twice: it refuses, changing nothing, a flag
 # that does not match that disposition, and a record no longer bound to the
 # same hold occurrence (default record retired by a re-hold, hold-set stamp,
-# occurrence, or question fingerprint changed).
+# occurrence, or question fingerprint changed). An open captain hold whose
+# hold-set stamp differs from the one its newest defaulted record answered is
+# a new call, not a retry, and the decision function gates its own default.
 # `due` is read-only and never runs the night check: it prints one line per
 # open default-bearing hold - "<id> waits: ..." before ask + 1h,
 # "<id> waits for the captain: ..." when the mirror holds a captain message
