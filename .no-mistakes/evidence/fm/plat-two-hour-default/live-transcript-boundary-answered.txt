@@ -1,0 +1,56 @@
+=== fixed clock T=2026-11-28T08:30:04Z (FM_CAPTAIN_HOLD_NOW), asks at T-7500 = 2026-11-28T06:25:04Z; refusals below fire before the night check runs
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:25:04Z bin/fm-captain-hold.sh hold b1 --title Choice b1 --reason pick A or B (b1) --repo sample --default-file /tmp/fm-lab.130FBx/rec.txt --default-class dev-revertible --default-category issue-design-choice
+b1
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:25:04Z bin/fm-captain-hold.sh hold a2 --title Choice a2 --reason pick A or B (a2) --repo sample --default-file /tmp/fm-lab.130FBx/rec.txt --default-class dev-revertible --default-category issue-design-choice
+a2
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:25:04Z bin/fm-captain-hold.sh hold a3 --title Choice a3 --reason pick A or B (a3) --repo sample --default-file /tmp/fm-lab.130FBx/rec.txt --default-class dev-revertible --default-category issue-design-choice
+a3
+[exit 0]
+
+=== S11c captain entry exactly at now-3600 counts inside the hour
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh default b1
+fm-captain-hold: default refused for b1: dialog mirror: the newest captain message is 3600s old, not more than 3600s
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh due
+a2 waits for the captain: captain message at 07:30 UTC
+a3 waits for the captain: captain message at 07:30 UTC
+b1 waits for the captain: captain message at 07:30 UTC
+[exit 0]
+# same mirror with the captain entry one second earlier (T-3601): due turns to 'due now'
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh due
+a2 due now
+a3 due now
+b1 due now
+[exit 0]
+
+=== S13 the captain answered (a2 closed) or deferred (a3) after the default was recorded
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh answer a2 --decision-file /tmp/fm-lab.130FBx/ans.txt
+answered: a2
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh answer a3 --decision-file /tmp/fm-lab.130FBx/ans.txt --defer-until 2027-01-15
+deferred: a3 until 2027-01-15
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh due
+b1 due now
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh default a2
+fm-captain-hold: default refused for a2: hold: task a2 is not an open captain hold
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:30:04Z bin/fm-captain-hold.sh default a3
+fm-captain-hold: default refused for a3: answer: the captain answered or deferred this call after its default was recorded
+[exit 1]
+a2: Resolution mode: answered 
+a3: Resolution mode: deferred 

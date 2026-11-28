@@ -1,0 +1,59 @@
+=== S11a mirror trimmed: oldest kept entry is 50 min old, no captain entry kept (silence unproven)
+
+$ bin/fm-host-mirror.sh summary
+{"count":2,"epochs":"ordered","oldest":1795851454,"newest":1795854394,"newest_captain":null}
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t5
+fm-captain-hold: default refused for t5: dialog mirror: its oldest kept entry is 3002s old, so it does not reach back 3600s and the captain's silence is unproven
+[exit 1]
+
+$ bin/fm-captain-hold.sh due
+t2 unknown: dialog mirror: its oldest kept entry is 3003s old, so it does not reach back 3600s and the captain's silence is unproven
+t3 waits: asked at 08:05 UTC; proceeds no earlier than 10:05 UTC
+t4 unknown: dialog mirror: its oldest kept entry is 3003s old, so it does not reach back 3600s and the captain's silence is unproven
+t5 unknown: dialog mirror: its oldest kept entry is 3003s old, so it does not reach back 3600s and the captain's silence is unproven
+t7 unknown: dialog mirror: its oldest kept entry is 3003s old, so it does not reach back 3600s and the captain's silence is unproven
+[exit 0]
+
+=== S11b out-of-order mirror (epochs decrease) proves no coverage
+
+$ bin/fm-host-mirror.sh summary
+{"count":3,"epochs":"unordered","oldest":1795845454,"newest":1795849454,"newest_captain":null}
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t5
+fm-captain-hold: default refused for t5: dialog mirror: its entries are out of epoch order, so it is invalid and proves no coverage
+[exit 1]
+
+=== S11c entry exactly at now-3600 tagged captain stops the default (boundary)
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t5
+fm-captain-hold: default refused for t5: dialog mirror: the newest captain message is 3599s old, not more than 3600s
+[exit 1]
+
+$ bin/fm-captain-hold.sh open t5
+[exit 0]
+
+=== S12 bearings cap: FM_BEARINGS_DEFAULTED=1 keeps the newest and discloses the rest
+
+$ bash -c FM_BEARINGS_DEFAULTED=1 bin/fm-bearings-snapshot.sh --json 2>/dev/null | jq "{decided_by_default: [.decided_by_default[].id], omitted: [.omitted[] | select(.surface|test(\"default\"))]}"
+{
+  "decided_by_default": [
+    "t6"
+  ],
+  "omitted": [
+    {
+      "surface": "decided_by_default showing 1 of 2",
+      "reveal": "--all-landed"
+    }
+  ]
+}
+[exit 0]
+
+$ bash -c FM_BEARINGS_DEFAULTED=1 bin/fm-bearings-snapshot.sh --json --all-landed 2>/dev/null | jq "[.decided_by_default[].id]"
+[
+  "t6",
+  "t1"
+]
+[exit 0]

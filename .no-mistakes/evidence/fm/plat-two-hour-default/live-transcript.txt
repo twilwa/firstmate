@@ -1,0 +1,261 @@
+=== clock: real now 2026-11-28T08:25:48Z (1795854348)
+
+=== S1 hold-time guards (refused before anything is written)
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:20:48Z bin/fm-captain-hold.sh hold g1 --title Notice copy choice g1 --reason pick option A or B for the g1 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category production
+fm-captain-hold: default category production always waits for the captain
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:20:48Z bin/fm-captain-hold.sh hold g2 --title Notice copy choice g2 --reason pick option A or B for the g2 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category made-up-key
+fm-captain-hold: unknown default category made-up-key (not on the may-proceed list in {run-worktree}/bin/fm-hold-default-lists.json)
+[exit 1]
+
+# supervision engine (branch actor) tries to write a default
+$ env FM_SUPERVISION_ACTOR=branch FM_CAPTAIN_HOLD_NOW=2026-11-28T06:20:48Z bin/fm-captain-hold.sh hold g3 --title Engine-written default --reason r --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: only main writes a default; the supervision host's engine (FM_SUPERVISION_ACTOR=branch) cannot
+[exit 1]
+
+# an existing plain hold tries to gain a default retroactively
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:20:48Z bin/fm-captain-hold.sh hold g4 --title Notice copy choice g4 --reason pick option A or B for the g4 notice copy --repo sample
+g4
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:22:28Z bin/fm-captain-hold.sh hold g4 --title Notice copy choice g4 --reason pick option A or B for the g4 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+fm-captain-hold: task g4 is already held for the captain; a hold that already exists never gains a default
+[exit 1]
+
+# what exists for g1..g4 after the refusals:
+g1: default record=no open-hold=no
+g2: default record=no open-hold=no
+g3: default record=no open-hold=no
+g4: default record=no open-hold=yes
+
+=== S2 default-bearing holds by main at three ask times
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:20:48Z bin/fm-captain-hold.sh hold t1 --title Notice copy choice t1 --reason pick option A or B for the t1 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t1
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T07:15:48Z bin/fm-captain-hold.sh hold t2 --title Notice copy choice t2 --reason pick option A or B for the t2 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t2
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T08:05:48Z bin/fm-captain-hold.sh hold t3 --title Notice copy choice t3 --reason pick option A or B for the t3 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t3
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:19:08Z bin/fm-captain-hold.sh hold t5 --title Notice copy choice t5 --reason pick option A or B for the t5 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t5
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:17:28Z bin/fm-captain-hold.sh hold t6 --title Notice copy choice t6 --reason pick option A or B for the t6 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t6
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:15:48Z bin/fm-captain-hold.sh hold t7 --title Notice copy choice t7 --reason pick option A or B for the t7 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t7
+[exit 0]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:14:08Z bin/fm-captain-hold.sh hold t4 --title Notice copy choice t4 --reason pick option A or B for the t4 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec.txt --default-class dev-revertible --default-category issue-design-choice
+t4
+[exit 0]
+# t1 recorded default (byte-for-byte recommendation, two trailing newlines):
+{
+  "schema": "fm-hold-default.v1",
+  "task": "t1",
+  "class": "dev-revertible",
+  "category": "issue-design-choice",
+  "recommendation": "Use the shorter notice copy (option B) and file the longer copy as a follow-up.\n\n",
+  "ask_epoch": 1795846848,
+  "asked_at": "2026-11-28T06:20:48Z",
+  "fingerprint": "16015fcef5419bc964d8f7c29500fed8787ba55993ada6f8b2cb19fb9007cceb",
+  "occurrence": 1
+}
+recommendation identical to rec.txt
+
+=== dialog mirror: captain last spoke 3h ago, main entries since every ask
+
+$ bin/fm-host-mirror.sh summary
+{"count":4,"epochs":"ordered","oldest":1795843548,"newest":1795854288,"newest_captain":1795843548}
+[exit 0]
+
+=== S3 due listing (real clock, read-only, no night check)
+
+$ bin/fm-captain-hold.sh due
+t1 due now
+t2 proceeds at 09:15 UTC
+t3 waits: asked at 08:05 UTC; proceeds no earlier than 10:05 UTC
+t4 due now
+t5 due now
+t6 due now
+t7 due now
+[exit 0]
+
+=== S4 too early: default t2 at ask + 1h10m
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t2
+fm-captain-hold: default refused for t2: time: ask + 7200s is not reached (asked 2026-11-28T07:15:48Z, 4243s ago)
+[exit 1]
+
+=== S5 real night check refuses: default t5 with the real bin/fm-night-check.sh
+
+$ bin/fm-captain-hold.sh default t5
+fm-captain-hold: default refused for t5: night check: allow.two_hour_default is not true (verdict stop_dispatch)
+[exit 1]
+
+$ bin/fm-captain-hold.sh open t5
+[exit 0]
+
+=== S6 happy path: default t1 at ask + 2h05m, silent hour, healthy night verdict
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t1
+defaulted: t1
+[exit 0]
+task:
+  id: t1
+  title: Notice copy choice t1
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "pick option A or B for the t1 notice copy"
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: "-"
+  closed: 2026-11-28
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: 4b4e6de161e1618afe779c197117b66c0d95179880899380d27beba2d4337810\nResolution mode: defaulted\nDefault reason: no answer from the owner\nDefault class: dev-revertible\nDefault category: issue-design-choice\nDefault asked at: 2026-11-28T06:20:48Z\nDefault applied at: 2026-11-28T08:26:40Z\nDefault disposition: close\nCaptain hold answered: 2026-11-28T06:20:48Z\n\nDefault decision:\n\"Use the shorter notice copy (option B) and file the longer copy as a follow-up.\\n\\n\""
+# a retry is idempotent:
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t1
+defaulted: t1
+[exit 0]
+# default record retired: absent
+
+=== S7 away posture: default --release refused while away
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t7 --release
+fm-captain-hold: task t7 stays held: the away-posture record exists, and a captain hold is released only by the captain in an attended session; retry --release after the return archives the record
+[exit 1]
+
+$ bin/fm-captain-hold.sh open t7
+[exit 0]
+
+=== S8 released default, then a new default-bearing hold on the same task applies
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t6 --release
+defaulted: t6
+[exit 0]
+
+$ bin/fm-captain-hold.sh open t6
+[exit 1]
+
+$ env FM_CAPTAIN_HOLD_NOW=2026-11-28T06:24:08Z bin/fm-captain-hold.sh hold t6 --title Notice copy choice t6 --reason pick option A or B for the t6 notice copy --repo sample --default-file /tmp/fm-lab.2qDxrR/rec2.txt --default-class dev-revertible --default-category split-and-file
+t6
+[exit 0]
+
+$ bin/fm-captain-hold.sh due
+t2 proceeds at 09:15 UTC
+t3 waits: asked at 08:05 UTC; proceeds no earlier than 10:05 UTC
+t4 due now
+t5 due now
+t6 due now
+t7 due now
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t6
+defaulted: t6
+[exit 0]
+task:
+  id: t6
+  title: Notice copy choice t6
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "pick option A or B for the t6 notice copy"
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: "-"
+  closed: 2026-11-28
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: de946041ba4cd33ca95d8aa0a13c0042639cd6452463171cb7cdfca42f74501c\nResolution mode: defaulted\nDefault reason: no answer from the owner\nDefault class: dev-revertible\nDefault category: split-and-file\nDefault asked at: 2026-11-28T06:24:08Z\nDefault applied at: 2026-11-28T08:27:02Z\nDefault disposition: close\nCaptain hold answered: 2026-11-28T06:24:08Z\n\nDefault decision:\n\"Ship the compact layout; keep the wide layout behind the existing flag.\\n\"\n\nResolution recorded by fm-captain-hold.\nDecision digest: 4b4e6de161e1618afe779c197117b66c0d95179880899380d27beba2d4337810\nResolution mode: defaulted\nDefault reason: no answer from the owner\nDefault class: dev-revertible\nDefault category: issue-design-choice\nDefault asked at: 2026-11-28T06:17:28Z\nDefault applied at: 2026-11-28T08:26:47Z\nDefault disposition: release\nCaptain hold answered: 2026-11-28T06:17:28Z\n\nDefault decision:\n\"Use the shorter notice copy (option B) and file the longer copy as a follow-up.\\n\\n\""
+
+=== S9 the captain speaks: a captain message lands now
+
+$ bin/fm-host-mirror.sh summary
+{"count":5,"epochs":"ordered","oldest":1795843548,"newest":1795854424,"newest_captain":1795854424}
+[exit 0]
+
+$ bin/fm-captain-hold.sh due
+t2 waits for the captain: captain message at 08:27 UTC
+t3 waits: asked at 08:05 UTC; proceeds no earlier than 10:05 UTC
+t4 waits for the captain: captain message at 08:27 UTC
+t5 waits for the captain: captain message at 08:27 UTC
+t7 waits for the captain: captain message at 08:27 UTC
+[exit 0]
+
+$ env FM_NIGHT_CHECK_BIN=/tmp/fm-lab.2qDxrR/night-check-continue bin/fm-captain-hold.sh default t4
+fm-captain-hold: default refused for t4: dialog mirror: the newest captain message is 6s old, not more than 3600s
+[exit 1]
+
+$ bin/fm-captain-hold.sh open t4
+[exit 0]
+t4 defaulted records: 0
+
+=== S10 bearings: decided_by_default rows
+
+$ bash -c bin/fm-bearings-snapshot.sh --json 2>/dev/null | jq "{decided_by_default, omitted}"
+{
+  "decided_by_default": [
+    {
+      "id": "t6",
+      "title": "Notice copy choice t6",
+      "recommendation": "Ship the compact layout; keep the wide layout behind the existing flag.\n",
+      "asked_at": "2026-11-28T06:24:08Z",
+      "applied_at": "2026-11-28T08:27:02Z"
+    },
+    {
+      "id": "t1",
+      "title": "Notice copy choice t1",
+      "recommendation": "Use the shorter notice copy (option B) and file the longer copy as a follow-up.\n\n",
+      "asked_at": "2026-11-28T06:20:48Z",
+      "applied_at": "2026-11-28T08:26:40Z"
+    }
+  ],
+  "omitted": [
+    {
+      "surface": "backlog item bodies",
+      "reveal": "--fields bodies"
+    },
+    {
+      "surface": "task paths",
+      "reveal": "--fields paths"
+    },
+    {
+      "surface": "watch/steer actions",
+      "reveal": "--fields actions"
+    },
+    {
+      "surface": "healthy endpoint detail",
+      "reveal": "--fields endpoints"
+    },
+    {
+      "surface": "full scout-report inventory",
+      "reveal": "--all-reports"
+    },
+    {
+      "surface": "live PR discovery + checks",
+      "reveal": "--include-prs"
+    }
+  ]
+}
+[exit 0]
