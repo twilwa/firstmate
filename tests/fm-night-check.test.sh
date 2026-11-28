@@ -952,6 +952,30 @@ test_dev_health_per_branch_recovery_legacy_fallback_and_producer() {
   assert_equals "main" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.details.failed_targets[0].base_ref')" "the failed target is the untouched main branch"
   assert_equals "false" "$(printf '%s\n' "$out" | jq -r '.allow.merge')" "a red untouched target blocks merges"
 
+  # 2c. A legacy pass after a legacy failure on the same branch clears it with no night merge
+  home=$(make_home dev_legacy_fixed_pair)
+  fake_quota_axi "$home/fakebin" 80 70
+  cat > "$home/fakebin/gh" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "rate_limit" ]; then
+  printf '{"resources":{"core":{"limit":5000,"used":800,"remaining":4200,"reset":1795800000}}}\n'
+  exit 0
+fi
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ] && [ "${5:-}" = "baseRefName" ]; then
+  printf '{"baseRefName":"dev"}\n'
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$home/fakebin/gh"
+  run_night_check "$home" "$EPOCH_NIGHT_START" start >/dev/null 2>&1 || fail "start must succeed"
+  write_review_ledger "$home" 1470 "$(dev_ledger 1470 failed $((EPOCH_NIGHT_START - 7200)))"
+  write_review_ledger "$home" 1471 "$(dev_ledger 1471 passed $((EPOCH_NIGHT_START - 3600)))"
+  out=$(run_night_check "$home" "$EPOCH_IN_WINDOW" check --json 2>&1) || rc=$?
+  expect_code 0 "$rc" "legacy fixed-pair check exits 0"
+  assert_equals "ok" "$(printf '%s\n' "$out" | jq -r '.conditions.dev_health.status')" "a later legacy pass on the same branch clears an older legacy failure"
+  assert_equals "continue" "$(printf '%s\n' "$out" | jq -r '.verdict')" "a fixed legacy failure does not stop the night"
+
   # 3. Legacy records without base_ref resolve via bounded gh pr view --json baseRefName
   #    (a red record, and a passed record in a repo with a confirmed night merge)
   home=$(make_home dev_legacy_resolve)

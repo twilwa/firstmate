@@ -111,10 +111,11 @@
 #                     a forge-confirmed `base_ref` written by
 #                     `bin/fm-pr-review.sh post-merge`; valid older records
 #                     without it resolve `baseRefName` via a bounded
-#                     `gh pr view --json baseRefName`, only for red records or
-#                     for repos with a confirmed night merge (failure yields
-#                     `unknown` and is retried on the next check); each
-#                     successful lookup
+#                     `gh pr view --json baseRefName`, only for red records,
+#                     for passed records in a repo with an equal or older red
+#                     record, or for repos with a confirmed night merge
+#                     (failure yields `unknown` and is retried on the next
+#                     check); each successful lookup
 #                     is published to `state/night-pr-base-refs.json`, so the
 #                     one-call-ever promise holds after a successful cache
 #                     publish (cache publish failures are surfaced as verdict
@@ -1527,8 +1528,12 @@ EOF
 
   night_repos=$(printf '%s\n' "$merges_json" | jq -c '[.[].repo] | unique')
   lookup_urls=$(printf '%s\n' "$records_json" | jq -r --argjson repos "$night_repos" '
-    [ .[] | select(.base_ref == "" and (.outcome == "failed"
-        or (.outcome == "passed" and (.repo as $r | any($repos[]; . == $r))))) | .url ] | unique | .[]')
+    . as $all
+    | [ .[] | select(.base_ref == "" and (.outcome == "failed"
+          or (.outcome == "passed" and (. as $p
+            | any($repos[]; . == $p.repo)
+              or any($all[]; .outcome == "failed" and .repo == $p.repo and .recorded_epoch <= $p.recorded_epoch)))))
+        | .url ] | unique | .[]')
   while IFS= read -r url; do
     [ -n "$url" ] || continue
     fallback_ref=$(printf '%s\n' "$base_refs" | jq -r --arg u "$url" '.[$u] // empty')
