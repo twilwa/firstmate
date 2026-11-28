@@ -22,10 +22,14 @@ set -eu
 case "${1:-} ${2:-}" in
   "api /repos/o/r/pulls/7")
     head=${FM_TEST_PR_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+    base_json=""
+    if [ "${FM_TEST_PR_BASE:-main}" != "__omit__" ]; then
+      base_json=$(printf ',"base":{"ref":"%s"}' "${FM_TEST_PR_BASE:-main}")
+    fi
     if [ "${FM_TEST_PR_MERGED:-true}" = true ]; then
-      printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}}\n' "$head"
+      printf '{"merged":true,"merge_commit_sha":"cccccccccccccccccccccccccccccccccccccccc","head":{"sha":"%s"}%s}\n' "$head" "$base_json"
     else
-      printf '{"merged":false,"merge_commit_sha":null,"head":{"sha":"%s"}}\n' "$head"
+      printf '{"merged":false,"merge_commit_sha":null,"head":{"sha":"%s"}%s}\n' "$head" "$base_json"
     fi
     ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 91 ;;
@@ -874,6 +878,25 @@ test_post_merge_requires_confirmed_forge_merge() {
   pass 'post-merge verification requires a forge merge of the reviewed source head'
 }
 
+test_post_merge_not_applicable_refuses_outcome() {
+  local evidence path outcome status
+  prepare_post_merge_ledger
+  path=$(ledger)
+  for outcome in passed not-applicable; do
+    evidence="$TMP_ROOT/post-merge-na-$outcome.json"
+    jq -n --arg head "$HEAD_A" --arg outcome "$outcome" '{
+      schema:"firstmate-post-merge-verification.v1",applicability:"not-applicable",
+      head:$head,outcome:$outcome,reason:"docs only"
+    }' > "$evidence"
+    status=0
+    post_merge_review post-merge "$URL" "$HEAD_A" "$evidence" >/dev/null 2>&1 || status=$?
+    [ "$status" -ne 0 ] || fail "not-applicable evidence carrying outcome $outcome was accepted"
+    [ "$(jq '.generations[-1].post_merge_verifications | length' "$path")" -eq 0 ] \
+      || fail "not-applicable evidence carrying outcome $outcome was written to the ledger"
+  done
+  pass 'post-merge refuses not-applicable evidence that carries an outcome'
+}
+
 test_post_merge_rejects_multiple_json_documents() {
   local evidence path status=0
   prepare_post_merge_ledger
@@ -948,8 +971,14 @@ test_post_merge_browser_pass_requires_full_local_evidence() {
     || fail 'complete passing browser evidence did not satisfy the Ready for QA gate'
   linear_evidence="$TMP_ROOT/post-merge-pass-linear.json"
   jq '.posted_evidence_url="https://linear.app/example/issue/TES-79"' "$evidence" > "$linear_evidence"
-  post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null \
+  FM_TEST_PR_BASE=dev post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null \
     || fail 'a concrete Linear issue evidence URL was refused'
+  [ "$(jq -r '.generations[-1].post_merge_verifications[-1].base_ref // ""' "$path")" = dev ] \
+    || fail 'post-merge record did not retain the forge base branch'
+  local missing_base_rc=0
+  FM_TEST_PR_BASE=__omit__ post_merge_review post-merge "$URL" "$HEAD_A" "$linear_evidence" >/dev/null 2>&1 || missing_base_rc=$?
+  [ "$missing_base_rc" -ne 0 ] \
+    || fail 'post-merge published a verification record when the forge response omitted base.ref'
   pass 'browser changes require journeys, data and API checks, clean errors, viewport coverage, and posted screenshot evidence'
 }
 
@@ -1083,6 +1112,7 @@ test_merge_forwards_guarded_options_to_the_merge_parser
 test_merge_rejects_a_task_that_does_not_own_the_ledger
 test_arm_reuses_the_authenticated_watcher_check
 test_post_merge_non_browser_records_not_applicable
+test_post_merge_not_applicable_refuses_outcome
 test_post_merge_requires_confirmed_forge_merge
 test_post_merge_rejects_multiple_json_documents
 test_post_merge_validates_the_immutable_staged_evidence

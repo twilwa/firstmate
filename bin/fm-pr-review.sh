@@ -43,10 +43,12 @@
 # decision, whenever recorded, as away merge authority.
 #
 # `post-merge` first confirms that GitHub reports the pull request merged and
-# records its actual merge commit separately from the reviewed head.
+# records its actual merge commit separately from the reviewed head, plus the
+# forge's base branch as `base_ref`; it refuses when the payload names no base
+# branch.
 # It accepts `firstmate-post-merge-verification.v1` JSON.
 # A non-browser record uses `applicability:"not-applicable"`, the reviewed
-# `head`, and a non-empty `reason`.
+# `head`, a non-empty `reason`, and no `outcome`.
 # A browser record uses `applicability:"browser"`, the reviewed `head`, an
 # `outcome` of `passed` or `failed`, the forge's actual `merged_sha`, the
 # observed `running_sha`, and the `running_url`.
@@ -315,6 +317,8 @@ read_forge_merge_sha() {
     | .merge_commit_sha
     | select(type == "string" and test("^[0-9a-fA-F]{40}$"))
   ') || die 'post-merge verification requires a forge-confirmed merge commit'
+  FORGE_BASE_REF=$(printf '%s\n' "$result" | jq -er '.base.ref | select(type == "string" and length > 0)') \
+    || die 'post-merge verification requires a forge-confirmed base branch'
 }
 
 validate_post_merge_evidence() {
@@ -344,7 +348,7 @@ validate_post_merge_evidence() {
         test("^https://github[.]com/[^/]+/[^/]+/issues/[0-9]+($|#)"));
     .schema == "firstmate-post-merge-verification.v1" and .head == $head and
     if .applicability == "not-applicable" then
-      (.reason | text)
+      (.reason | text) and .outcome == null
     elif .applicability == "browser" then
       ((.outcome == "passed") or (.outcome == "failed")) and
       (.merged_sha | sha) and .merged_sha == $forge_merge_sha and (.running_sha | sha) and
@@ -649,8 +653,9 @@ case "$cmd" in
     fi
     WORK=$(mktemp "${TMPDIR:-/tmp}/fm-pr-review-ledger.XXXXXX")
     jq --arg at "$(now_iso)" --argjson epoch "$(now_epoch)" \
-      --arg forge_merge_sha "$FORGE_MERGE_SHA" --slurpfile evidence "$EVIDENCE" '
-      ($evidence[0] + {forge_merge_sha:$forge_merge_sha,recorded_at:$at,recorded_epoch:$epoch,
+      --arg forge_merge_sha "$FORGE_MERGE_SHA" --arg forge_base_ref "${FORGE_BASE_REF:-}" \
+      --slurpfile evidence "$EVIDENCE" '
+      ($evidence[0] + {forge_merge_sha:$forge_merge_sha,base_ref:$forge_base_ref,recorded_at:$at,recorded_epoch:$epoch,
         ready_for_qa:(if $evidence[0].applicability == "not-applicable" or $evidence[0].outcome == "passed"
           then "allowed" else "blocked" end)}) as $record
       | .generations[-1].post_merge_verifications = ((.generations[-1].post_merge_verifications // []) + [$record])

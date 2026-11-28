@@ -362,6 +362,7 @@ family_for_basename() {
     fm-harness-adapter-references.test.sh|fm-project-mode.test.sh|\
     fm-send-popup-settle.test.sh|fm-send-settle.test.sh|\
     fm-subagent-pretool-check.test.sh|\
+    fm-night-check.test.sh|\
     fm-supervision-instructions.test.sh|fm-task-delivery.test.sh|\
     fm-timeout-lib.test.sh|fm-remote-inherit-generation.test.sh|\
     fm-tmux-submit-busy.test.sh|fm-trace-context-lib.test.sh|\
@@ -1709,6 +1710,9 @@ families_for_changed_path() {
       # Pin or cleanup changes also select the hc family so the real lane's
       # coverage re-runs, mirroring the real-herdr-gated arm above.
       printf '%s\n' hc
+      ;;
+    bin/fm-night-check.sh)
+      printf '%s\n' "__script__:fm-night-check.test.sh"
       ;;
     bin/backends/orca*|bin/backends/tmux.sh)
       printf '%s\n' backend-dispatch
